@@ -165,87 +165,145 @@
     ])
     <div class="row">
         <div class="col-12">
-            <div class="card shadow-sm">
-                <div class="card-body py-3">
+            <div class="card shadow-sm" style="border: 1px solid rgba(0, 0, 0, 0.05);">
+                <div class="card-body py-4">
                     <div class="mb-4">
-                        <!-- Title -->
-                        <h4 class="fw-bold text-primary mb-3 d-flex align-items-center">
-                            <i class="fa-solid fa-chart-line me-2"></i>
-                            Amazon FBA KW Utilized's
-                        </h4>
-
-                        <!-- Filters Row -->
-                        <div class="row g-3 mb-3">
-                            <!-- Utilization Type Selector -->
-                            <div class="col-md-6">
-                                <div class="d-flex gap-2 align-items-center">
-                                    <span class="fw-bold me-2">Type:</span>
-                                    <button class="utilization-type-btn active" data-type="over">Over Utilized <span class="btn-count fs-4 fw-bold" id="over-btn-count"></span></button>
-                                    <button class="utilization-type-btn" data-type="under">Under Utilized <span class="btn-count fs-4 fw-bold" id="under-btn-count"></span></button>
-                                    <button class="utilization-type-btn" data-type="correctly">Correctly Utilized <span class="btn-count fs-4 fw-bold" id="correctly-btn-count"></span></button>
-                                </div>
-                            </div>
-
-                            <!-- Stats -->
-                            <div class="col-md-6">
-                                <div class="d-flex gap-2 justify-content-end align-items-center flex-wrap">
-                                    <!-- Count Cards -->
-                                    <div class="d-flex gap-2">
-                                        <div class="card shadow-sm border-0 utilization-card" data-type="7ub" style="background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%); cursor: pointer; min-width: 120px; transition: transform 0.2s;">
-                                            <div class="card-body text-center text-white p-2">
-                                                <h6 class="card-title mb-1" style="font-size: 0.75rem; font-weight: 600;">7UB</h6>
-                                                <h5 class="mb-0 fw-bold" id="7ub-count" style="font-size: 1.2rem;">0</h5>
+                        <!-- Filters and Stats Section -->
+                        <div class="card border-0 shadow-sm mb-4" style="border: 1px solid rgba(0, 0, 0, 0.05) !important;">
+                            <div class="card-body p-4">
+                                <!-- Type Filter and Count Cards Row -->
+                                <div class="row g-4 align-items-end mb-3 pb-3 border-bottom">
+                                    <div class="col-md-2">
+                                        <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
+                                            <i class="fa-solid fa-filter me-1" style="color: #64748b;"></i>Utilization Type
+                                        </label>
+                                        <select id="utilization-type-select" class="form-select form-select-md">
+                                            <option value="all" selected>All</option>
+                                            <option value="over">Over Utilized</option>
+                                            <option value="under">Under Utilized</option>
+                                            <option value="correctly">Correctly Utilized</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-2"></div>
+                                    <div class="col-md-8">
+                                        <label class="form-label fw-semibold mb-2 d-block" style="color: #475569; font-size: 0.8125rem;">
+                                            <i class="fa-solid fa-chart-line me-1" style="color: #64748b;"></i>Statistics
+                                        </label>
+                                        <div class="d-flex gap-3 flex-wrap align-items-center">
+                                            <div class="badge-count-item" style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Total SKU</span>
+                                                <span class="fw-bold" id="total-sku-count" style="font-size: 1.1rem;">0</span>
                                             </div>
-                                        </div>
-                                        <div class="card shadow-sm border-0 utilization-card" data-type="7ub-1ub" style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); cursor: pointer; min-width: 120px; transition: transform 0.2s;">
-                                            <div class="card-body text-center text-white p-2">
-                                                <h6 class="card-title mb-1" style="font-size: 0.75rem; font-weight: 600;">7UB + 1UB</h6>
-                                                <h5 class="mb-0 fw-bold" id="7ub-1ub-count" style="font-size: 1.2rem;">0</h5>
+                                            <div class="badge-count-item total-campaign-card" id="total-campaign-card" style="background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Campaign</span>
+                                                <span class="fw-bold" id="total-campaign-count" style="font-size: 1.1rem;">0</span>
+                                            </div>
+                                            <div class="badge-count-item missing-campaign-card" id="missing-campaign-card" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Missing</span>
+                                                <span class="fw-bold" id="missing-campaign-count" style="font-size: 1.1rem;">0</span>
+                                            </div>
+                                            <div class="badge-count-item nra-missing-card" id="nra-missing-card" style="background: linear-gradient(135deg, #ffc107 0%, #ffb300 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">NRA MISSING</span>
+                                                <span class="fw-bold" id="nra-missing-count" style="font-size: 1.1rem;">0</span>
+                                            </div>
+                                            <div class="badge-count-item zero-inv-card" id="zero-inv-card" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Zero INV</span>
+                                                <span class="fw-bold" id="zero-inv-count" style="font-size: 1.1rem;">0</span>
+                                            </div>
+                                            <div class="badge-count-item nra-card" id="nra-card" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">NRA</span>
+                                                <span class="fw-bold" id="nra-count" style="font-size: 1.1rem;">0</span>
+                                            </div>
+                                            <div class="badge-count-item ra-card" id="ra-card" style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">RA</span>
+                                                <span class="fw-bold" id="ra-count" style="font-size: 1.1rem;">0</span>
+                                            </div>
+                                            <div class="badge-count-item utilization-card" data-type="7ub" style="background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">7UB</span>
+                                                <span class="fw-bold" id="7ub-count" style="font-size: 1.1rem;">0</span>
+                                            </div>
+                                            <div class="badge-count-item utilization-card" data-type="7ub-1ub" style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">7UB + 1UB</span>
+                                                <span class="fw-bold" id="7ub-1ub-count" style="font-size: 1.1rem;">0</span>
                                             </div>
                                         </div>
                                     </div>
-                                    <button id="apr-all-sbid-btn" class="btn btn-info btn-sm d-none shadow-sm">
-                                        <i class="fa-solid fa-check-double me-1"></i>
-                                        APR ALL SBID
-                                    </button>
                                 </div>
-                            </div>
-                        </div>
 
-                        <!-- Search and Controls Row -->
-                        <div class="row g-3 mb-3">
-                            <div class="col-md-4">
-                                <div class="input-group">
-                                    <span class="input-group-text bg-light">
-                                        <i class="fa-solid fa-search text-muted"></i>
-                                    </span>
-                                    <input type="text" id="global-search" class="form-control form-control-md" 
-                                           placeholder="Search campaign...">
+                                <!-- Search and Filter Controls Row -->
+                                <div class="row align-items-end">
+                                    <div class="col-md-4">
+                                        <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
+                                            <i class="fa-solid fa-search me-1" style="color: #64748b;"></i>Search Campaign
+                                        </label>
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-white border-end-0" style="border-color: #e2e8f0;">
+                                                <i class="fa-solid fa-search" style="color: #94a3b8;"></i>
+                                            </span>
+                                            <input type="text" id="global-search" class="form-control form-control-md border-start-0" 
+                                                   placeholder="Search by campaign name or SKU..."
+                                                   style="border-color: #e2e8f0;">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
+                                            <i class="fa-solid fa-toggle-on me-1" style="color: #64748b;"></i>Status
+                                        </label>
+                                        <select id="status-filter" class="form-select form-select-md">
+                                            <option value="">All Status</option>
+                                            <option value="RUNNING">Running</option>
+                                            <option value="PAUSED">Paused</option>
+                                            <option value="ENDED">Ended</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
+                                            <i class="fa-solid fa-boxes me-1" style="color: #64748b;"></i>Inventory
+                                        </label>
+                                        <select id="inv-filter" class="form-select form-select-md">
+                                            <option value="">All Inventory</option>
+                                            <option value="ALL" selected>ALL</option>
+                                            <option value="INV_0">0 INV</option>
+                                            <option value="OTHERS">OTHERS</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
+                                            <i class="fa-solid fa-tags me-1" style="color: #64748b;"></i>NRA
+                                        </label>
+                                        <select id="nra-filter" class="form-select form-select-md">
+                                            <option value="">All NRA</option>
+                                            <option value="NRA">NRA</option>
+                                            <option value="RA">RA</option>
+                                            <option value="LATER">LATER</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
+                                            <i class="fa-solid fa-filter me-1" style="color: #64748b;"></i>ACOS Filter
+                                        </label>
+                                        <select id="sbgt-filter" class="form-select form-select-md">
+                                            <option value="">All ACOS</option>
+                                            <option value="3">ACOS &lt; 10%</option>
+                                            <option value="2">ACOS 10-19%</option>
+                                            <option value="1">ACOS ≥ 20%</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4 d-flex gap-2">
+                                        <div class="w-50">
+                                            <button id="apr-all-sbid-btn" class="btn btn-info btn-sm w-100 d-none">
+                                                <i class="fa-solid fa-check-double me-1"></i>
+                                                APR ALL SBID
+                                            </button>
+                                        </div>
+                                        <div class="w-50">
+                                            <button id="apr-all-sbgt-btn" class="btn btn-warning btn-sm w-100 d-none">
+                                                <i class="fa-solid fa-check-double me-1"></i>
+                                                APR ALL SBGT
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="col-md-2">
-                                <select id="status-filter" class="form-select form-select-md">
-                                    <option value="">All Status</option>
-                                    <option value="RUNNING">Running</option>
-                                    <option value="PAUSED">Paused</option>
-                                    <option value="ENDED">Ended</option>
-                                </select>
-                            </div>
-                            <div class="col-md-3">
-                                <select id="inv-filter" class="form-select form-select-md">
-                                    <option value="">All Inventory</option>
-                                    <option value="ALL">ALL</option>
-                                    <option value="INV_0">0 INV</option>
-                                    <option value="OTHERS">OTHERS</option>
-                                </select>
-                            </div>
-                            <div class="col-md-3">
-                                <select id="nra-filter" class="form-select form-select-md">
-                                    <option value="">All NRA</option>
-                                    <option value="NRA">NRA</option>
-                                    <option value="RA">RA</option>
-                                    <option value="LATER">LATER</option>
-                                </select>
                             </div>
                         </div>
                     </div>
@@ -299,7 +357,13 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <script>
         document.addEventListener("DOMContentLoaded", function() {
-            let currentUtilizationType = 'over'; // Default to over
+            let currentUtilizationType = 'all'; // Default to all
+            let showMissingOnly = false; // Filter for missing campaigns only
+            let showNraMissingOnly = false; // Filter for NRA missing (yellow dots) only
+            let showZeroInvOnly = false; // Filter for zero/negative inventory only
+            let showCampaignOnly = false; // Filter for campaigns only
+            let showNraOnly = false; // Filter for NRA only
+            let showRaOnly = false; // Filter for RA only
             let totalACOSValue = 0;
             let totalL30Spend = 0;
             let totalL30Sales = 0;
@@ -312,9 +376,7 @@
                 return 'pink';
             };
 
-            // Function to update button counts from table data (calculated directly from frontend)
-            // Counts are based on filtered data (respects INV, NRA, status, search filters)
-            // but shows all utilization types (not filtered by utilization type button)
+            // Function to update all statistics counts from table data
             function updateButtonCounts() {
                 if (typeof table === 'undefined' || !table) {
                     return;
@@ -325,12 +387,50 @@
                 
                 // Use Map to count unique campaigns by campaign_id (matches command logic)
                 const campaignMap = new Map();
+                let overCount = 0;
+                let underCount = 0;
+                let correctlyCount = 0;
+                let missingCount = 0;
+                let nraMissingCount = 0; // Count NRA missing (yellow dots)
+                let zeroInvCount = 0; // Count zero and negative inventory
+                let totalCampaignCount = 0; // Count total campaigns
+                let nraCount = 0; // Count NRA
+                let raCount = 0; // Count RA
+                let validSkuCount = 0; // Count only valid SKUs (not parent, not empty)
+                let totalAllSkuCount = 0; // Count ALL FBA SKUs (no filters applied)
                 
+                // Track processed SKUs to avoid counting duplicates
+                const processedSkusForNra = new Set();
+                const processedSkusForCampaign = new Set();
+                const processedSkusForMissing = new Set();
+                const processedSkusForNraMissing = new Set();
+                const processedSkusForZeroInv = new Set();
+                const processedSkusForValidCount = new Set();
+                const processedSkusForTotalCount = new Set(); // For total SKU count (all FBA SKUs)
+                
+                // First pass: Count ALL FBA SKUs (no filters)
                 allData.forEach(function(row) {
+                    const sku = row.sku || '';
+                    const isValidSku = sku && !sku.toUpperCase().includes('PARENT');
+                    
+                    if (isValidSku && !processedSkusForTotalCount.has(sku)) {
+                        processedSkusForTotalCount.add(sku);
+                        totalAllSkuCount++;
+                    }
+                });
+                
+                // Second pass: Apply filters for other counts
+                allData.forEach(function(row) {
+                    // Count valid SKUs (exclude parent SKUs and empty SKUs)
+                    const sku = row.sku || '';
+                    const isValidSku = sku && !sku.toUpperCase().includes('PARENT');
+                    
+                    let inv = parseFloat(row.INV || 0);
+                    
                     // Apply all filters except utilization type filter
                     // Global search filter
                     let searchVal = $("#global-search").val()?.toLowerCase() || "";
-                    if (searchVal && !(row.campaignName?.toLowerCase().includes(searchVal))) {
+                    if (searchVal && !(row.campaignName?.toLowerCase().includes(searchVal)) && !(row.sku?.toLowerCase().includes(searchVal))) {
                         return;
                     }
                     
@@ -340,40 +440,106 @@
                         return;
                     }
                     
-                    // Inventory filter - Always exclude INV = 0 and negative for button counts (matches command)
-                    let inv = parseFloat(row.INV || 0);
-                    // Always exclude INV = 0 and negative to match command counts
-                    if (inv <= 0) return;
+                    // Count zero/negative inventory (INV <= 0) AFTER search and status filters
+                    if (inv <= 0 && isValidSku && !processedSkusForZeroInv.has(sku)) {
+                        processedSkusForZeroInv.add(sku);
+                        zeroInvCount++;
+                    }
                     
-                    // NRA filter - Always exclude NRA campaigns for button counts (matches command)
-                    let rowNra = row.NRA || "";
-                    if (rowNra === 'NRA') return;
+                    // Inventory filter - Default to ALL (show all SKUs)
+                    let invFilterVal = $("#inv-filter").val();
+                    if (!invFilterVal || invFilterVal === '' || invFilterVal === "ALL") {
+                        // ALL option shows everything (default)
+                    } else if (invFilterVal === "INV_0") {
+                        // Show only INV = 0
+                        if (inv !== 0) return;
+                    } else if (invFilterVal === "OTHERS") {
+                        // Show only INV > 0
+                        if (inv <= 0) return;
+                    }
                     
-                    // Get campaign_id for unique counting
-                    let campaignId = row.campaign_id || '';
-                    if (!campaignId) return;
+                    // Count NRA and RA only for valid SKUs and only once per SKU (after filters)
+                    if (isValidSku && !processedSkusForNra.has(sku)) {
+                        processedSkusForNra.add(sku);
+                        let rowNra = row.NRA ? row.NRA.trim() : "";
+                        if (rowNra === 'NRA') {
+                            nraCount++;
+                        } else {
+                            // If NRA is empty, null, or "RA", it shows as "RA" by default
+                            raCount++;
+                        }
+                    }
                     
-                    // Store campaign data (only once per campaign_id, like command)
-                    if (!campaignMap.has(campaignId)) {
-                        let budget = parseFloat(row.campaignBudgetAmount) || 0;
-                        let l7_spend = parseFloat(row.l7_spend || 0);
-                        let l1_spend = parseFloat(row.l1_spend || 0);
-
-                        let ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
-                        let ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
-
-                        campaignMap.set(campaignId, {
+                    // NRA filter
+                    let nraFilterVal = $("#nra-filter").val();
+                    if (nraFilterVal) {
+                        let rowNra = row.NRA ? row.NRA.trim() : "";
+                        if (nraFilterVal === 'RA') {
+                            // For "RA" filter, include empty/null values too
+                            if (rowNra === 'NRA') return;
+                        } else {
+                            // For "NRA" or "LATER", exact match
+                            if (rowNra !== nraFilterVal) return;
+                        }
+                    }
+                    
+                    // Check if campaign is missing or exists - only count unique valid SKUs (after filters)
+                    if (isValidSku) {
+                        const hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                        
+                        if (hasCampaign) {
+                            // Count campaign only once per SKU
+                            if (!processedSkusForCampaign.has(sku)) {
+                                processedSkusForCampaign.add(sku);
+                                totalCampaignCount++;
+                            }
+                        } else {
+                            // Count missing only once per SKU
+                            if (!processedSkusForMissing.has(sku)) {
+                                processedSkusForMissing.add(sku);
+                                // Check if this is a red dot (missing AND not yellow)
+                                let rowNrlForMissing = row.NRL ? row.NRL.trim() : "";
+                                let rowNraForMissing = row.NRA ? row.NRA.trim() : "";
+                                // Only count as missing (red dot) if neither NRL='NRL' nor NRA='NRA'
+                                if (rowNrlForMissing !== 'NRL' && rowNraForMissing !== 'NRA') {
+                                    missingCount++;
+                                } else {
+                                    // Count NRA missing (yellow dots) separately
+                                    if (!processedSkusForNraMissing.has(sku)) {
+                                        processedSkusForNraMissing.add(sku);
+                                        nraMissingCount++;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Count valid SKUs that pass ALL filters (after inventory and NRA filters) - only once per SKU
+                        if (!processedSkusForValidCount.has(sku)) {
+                            processedSkusForValidCount.add(sku);
+                            validSkuCount++;
+                        }
+                    }
+                    
+                    // Now calculate utilization and count for ALL SKUs (including those without campaigns)
+                    let budget = parseFloat(row.campaignBudgetAmount) || 0;
+                    let l7_spend = parseFloat(row.l7_spend || 0);
+                    let l1_spend = parseFloat(row.l1_spend || 0);
+                    
+                    let ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
+                    let ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
+                    
+                    // Count by SKU (not just campaigns) for utilization type
+                    // Use SKU as key to count unique SKUs - include all valid SKUs
+                    let skuKey = sku || '';
+                    if (isValidSku && skuKey && !campaignMap.has(skuKey)) {
+                        campaignMap.set(skuKey, {
                             ub7: ub7,
                             ub1: ub1
                         });
                     }
                 });
                 
-                // Now count unique campaigns
-                let overCount = 0;
-                let underCount = 0;
-                let correctlyCount = 0;
-                
+                // Now count unique SKUs by utilization type
                 campaignMap.forEach(function(campaignData) {
                     let ub7 = campaignData.ub7;
                     let ub1 = campaignData.ub1;
@@ -387,40 +553,85 @@
                         correctlyCount++;
                     }
                 });
-
-                const overBtnCount = document.getElementById('over-btn-count');
-                const underBtnCount = document.getElementById('under-btn-count');
-                const correctlyBtnCount = document.getElementById('correctly-btn-count');
-
-                if (overBtnCount) overBtnCount.textContent = `( ${overCount} )`;
-                if (underBtnCount) underBtnCount.textContent = `( ${underCount} )`;
-                if (correctlyBtnCount) correctlyBtnCount.textContent = `( ${correctlyCount} )`;
+                
+                // Update all statistics counts
+                // Total SKU count is set from backend response (total_fba_sku_count)
+                // Don't override it here as it should show all FBA SKUs from database
+                
+                const missingCountEl = document.getElementById('missing-campaign-count');
+                if (missingCountEl) {
+                    missingCountEl.textContent = missingCount;
+                }
+                
+                const nraMissingCountEl = document.getElementById('nra-missing-count');
+                if (nraMissingCountEl) {
+                    nraMissingCountEl.textContent = nraMissingCount;
+                }
+                
+                const totalCampaignCountEl = document.getElementById('total-campaign-count');
+                if (totalCampaignCountEl) {
+                    totalCampaignCountEl.textContent = totalCampaignCount;
+                }
+                
+                const nraCountEl = document.getElementById('nra-count');
+                if (nraCountEl) {
+                    nraCountEl.textContent = nraCount;
+                }
+                
+                const raCountEl = document.getElementById('ra-count');
+                if (raCountEl) {
+                    raCountEl.textContent = raCount;
+                }
+                
+                const zeroInvCountEl = document.getElementById('zero-inv-count');
+                if (zeroInvCountEl) {
+                    zeroInvCountEl.textContent = zeroInvCount;
+                }
+                
+                // Update dropdown option texts with counts
+                const utilizationSelect = document.getElementById('utilization-type-select');
+                if (utilizationSelect) {
+                    utilizationSelect.options[0].text = `All (${overCount + underCount + correctlyCount})`;
+                    utilizationSelect.options[1].text = `Over Utilized (${overCount})`;
+                    utilizationSelect.options[2].text = `Under Utilized (${underCount})`;
+                    utilizationSelect.options[3].text = `Correctly Utilized (${correctlyCount})`;
+                }
             }
 
-            // Utilization type button handlers
-            document.querySelectorAll('.utilization-type-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    document.querySelectorAll('.utilization-type-btn').forEach(b => b.classList.remove('active'));
-                    this.classList.add('active');
-                    currentUtilizationType = this.getAttribute('data-type');
-                    
-                    if (typeof table !== 'undefined' && table) {
-                        table.setFilter(combinedFilter);
-                        // Redraw cells to update formatter colors based on new type
-                        table.redraw(true);
-                        // Update column visibility for SBID and APR BID
+            // Utilization type dropdown handler
+            document.getElementById('utilization-type-select').addEventListener('change', function() {
+                currentUtilizationType = this.value;
+                // Reset all card filters when dropdown changes
+                showMissingOnly = false;
+                document.getElementById('missing-campaign-card').style.boxShadow = '';
+                showNraMissingOnly = false;
+                document.getElementById('nra-missing-card').style.boxShadow = '';
+                showCampaignOnly = false;
+                document.getElementById('total-campaign-card').style.boxShadow = '';
+                showZeroInvOnly = false;
+                document.getElementById('zero-inv-card').style.boxShadow = '';
+                showNraOnly = false;
+                document.getElementById('nra-card').style.boxShadow = '';
+                showRaOnly = false;
+                document.getElementById('ra-card').style.boxShadow = '';
+                
+                if (typeof table !== 'undefined' && table) {
+                    table.setFilter(combinedFilter);
+                    // Redraw cells to update formatter colors based on new type
+                    table.redraw(true);
+                    // Update column visibility for SBID and APR BID
+                    if (currentUtilizationType === 'correctly' || currentUtilizationType === 'all') {
                         table.hideColumn('sbid');
                         table.hideColumn('apr_bid');
-                        if (currentUtilizationType !== 'correctly') {
-                            table.showColumn('sbid');
-                            table.showColumn('apr_bid');
-                        }
-                        // Update all button counts after filter is applied
-                        setTimeout(function() {
-                            updateButtonCounts();
-                        }, 200);
+                    } else {
+                        table.showColumn('sbid');
+                        table.showColumn('apr_bid');
                     }
-                });
+                    // Update all button counts after filter is applied
+                    setTimeout(function() {
+                        updateButtonCounts();
+                    }, 200);
+                }
             });
 
             var table = new Tabulator("#budget-under-table", {
@@ -437,6 +648,17 @@
                     if (sku.toUpperCase().includes("PARENT")) {
                         row.getElement().classList.add("parent-row");
                     }
+                },
+                ajaxResponse: function(url, params, response) {
+                    // Store total FBA SKU count from backend
+                    if (response && response.total_fba_sku_count !== undefined) {
+                        const totalSkuCountEl = document.getElementById('total-sku-count');
+                        if (totalSkuCountEl) {
+                            totalSkuCountEl.textContent = response.total_fba_sku_count;
+                        }
+                    }
+                    // Return data array for Tabulator
+                    return response.data || response;
                 },
                 columns: [
                     {
@@ -465,7 +687,7 @@
                         visible: false
                     },
                     {
-                        title: "OV L30",
+                        title: "L30 FBA",
                         field: "L30",
                         visible: false
                     },
@@ -522,6 +744,7 @@
                         hozAlign: "right",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
+                            // Use acos_L30 from backend if available, otherwise fallback to acos
                             var acosRaw = row.acos_L30 || row.acos; 
                             var acos = parseFloat(acosRaw);
                             if (isNaN(acos)) {
@@ -693,6 +916,53 @@
                         }
                     },
                     {
+                        title: "SBGT",
+                        field: "sbgt",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var acos = Math.floor(parseFloat(row.acos_L30 || row.acos || 0));
+                            var sbgt;
+                            if (acos < 10) {
+                                sbgt = 3;
+                            } else if (acos < 20) {
+                                sbgt = 2;
+                            } else {
+                                sbgt = 1;
+                            }
+
+                            return `
+                                <input type="number" class="form-control form-control-sm text-center sbgt-input" value="${sbgt}" min="1" max="10" data-campaign-id="${row.campaign_id}">
+                            `;
+                        },
+                    },
+                    {
+                        title: "APR BGT",
+                        field: "apr_bgt",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            return `
+                                <div style="align-items:center; gap:5px;">
+                                    <button class="btn btn-primary update-bgt-row-btn">APR BGT</button>
+                                </div>
+                            `;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains("update-bgt-row-btn")) {
+                                var rowData = cell.getRow().getData();
+                                var acos = parseFloat(rowData.acos_L30 || rowData.acos || 0);
+
+                                if (acos > 0) {
+                                    var sbgtInput = cell.getRow().getElement().querySelector('.sbgt-input');
+                                    var sbgtValue = sbgtInput ? parseFloat(sbgtInput.value) || 0 : 0;
+                                    updateBgt(sbgtValue, rowData.campaign_id);
+                                } else {
+                                    console.log("Skipped because ACOS = 0 for campaign:", rowData.campaign_id);
+                                }
+                            }
+                        }
+                    },
+                    {
                         title: "Status",
                         field: "campaignStatus"
                     },
@@ -725,9 +995,6 @@
                         }
                     }
                 ],
-                ajaxResponse: function(url, params, response) {
-                    return response.data;
-                }
             });
 
             // Update counts when data is loaded
@@ -739,6 +1006,48 @@
 
             // Combined filter function
             function combinedFilter(data) {
+                const sku = data.sku || '';
+                const isValidSku = sku && !sku.toUpperCase().includes('PARENT');
+                
+                // Apply card-based filters first
+                if (showCampaignOnly) {
+                    const hasCampaign = data.hasCampaign !== undefined ? data.hasCampaign : (data.campaign_id && data.campaignName);
+                    if (!hasCampaign) return false;
+                }
+                
+                if (showMissingOnly) {
+                    const hasCampaign = data.hasCampaign !== undefined ? data.hasCampaign : (data.campaign_id && data.campaignName);
+                    if (hasCampaign) return false;
+                    let rowNrlForMissing = data.NRL ? data.NRL.trim() : "";
+                    let rowNraForMissing = data.NRA ? data.NRA.trim() : "";
+                    // Only show missing (red dot) if neither NRL='NRL' nor NRA='NRA'
+                    if (rowNrlForMissing === 'NRL' || rowNraForMissing === 'NRA') return false;
+                }
+                
+                if (showNraMissingOnly) {
+                    const hasCampaign = data.hasCampaign !== undefined ? data.hasCampaign : (data.campaign_id && data.campaignName);
+                    if (hasCampaign) return false;
+                    let rowNrlForMissing = data.NRL ? data.NRL.trim() : "";
+                    let rowNraForMissing = data.NRA ? data.NRA.trim() : "";
+                    // Only show NRA missing (yellow dot) if NRL='NRL' OR NRA='NRA'
+                    if (rowNrlForMissing !== 'NRL' && rowNraForMissing !== 'NRA') return false;
+                }
+                
+                if (showZeroInvOnly) {
+                    let inv = parseFloat(data.INV || 0);
+                    if (inv > 0) return false;
+                }
+                
+                if (showNraOnly) {
+                    let rowNra = data.NRA ? data.NRA.trim() : "";
+                    if (rowNra !== 'NRA') return false;
+                }
+                
+                if (showRaOnly) {
+                    let rowNra = data.NRA ? data.NRA.trim() : "";
+                    if (rowNra === 'NRA') return false;
+                }
+                
                 let budget = parseFloat(data.campaignBudgetAmount) || 0;
                 let l7_spend = parseFloat(data.l7_spend) || 0;
                 let l1_spend = parseFloat(data.l1_spend) || 0;
@@ -756,11 +1065,13 @@
                 } else if (currentUtilizationType === 'correctly') {
                     // Correctly-utilized: ub7 >= 70 && ub7 <= 90 && ub1 >= 70 && ub1 <= 90
                     if (!(ub7 >= 70 && ub7 <= 90 && ub1 >= 70 && ub1 <= 90)) return false;
+                } else if (currentUtilizationType === 'all') {
+                    // Show all - no filter applied
                 }
 
                 // Global search filter
                 let searchVal = $("#global-search").val()?.toLowerCase() || "";
-                if (searchVal && !(data.campaignName?.toLowerCase().includes(searchVal))) {
+                if (searchVal && !(data.campaignName?.toLowerCase().includes(searchVal)) && !(data.sku?.toLowerCase().includes(searchVal))) {
                     return false;
                 }
 
@@ -770,14 +1081,12 @@
                     return false;
                 }
 
-                // Inventory filter - Default to INV > 0 (exclude INV = 0 and negative)
+                // Inventory filter - Default to ALL (show all SKUs)
                 let invFilterVal = $("#inv-filter").val();
                 let inv = parseFloat(data.INV || 0);
                 
-                // By default (no filter selected), show only INV > 0 (exclude INV = 0 and negative)
-                if (!invFilterVal || invFilterVal === '') {
-                    if (inv <= 0) return false;
-                } else if (invFilterVal === "ALL") {
+                // By default (no filter selected or ALL), show everything
+                if (!invFilterVal || invFilterVal === '' || invFilterVal === "ALL") {
                     // ALL option shows everything (including INV = 0 and negative), so no filtering needed
                 } else if (invFilterVal === "INV_0") {
                     // Show only INV = 0
@@ -790,8 +1099,29 @@
                 // NRA filter
                 let nraFilterVal = $("#nra-filter").val();
                 if (nraFilterVal) {
-                    let rowVal = data.NRA || "";
-                    if (rowVal !== nraFilterVal) return false;
+                    let rowVal = data.NRA ? data.NRA.trim() : "";
+                    if (nraFilterVal === 'RA') {
+                        // For "RA" filter, include empty/null values too
+                        if (rowVal === 'NRA') return false;
+                    } else {
+                        // For "NRA" or "LATER", exact match
+                        if (rowVal !== nraFilterVal) return false;
+                    }
+                }
+
+                // SBGT filter (FBA rules: acos < 10 = 3, acos < 20 = 2, else = 1)
+                let sbgtFilterVal = $("#sbgt-filter").val();
+                if (sbgtFilterVal) {
+                    let acos = parseFloat(data.acos_L30 || data.acos || 0);
+                    let rowSbgt;
+                    if (acos < 10) {
+                        rowSbgt = 3;
+                    } else if (acos < 20) {
+                        rowSbgt = 2;
+                    } else {
+                        rowSbgt = 1;
+                    }
+                    if (parseInt(sbgtFilterVal) !== rowSbgt) return false;
                 }
 
                 return true;
@@ -806,11 +1136,11 @@
                 }, 200);
             });
 
-            table.on("tableBuilt", function() {
+                table.on("tableBuilt", function() {
                 table.setFilter(combinedFilter);
                 
                 // Set initial column visibility based on current utilization type
-                if (currentUtilizationType === 'correctly') {
+                if (currentUtilizationType === 'correctly' || currentUtilizationType === 'all') {
                     table.hideColumn('sbid');
                     table.hideColumn('apr_bid');
                 } else {
@@ -827,7 +1157,7 @@
                     }, 300);
                 });
 
-                $("#status-filter, #inv-filter, #nra-filter").on("change", function() {
+                $("#status-filter, #inv-filter, #nra-filter, #sbgt-filter").on("change", function() {
                     table.setFilter(combinedFilter);
                 });
 
@@ -837,11 +1167,213 @@
                 }, 1000);
             });
 
+            // Total campaign card click handler
+            document.getElementById('total-campaign-card').addEventListener('click', function() {
+                showCampaignOnly = !showCampaignOnly;
+                if (showCampaignOnly) {
+                    // Reset dropdown to "All" when showing campaigns only
+                    document.getElementById('utilization-type-select').value = 'all';
+                    currentUtilizationType = 'all';
+                    // Reset missing filter
+                    showMissingOnly = false;
+                    document.getElementById('missing-campaign-card').style.boxShadow = '';
+                    // Reset NRA missing filter
+                    showNraMissingOnly = false;
+                    document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset zero INV filter
+                    showZeroInvOnly = false;
+                    document.getElementById('zero-inv-card').style.boxShadow = '';
+                    // Reset NRA/RA filters
+                    showNraOnly = false;
+                    document.getElementById('nra-card').style.boxShadow = '';
+                    showRaOnly = false;
+                    document.getElementById('ra-card').style.boxShadow = '';
+                    this.style.boxShadow = '0 4px 12px rgba(6, 182, 212, 0.5)';
+                } else {
+                    this.style.boxShadow = '';
+                }
+                
+                if (typeof table !== 'undefined' && table) {
+                    table.setFilter(combinedFilter);
+                    table.redraw(true);
+                    updateButtonCounts();
+                }
+            });
+
+            // Missing campaign card click handler
+            document.getElementById('missing-campaign-card').addEventListener('click', function() {
+                showMissingOnly = !showMissingOnly;
+                if (showMissingOnly) {
+                    // Reset dropdown to "All" when showing missing only
+                    document.getElementById('utilization-type-select').value = 'all';
+                    currentUtilizationType = 'all';
+                    // Reset campaign filter
+                    showCampaignOnly = false;
+                    document.getElementById('total-campaign-card').style.boxShadow = '';
+                    // Reset zero INV filter
+                    showZeroInvOnly = false;
+                    document.getElementById('zero-inv-card').style.boxShadow = '';
+                    // Reset NRA missing filter
+                    showNraMissingOnly = false;
+                    document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset NRA/RA filters
+                    showNraOnly = false;
+                    document.getElementById('nra-card').style.boxShadow = '';
+                    showRaOnly = false;
+                    document.getElementById('ra-card').style.boxShadow = '';
+                    this.style.boxShadow = '0 4px 12px rgba(220, 53, 69, 0.5)';
+                } else {
+                    this.style.boxShadow = '';
+                }
+                
+                if (typeof table !== 'undefined' && table) {
+                    table.setFilter(combinedFilter);
+                    table.redraw(true);
+                    updateButtonCounts();
+                }
+            });
+
+            // NRA missing card click handler
+            document.getElementById('nra-missing-card').addEventListener('click', function() {
+                showNraMissingOnly = !showNraMissingOnly;
+                if (showNraMissingOnly) {
+                    // Reset dropdown to "All" when showing NRA missing only
+                    document.getElementById('utilization-type-select').value = 'all';
+                    currentUtilizationType = 'all';
+                    // Reset campaign filter
+                    showCampaignOnly = false;
+                    document.getElementById('total-campaign-card').style.boxShadow = '';
+                    // Reset missing filter
+                    showMissingOnly = false;
+                    document.getElementById('missing-campaign-card').style.boxShadow = '';
+                    // Reset zero INV filter
+                    showZeroInvOnly = false;
+                    document.getElementById('zero-inv-card').style.boxShadow = '';
+                    // Reset NRA/RA filters
+                    showNraOnly = false;
+                    document.getElementById('nra-card').style.boxShadow = '';
+                    showRaOnly = false;
+                    document.getElementById('ra-card').style.boxShadow = '';
+                    this.style.boxShadow = '0 4px 12px rgba(255, 193, 7, 0.5)';
+                } else {
+                    this.style.boxShadow = '';
+                }
+                
+                if (typeof table !== 'undefined' && table) {
+                    table.setFilter(combinedFilter);
+                    table.redraw(true);
+                    updateButtonCounts();
+                }
+            });
+
+            // Zero INV card click handler
+            document.getElementById('zero-inv-card').addEventListener('click', function() {
+                showZeroInvOnly = !showZeroInvOnly;
+                if (showZeroInvOnly) {
+                    // Reset dropdown to "All" when showing zero INV only
+                    document.getElementById('utilization-type-select').value = 'all';
+                    currentUtilizationType = 'all';
+                    // Reset campaign filter
+                    showCampaignOnly = false;
+                    document.getElementById('total-campaign-card').style.boxShadow = '';
+                    // Reset missing filter
+                    showMissingOnly = false;
+                    document.getElementById('missing-campaign-card').style.boxShadow = '';
+                    // Reset NRA missing filter
+                    showNraMissingOnly = false;
+                    document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset NRA/RA filters
+                    showNraOnly = false;
+                    document.getElementById('nra-card').style.boxShadow = '';
+                    showRaOnly = false;
+                    document.getElementById('ra-card').style.boxShadow = '';
+                    this.style.boxShadow = '0 4px 12px rgba(245, 158, 11, 0.5)';
+                } else {
+                    this.style.boxShadow = '';
+                }
+                
+                if (typeof table !== 'undefined' && table) {
+                    table.setFilter(combinedFilter);
+                    table.redraw(true);
+                    updateButtonCounts();
+                }
+            });
+
+            // NRA card click handler
+            document.getElementById('nra-card').addEventListener('click', function() {
+                showNraOnly = !showNraOnly;
+                if (showNraOnly) {
+                    // Reset dropdown to "All" when showing NRA only
+                    document.getElementById('utilization-type-select').value = 'all';
+                    currentUtilizationType = 'all';
+                    // Reset campaign filter
+                    showCampaignOnly = false;
+                    document.getElementById('total-campaign-card').style.boxShadow = '';
+                    // Reset missing filter
+                    showMissingOnly = false;
+                    document.getElementById('missing-campaign-card').style.boxShadow = '';
+                    // Reset NRA missing filter
+                    showNraMissingOnly = false;
+                    document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset zero INV filter
+                    showZeroInvOnly = false;
+                    document.getElementById('zero-inv-card').style.boxShadow = '';
+                    // Reset RA filter
+                    showRaOnly = false;
+                    document.getElementById('ra-card').style.boxShadow = '';
+                    this.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.5)';
+                } else {
+                    this.style.boxShadow = '';
+                }
+                
+                if (typeof table !== 'undefined' && table) {
+                    table.setFilter(combinedFilter);
+                    table.redraw(true);
+                    updateButtonCounts();
+                }
+            });
+
+            // RA card click handler
+            document.getElementById('ra-card').addEventListener('click', function() {
+                showRaOnly = !showRaOnly;
+                if (showRaOnly) {
+                    // Reset dropdown to "All" when showing RA only
+                    document.getElementById('utilization-type-select').value = 'all';
+                    currentUtilizationType = 'all';
+                    // Reset campaign filter
+                    showCampaignOnly = false;
+                    document.getElementById('total-campaign-card').style.boxShadow = '';
+                    // Reset missing filter
+                    showMissingOnly = false;
+                    document.getElementById('missing-campaign-card').style.boxShadow = '';
+                    // Reset NRA missing filter
+                    showNraMissingOnly = false;
+                    document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset zero INV filter
+                    showZeroInvOnly = false;
+                    document.getElementById('zero-inv-card').style.boxShadow = '';
+                    // Reset NRA filter
+                    showNraOnly = false;
+                    document.getElementById('nra-card').style.boxShadow = '';
+                    this.style.boxShadow = '0 4px 12px rgba(34, 197, 94, 0.5)';
+                } else {
+                    this.style.boxShadow = '';
+                }
+                
+                if (typeof table !== 'undefined' && table) {
+                    table.setFilter(combinedFilter);
+                    table.redraw(true);
+                    updateButtonCounts();
+                }
+            });
+
             table.on("rowSelectionChanged", function(data, rows) {
                 if (data.length > 0) {
                     document.getElementById("apr-all-sbid-btn").classList.remove("d-none");
+                    document.getElementById("apr-all-sbgt-btn").classList.remove("d-none");
                 } else {
                     document.getElementById("apr-all-sbid-btn").classList.add("d-none");
+                    document.getElementById("apr-all-sbgt-btn").classList.add("d-none");
                 }
             });
 
@@ -962,6 +1494,59 @@
                 });
             });
 
+            // Batch APR SBGT handler
+            document.getElementById("apr-all-sbgt-btn").addEventListener("click", function() {
+                const overlay = document.getElementById("progress-overlay");
+                overlay.style.display = "flex";
+
+                var filteredData = table.getSelectedRows();
+                var campaignIds = [];
+                var bgts = [];
+
+                filteredData.forEach(function(row) {
+                    var rowEl = row.getElement();
+                    if (rowEl && rowEl.offsetParent !== null) {
+                        var rowData = row.getData();
+                        var acos = parseFloat(rowData.acos_L30 || rowData.acos || 0);
+
+                        if (acos > 0) {
+                            var sbgtInput = rowEl.querySelector('.sbgt-input');
+                            var sbgtValue = sbgtInput ? parseFloat(sbgtInput.value) || 0 : 0;
+
+                            campaignIds.push(rowData.campaign_id);
+                            bgts.push(sbgtValue);
+                        }
+                    }
+                });
+
+                fetch('/update-amazon-campaign-bgt-price', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                    },
+                    body: JSON.stringify({
+                        campaign_ids: campaignIds,
+                        bgts: bgts
+                    })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 200) {
+                        alert("Campaign budget updated successfully!");
+                    } else {
+                        alert("Something went wrong: " + data.message);
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    alert("Request failed: " + err.message);
+                })
+                .finally(() => {
+                    overlay.style.display = "none";
+                });
+            });
+
             function updateBid(aprBid, campaignId) {
                 const overlay = document.getElementById("progress-overlay");
                 overlay.style.display = "flex";
@@ -999,6 +1584,38 @@
                 });
             }
 
+            function updateBgt(sbgtValue, campaignId) {
+                const overlay = document.getElementById("progress-overlay");
+                overlay.style.display = "flex";
+
+                fetch('/update-amazon-campaign-bgt-price', {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                    },
+                    body: JSON.stringify({
+                        campaign_ids: [campaignId],
+                        bgts: [sbgtValue]
+                    })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 200) {
+                        alert("Campaign budget updated successfully!");
+                    } else {
+                        alert("Something went wrong: " + data.message);
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    alert("Request failed: " + err.message);
+                })
+                .finally(() => {
+                    overlay.style.display = "none";
+                });
+            }
+
             // Load counts
             loadUtilizationCounts();
 
@@ -1026,14 +1643,15 @@
                         document.getElementById('7ub-count').textContent = count7ub || 0;
                         document.getElementById('7ub-1ub-count').textContent = count7ub1ub || 0;
                         
-                        // Update button counts
-                        const overBtnCount = document.getElementById('over-btn-count');
-                        const underBtnCount = document.getElementById('under-btn-count');
-                        const correctlyBtnCount = document.getElementById('correctly-btn-count');
-                        
-                        if (overBtnCount) overBtnCount.textContent = `( ${data.over_utilized || 0} )`;
-                        if (underBtnCount) underBtnCount.textContent = `( ${data.under_utilized || 0} )`;
-                        if (correctlyBtnCount) correctlyBtnCount.textContent = `( ${data.correctly_utilized || 0} )`;
+                        // Update dropdown option texts with counts
+                        const utilizationSelect = document.getElementById('utilization-type-select');
+                        if (utilizationSelect) {
+                            const total = (data.over_utilized || 0) + (data.under_utilized || 0) + (data.correctly_utilized || 0);
+                            utilizationSelect.options[0].text = `All (${total})`;
+                            utilizationSelect.options[1].text = `Over Utilized (${data.over_utilized || 0})`;
+                            utilizationSelect.options[2].text = `Under Utilized (${data.under_utilized || 0})`;
+                            utilizationSelect.options[3].text = `Correctly Utilized (${data.correctly_utilized || 0})`;
+                        }
                     }
                 })
                 .catch(err => console.error('Error loading counts:', err));

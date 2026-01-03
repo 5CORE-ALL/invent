@@ -8,18 +8,58 @@
             background: linear-gradient(90deg, #D8F3F3 0%, #D8F3F3 100%);
             border-bottom: 1px solid #403f3f;
             box-shadow: 0 4px 16px rgba(37, 99, 235, 0.10);
+            position: relative !important;
         }
 
         .tabulator .tabulator-header .tabulator-col {
             text-align: center;
             background: #D8F3F3;
             border-right: 1px solid #262626;
-            padding: 16px 10px;
+            padding: 5px;
             font-weight: 700;
             color: #1e293b;
-            font-size: 1.08rem;
+            font-size: 0.9rem;
             letter-spacing: 0.02em;
             transition: background 0.2s;
+            min-height: 120px;
+            height: auto;
+        }
+
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 120px;
+            padding: 10px 5px;
+        }
+
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            transform: rotate(180deg);
+            white-space: nowrap;
+            line-height: 1.5;
+        }
+
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            transform: rotate(180deg);
+            white-space: nowrap;
+            line-height: 1.5;
+        }
+
+        /* Hide sorting arrows */
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-sorter {
+            display: none !important;
+        }
+
+        .tabulator .tabulator-header .tabulator-col .tabulator-arrow {
+            display: none !important;
+        }
+
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-sorter-element {
+            display: none !important;
         }
 
         .tabulator .tabulator-header .tabulator-col:hover {
@@ -61,11 +101,36 @@
             font-weight: 700;
         }
 
+        .status-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+
+        .status-dot.green {
+            background-color: #28a745;
+        }
+
+        .status-dot.red {
+            background-color: #dc3545;
+        }
+
+        .status-dot.yellow {
+            background-color: #ffc107;
+        }
+
         #budget-under-table .tabulator {
             border-radius: 18px;
             box-shadow: 0 6px 24px rgba(37, 99, 235, 0.13);
             overflow: hidden;
             border: 1px solid #e5e7eb;
+        }
+
+        /* Ensure table body horizontal scroll syncs with header */
+        #budget-under-table .tabulator .tabulator-tableHolder {
+            overflow-x: auto !important;
         }
 
         .tabulator .tabulator-row .tabulator-cell:last-child,
@@ -87,6 +152,7 @@
         }
 
         @media (max-width: 768px) {
+
             .tabulator .tabulator-header .tabulator-col,
             .tabulator .tabulator-cell {
                 padding: 8px 2px;
@@ -125,29 +191,6 @@
             color: #ff2727 !important;
         }
 
-        .utilization-type-btn {
-            padding: 8px 16px;
-            border: 2px solid #dee2e6;
-            background: white;
-            color: #495057;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.3s;
-            font-weight: 500;
-        }
-
-        .utilization-type-btn.active {
-            background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
-            color: white;
-            border-color: #2563eb;
-            box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
-        }
-
-        .utilization-type-btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-        }
-
         .utilization-card:hover {
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
@@ -165,71 +208,126 @@
     ])
     <div class="row">
         <div class="col-12">
-            <div class="card shadow-sm">
-                <div class="card-body py-3">
+            <div class="card shadow-sm" style="border: 1px solid rgba(0, 0, 0, 0.05);">
+                <div class="card-body py-4">
                     <div class="mb-4">
-                        <!-- Title -->
-                        <h4 class="fw-bold text-primary mb-3 d-flex align-items-center">
-                            <i class="fa-solid fa-chart-line me-2"></i>
-                            Ebay 3 Utilized's
-                        </h4>
-
-                        <!-- Filters Row -->
-                        <div class="row g-3 mb-3">
-                            <!-- Utilization Type Selector -->
-                            <div class="col-md-6">
-                                <div class="d-flex gap-2 align-items-center">
-                                    <span class="fw-bold me-2">Type:</span>
-                                    <button class="utilization-type-btn active" data-type="over">Over Utilized <span class="btn-count fs-4 fw-bold" id="over-btn-count"></span></button>
-                                    <button class="utilization-type-btn" data-type="under">Under Utilized <span class="btn-count fs-4 fw-bold" id="under-btn-count"></span></button>
-                                    <button class="utilization-type-btn" data-type="correctly">Correctly Utilized <span class="btn-count fs-4 fw-bold" id="correctly-btn-count"></span></button>
+                        <!-- Filters and Stats Section -->
+                        <div class="card border-0 shadow-sm mb-4" style="border: 1px solid rgba(0, 0, 0, 0.05) !important;">
+                            <div class="card-body p-4">
+                                <!-- Type Filter and Count Cards Row -->
+                                <div class="row g-4 align-items-end mb-3 pb-3 border-bottom">
+                                    <div class="col-md-3">
+                                        <label class="form-label fw-semibold mb-2"
+                                            style="color: #475569; font-size: 0.8125rem;">
+                                            <i class="fa-solid fa-filter me-1" style="color: #64748b;"></i>Utilization Type
+                                        </label>
+                                        <select id="utilization-type-select" class="form-select form-select-md">
+                                            <option value="all" selected>All</option>
+                                            <option value="over">Over Utilized</option>
+                                            <option value="under">Under Utilized</option>
+                                            <option value="correctly">Correctly Utilized</option>
+                                        </select>
                                 </div>
+                                    <div class="col-md-9">
+                                        <label class="form-label fw-semibold mb-2 d-block"
+                                            style="color: #475569; font-size: 0.8125rem;">
+                                            <i class="fa-solid fa-chart-line me-1" style="color: #64748b;"></i>Statistics
+                                        </label>
+                                        <div class="d-flex gap-3 flex-wrap align-items-center">
+                                            <div class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Total
+                                                    SKU</span>
+                                                <span class="fw-bold" id="total-sku-count"
+                                                    style="font-size: 1.1rem;">0</span>
                             </div>
-
-                            <!-- Stats -->
-                            <div class="col-md-6">
-                                <div class="d-flex gap-2 justify-content-end align-items-center flex-wrap">
-                                    <!-- Count Cards -->
-                                    <div class="d-flex gap-2">
-                                        <div class="card shadow-sm border-0 utilization-card" data-type="over" style="background: linear-gradient(135deg, #ff01d0 0%, #ff6ec7 100%); cursor: pointer; min-width: 100px; transition: transform 0.2s;">
-                                            <div class="card-body text-center text-white p-2">
-                                                <h6 class="card-title mb-1" style="font-size: 0.75rem; font-weight: 600;">Over</h6>
-                                                <h5 class="mb-0 fw-bold" id="over-utilized-count" style="font-size: 1.2rem;">0</h5>
+                                            <div class="badge-count-item ebay-sku-card" id="ebay-sku-card"
+                                                style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Ebay
+                                                    SKU</span>
+                                                <span class="fw-bold" id="ebay-sku-count"
+                                                    style="font-size: 1.1rem;">0</span>
                                             </div>
+                                            <div class="badge-count-item total-campaign-card" id="total-campaign-card"
+                                                style="background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
+                                                <span
+                                                    style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Campaign</span>
+                                                <span class="fw-bold" id="total-campaign-count"
+                                                    style="font-size: 1.1rem;">0</span>
                                         </div>
-                                        <div class="card shadow-sm border-0 utilization-card" data-type="under" style="background: linear-gradient(135deg, #ff2727 0%, #ff6b6b 100%); cursor: pointer; min-width: 100px; transition: transform 0.2s;">
-                                            <div class="card-body text-center text-white p-2">
-                                                <h6 class="card-title mb-1" style="font-size: 0.75rem; font-weight: 600;">Under</h6>
-                                                <h5 class="mb-0 fw-bold" id="under-utilized-count" style="font-size: 1.2rem;">0</h5>
+                                            <div class="badge-count-item missing-campaign-card" id="missing-campaign-card"
+                                                style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
+                                                <span
+                                                    style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Missing</span>
+                                                <span class="fw-bold" id="missing-campaign-count"
+                                                    style="font-size: 1.1rem;">0</span>
                                             </div>
+                                            <div class="badge-count-item nra-missing-card" id="nra-missing-card"
+                                                style="background: linear-gradient(135deg, #ffc107 0%, #ffb300 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">NRA
+                                                    MISSING</span>
+                                                <span class="fw-bold" id="nra-missing-count"
+                                                    style="font-size: 1.1rem;">0</span>
                                         </div>
-                                        <div class="card shadow-sm border-0 utilization-card" data-type="correctly" style="background: linear-gradient(135deg, #28a745 0%, #5cb85c 100%); cursor: pointer; min-width: 100px; transition: transform 0.2s;">
-                                            <div class="card-body text-center text-white p-2">
-                                                <h6 class="card-title mb-1" style="font-size: 0.75rem; font-weight: 600;">Correctly</h6>
-                                                <h5 class="mb-0 fw-bold" id="correctly-utilized-count" style="font-size: 1.2rem;">0</h5>
+                                            <div class="badge-count-item zero-inv-card" id="zero-inv-card"
+                                                style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Zero
+                                                    INV</span>
+                                                <span class="fw-bold" id="zero-inv-count"
+                                                    style="font-size: 1.1rem;">0</span>
                                             </div>
+                                            <div class="badge-count-item nra-card" id="nra-card"
+                                                style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
+                                                <span
+                                                    style="font-size: 0.75rem; display: block; margin-bottom: 2px;">NRA</span>
+                                                <span class="fw-bold" id="nra-count" style="font-size: 1.1rem;">0</span>
                                         </div>
+                                            <div class="badge-count-item ra-card" id="ra-card"
+                                                style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
+                                                <span
+                                                    style="font-size: 0.75rem; display: block; margin-bottom: 2px;">RA</span>
+                                                <span class="fw-bold" id="ra-count" style="font-size: 1.1rem;">0</span>
                                     </div>
-                                    <button id="apr-all-sbid-btn" class="btn btn-info btn-sm d-none shadow-sm">
-                                        <i class="fa-solid fa-check-double me-1"></i>
-                                        APR ALL SBID
-                                    </button>
+                                            <div class="badge-count-item utilization-card" data-type="7ub"
+                                                style="background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
+                                                <span
+                                                    style="font-size: 0.75rem; display: block; margin-bottom: 2px;">7UB</span>
+                                                <span class="fw-bold" id="7ub-count" style="font-size: 1.1rem;">0</span>
+                                            </div>
+                                            <div class="badge-count-item utilization-card" data-type="7ub-1ub"
+                                                style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">7UB +
+                                                    1UB</span>
+                                                <span class="fw-bold" id="7ub-1ub-count"
+                                                    style="font-size: 1.1rem;">0</span>
+                                            </div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Search and Controls Row -->
-                        <div class="row g-3 mb-3">
+                                <!-- Search and Filter Controls Row -->
+                                <div class="row align-items-end">
                             <div class="col-md-4">
+                                        <label class="form-label fw-semibold mb-2"
+                                            style="color: #475569; font-size: 0.8125rem;">
+                                            <i class="fa-solid fa-search me-1" style="color: #64748b;"></i>Search Campaign
+                                        </label>
                                 <div class="input-group">
-                                    <span class="input-group-text bg-light">
-                                        <i class="fa-solid fa-search text-muted"></i>
+                                            <span class="input-group-text bg-white border-end-0"
+                                                style="border-color: #e2e8f0;">
+                                                <i class="fa-solid fa-search" style="color: #94a3b8;"></i>
                                     </span>
-                                    <input type="text" id="global-search" class="form-control form-control-md" 
-                                           placeholder="Search campaign...">
+                                            <input type="text" id="global-search"
+                                                class="form-control form-control-md border-start-0"
+                                                placeholder="Search by campaign name or SKU..."
+                                                style="border-color: #e2e8f0;">
                                 </div>
                             </div>
                             <div class="col-md-2">
+                                        <label class="form-label fw-semibold mb-2"
+                                            style="color: #475569; font-size: 0.8125rem;">
+                                            <i class="fa-solid fa-toggle-on me-1" style="color: #64748b;"></i>Status
+                                        </label>
                                 <select id="status-filter" class="form-select form-select-md">
                                     <option value="">All Status</option>
                                     <option value="RUNNING">Running</option>
@@ -237,21 +335,39 @@
                                     <option value="ENDED">Ended</option>
                                 </select>
                             </div>
-                            <div class="col-md-3">
+                                    <div class="col-md-2">
+                                        <label class="form-label fw-semibold mb-2"
+                                            style="color: #475569; font-size: 0.8125rem;">
+                                            <i class="fa-solid fa-boxes me-1" style="color: #64748b;"></i>Inventory
+                                        </label>
                                 <select id="inv-filter" class="form-select form-select-md">
-                                    <option value="">All Inventory</option>
+                                            <option value="" selected>All Inventory</option>
                                     <option value="ALL">ALL</option>
                                     <option value="INV_0">0 INV</option>
                                     <option value="OTHERS">OTHERS</option>
                                 </select>
                             </div>
-                            <div class="col-md-3">
+                                    <div class="col-md-2">
+                                        <label class="form-label fw-semibold mb-2"
+                                            style="color: #475569; font-size: 0.8125rem;">
+                                            <i class="fa-solid fa-tags me-1" style="color: #64748b;"></i>NRA
+                                        </label>
                                 <select id="nra-filter" class="form-select form-select-md">
                                     <option value="">All NRA</option>
                                     <option value="NRA">NRA</option>
                                     <option value="RA">RA</option>
                                     <option value="LATER">LATER</option>
                                 </select>
+                                    </div>
+                                    <div class="col-md-2 d-flex gap-2">
+                                        <div class="w-100">
+                                            <button id="apr-all-sbid-btn" class="btn btn-info btn-sm w-100 d-none">
+                                                <i class="fa-solid fa-check-double me-1"></i>
+                                                APR ALL SBID
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -264,7 +380,8 @@
     </div>
 
     <!-- Chart Modal -->
-    <div class="modal fade" id="utilizationChartModal" tabindex="-1" aria-labelledby="utilizationChartModalLabel" aria-hidden="true">
+    <div class="modal fade" id="utilizationChartModal" tabindex="-1" aria-labelledby="utilizationChartModalLabel"
+        aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-centered shadow-none">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
@@ -272,7 +389,8 @@
                         <i class="fa-solid fa-chart-line me-2"></i>
                         <span id="chart-title">Utilization Trend</span>
                     </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                        aria-label="Close"></button>
                 </div>
                 <div class="modal-body p-4">
                     <canvas id="utilizationChart" height="80"></canvas>
@@ -284,15 +402,18 @@
         </div>
     </div>
 
-    <div id="progress-overlay" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); z-index: 9999;">
-        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
-            <div class="spinner-border text-light" role="status" style="width: 3rem; height: 3rem;">
+    <div id="progress-overlay"
+        style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.75); z-index: 9999; backdrop-filter: blur(4px);">
+        <div
+            style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; background: white; padding: 40px; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.3);">
+            <div class="spinner-border text-primary" role="status"
+                style="width: 3.5rem; height: 3.5rem; border-width: 4px;">
                 <span class="visually-hidden">Loading...</span>
             </div>
-            <div class="mt-3" style="color: white; font-size: 1.2rem; font-weight: 500;">
+            <div class="mt-3" style="color: #333; font-size: 1.3rem; font-weight: 600;">
                 Updating campaigns...
             </div>
-            <div style="color: #a3e635; font-size: 0.9rem; margin-top: 0.5rem;">
+            <div style="color: #6c757d; font-size: 0.95rem; margin-top: 0.5rem;">
                 Please wait while we process your request
             </div>
         </div>
@@ -305,10 +426,21 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <script>
         document.addEventListener("DOMContentLoaded", function() {
-            let currentUtilizationType = 'over'; // Default to over
+            let currentUtilizationType = 'all'; // Default to all
+            let showMissingOnly = false; // Filter for missing campaigns only
+            let showNraMissingOnly = false; // Filter for NRA missing (yellow dots) only
+            let showZeroInvOnly = false; // Filter for zero/negative inventory only
+            let showCampaignOnly = false; // Filter for campaigns only
+            let showNraOnly = false; // Filter for NRA only
+            let showRaOnly = false; // Filter for RA only
+            let showEbaySkuOnly = false; // Filter for eBay SKUs only
             let totalACOSValue = 0;
             let totalL30Spend = 0;
             let totalL30Sales = 0;
+            let totalSkuCountFromBackend = 0; // Store total SKU count from backend
+            let ebaySkuCountFromBackend = 0; // Store eBay SKU count from backend
+            let totalCampaignCountFromBackend = 0; // Store total campaign count from backend
+            let zeroInvCountFromBackend = 0; // Store zero INV count from backend
 
             const getDilColor = (value) => {
                 const percent = parseFloat(value) * 100;
@@ -318,37 +450,159 @@
                 return 'pink';
             };
 
-            // Function to update button counts - shows all counts on all buttons
-            let countUpdateTimeout = null;
+            // Function to update button counts from table data (calculated directly from frontend)
+            // Counts are based on filtered data (respects INV, NRA, status, search filters)
+            // but shows all utilization types (not filtered by utilization type button)
             function updateButtonCounts() {
+                // Calculate counts directly from table data, not from database
                 if (typeof table === 'undefined' || !table) {
                     return;
                 }
 
-                // Debounce for performance
-                if (countUpdateTimeout) {
-                    clearTimeout(countUpdateTimeout);
-                }
-                countUpdateTimeout = setTimeout(function() {
-                    // Get all data (not filtered) for accurate counts
+                // Get filtered data (respects all filters except utilization type)
+                // We need to get all data and apply filters manually since utilization type filter is separate
                     const allData = table.getData('all');
-                    
-                    // Count for each type (mutually exclusive like controller)
                     let overCount = 0;
                     let underCount = 0;
                     let correctlyCount = 0;
+                let missingCount = 0;
+                let nraMissingCount = 0; // Count NRA missing (yellow dots)
+                let zeroInvCount = 0; // Count zero and negative inventory
+                let totalCampaignCount = 0; // Count total campaigns
+                let nraCount = 0; // Count NRA
+                let raCount = 0; // Count RA
+                let validSkuCount = 0; // Count only valid SKUs (not parent, not empty)
+                let ub7Count = 0; // Count 7UB
+                let ub7Ub1Count = 0; // Count 7UB + 1UB
+
+                // Track processed SKUs to avoid counting duplicates
+                const processedSkusForNra = new Set(); // Track SKUs for NRA/RA counting
+                const processedSkusForCampaign = new Set(); // Track SKUs for campaign counting
+                const processedSkusForMissing = new Set(); // Track SKUs for missing counting
+                const processedSkusForNraMissing = new Set(); // Track SKUs for NRA missing counting
+                const processedSkusForZeroInv = new Set(); // Track SKUs for zero INV counting
 
                     allData.forEach(function(row) {
-                        let acos = parseFloat(row.acos || 0);
+                    // Count valid SKUs (only Parent SKUs, exclude empty SKUs)
+                    const sku = row.sku || '';
+                    const isValidSku = sku && sku.toUpperCase().includes('PARENT');
+
+                    // Count zero/negative inventory (INV <= 0) - count BEFORE filters
+                    // This should count all zero INV SKUs regardless of current filter
+                    let inv = parseFloat(row.INV || 0);
+                    if (inv <= 0 && isValidSku && !processedSkusForZeroInv.has(sku)) {
+                        processedSkusForZeroInv.add(sku);
+                        zeroInvCount++;
+                    }
+
+                    // Count campaigns and missing BEFORE filters - count all campaigns regardless of filters
+                    if (isValidSku) {
+                        const hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row
+                            .campaign_id && row.campaignName);
+
+                        if (hasCampaign) {
+                            // Count campaign only once per SKU - BEFORE filters
+                            if (!processedSkusForCampaign.has(sku)) {
+                                processedSkusForCampaign.add(sku);
+                                totalCampaignCount++;
+                            }
+                        } else {
+                            // Count missing only once per SKU - BEFORE filters
+                            if (!processedSkusForMissing.has(sku)) {
+                                processedSkusForMissing.add(sku);
+                                // Check if this is a red dot (missing AND not yellow)
+                                let rowNrlForMissing = row.NRL ? row.NRL.trim() : "";
+                                let rowNraForMissing = row.NR ? row.NR.trim() : "";
+                                // Only count as missing (red dot) if neither NRL='NRL' nor NRA='NRA'
+                                if (rowNrlForMissing !== 'NRL' && rowNraForMissing !== 'NRA') {
+                                    missingCount++;
+                                } else {
+                                    // Count NRA missing (yellow dots) separately
+                                    if (!processedSkusForNraMissing.has(sku)) {
+                                        processedSkusForNraMissing.add(sku);
+                                        nraMissingCount++;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Apply all filters except utilization type filter
+                    // Global search filter
+                    let searchVal = $("#global-search").val()?.toLowerCase() || "";
+                    if (searchVal && !(row.campaignName?.toLowerCase().includes(searchVal)) && !(row.sku
+                            ?.toLowerCase().includes(searchVal))) {
+                        return;
+                    }
+
+                    // Status filter
+                    let statusVal = $("#status-filter").val();
+                    if (statusVal && row.campaignStatus !== statusVal) {
+                        return;
+                    }
+
+                    // Inventory filter
+                    let invFilterVal = $("#inv-filter").val();
+                    if (!invFilterVal || invFilterVal === '') {
+                        // Default: show all (no filtering)
+                    } else if (invFilterVal === "ALL") {
+                        // ALL option shows everything
+                    } else if (invFilterVal === "INV_0") {
+                        // Show only INV = 0
+                        if (inv !== 0) return;
+                    } else if (invFilterVal === "OTHERS") {
+                        // Show only INV > 0
+                        if (inv <= 0) return;
+                    }
+
+                    // Count NRA and RA only for valid SKUs and only once per SKU (after filters)
+                    if (isValidSku && !processedSkusForNra.has(sku)) {
+                        processedSkusForNra.add(sku);
+                        // Note: Empty/null NRA defaults to "RA" in the display
+                        let rowNra = row.NR ? row.NR.trim() : "";
+                        if (rowNra === 'NRA') {
+                            nraCount++;
+                        } else {
+                            // If NRA is empty, null, or "RA", it shows as "RA" by default
+                            raCount++;
+                        }
+                    }
+
+                    // NRA filter
+                    let nraFilterVal = $("#nra-filter").val();
+                    if (nraFilterVal) {
+                        let rowNra = row.NR ? row.NR.trim() : "";
+                        if (nraFilterVal === 'RA') {
+                            // For "RA" filter, include empty/null values too
+                            if (rowNra === 'NRA') return;
+                        } else {
+                            // For "NRA" or "LATER", exact match
+                            if (rowNra !== nraFilterVal) return;
+                        }
+                    }
+
+                    // eBay SKU filter - show only SKUs that have campaign
+                    if (showEbaySkuOnly) {
+                        const hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row
+                            .campaign_id && row.campaignName);
+                        // Show if has campaign
+                        if (!hasCampaign) return;
+                    }
+
+                    // Count valid SKUs that pass all filters
+                    if (isValidSku) {
+                        validSkuCount++;
+                    }
+
+                    // Now calculate utilization and count (ebay3 specific logic)
                         let budget = parseFloat(row.campaignBudgetAmount) || 0;
                         let l7_spend = parseFloat(row.l7_spend || 0);
                         let l1_spend = parseFloat(row.l1_spend || 0);
-                        let inv = parseFloat(row.INV || 0);
 
                         let ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
                         let ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
 
-                        let rowAcos = parseFloat(acos) || 0;
+                    let rowAcos = parseFloat(row.acos || 0);
                         if (isNaN(rowAcos) || rowAcos === 0) {
                             rowAcos = 100;
                         }
@@ -362,77 +616,404 @@
                         // Mutually exclusive categorization (same as controller for eBay3)
                         let categorized = false;
 
-                        // Over-utilized check (priority 1)
-                        if (totalACOSValue > 0 && !isPink && !categorized) {
-                            let condition1 = (rowAcos > totalACOSValue && ub7 > 33);
-                            let condition2 = (rowAcos <= totalACOSValue && ub7 > 90);
-                            if (condition1 || condition2) {
+                    // Over-utilized check (priority 1) - Double condition: both UB7 AND UB1 must be > 99
+                    if (!isPink && !categorized) {
+                        if (ub7 > 99 && ub1 > 99) {
                                 overCount++;
                                 categorized = true;
                             }
                         }
 
-                        // Under-utilized check (priority 2: only if not over-utilized)
-                        // Same as controller: ub7 < 70 && ub1 < 70 && !isPink
-                        if (!categorized && ub7 < 70 && ub1 < 70 && !isPink) {
+                    // Under-utilized check (priority 2: only if not over-utilized) - Double condition: both UB7 AND UB1 must be < 66
+                    if (!categorized && ub7 < 66 && ub1 < 66 && !isPink) {
                             underCount++;
                             categorized = true;
                         }
 
-                        // Correctly-utilized check (priority 3: only if not already categorized)
-                        // Same as controller for eBay3: (ub7 >= 70 && ub7 <= 90) && (ub1 >= 70 && ub1 <= 90)
-                        if (!categorized && ub7 >= 70 && ub7 <= 90 && ub1 >= 70 && ub1 <= 90) {
+                    // Correctly-utilized check (priority 3: only if not already categorized) - Double condition: both UB7 AND UB1 must be between 66-99
+                    if (!categorized && ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99) {
                             correctlyCount++;
                         }
-                    });
 
-                    // Update all button counts - always show all counts
-                    const overBtnCount = document.getElementById('over-btn-count');
-                    const underBtnCount = document.getElementById('under-btn-count');
-                    const correctlyBtnCount = document.getElementById('correctly-btn-count');
-                    
-                    if (overBtnCount) overBtnCount.textContent = `( ${overCount} )`;
-                    if (underBtnCount) underBtnCount.textContent = `( ${underCount} )`;
-                    if (correctlyBtnCount) correctlyBtnCount.textContent = `( ${correctlyCount} )`;
-                }, 150);
-            }
+                    // Count 7UB (ub7 >= 70 && ub7 <= 90) - but for ebay3 it's 70-90
+                    if (ub7 >= 70 && ub7 <= 90) {
+                        ub7Count++;
+                    }
 
-            // Utilization type button handlers
-            document.querySelectorAll('.utilization-type-btn').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    document.querySelectorAll('.utilization-type-btn').forEach(b => b.classList.remove('active'));
-                    this.classList.add('active');
-                    currentUtilizationType = this.getAttribute('data-type');
-                    
-                    if (typeof table !== 'undefined' && table) {
-                        table.setFilter(combinedFilter);
-                        // Redraw cells to update formatter colors based on new type
-                        table.redraw(true);
-                        // Update all button counts after filter is applied
-                        setTimeout(function() {
-                            updateButtonCounts();
-                        }, 200);
+                    // Count 7UB + 1UB (both ub7 and ub1 >= 70 && <= 90)
+                    if (ub7 >= 70 && ub7 <= 90 && ub1 >= 70 && ub1 <= 90) {
+                        ub7Ub1Count++;
                     }
                 });
+
+                // Update missing campaign count
+                const missingCountEl = document.getElementById('missing-campaign-count');
+                if (missingCountEl) {
+                    missingCountEl.textContent = missingCount;
+                }
+
+                // Update NRA missing count
+                const nraMissingCountEl = document.getElementById('nra-missing-count');
+                if (nraMissingCountEl) {
+                    nraMissingCountEl.textContent = nraMissingCount;
+                }
+
+                // Update total campaign count - use backend count if available, otherwise use calculated count
+                const totalCampaignCountEl = document.getElementById('total-campaign-count');
+                if (totalCampaignCountEl) {
+                    if (totalCampaignCountFromBackend > 0) {
+                        totalCampaignCountEl.textContent = totalCampaignCountFromBackend;
+                    } else {
+                        totalCampaignCountEl.textContent = totalCampaignCount;
+                    }
+                }
+
+                // Update NRA count
+                const nraCountEl = document.getElementById('nra-count');
+                if (nraCountEl) {
+                    nraCountEl.textContent = nraCount;
+                }
+
+                // Update RA count
+                const raCountEl = document.getElementById('ra-count');
+                if (raCountEl) {
+                    raCountEl.textContent = raCount;
+                }
+
+                // Update zero INV count
+                const zeroInvCountEl = document.getElementById('zero-inv-count');
+                if (zeroInvCountEl) {
+                    zeroInvCountEl.textContent = zeroInvCount;
+                }
+
+                // Update 7UB count
+                const ub7CountEl = document.getElementById('7ub-count');
+                if (ub7CountEl) {
+                    ub7CountEl.textContent = ub7Count;
+                }
+
+                // Update 7UB + 1UB count
+                const ub7Ub1CountEl = document.getElementById('7ub-1ub-count');
+                if (ub7Ub1CountEl) {
+                    ub7Ub1CountEl.textContent = ub7Ub1Count;
+                }
+
+                // Update total SKU count
+                const totalSkuCountEl = document.getElementById('total-sku-count');
+                if (totalSkuCountEl) {
+                    totalSkuCountEl.textContent = totalSkuCountFromBackend || validSkuCount;
+                }
+
+                // Update dropdown option texts with counts
+                // Use totalSkuCountFromBackend to match backend count exactly
+                const utilizationSelect = document.getElementById('utilization-type-select');
+                if (utilizationSelect) {
+                    utilizationSelect.options[0].text = `All (${totalSkuCountFromBackend || validSkuCount})`;
+                    utilizationSelect.options[1].text = `Over Utilized (${overCount})`;
+                    utilizationSelect.options[2].text = `Under Utilized (${underCount})`;
+                    utilizationSelect.options[3].text = `Correctly Utilized (${correctlyCount})`;
+                }
+            }
+
+            // Utilization type dropdown handler
+            const utilizationTypeSelect = document.getElementById('utilization-type-select');
+            if (utilizationTypeSelect) {
+                utilizationTypeSelect.addEventListener('change', function() {
+                    currentUtilizationType = this.value;
+                    if (typeof table !== 'undefined' && table) {
+                        // Update SBID column visibility based on utilization type
+                        if (currentUtilizationType === 'correctly') {
+                            table.hideColumn('sbid');
+                        } else {
+                            table.showColumn('sbid');
+                        }
+                        table.setFilter(combinedFilter);
+                        table.redraw(true);
+                            updateButtonCounts();
+                    }
+                });
+            }
+
+            // Total campaign card click handler
+            document.getElementById('total-campaign-card').addEventListener('click', function() {
+                showCampaignOnly = !showCampaignOnly;
+                if (showCampaignOnly) {
+                    // Reset dropdown to "All" when showing campaigns only
+                    document.getElementById('utilization-type-select').value = 'all';
+                    currentUtilizationType = 'all';
+                    // Show SBID column when showing all
+                    if (typeof table !== 'undefined' && table) {
+                        table.showColumn('sbid');
+                    }
+                    // Reset missing filter
+                    showMissingOnly = false;
+                    document.getElementById('missing-campaign-card').style.boxShadow = '';
+                    // Reset NRA missing filter
+                    showNraMissingOnly = false;
+                    document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset zero INV filter
+                    showZeroInvOnly = false;
+                    document.getElementById('zero-inv-card').style.boxShadow = '';
+                    // Reset NRA/RA filters
+                    showNraOnly = false;
+                    document.getElementById('nra-card').style.boxShadow = '';
+                    showRaOnly = false;
+                    document.getElementById('ra-card').style.boxShadow = '';
+                    // Reset eBay SKU filter
+                    showEbaySkuOnly = false;
+                    document.getElementById('ebay-sku-card').style.boxShadow = '';
+                    this.style.boxShadow = '0 4px 12px rgba(6, 182, 212, 0.5)';
+                } else {
+                    this.style.boxShadow = '';
+                }
+
+                if (typeof table !== 'undefined' && table) {
+                    table.setFilter(combinedFilter);
+                    table.redraw(true);
+                    updateButtonCounts();
+                }
+            });
+
+            // Missing campaign card click handler
+            document.getElementById('missing-campaign-card').addEventListener('click', function() {
+                showMissingOnly = !showMissingOnly;
+                if (showMissingOnly) {
+                    // Reset dropdown to "All" when showing missing only
+                    document.getElementById('utilization-type-select').value = 'all';
+                    currentUtilizationType = 'all';
+                    // Reset campaign filter
+                    showCampaignOnly = false;
+                    document.getElementById('total-campaign-card').style.boxShadow = '';
+                    // Reset zero INV filter
+                    showZeroInvOnly = false;
+                    document.getElementById('zero-inv-card').style.boxShadow = '';
+                    // Reset NRA missing filter
+                    showNraMissingOnly = false;
+                    document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset NRA/RA filters
+                    showNraOnly = false;
+                    document.getElementById('nra-card').style.boxShadow = '';
+                    showRaOnly = false;
+                    document.getElementById('ra-card').style.boxShadow = '';
+                    // Reset eBay SKU filter
+                    showEbaySkuOnly = false;
+                    document.getElementById('ebay-sku-card').style.boxShadow = '';
+                    this.style.boxShadow = '0 4px 12px rgba(220, 53, 69, 0.5)';
+                } else {
+                    this.style.boxShadow = '';
+                }
+
+                if (typeof table !== 'undefined' && table) {
+                    table.setFilter(combinedFilter);
+                    table.redraw(true);
+                    updateButtonCounts();
+                }
+            });
+
+            // NRA missing card click handler
+            document.getElementById('nra-missing-card').addEventListener('click', function() {
+                showNraMissingOnly = !showNraMissingOnly;
+                if (showNraMissingOnly) {
+                    // Reset dropdown to "All" when showing NRA missing only
+                    document.getElementById('utilization-type-select').value = 'all';
+                    currentUtilizationType = 'all';
+                    // Reset campaign filter
+                    showCampaignOnly = false;
+                    document.getElementById('total-campaign-card').style.boxShadow = '';
+                    // Reset missing filter
+                    showMissingOnly = false;
+                    document.getElementById('missing-campaign-card').style.boxShadow = '';
+                    // Reset zero INV filter
+                    showZeroInvOnly = false;
+                    document.getElementById('zero-inv-card').style.boxShadow = '';
+                    // Reset NRA/RA filters
+                    showNraOnly = false;
+                    document.getElementById('nra-card').style.boxShadow = '';
+                    showRaOnly = false;
+                    document.getElementById('ra-card').style.boxShadow = '';
+                    // Reset eBay SKU filter
+                    showEbaySkuOnly = false;
+                    document.getElementById('ebay-sku-card').style.boxShadow = '';
+                    this.style.boxShadow = '0 4px 12px rgba(255, 193, 7, 0.5)';
+                } else {
+                    this.style.boxShadow = '';
+                }
+
+                if (typeof table !== 'undefined' && table) {
+                    table.setFilter(combinedFilter);
+                    table.redraw(true);
+                    updateButtonCounts();
+                }
+            });
+
+            // Zero INV card click handler
+            document.getElementById('zero-inv-card').addEventListener('click', function() {
+                showZeroInvOnly = !showZeroInvOnly;
+                if (showZeroInvOnly) {
+                    // Reset dropdown to "All" when showing zero INV only
+                    document.getElementById('utilization-type-select').value = 'all';
+                    currentUtilizationType = 'all';
+                    // Reset missing filter
+                    showMissingOnly = false;
+                    document.getElementById('missing-campaign-card').style.boxShadow = '';
+                    // Reset NRA missing filter
+                    showNraMissingOnly = false;
+                    document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset campaign filter
+                    showCampaignOnly = false;
+                    document.getElementById('total-campaign-card').style.boxShadow = '';
+                    // Reset NRA/RA filters
+                    showNraOnly = false;
+                    document.getElementById('nra-card').style.boxShadow = '';
+                    showRaOnly = false;
+                    document.getElementById('ra-card').style.boxShadow = '';
+                    // Reset eBay SKU filter
+                    showEbaySkuOnly = false;
+                    document.getElementById('ebay-sku-card').style.boxShadow = '';
+                    this.style.boxShadow = '0 4px 12px rgba(245, 158, 11, 0.5)';
+                } else {
+                    this.style.boxShadow = '';
+                }
+
+                if (typeof table !== 'undefined' && table) {
+                    table.setFilter(combinedFilter);
+                    table.redraw(true);
+                    updateButtonCounts();
+                }
+            });
+
+            // NRA card click handler
+            document.getElementById('nra-card').addEventListener('click', function() {
+                showNraOnly = !showNraOnly;
+                if (showNraOnly) {
+                    // Reset dropdown to "All" when showing NRA only
+                    document.getElementById('utilization-type-select').value = 'all';
+                    currentUtilizationType = 'all';
+                    // Reset missing filter
+                    showMissingOnly = false;
+                    document.getElementById('missing-campaign-card').style.boxShadow = '';
+                    // Reset NRA missing filter
+                    showNraMissingOnly = false;
+                    document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset campaign filter
+                    showCampaignOnly = false;
+                    document.getElementById('total-campaign-card').style.boxShadow = '';
+                    // Reset zero INV filter
+                    showZeroInvOnly = false;
+                    document.getElementById('zero-inv-card').style.boxShadow = '';
+                    // Reset RA filter
+                    showRaOnly = false;
+                    document.getElementById('ra-card').style.boxShadow = '';
+                    // Reset eBay SKU filter
+                    showEbaySkuOnly = false;
+                    document.getElementById('ebay-sku-card').style.boxShadow = '';
+                    this.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.5)';
+                } else {
+                    this.style.boxShadow = '';
+                }
+
+                if (typeof table !== 'undefined' && table) {
+                    table.setFilter(combinedFilter);
+                    table.redraw(true);
+                    updateButtonCounts();
+                }
+            });
+
+            // RA card click handler
+            document.getElementById('ra-card').addEventListener('click', function() {
+                showRaOnly = !showRaOnly;
+                if (showRaOnly) {
+                    // Reset dropdown to "All" when showing RA only
+                    document.getElementById('utilization-type-select').value = 'all';
+                    currentUtilizationType = 'all';
+                    // Reset missing filter
+                    showMissingOnly = false;
+                    document.getElementById('missing-campaign-card').style.boxShadow = '';
+                    // Reset NRA missing filter
+                    showNraMissingOnly = false;
+                    document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset campaign filter
+                    showCampaignOnly = false;
+                    document.getElementById('total-campaign-card').style.boxShadow = '';
+                    // Reset zero INV filter
+                    showZeroInvOnly = false;
+                    document.getElementById('zero-inv-card').style.boxShadow = '';
+                    // Reset NRA filter
+                    showNraOnly = false;
+                    document.getElementById('nra-card').style.boxShadow = '';
+                    // Reset eBay SKU filter
+                    showEbaySkuOnly = false;
+                    document.getElementById('ebay-sku-card').style.boxShadow = '';
+                    this.style.boxShadow = '0 4px 12px rgba(34, 197, 94, 0.5)';
+                } else {
+                    this.style.boxShadow = '';
+                }
+
+                if (typeof table !== 'undefined' && table) {
+                    table.setFilter(combinedFilter);
+                    table.redraw(true);
+                    updateButtonCounts();
+                }
+            });
+
+            // eBay SKU card click handler
+            document.getElementById('ebay-sku-card').addEventListener('click', function() {
+                showEbaySkuOnly = !showEbaySkuOnly;
+                if (showEbaySkuOnly) {
+                    // Reset dropdown to "All" when showing eBay SKU only
+                    document.getElementById('utilization-type-select').value = 'all';
+                    currentUtilizationType = 'all';
+                    // Reset missing filter
+                    showMissingOnly = false;
+                    document.getElementById('missing-campaign-card').style.boxShadow = '';
+                    // Reset NRA missing filter
+                    showNraMissingOnly = false;
+                    document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset campaign filter
+                    showCampaignOnly = false;
+                    document.getElementById('total-campaign-card').style.boxShadow = '';
+                    // Reset zero INV filter
+                    showZeroInvOnly = false;
+                    document.getElementById('zero-inv-card').style.boxShadow = '';
+                    // Reset NRA filter
+                    showNraOnly = false;
+                    document.getElementById('nra-card').style.boxShadow = '';
+                    // Reset RA filter
+                    showRaOnly = false;
+                    document.getElementById('ra-card').style.boxShadow = '';
+                    this.style.boxShadow = '0 4px 12px rgba(139, 92, 246, 0.5)';
+                } else {
+                    this.style.boxShadow = '';
+                }
+
+                if (typeof table !== 'undefined' && table) {
+                    table.setFilter(combinedFilter);
+                    table.redraw(true);
+                    updateButtonCounts();
+                }
             });
 
             var table = new Tabulator("#budget-under-table", {
-                index: "Sku",
+                index: "sku",
                 ajaxURL: "/ebay-3/utilized/ads/data",
+                ajaxParams: {
+                    all_campaigns: true,
+                    limit: 10000
+                },
                 layout: "fitData",
                 movableColumns: true,
                 resizableColumns: true,
                 height: "700px",             
                 virtualDom: true,
+                pagination: false,
                 rowFormatter: function(row) {
                     const data = row.getData();
-                    const sku = data["Sku"] || '';
+                    const sku = data["sku"] || '';
                     if (sku.toUpperCase().includes("PARENT")) {
                         row.getElement().classList.add("parent-row");
                     }
                 },
-                columns: [
-                    {
+                columns: [{
                         formatter: "rowSelection",
                         titleFormatter: "rowSelection",
                         hozAlign: "center",
@@ -440,31 +1021,57 @@
                         width: 50
                     },
                     {
-                        title: "Parent",
-                        field: "parent"
-                    },
-                    {
                         title: "SKU",
                         field: "sku",
                         formatter: function(cell) {
                             let sku = cell.getValue();
-                            return `
-                                <span>${sku}</span>
-                                <i class="fa fa-info-circle text-primary toggle-cols-btn" 
-                                data-sku="${sku}" 
-                                style="cursor:pointer; margin-left:8px;"></i>
-                            `;
+                            return `<span>${sku}</span>`;
                         }
+                    },
+                    {
+                        title: "Missing",
+                        field: "hasCampaign",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            // Check if campaign exists: hasCampaign field or if campaign_id/campaignName exists
+                            const hasCampaign = row.hasCampaign !== undefined ?
+                                row.hasCampaign :
+                                (row.campaign_id && row.campaignName);
+
+                            // Check if NRL is "NRL" (red dot) OR NRA is "NRA" - if so, show yellow dot
+                            const nrlValue = row.NRL ? row.NRL.trim() : "";
+                            const nraValue = row.NR ? row.NR.trim() : "";
+                            let dotColor, title;
+
+                            if (nrlValue === 'NRL' || nraValue === 'NRA') {
+                                dotColor = 'yellow';
+                                title = 'NRL or NRA - Not Required';
+                            } else {
+                                dotColor = hasCampaign ? 'green' : 'red';
+                                title = hasCampaign ? 'Campaign Exists' : 'Campaign Missing';
+                            }
+
+                            return `
+                                <div style="display: flex; align-items: center; justify-content: center;">
+                                    <span class="status-dot ${dotColor}" title="${title}"></span>
+                                </div>
+                            `;
+                        },
+                        visible: true,
+                        width: 80
                     },
                     {
                         title: "INV",
                         field: "INV",
-                        visible: false
+                        visible: true,
+                        width: 60
                     },
                     {
                         title: "OV L30",
                         field: "L30",
-                        visible: false
+                        visible: true,
+                        width: 60
                     },
                     {
                         title: "DIL %",
@@ -475,12 +1082,47 @@
                             const inv = parseFloat(data.INV);
                             if (!isNaN(l30) && !isNaN(inv) && inv !== 0) {
                                 const dilDecimal = (l30 / inv);
-                                const color = getDilColor(dilDecimal);
-                                return `<div class="text-center"><span class="dil-percent-value ${color}">${Math.round(dilDecimal * 100)}%</span></div>`;
+                                const percent = dilDecimal * 100;
+                                let textColor = '#000000'; // default black
+
+                                if (percent < 16.66) {
+                                    textColor = '#dc3545'; // red
+                                } else if (percent >= 16.66 && percent < 25) {
+                                    textColor = '#b8860b'; // darker yellow (darkgoldenrod)
+                                } else if (percent >= 25 && percent < 50) {
+                                    textColor = '#28a745'; // green
+                                } else {
+                                    textColor = '#e83e8c'; // pink
+                                }
+
+                                return `<div class="text-center"><span style="color: ${textColor}; font-weight: bold;">${Math.round(percent)}%</span></div>`;
                             }
-                            return `<div class="text-center"><span class="dil-percent-value red">0%</span></div>`;
+                            return `<div class="text-center"><span style="color: #dc3545; font-weight: bold;">0%</span></div>`;
                         },
-                        visible: false
+                        visible: true,
+                        width: 60
+                    },
+                    {
+                        title: "NRL",
+                        field: "NRL",
+                        formatter: function(cell) {
+                            const row = cell.getRow();
+                            const sku = row.getData().sku;
+                            const value = cell.getValue() || "REQ"; // Default to REQ
+
+                            return `
+                                    <select class="form-select form-select-sm editable-select" 
+                                            data-sku="${sku}" 
+                                        data-field="NRL"
+                                        style="width: 50px; border: 1px solid gray; padding: 2px; font-size: 20px; text-align: center;">
+                                    <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>🟢</option>
+                                    <option value="NRL" ${value === 'NRL' ? 'selected' : ''}>🔴</option>
+                                    </select>
+                                `;
+                        },
+                        hozAlign: "center",
+                        visible: true,
+                        width: 70
                     },
                     {
                         title: "NRA",
@@ -488,35 +1130,78 @@
                         formatter: function(cell) {
                             const row = cell.getRow();
                             const sku = row.getData().sku;
-                            const value = cell.getValue() || '';
+                            const rowData = row.getData();
+                            // If NRL is 'NRL' (red dot), default to NRA, otherwise default to RA
+                            const nrlValue = rowData.NRL || "REQ";
+                            const defaultValue = (nrlValue === 'NRL') ? "NRA" : "RA";
+                            const value = (cell.getValue()?.trim()) || defaultValue;
+
                             return `
                                 <select class="form-select form-select-sm editable-select" 
                                         data-sku="${sku}" 
                                         data-field="NR"
-                                        style="width: 90px;">
-                                    <option value="RA" ${value === 'RA' ? 'selected' : ''}>RA</option>
-                                    <option value="NRA" ${value === 'NRA' ? 'selected' : ''}>NRA</option>
-                                    <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>LATER</option>
+                                        style="width: 50px; border: 1px solid gray; padding: 2px; font-size: 20px; text-align: center;">
+                                    <option value="RA" ${value === 'RA' ? 'selected' : ''}>🟢</option>
+                                    <option value="NRA" ${value === 'NRA' ? 'selected' : ''}>🔴</option>
+                                    <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>🟡</option>
                                 </select>
                             `;
                         },
                         hozAlign: "center",
-                        visible: false
+                        visible: true,
+                        width: 70
                     },
                     {
                         title: "CAMPAIGN",
-                        field: "campaignName"
+                        field: "campaignName",
+                        visible: false
+                    },
+                    {
+                        title: "EBAY L30",
+                        field: "ebay_l30",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return value.toFixed(0);
+                        },
+                        sorter: "number",
+                        width: 80
+                    },
+                    {
+                        title: "VIEWS",
+                        field: "views",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            var value = parseInt(cell.getValue() || 0);
+                            return value.toLocaleString();
+                        },
+                        sorter: "number",
+                        width: 70
+                    },
+                    {
+                        title: "CVR",
+                        field: "cvr",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return value.toFixed(0) + "%";
+                        },
+                        sorter: "number",
+                        width: 70
                     },
                     {
                         title: "BGT",
                         field: "campaignBudgetAmount",
                         hozAlign: "right",
-                        formatter: (cell) => parseFloat(cell.getValue() || 0)
+                        formatter: (cell) => parseFloat(cell.getValue() || 0),
+                        sorter: "number",
+                        width: 80
                     },
                     {
                         title: "ACOS",
                         field: "acos",
                         hozAlign: "right",
+                        sorter: "number",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var acosRaw = row.acos; 
@@ -537,12 +1222,24 @@
                                 td.classList.add('red-bg');
                             }
                             return acos.toFixed(0) + "%";
-                        }
+                        },
+                        width: 70
                     },
                     {
                         title: "7 UB%",
                         field: "l7_spend",
                         hozAlign: "right",
+                        sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
+                            var aData = aRow.getData();
+                            var bData = bRow.getData();
+                            var aUb7 = parseFloat(aData.campaignBudgetAmount) > 0 ? (parseFloat(
+                                aData.l7_spend || 0) / (parseFloat(aData
+                                .campaignBudgetAmount) * 7)) * 100 : 0;
+                            var bUb7 = parseFloat(bData.campaignBudgetAmount) > 0 ? (parseFloat(
+                                bData.l7_spend || 0) / (parseFloat(bData
+                                .campaignBudgetAmount) * 7)) * 100 : 0;
+                            return aUb7 - bUb7;
+                        },
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var l7_spend = parseFloat(row.l7_spend) || 0;
@@ -551,7 +1248,7 @@
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
                             
-                            // Different color logic based on utilization type
+                            // Different color logic based on utilization type (ebay3 specific)
                             if (currentUtilizationType === 'over') {
                                 // Over-utilized: Check ACOS first, then UB7
                                 var rowAcos = parseFloat(row.acos) || 0;
@@ -578,12 +1275,24 @@
                                 }
                             }
                             return ub7.toFixed(0) + "%";
-                        }
+                        },
+                        width: 70
                     },
                     {
                         title: "1 UB%",
                         field: "l1_spend",
                         hozAlign: "right",
+                        sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
+                            var aData = aRow.getData();
+                            var bData = bRow.getData();
+                            var aUb1 = parseFloat(aData.campaignBudgetAmount) > 0 ? (parseFloat(
+                                aData.l1_spend || 0) / parseFloat(aData
+                                .campaignBudgetAmount)) * 100 : 0;
+                            var bUb1 = parseFloat(bData.campaignBudgetAmount) > 0 ? (parseFloat(
+                                bData.l1_spend || 0) / parseFloat(bData
+                                .campaignBudgetAmount)) * 100 : 0;
+                            return aUb1 - bUb1;
+                        },
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var l1_spend = parseFloat(row.l1_spend) || 0;
@@ -599,64 +1308,334 @@
                                 td.classList.add('red-bg');
                             }
                             return ub1.toFixed(0) + "%";
-                        }
+                        },
+                        width: 70
                     },
                     {
                         title: "L7 CPC",
                         field: "l7_cpc",
                         hozAlign: "center",
+                        sorter: "number",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var l7_cpc = parseFloat(row.l7_cpc) || 0;
                             return l7_cpc.toFixed(2);
-                        }
+                        },
+                        width: 70
                     },
                     {
                         title: "L1 CPC",
                         field: "l1_cpc",
                         hozAlign: "center",
+                        sorter: "number",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var l1_cpc = parseFloat(row.l1_cpc) || 0;
                             return l1_cpc.toFixed(2);
-                        }
+                        },
+                        width: 70
                     },
                     {
                         title: "SBID",
                         field: "sbid",
                         hozAlign: "center",
+                        sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
+                            var aData = aRow.getData();
+                            var bData = bRow.getData();
+                            
+                            // Helper function to calculate SBID for a row
+                            function calculateSbid(rowData) {
+                                // Check if NRA (🔴) is selected
+                                var nraValue = rowData.NR ? rowData.NR.trim() : "";
+                                if (nraValue === 'NRA') {
+                                    return -1; // Special value for sorting (will show as '-')
+                                }
+                                
+                                var l1Cpc = parseFloat(rowData.l1_cpc) || 0;
+                                var l7Cpc = parseFloat(rowData.l7_cpc) || 0;
+                                var budget = parseFloat(rowData.campaignBudgetAmount) || 0;
+                                var ub7 = budget > 0 ? (parseFloat(rowData.l7_spend) || 0) / (budget * 7) * 100 : 0;
+                                var ub1 = budget > 0 ? (parseFloat(rowData.l1_spend) || 0) / budget * 100 : 0;
+                                var sbid = 0;
+                                
+                                if (currentUtilizationType === 'over') {
+                                    // If L1 CPC > 1.25, use L1 CPC * 0.80, otherwise use L1 CPC * 0.90
+                                    var cpcToUse = (l1Cpc && !isNaN(l1Cpc) && l1Cpc > 0) ? l1Cpc : ((l7Cpc && !isNaN(l7Cpc) && l7Cpc > 0) ? l7Cpc : 0);
+                                    if (cpcToUse > 1.25) {
+                                        sbid = Math.floor(cpcToUse * 0.80 * 100) / 100;
+                                    } else if (cpcToUse > 0) {
+                                        sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
+                                    } else {
+                                        sbid = 0.50; // Fallback when both CPCs are 0
+                                    }
+                                } else if (currentUtilizationType === 'under') {
+                                    // Under-utilized SBID calculation rules
+                                    if (ub7 === 0 && ub1 === 0) {
+                                        sbid = 0.50;
+                                    } else {
+                                        var cpcToUse = (l1Cpc && !isNaN(l1Cpc) && l1Cpc > 0) ? l1Cpc : ((l7Cpc && !isNaN(l7Cpc) && l7Cpc > 0) ? l7Cpc : 0);
+                                        if (cpcToUse > 0) {
+                                            if (cpcToUse < 0.10) {
+                                                sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
+                                            } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
+                                                sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
+                                            } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
+                                                sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
+                                            } else {
+                                                sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
+                                            }
+                                        } else {
+                                            sbid = 0.50; // Fallback when both CPCs are 0
+                                        }
+                                    }
+                                } else if (currentUtilizationType === 'correctly') {
+                                    // Correctly-utilized: SBID = L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
+                                    var cpcToUse = (l1Cpc && !isNaN(l1Cpc) && l1Cpc > 0) ? l1Cpc : ((l7Cpc && !isNaN(l7Cpc) && l7Cpc > 0) ? l7Cpc : 0);
+                                    if (cpcToUse > 0) {
+                                        sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
+                                    } else {
+                                        sbid = 0.50; // Fallback when both CPCs are 0
+                                    }
+                                } else {
+                                    // For 'all' type, determine utilization status and apply appropriate rule
+                                    var rowAcos = parseFloat(rowData.acos) || 0;
+                                    if (isNaN(rowAcos) || rowAcos === 0) {
+                                        rowAcos = 100;
+                                    }
+                                    
+                                    // Check DIL color
+                                    var l30 = parseFloat(rowData.L30 || 0);
+                                    var inv = parseFloat(rowData.INV || 0);
+                                    var dilDecimal = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? (l30 / inv) : 0;
+                                    var dilPercent = parseFloat(dilDecimal) * 100;
+                                    var isPink = (dilPercent >= 50); // DIL >= 50% is pink
+                                    
+                                    // Determine utilization status
+                                    var isOverUtilized = false;
+                                    var isUnderUtilized = false;
+                                    
+                                    // Check over-utilized first (priority 1) - Double condition: both UB7 AND UB1 must be > 99
+                                    if (!isPink) {
+                                        if (ub7 > 99 && ub1 > 99) {
+                                            isOverUtilized = true;
+                                        }
+                                    }
+                                    
+                                    // Check under-utilized (priority 2: only if not over-utilized) - Double condition: both UB7 AND UB1 must be < 66
+                                    if (!isOverUtilized && ub7 < 66 && ub1 < 66 && !isPink) {
+                                        isUnderUtilized = true;
+                                    }
+                                    
+                                    // Apply SBID logic based on determined status
+                                    if (isOverUtilized) {
+                                        var cpcToUse = (l1Cpc && !isNaN(l1Cpc) && l1Cpc > 0) ? l1Cpc : ((l7Cpc && !isNaN(l7Cpc) && l7Cpc > 0) ? l7Cpc : 0);
+                                        if (cpcToUse > 1.25) {
+                                            sbid = Math.floor(cpcToUse * 0.80 * 100) / 100;
+                                        } else if (cpcToUse > 0) {
+                                            sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
+                                        } else {
+                                            sbid = 0.50; // Fallback when both CPCs are 0
+                                        }
+                                    } else if (isUnderUtilized) {
+                                        if (ub7 === 0 && ub1 === 0) {
+                                            sbid = 0.50;
+                                        } else {
+                                            var cpcToUse = (l1Cpc && !isNaN(l1Cpc) && l1Cpc > 0) ? l1Cpc : ((l7Cpc && !isNaN(l7Cpc) && l7Cpc > 0) ? l7Cpc : 0);
+                                            if (cpcToUse > 0) {
+                                                if (cpcToUse < 0.10) {
+                                                    sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
+                                                } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
+                                                    sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
+                                                } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
+                                                    sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
+                                                } else {
+                                                    sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
+                                                }
+                                            } else {
+                                                sbid = 0.50; // Fallback when both CPCs are 0
+                                            }
+                                        }
+                                    } else {
+                                        // Correctly-utilized or other
+                                        var cpcToUse = (l1Cpc && !isNaN(l1Cpc) && l1Cpc > 0) ? l1Cpc : ((l7Cpc && !isNaN(l7Cpc) && l7Cpc > 0) ? l7Cpc : 0);
+                                        if (cpcToUse > 0) {
+                                            sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
+                                        } else {
+                                            sbid = 0.50; // Fallback when both CPCs are 0
+                                        }
+                                    }
+                                }
+                                
+                                // Check if SBID is 0 (should not happen after fallback, but keep as safety)
+                                if (sbid === 0) {
+                                    return -1; // Special value for sorting (will show as '-')
+                                }
+                                
+                                return sbid;
+                            }
+                            
+                            var aSbid = calculateSbid(aData);
+                            var bSbid = calculateSbid(bData);
+                            
+                            return aSbid - bSbid;
+                        },
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
+                            
+                            // Check if NRA (🔴) is selected
+                            var nraValue = row.NR ? row.NR.trim() : "";
+                            if (nraValue === 'NRA') {
+                                return '-';
+                            }
+                            
                             var l1_cpc = parseFloat(row.l1_cpc) || 0;
                             var l7_cpc = parseFloat(row.l7_cpc) || 0;
                             var ub7 = 0;
+                            var ub1 = 0;
                             var budget = parseFloat(row.campaignBudgetAmount) || 0;
                             if (budget > 0) {
                                 ub7 = (parseFloat(row.l7_spend) || 0) / (budget * 7) * 100;
+                                ub1 = (parseFloat(row.l1_spend) || 0) / budget * 100;
                             }
                             
+                            // eBay3 SBID calculation logic (KEEP THIS - DO NOT CHANGE)
                             var sbid = 0;
                             if (currentUtilizationType === 'over') {
-                                sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
-                            } else if (currentUtilizationType === 'under') {
-                                if (ub7 < 10) {
-                                    sbid = 0.50;
-                                } else if (ub7 >= 10 && ub7 <= 50) {
-                                    sbid = Math.floor(l7_cpc * 1.20 * 100) / 100;
+                                // If L1 CPC > 1.25, use L1 CPC * 0.80, otherwise use L1 CPC * 0.90
+                                if (l1_cpc > 1.25) {
+                                    sbid = Math.floor(l1_cpc * 0.80 * 100) / 100;
                                 } else {
-                                    sbid = Math.floor(l7_cpc * 1.10 * 100) / 100;
+                                sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
+                                }
+                            } else if (currentUtilizationType === 'under') {
+                                // Under-utilized SBID calculation rules (from ebay-utilized, without price logic)
+                                // If UB7 = 0% AND UB1 = 0%, SBID = 0.50
+                                if (ub7 === 0 && ub1 === 0) {
+                                    sbid = 0.50;
+                                } else {
+                                    // Use L1CPC if available (not 0, not NaN), otherwise use L7CPC
+                                    var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ?
+                                        l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ?
+                                            l7_cpc : 0);
+                                    if (cpcToUse > 0) {
+                                        if (cpcToUse < 0.10) {
+                                            sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
+                                        } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
+                                            sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
+                                        } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
+                                            sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
+                                        } else {
+                                            sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
                                 }
                             } else {
-                                // Correctly-utilized: SBID = L1_CPC * 0.90 (same as correctly-utilized page)
-                                sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
+                                        sbid = 0.50; // Fallback when both CPCs are 0
+                                    }
+                                }
+                            } else if (currentUtilizationType === 'correctly') {
+                                // Correctly-utilized: SBID = L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
+                                var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : (
+                                    (l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
+                                if (cpcToUse > 0) {
+                                    sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
+                                } else {
+                                    sbid = 0.50; // Fallback when both CPCs are 0
+                                }
+                            } else {
+                                // For 'all' type, determine utilization status and apply appropriate rule
+                                var rowAcos = parseFloat(row.acos) || 0;
+                                if (isNaN(rowAcos) || rowAcos === 0) {
+                                    rowAcos = 100;
+                                }
+
+                                // Check DIL color
+                                var l30 = parseFloat(row.L30 || 0);
+                                var inv = parseFloat(row.INV || 0);
+                                var dilDecimal = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? (l30 /
+                                    inv) : 0;
+                                var dilColor = getDilColor(dilDecimal);
+                                var isPink = (dilColor === "pink");
+
+                                // Determine utilization status
+                                var isOverUtilized = false;
+                                var isUnderUtilized = false;
+
+                                // Check over-utilized first (priority 1) - Double condition: both UB7 AND UB1 must be > 99
+                                if (!isPink) {
+                                    if (ub7 > 99 && ub1 > 99) {
+                                        isOverUtilized = true;
+                                    }
+                                }
+
+                                // Check under-utilized (priority 2: only if not over-utilized) - Double condition: both UB7 AND UB1 must be < 66
+                                if (!isOverUtilized && ub7 < 66 && ub1 < 66 && !isPink) {
+                                    isUnderUtilized = true;
+                                }
+
+                                // Apply SBID logic based on determined status
+                                if (isOverUtilized) {
+                                    // Over-utilized: If L1 CPC > 1.25, use L1 CPC * 0.80, otherwise use L1 CPC * 0.90
+                                    var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ?
+                                        l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ?
+                                            l7_cpc : 0);
+                                    if (cpcToUse > 1.25) {
+                                        sbid = Math.floor(cpcToUse * 0.80 * 100) / 100;
+                                    } else if (cpcToUse > 0) {
+                                        sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
+                                    } else {
+                                        sbid = 0.50; // Fallback when both CPCs are 0
+                                    }
+                                } else if (isUnderUtilized) {
+                                    // Under-utilized: Use the under-utilized rule
+                                    if (ub7 === 0 && ub1 === 0) {
+                                        sbid = 0.50;
+                                    } else {
+                                        // Use L1CPC if available (not 0, not NaN), otherwise use L7CPC
+                                        var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ?
+                                            l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ?
+                                                l7_cpc : 0);
+                                        if (cpcToUse > 0) {
+                                            if (cpcToUse < 0.10) {
+                                                sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
+                                            } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
+                                                sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
+                                            } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
+                                                sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
+                                            } else {
+                                                sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
+                                            }
+                                        } else {
+                                            sbid = 0.50; // Fallback when both CPCs are 0
+                                        }
+                                    }
+                                } else {
+                                    // Correctly-utilized or other: SBID = L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
+                                    var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ?
+                                        l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ?
+                                            l7_cpc : 0);
+                                    if (cpcToUse > 0) {
+                                        sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
+                                    } else {
+                                        sbid = 0.50; // Fallback when both CPCs are 0
+                                    }
+                                }
                             }
+
+                            // Check if SBID is 0 (should not happen after fallback, but keep as safety)
+                            if (sbid === 0) {
+                                return '-';
+                            }
+
                             return sbid.toFixed(2);
-                        }
+                        },
+                        visible: true,
+                        width: 70
                     },
                     {
                         title: "APR BID",
                         field: "apr_bid",
                         hozAlign: "center",
+                        visible: false,
+                        width: 100,
                         formatter: function(cell) {
                             return `
                                 <div style="align-items:center; gap:5px;">
@@ -667,28 +1646,144 @@
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains("update-row-btn")) {
                                 var rowData = cell.getRow().getData();
+
+                                // Check if NRA (🔴) is selected
+                                var nraValue = rowData.NR ? rowData.NR.trim() : "";
+                                if (nraValue === 'NRA') {
+                                    return; // Skip update if NRA is selected
+                                }
+
                                 var l1_cpc = parseFloat(rowData.l1_cpc) || 0;
                                 var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
                                 var budget = parseFloat(rowData.campaignBudgetAmount) || 0;
                                 var ub7 = 0;
+                                var ub1 = 0;
                                 if (budget > 0) {
                                     ub7 = (parseFloat(rowData.l7_spend) || 0) / (budget * 7) * 100;
+                                    ub1 = (parseFloat(rowData.l1_spend) || 0) / budget * 100;
                                 }
                                 
+                                // eBay3 SBID calculation logic (KEEP THIS - DO NOT CHANGE)
                                 var sbid = 0;
                                 if (currentUtilizationType === 'over') {
-                                    sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
-                                } else if (currentUtilizationType === 'under') {
-                                    if (ub7 < 10) {
-                                        sbid = 0.50;
-                                    } else if (ub7 >= 10 && ub7 <= 50) {
-                                        sbid = Math.floor(l7_cpc * 1.20 * 100) / 100;
+                                    // If L1 CPC > 1.25, use L1 CPC * 0.80, otherwise use L1 CPC * 0.90
+                                    if (l1_cpc > 1.25) {
+                                        sbid = Math.floor(l1_cpc * 0.80 * 100) / 100;
                                     } else {
-                                        sbid = Math.floor(l7_cpc * 1.10 * 100) / 100;
+                                    sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
+                                    }
+                                } else if (currentUtilizationType === 'under') {
+                                    // Under-utilized SBID calculation rules (from ebay-utilized, without price logic)
+                                    // If UB7 = 0% AND UB1 = 0%, SBID = 0.50
+                                    if (ub7 === 0 && ub1 === 0) {
+                                        sbid = 0.50;
+                                    } else {
+                                        // Use L1CPC if available (not 0, not NaN), otherwise use L7CPC
+                                        var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ?
+                                            l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ?
+                                                l7_cpc : 0);
+                                        if (cpcToUse > 0) {
+                                            if (cpcToUse < 0.10) {
+                                                sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
+                                            } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
+                                                sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
+                                            } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
+                                                sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
+                                            } else {
+                                                sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
                                     }
                                 } else {
-                                    // Correctly-utilized: SBID = L1_CPC * 0.90 (same as correctly-utilized page)
-                                    sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
+                                            sbid = 0.50; // Fallback when both CPCs are 0
+                                        }
+                                    }
+                                } else if (currentUtilizationType === 'correctly') {
+                                    // Correctly-utilized: SBID = L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
+                                    var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ?
+                                        l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ?
+                                            l7_cpc : 0);
+                                    if (cpcToUse > 0) {
+                                        sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
+                                    } else {
+                                        sbid = 0.50; // Fallback when both CPCs are 0
+                                    }
+                                } else {
+                                    // For 'all' type, determine utilization status and apply appropriate rule
+                                    var rowAcos = parseFloat(rowData.acos) || 0;
+                                    if (isNaN(rowAcos) || rowAcos === 0) {
+                                        rowAcos = 100;
+                                    }
+
+                                    // Check DIL color
+                                    var l30 = parseFloat(rowData.L30 || 0);
+                                    var inv = parseFloat(rowData.INV || 0);
+                                    var dilDecimal = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? (
+                                        l30 / inv) : 0;
+                                    var dilColor = getDilColor(dilDecimal);
+                                    var isPink = (dilColor === "pink");
+
+                                    // Determine utilization status
+                                    var isOverUtilized = false;
+                                    var isUnderUtilized = false;
+
+                                    // Check over-utilized first (priority 1) - Double condition: both UB7 AND UB1 must be > 99
+                                    if (!isPink) {
+                                        if (ub7 > 99 && ub1 > 99) {
+                                            isOverUtilized = true;
+                                        }
+                                    }
+
+                                    // Check under-utilized (priority 2: only if not over-utilized) - Double condition: both UB7 AND UB1 must be < 66
+                                    if (!isOverUtilized && ub7 < 66 && ub1 < 66 && !isPink) {
+                                        isUnderUtilized = true;
+                                    }
+
+                                    // Apply SBID logic based on determined status
+                                    if (isOverUtilized) {
+                                        // Over-utilized: If L1 CPC > 1.25, use L1 CPC * 0.80, otherwise use L1 CPC * 0.90
+                                        var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ?
+                                            l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ?
+                                                l7_cpc : 0);
+                                        if (cpcToUse > 1.25) {
+                                            sbid = Math.floor(cpcToUse * 0.80 * 100) / 100;
+                                        } else if (cpcToUse > 0) {
+                                            sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
+                                        } else {
+                                            sbid = 0.50; // Fallback when both CPCs are 0
+                                        }
+                                    } else if (isUnderUtilized) {
+                                        // Under-utilized: Use the under-utilized rule
+                                        if (ub7 === 0 && ub1 === 0) {
+                                            sbid = 0.50;
+                                        } else {
+                                            // Use L1CPC if available (not 0, not NaN), otherwise use L7CPC
+                                            var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc >
+                                                0) ? l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc >
+                                                    0) ? l7_cpc : 0);
+                                            if (cpcToUse > 0) {
+                                                if (cpcToUse < 0.10) {
+                                                    sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
+                                                } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
+                                                    sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
+                                                } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
+                                                    sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
+                                                } else {
+                                                    sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
+                                                }
+                                            } else {
+                                                sbid = 0.50; // Fallback when both CPCs are 0
+                                            }
+                                        }
+                                    } else {
+                                        // Correctly-utilized or other: SBID = L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
+                                        var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ?
+                                            l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ?
+                                                l7_cpc : 0);
+                                        if (cpcToUse > 0) {
+                                            sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
+                                        } else {
+                                            sbid = 0.50; // Fallback when both CPCs are 0
+                                        }
+                                    }
                                 }
                                 updateBid(sbid, rowData.campaign_id);
                             }
@@ -696,63 +1791,95 @@
                     },
                     {
                         title: "Status",
-                        field: "campaignStatus"
+                        field: "campaignStatus",
+                        width: 80,
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var status = cell.getValue();
+                            if (status === 'RUNNING') {
+                                return '<div style="display: flex; justify-content: center; align-items: center;"><span style="width: 12px; height: 12px; background-color: #28a745; border-radius: 50%; display: inline-block;"></span></div>';
+                            } else if (status === 'PAUSED') {
+                                return '<div style="display: flex; justify-content: center; align-items: center;"><span style="width: 12px; height: 12px; background-color: #ffc107; border-radius: 50%; display: inline-block;"></span></div>';
+                            } else if (status === 'ENDED') {
+                                return '<div style="display: flex; justify-content: center; align-items: center;"><span style="width: 12px; height: 12px; background-color: #dc3545; border-radius: 50%; display: inline-block;"></span></div>';
+                            }
+                            return status;
+                        }
                     }
                 ],
                 ajaxResponse: function(url, params, response) {
                     totalACOSValue = parseFloat(response.total_acos) || 0;
                     totalL30Spend = parseFloat(response.total_l30_spend) || 0;
                     totalL30Sales = parseFloat(response.total_l30_sales) || 0;
+                    totalSkuCountFromBackend = parseFloat(response.total_sku_count) || 0;
+                    ebaySkuCountFromBackend = parseFloat(response.ebay_sku_count) || 0;
+                    totalCampaignCountFromBackend = parseFloat(response.total_campaign_count) || 0;
+                    zeroInvCountFromBackend = parseFloat(response.zero_inv_count) || 0;
+
+                    // Update eBay SKU count
+                    const ebaySkuCountEl = document.getElementById('ebay-sku-count');
+                    if (ebaySkuCountEl) {
+                        ebaySkuCountEl.textContent = ebaySkuCountFromBackend;
+                    }
+
+                    // Update total campaign count from backend
+                    const totalCampaignCountEl = document.getElementById('total-campaign-count');
+                    if (totalCampaignCountEl) {
+                        totalCampaignCountEl.textContent = totalCampaignCountFromBackend;
+                    }
+
+                    // Update zero INV count from backend
+                    const zeroInvCountEl = document.getElementById('zero-inv-count');
+                    if (zeroInvCountEl) {
+                        zeroInvCountEl.textContent = zeroInvCountFromBackend;
+                    }
+
                     return response.data;
                 }
             });
 
             // Combined filter function
             function combinedFilter(data) {
-                let acos = parseFloat(data.acos || 0);
-                let budget = parseFloat(data.campaignBudgetAmount) || 0;
-                let l7_spend = parseFloat(data.l7_spend) || 0;
-                let l1_spend = parseFloat(data.l1_spend) || 0;
-
-                let ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
-                let ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
-
-                let rowAcos = parseFloat(acos) || 0;
-                if (isNaN(rowAcos) || rowAcos === 0) {
-                    rowAcos = 100;
+                // Apply missing/campaign/zero INV/NRA/RA filters first (if enabled)
+                if (showMissingOnly) {
+                    const hasCampaign = data.hasCampaign !== undefined ? data.hasCampaign : (data.campaign_id &&
+                        data.campaignName);
+                    if (hasCampaign) return false;
+                    // Check if this is a red dot (missing AND not yellow)
+                    let rowNrlForMissing = data.NRL ? data.NRL.trim() : "";
+                    let rowNraForMissing = data.NR ? data.NR.trim() : "";
+                    // Only show as missing (red dot) if neither NRL='NRL' nor NRA='NRA'
+                    if (rowNrlForMissing === 'NRL' || rowNraForMissing === 'NRA') return false;
                 }
 
-                // Apply utilization type filter
-                if (currentUtilizationType === 'over') {
-                    if (totalACOSValue === 0 || isNaN(totalACOSValue)) {
-                        return false;
-                    }
-                    let condition1 = (rowAcos > totalACOSValue && ub7 > 33);
-                    let condition2 = (rowAcos <= totalACOSValue && ub7 > 90);
-                    if (!(condition1 || condition2)) {
-                        return false;
-                    }
-                    // Exclude pink DIL
-                    let l30 = parseFloat(data.L30);
-                    let inv = parseFloat(data.INV);
-                    let dilDecimal = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? (l30 / inv) : 0;
-                    let dilColor = getDilColor(dilDecimal);
-                    if (dilColor === "pink") return false;
-                } else if (currentUtilizationType === 'under') {
-                    if (!(ub7 < 70 && ub1 < 70)) return false;
-                    // Exclude pink DIL
-                    let l30 = parseFloat(data.L30);
-                    let inv = parseFloat(data.INV);
-                    let dilDecimal = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? (l30 / inv) : 0;
-                    let dilColor = getDilColor(dilDecimal);
-                    if (dilColor === "pink") return false;
-                } else if (currentUtilizationType === 'correctly') {
-                    if (!((ub7 >= 70 && ub7 <= 90) || (ub1 >= 70 && ub1 <= 90))) return false;
+                if (showNraMissingOnly) {
+                    const hasCampaign = data.hasCampaign !== undefined ? data.hasCampaign : (data.campaign_id &&
+                        data.campaignName);
+                    if (hasCampaign) return false;
+                    // Show only NRA missing (yellow dots)
+                    let rowNrlForMissing = data.NRL ? data.NRL.trim() : "";
+                    let rowNraForMissing = data.NR ? data.NR.trim() : "";
+                    if (rowNrlForMissing !== 'NRL' && rowNraForMissing !== 'NRA') return false;
+                }
+
+                if (showCampaignOnly) {
+                    const hasCampaign = data.hasCampaign !== undefined ? data.hasCampaign : (data.campaign_id &&
+                        data.campaignName);
+                    if (!hasCampaign) return false;
+                }
+
+                // eBay SKU filter - show only SKUs that have campaign
+                if (showEbaySkuOnly) {
+                    const hasCampaign = data.hasCampaign !== undefined ? data.hasCampaign : (data.campaign_id &&
+                        data.campaignName);
+                    // Show if has campaign
+                    if (!hasCampaign) return false;
                 }
 
                 // Global search filter
                 let searchVal = $("#global-search").val()?.toLowerCase() || "";
-                if (searchVal && !(data.campaignName?.toLowerCase().includes(searchVal))) {
+                if (searchVal && !(data.campaignName?.toLowerCase().includes(searchVal)) && !(data.sku
+                        ?.toLowerCase().includes(searchVal))) {
                     return false;
                 }
 
@@ -762,39 +1889,82 @@
                     return false;
                 }
 
-                // Inventory filter - match individual pages exactly
+                // Apply zero INV filter first (if enabled)
+                let inv = parseFloat(data.INV || 0);
+                if (showZeroInvOnly) {
+                    // Show only zero or negative inventory
+                    if (inv > 0) return false;
+                } else {
+                    // Inventory filter
                 let invFilterVal = $("#inv-filter").val();
-                if (currentUtilizationType === 'over') {
-                    // Over-utilized: Show all campaigns by default (no filter)
-                    if (invFilterVal === "OTHERS") {
-                        if (parseFloat(data.INV) === 0) return false;
-                    }
-                    // ALL option shows everything, so no filtering needed
-                } else if (currentUtilizationType === 'under') {
-                    // Under-utilized: Show all campaigns when no filter or ALL is selected
-                    if (invFilterVal && invFilterVal !== 'ALL') {
-                        if (invFilterVal === "INV_0") {
-                            if (parseFloat(data.INV) !== 0) return false;
-                        } else if (invFilterVal === "OTHERS") {
-                            if (parseFloat(data.INV) === 0) return false;
-                        }
-                    }
-                } else if (currentUtilizationType === 'correctly') {
-                    // Correctly-utilized: Default to INV > 0 (exclude INV = 0 when no filter)
-                    if (!invFilterVal) {
-                        if (parseFloat(data.INV) === 0) return false;
+
+                    // By default (no filter selected), show all (no filtering)
+                    if (!invFilterVal || invFilterVal === '') {
+                        // Show all inventory values
+                    } else if (invFilterVal === "ALL") {
+                        // ALL option shows everything (including INV = 0 and negative), so no filtering needed
                     } else if (invFilterVal === "INV_0") {
-                        if (parseFloat(data.INV) !== 0) return false;
+                        // Show only INV = 0
+                        if (inv !== 0) return false;
                     } else if (invFilterVal === "OTHERS") {
-                        if (parseFloat(data.INV) === 0) return false;
+                        // Show only INV > 0 (exclude INV = 0 and negative)
+                        if (inv <= 0) return false;
                     }
                 }
 
-                // NR filter
+                // Apply NRA/RA filters first (if enabled)
+                // Note: Empty/null NRA defaults to "RA" in the display
+                let rowNra = data.NR ? data.NR.trim() : "";
+                if (showNraOnly) {
+                    // Show only NRA (explicitly "NRA" only)
+                    if (rowNra !== 'NRA') return false;
+                } else if (showRaOnly) {
+                    // Show only RA (includes empty/null which defaults to "RA")
+                    if (rowNra === 'NRA') return false;
+                } else {
+                    // NRA filter from dropdown
                 let nraFilterVal = $("#nra-filter").val();
                 if (nraFilterVal) {
-                    let rowVal = data.NR || "";
-                    if (rowVal !== nraFilterVal) return false;
+                        if (nraFilterVal === 'RA') {
+                            // For "RA" filter, include empty/null values too
+                            if (rowNra === 'NRA') return false;
+                        } else {
+                            // For "NRA" or "LATER", exact match
+                            if (rowNra !== nraFilterVal) return false;
+                        }
+                    }
+                }
+
+                // Apply utilization type filter (ebay3 specific logic)
+                let budget = parseFloat(data.campaignBudgetAmount) || 0;
+                let l7_spend = parseFloat(data.l7_spend || 0);
+                let l1_spend = parseFloat(data.l1_spend || 0);
+                let ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
+                let ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
+
+                if (currentUtilizationType === 'all') {
+                    // All - no utilization filter
+                } else if (currentUtilizationType === 'over') {
+                    // Double condition: both UB7 AND UB1 must be > 99
+                    if (!(ub7 > 99 && ub1 > 99)) {
+                        return false;
+                    }
+                    // Exclude pink DIL
+                    let l30 = parseFloat(data.L30 || 0);
+                    let dilDecimal = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? (l30 / inv) : 0;
+                    let dilColor = getDilColor(dilDecimal);
+                    if (dilColor === "pink") return false;
+                } else if (currentUtilizationType === 'under') {
+                    // Double condition: both UB7 AND UB1 must be < 66
+                    if (!(ub7 < 66 && ub1 < 66)) return false;
+                    // Exclude pink DIL
+                    let l30 = parseFloat(data.L30 || 0);
+                    let dilDecimal = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? (l30 / inv) : 0;
+                    let dilColor = getDilColor(dilDecimal);
+                    if (dilColor === "pink") return false;
+                } else if (currentUtilizationType === 'correctly') {
+                    // Double condition: both UB7 AND UB1 must be between 66% and 99% (both green)
+                    if (!((ub7 >= 66 && ub7 <= 99) && (ub1 >= 66 && ub1 <= 99))) return false;
                 }
 
                 return true;
@@ -802,6 +1972,15 @@
 
             table.on("tableBuilt", function() {
                 table.setFilter(combinedFilter);
+
+                // Set initial column visibility based on current utilization type
+                if (currentUtilizationType === 'correctly') {
+                    table.hideColumn('sbid');
+                } else {
+                    table.showColumn('sbid');
+                }
+                // Ensure APR BID remains hidden
+                table.hideColumn('apr_bid');
 
                 // Update counts when data is filtered (debounced)
                 let filterTimeout = null;
@@ -823,6 +2002,10 @@
 
                 $("#status-filter, #inv-filter, #nra-filter").on("change", function() {
                     table.setFilter(combinedFilter);
+                    // Update counts when filter changes - use longer timeout to ensure filter is applied
+                    setTimeout(function() {
+                        updateButtonCounts();
+                    }, 300);
                 });
 
                 // Initial update of all button counts after data loads
@@ -845,11 +2028,18 @@
                     let field = e.target.getAttribute("data-field");
                     let value = e.target.value;
 
+                    // Update color immediately for NRA/NRL fields
+                    if (field === 'NR' || field === 'NRL') {
+                        // For emoji dropdown, we don't need to change background color
+                        // The emoji itself changes based on selection
+                    }
+
                     fetch('/update-ebay3-nr-data', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')
+                                    .getAttribute('content')
                         },
                         body: JSON.stringify({
                             sku: sku,
@@ -859,21 +2049,21 @@
                     })
                     .then(res => res.json())
                     .then(data => {
-                        console.log(data);
+                            // Update table data with response
+                            if (data.success && typeof table !== 'undefined' && table) {
+                                let row = table.searchRows('sku', '=', sku);
+                                if (row.length > 0) {
+                                    row[0].update({
+                                        [field]: value
+                                    });
+                                    // If NRL is updated, reformat the row to update NRA column (which depends on NRL)
+                                    if (field === 'NRL') {
+                                        row[0].reformat();
+                                    }
+                                }
+                            }
                     })
                     .catch(err => console.error(err));
-                }
-            });
-
-            document.addEventListener("click", function(e) {
-                if (e.target.classList.contains("toggle-cols-btn")) {
-                    let colsToToggle = ["INV", "L30", "DIL %", "NR"];
-                    colsToToggle.forEach(colName => {
-                        let col = table.getColumn(colName);
-                        if (col) {
-                            col.toggle();
-                        }
-                    });
                 }
             });
 
@@ -889,28 +2079,140 @@
                     var rowEl = row.getElement();
                     if (rowEl && rowEl.offsetParent !== null) {
                         var rowData = row.getData();
+
+                        // Check if NRA (🔴) is selected
+                        var nraValue = rowData.NR ? rowData.NR.trim() : "";
+                        if (nraValue === 'NRA') {
+                            return; // Skip update if NRA is selected
+                        }
+
                         var l1_cpc = parseFloat(rowData.l1_cpc) || 0;
                         var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
                         var budget = parseFloat(rowData.campaignBudgetAmount) || 0;
                         var ub7 = 0;
+                        var ub1 = 0;
                         if (budget > 0) {
                             ub7 = (parseFloat(rowData.l7_spend) || 0) / (budget * 7) * 100;
+                            ub1 = (parseFloat(rowData.l1_spend) || 0) / budget * 100;
                         }
                         
+                        // eBay3 SBID calculation logic (KEEP THIS - DO NOT CHANGE)
                         var sbid = 0;
                         if (currentUtilizationType === 'over') {
-                            sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
-                        } else if (currentUtilizationType === 'under') {
-                            if (ub7 < 10) {
-                                sbid = 0.50;
-                            } else if (ub7 >= 10 && ub7 <= 50) {
-                                sbid = Math.floor(l7_cpc * 1.20 * 100) / 100;
+                            // If L1 CPC > 1.25, use L1 CPC * 0.80, otherwise use L1 CPC * 0.90
+                            if (l1_cpc > 1.25) {
+                                sbid = Math.floor(l1_cpc * 0.80 * 100) / 100;
                             } else {
-                                sbid = Math.floor(l7_cpc * 1.10 * 100) / 100;
+                            sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
+                            }
+                        } else if (currentUtilizationType === 'under') {
+                            // Under-utilized SBID calculation rules (from ebay-utilized, without price logic)
+                            // If UB7 = 0% AND UB1 = 0%, SBID = 0.50
+                            if (ub7 === 0 && ub1 === 0) {
+                                sbid = 0.50;
+                            } else {
+                                // Use L1CPC if available (not 0, not NaN), otherwise use L7CPC
+                                var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : (
+                                    (l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
+                                if (cpcToUse > 0) {
+                                    if (cpcToUse < 0.10) {
+                                        sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
+                                    } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
+                                        sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
+                                    } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
+                                        sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
+                                    } else {
+                                        sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
                             }
                         } else {
-                            // Correctly-utilized: SBID = L1_CPC * 0.90 (same as correctly-utilized page)
-                            sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
+                                    sbid = 0.50; // Fallback when both CPCs are 0
+                                }
+                            }
+                        } else if (currentUtilizationType === 'correctly') {
+                            // Correctly-utilized: SBID = L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
+                            var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : ((
+                                l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
+                            if (cpcToUse > 0) {
+                                sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
+                            } else {
+                                sbid = 0.50; // Fallback when both CPCs are 0
+                            }
+                        } else {
+                            // For 'all' type, determine utilization status and apply appropriate rule
+                            var rowAcos = parseFloat(rowData.acos) || 0;
+                            if (isNaN(rowAcos) || rowAcos === 0) {
+                                rowAcos = 100;
+                            }
+
+                            // Check DIL color
+                            var l30 = parseFloat(rowData.L30 || 0);
+                            var inv = parseFloat(rowData.INV || 0);
+                            var dilDecimal = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? (l30 /
+                                inv) : 0;
+                            var dilColor = getDilColor(dilDecimal);
+                            var isPink = (dilColor === "pink");
+
+                            // Determine utilization status
+                            var isOverUtilized = false;
+                            var isUnderUtilized = false;
+
+                            // Check over-utilized first (priority 1) - Double condition: both UB7 AND UB1 must be > 99
+                            if (!isPink) {
+                                if (ub7 > 99 && ub1 > 99) {
+                                    isOverUtilized = true;
+                                }
+                            }
+
+                            // Check under-utilized (priority 2: only if not over-utilized) - Double condition: both UB7 AND UB1 must be < 66
+                            if (!isOverUtilized && ub7 < 66 && ub1 < 66 && !isPink) {
+                                isUnderUtilized = true;
+                            }
+
+                            // Apply SBID logic based on determined status
+                            if (isOverUtilized) {
+                                // Over-utilized: If L1 CPC > 1.25, use L1 CPC * 0.80, otherwise use L1 CPC * 0.90
+                                var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : (
+                                    (l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
+                                if (cpcToUse > 1.25) {
+                                    sbid = Math.floor(cpcToUse * 0.80 * 100) / 100;
+                                } else if (cpcToUse > 0) {
+                                    sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
+                                } else {
+                                    sbid = 0.50; // Fallback when both CPCs are 0
+                                }
+                            } else if (isUnderUtilized) {
+                                // Under-utilized: Use the under-utilized rule
+                                if (ub7 === 0 && ub1 === 0) {
+                                    sbid = 0.50;
+                                } else {
+                                    // Use L1CPC if available (not 0, not NaN), otherwise use L7CPC
+                                    var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ?
+                                        l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ?
+                                            l7_cpc : 0);
+                                    if (cpcToUse > 0) {
+                                        if (cpcToUse < 0.10) {
+                                            sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
+                                        } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
+                                            sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
+                                        } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
+                                            sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
+                                        } else {
+                                            sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
+                                        }
+                                    } else {
+                                        sbid = 0.50; // Fallback when both CPCs are 0
+                                    }
+                                }
+                            } else {
+                                // Correctly-utilized or other: SBID = L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
+                                var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : (
+                                    (l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
+                                if (cpcToUse > 0) {
+                                    sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
+                                } else {
+                                    sbid = 0.50; // Fallback when both CPCs are 0
+                                }
+                            }
                         }
 
                         campaignIds.push(rowData.campaign_id);
@@ -922,7 +2224,8 @@
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')
+                                .getAttribute('content')
                     },
                     body: JSON.stringify({
                         campaign_ids: campaignIds,
@@ -959,7 +2262,8 @@
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute(
+                                'content')
                     },
                     body: JSON.stringify({
                         campaign_ids: [campaignId],
@@ -988,32 +2292,21 @@
                 });
             }
 
-            // Load counts
-            loadUtilizationCounts();
-
-            // Add click handlers to utilization cards
+            // Add click handlers to utilization cards (if they exist)
             document.querySelectorAll('.utilization-card').forEach(card => {
                 card.addEventListener('click', function() {
                     const type = this.getAttribute('data-type');
+                    if (type && (type === '7ub' || type === '7ub-1ub')) {
+                        // For 7UB and 7UB+1UB cards, we don't show charts, just filter
+                        // You can add filter logic here if needed
+                        return;
+                    }
                     showUtilizationChart(type);
                 });
             });
         });
 
         let utilizationChartInstance = null;
-
-        function loadUtilizationCounts() {
-            fetch('/ebay-3/get-utilization-counts')
-                .then(res => res.json())
-                .then(data => {
-                    if (data.status === 200) {
-                        document.getElementById('over-utilized-count').textContent = data.over_utilized || 0;
-                        document.getElementById('under-utilized-count').textContent = data.under_utilized || 0;
-                        document.getElementById('correctly-utilized-count').textContent = data.correctly_utilized || 0;
-                    }
-                })
-                .catch(err => console.error('Error loading counts:', err));
-        }
 
         function showUtilizationChart(type) {
             const chartTitle = document.getElementById('chart-title');

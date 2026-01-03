@@ -1664,9 +1664,10 @@ class AmazonSpBudgetController extends Controller
             // Continue without avg_cpc data if there's an error
         }
 
-        // Fetch latest ratings from junglescout_product_data
+        // Fetch latest ratings and reviews from junglescout_product_data
         // Use subquery to get latest record for each sku/parent
         $junglescoutData = collect();
+        $junglescoutReviews = collect();
         
         // Get latest by SKU
         $skuRatings = DB::table('junglescout_product_data as j1')
@@ -1679,8 +1680,10 @@ class AmazonSpBudgetController extends Controller
         foreach ($skuRatings as $item) {
             $data = json_decode($item->data, true);
             $rating = $data['rating'] ?? null;
+            $reviews = $data['reviews'] ?? null;
             if ($item->sku && !$junglescoutData->has($item->sku)) {
                 $junglescoutData->put($item->sku, $rating);
+                $junglescoutReviews->put($item->sku, $reviews);
             }
         }
         
@@ -1695,8 +1698,10 @@ class AmazonSpBudgetController extends Controller
         foreach ($parentRatings as $item) {
             $data = json_decode($item->data, true);
             $rating = $data['rating'] ?? null;
+            $reviews = $data['reviews'] ?? null;
             if ($item->parent && !$junglescoutData->has($item->parent)) {
                 $junglescoutData->put($item->parent, $rating);
+                $junglescoutReviews->put($item->parent, $reviews);
             }
         }
 
@@ -2041,6 +2046,7 @@ class AmazonSpBudgetController extends Controller
                     'A_L30' => ($amazonSheet && isset($amazonSheet->units_ordered_l30)) ? (int)$amazonSheet->units_ordered_l30 : 0,
                     'price' => ($amazonSheet && isset($amazonSheet->price)) ? $amazonSheet->price : 0,
                     'ratings' => $junglescoutData[$sku] ?? null,
+                    'reviews' => $junglescoutReviews[$sku] ?? null,
                     'l7_spend' => 0,
                     'l7_cpc' => 0,
                     'l1_spend' => 0,
