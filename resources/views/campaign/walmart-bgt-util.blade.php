@@ -395,6 +395,14 @@
                                     <button id="apr-all-sbid-btn" class="btn btn-info btn-sm d-none">
                                         APR ALL SBID
                                     </button>
+                                    <button id="bulk-mark-nrl-btn" class="btn btn-danger btn-sm d-none" title="Mark selected rows as NRL (red dot)">
+                                        <i class="fa fa-circle me-1" style="color: #dc3545;"></i>
+                                        Mark NRL
+                                    </button>
+                                    <button id="bulk-mark-nra-btn" class="btn btn-danger btn-sm d-none" title="Mark selected rows as NRA (red dot)">
+                                        <i class="fa fa-circle me-1" style="color: #dc3545;"></i>
+                                        Mark NRA
+                                    </button>
                                     <button class="btn btn-success btn-md">
                                         Total bids: <span id="total-campaigns" class="fw-bold ms-1 fs-4">0</span>
                                     </button>
@@ -785,25 +793,22 @@
                                 value = null;
                             }
                             
-                            const displayText = hasValue ? (value === "RL" ? "RL" : "NRL") : "Select";
                             const dotClass = hasValue ? (value === "RL" ? "green" : "red") : "";
                             const displayHtml = hasValue 
-                                ? `<span class="status-dot ${dotClass}"></span><span>${displayText}</span>`
-                                : `<span style="color: #6c757d;">${displayText}</span>`;
+                                ? `<span class="status-dot ${dotClass}"></span>`
+                                : `<span class="status-dot" style="background-color: transparent; border: 1px solid #ced4da;"></span>`;
 
                             return `
                                 <div class="dot-dropdown" style="position: relative; width: 100%;">
-                                    <button type="button" class="dot-dropdown-btn" data-sku="${sku}" data-field="NRL" data-value="${value || ''}">
+                                    <button type="button" class="dot-dropdown-btn" data-sku="${sku}" data-field="NRL" data-value="${value || ''}" style="justify-content: center;">
                                         ${displayHtml}
                                     </button>
                                     <div class="dot-dropdown-menu">
                                         <div class="dot-dropdown-item ${value === 'RL' ? 'selected' : ''}" data-value="RL">
                                             <span class="status-dot green"></span>
-                                            <span>RL</span>
                                         </div>
                                         <div class="dot-dropdown-item ${value === 'NRL' ? 'selected' : ''}" data-value="NRL">
                                             <span class="status-dot red"></span>
-                                            <span>NRL</span>
                                         </div>
                                     </div>
                                 </div>
@@ -821,7 +826,7 @@
                             const sku = rowData.sku;
                             let value = cell.getValue();
                             
-                            // Handle different value formats - no default, keep empty if not set
+                            // Handle different value formats - default to "RA" (green dot) if not set
                             let hasValue = false;
                             if (value && value !== '' && value !== null && value !== undefined) {
                                 value = String(value).trim().toUpperCase();
@@ -829,32 +834,29 @@
                                 if (value === "RA" || value === "NRA") {
                                     hasValue = true;
                                 } else {
-                                    value = null;
+                                    value = "RA"; // Default to RA
+                                    hasValue = true;
                                 }
                             } else {
-                                value = null;
+                                value = "RA"; // Default to RA (green dot)
+                                hasValue = true;
                             }
                             
                             const isGreen = value === "RA";
-                            const displayText = hasValue ? (isGreen ? "RA" : "NRA") : "Select";
-                            const dotClass = hasValue ? (isGreen ? "green" : "red") : "";
-                            const displayHtml = hasValue 
-                                ? `<span class="status-dot ${dotClass}"></span><span>${displayText}</span>`
-                                : `<span style="color: #6c757d;">${displayText}</span>`;
+                            const dotClass = isGreen ? "green" : "red";
+                            const displayHtml = `<span class="status-dot ${dotClass}"></span>`;
 
                             return `
                                 <div class="dot-dropdown" style="position: relative; width: 100%;">
-                                    <button type="button" class="dot-dropdown-btn" data-sku="${sku}" data-field="NRA" data-value="${value || ''}">
+                                    <button type="button" class="dot-dropdown-btn" data-sku="${sku}" data-field="NRA" data-value="${value || 'RA'}" style="justify-content: center;">
                                         ${displayHtml}
                                     </button>
                                     <div class="dot-dropdown-menu">
                                         <div class="dot-dropdown-item ${value === 'RA' ? 'selected' : ''}" data-value="RA">
                                             <span class="status-dot green"></span>
-                                            <span>RA</span>
                                         </div>
                                         <div class="dot-dropdown-item ${value === 'NRA' ? 'selected' : ''}" data-value="NRA">
                                             <span class="status-dot red"></span>
-                                            <span>NRA</span>
                                         </div>
                                     </div>
                                 </div>
@@ -883,19 +885,6 @@
                                        title="Toggle SPEND L30, CLICKS L30, AD SOLD L30 columns"></i>
                                 </div>
                             `;
-                        },
-                        cellClick: function(e, cell) {
-                            const target = e.target;
-                            if (target.classList.contains("toggle-acos-cols-btn") || target.closest(".toggle-acos-cols-btn")) {
-                                e.stopPropagation();
-                                let colsToToggle = ["SPEND L30", "Clicks L30", "AD SOLD L30"];
-                                colsToToggle.forEach(colName => {
-                                    let col = window.table.getColumn(colName);
-                                    if (col) {
-                                        col.toggle();
-                                    }
-                                });
-                            }
                         },
                         visible: true,
                     },
@@ -1160,9 +1149,135 @@
             window.table.on("rowSelectionChanged", function(data, rows){
                 if(data.length > 0){
                     document.getElementById("apr-all-sbid-btn").classList.remove("d-none");
+                    document.getElementById("bulk-mark-nrl-btn").classList.remove("d-none");
+                    document.getElementById("bulk-mark-nra-btn").classList.remove("d-none");
                 } else {
                     document.getElementById("apr-all-sbid-btn").classList.add("d-none");
+                    document.getElementById("bulk-mark-nrl-btn").classList.add("d-none");
+                    document.getElementById("bulk-mark-nra-btn").classList.add("d-none");
                 }
+            });
+
+            // Bulk mark NRL handler
+            document.getElementById("bulk-mark-nrl-btn").addEventListener("click", function() {
+                const selectedRows = window.table.getSelectedRows();
+                if (selectedRows.length === 0) {
+                    alert("Please select at least one row");
+                    return;
+                }
+
+                const savePromises = [];
+                selectedRows.forEach(function(row) {
+                    const rowData = row.getData();
+                    const sku = rowData.sku;
+                    if (!sku) return;
+
+                    // Update row data
+                    rowData.NRL = "NRL";
+                    // If NRL is set to "NRL", also set NRA to "NRA"
+                    rowData.NRA = "NRA";
+                    row.update(rowData);
+
+                    // Update NRL cell display
+                    const nrlCell = row.getCell("NRL");
+                    if (nrlCell) {
+                        nrlCell.reformat();
+                    }
+
+                    // Update NRA cell display
+                    const nraCell = row.getCell("NRA");
+                    if (nraCell) {
+                        nraCell.reformat();
+                    }
+
+                    // Save NRL
+                    savePromises.push(fetch('/walmart/save-nrl', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        },
+                        body: JSON.stringify({ sku: sku, value: "NRL" })
+                    }));
+
+                    // Save NRA
+                    savePromises.push(fetch('/walmart/save-nra', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        },
+                        body: JSON.stringify({ sku: sku, value: "NRA" })
+                    }));
+                });
+
+                Promise.all(savePromises)
+                    .then(responses => Promise.all(responses.map(r => r.json())))
+                    .then(results => {
+                        console.log(`Successfully marked ${selectedRows.length} rows as NRL`);
+                        // Refresh MISSING column if needed
+                        selectedRows.forEach(function(row) {
+                            const missingCell = row.getCell("hasCampaign");
+                            if (missingCell) {
+                                missingCell.reformat();
+                            }
+                        });
+                    })
+                    .catch(error => {
+                        console.error('Error saving bulk NRL:', error);
+                    });
+            });
+
+            // Bulk mark NRA handler
+            document.getElementById("bulk-mark-nra-btn").addEventListener("click", function() {
+                const selectedRows = window.table.getSelectedRows();
+                if (selectedRows.length === 0) {
+                    alert("Please select at least one row");
+                    return;
+                }
+
+                const savePromises = [];
+                selectedRows.forEach(function(row) {
+                    const rowData = row.getData();
+                    const sku = rowData.sku;
+                    if (!sku) return;
+
+                    // Update row data
+                    rowData.NRA = "NRA";
+                    row.update(rowData);
+
+                    // Update NRA cell display
+                    const nraCell = row.getCell("NRA");
+                    if (nraCell) {
+                        nraCell.reformat();
+                    }
+
+                    // Save NRA
+                    savePromises.push(fetch('/walmart/save-nra', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        },
+                        body: JSON.stringify({ sku: sku, value: "NRA" })
+                    }));
+                });
+
+                Promise.all(savePromises)
+                    .then(responses => Promise.all(responses.map(r => r.json())))
+                    .then(results => {
+                        console.log(`Successfully marked ${selectedRows.length} rows as NRA`);
+                        // Refresh MISSING column if needed
+                        selectedRows.forEach(function(row) {
+                            const missingCell = row.getCell("hasCampaign");
+                            if (missingCell) {
+                                missingCell.reformat();
+                            }
+                        });
+                    })
+                    .catch(error => {
+                        console.error('Error saving bulk NRA:', error);
+                    });
             });
 
             window.table.on("cellEdited", function(cell){
@@ -1267,12 +1382,10 @@
 
                 // Update button display
                 const isGreen = value === "RL" || value === "RA";
-                const displayText = field === "NRL" ? (isGreen ? "RL" : "NRL") : (isGreen ? "RA" : "NRA");
                 const dotClass = isGreen ? 'green' : 'red';
                 
                 button.html(`
                     <span class="status-dot ${dotClass}"></span>
-                    <span>${displayText}</span>
                 `);
                 button.data("value", value);
 
@@ -1308,7 +1421,6 @@
                                     // Update NRA button display
                                     nraButton.html(`
                                         <span class="status-dot red"></span>
-                                        <span>NRA</span>
                                     `);
                                     nraButton.data("value", "NRA");
                                     
@@ -1754,9 +1866,11 @@
                 
                 // Check if clicked element or its parent has the toggle-acos-cols-btn class
                 const toggleAcosBtn = e.target.closest(".toggle-acos-cols-btn") || 
-                                     (e.target.classList.contains("toggle-acos-cols-btn") ? e.target : null);
+                                     (e.target.classList && e.target.classList.contains("toggle-acos-cols-btn") ? e.target : null);
                 
                 if (toggleAcosBtn) {
+                    e.stopPropagation();
+                    e.preventDefault();
                     let colsToToggle = ["SPEND L30", "Clicks L30", "AD SOLD L30"];
                     colsToToggle.forEach(colName => {
                         let col = window.table.getColumn(colName);
