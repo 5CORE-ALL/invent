@@ -1044,6 +1044,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('walmartPricingCVR', [WalmartControllerMarket::class, 'walmartPricingCVR']);
     Route::post('/update-all-walmart-skus', [WalmartControllerMarket::class, 'updateAllWalmartSkus']);
     Route::post('/walmart/save-nr', [WalmartControllerMarket::class, 'saveNrToDatabase']);
+    Route::post('/walmart/save-nrl', [WalmartControllerMarket::class, 'saveNrlToDatabase']);
+    Route::post('/walmart/save-nra', [WalmartControllerMarket::class, 'saveNraToDatabase']);
     Route::post('/walmart/update-listed-live', [WalmartControllerMarket::class, 'updateListedLive']);
     Route::post('/walmart-analytics/import', [WalmartControllerMarket::class, 'importWalmartAnalytics'])->name('walmart.analytics.import');
     Route::get('/walmart-analytics/export', [WalmartControllerMarket::class, 'exportWalmartAnalytics'])->name('walmart.analytics.export');
@@ -2741,6 +2743,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/walmart/correctly/utilized', 'correctlyUtilisedView')->name('walmart.correctly.utilized');
         Route::get('/walmart/utilized/kw/data', 'getWalmartAdsData');
         Route::get('/walmart/utilized/bgt/7ub-chart-data', 'get7ubChartData');
+        Route::get('/walmart/utilized/bgt/combined-7ub-1ub-chart-data', 'getCombined7ub1ubChartData');
         Route::post('/walmart/utilized/bgt/refresh-sheet', 'refreshWalmartSheet');
         Route::post('/walmart/utilized/bgt/refresh-campaign-data', 'refreshWalmartCampaignData');
     });

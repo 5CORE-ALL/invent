@@ -364,6 +364,73 @@ class WalmartControllerMarket extends Controller
         ]);
     }
 
+    public function saveNrlToDatabase(Request $request)
+    {
+        $sku = $request->input('sku');
+        $value = $request->input('value'); // Should be "RL" or "NRL"
+
+        if (empty($sku) || $value === null || $value === '') {
+            return response()->json(['error' => 'SKU and value are required.'], 400);
+        }
+
+        // Validate value
+        if (!in_array($value, ['RL', 'NRL'])) {
+            return response()->json(['error' => 'Value must be RL or NRL.'], 400);
+        }
+        
+        // Save to WalmartListingStatus
+        $status = WalmartListingStatus::where('sku', $sku)->first();
+        $statusValue = [];
+        
+        if ($status) {
+            $statusValue = is_array($status->value) ? $status->value : (json_decode($status->value, true) ?? []);
+            WalmartListingStatus::where('sku', $sku)->delete();
+        }
+        
+        $statusValue['rl_nrl'] = $value;
+        
+        WalmartListingStatus::create([
+            'sku' => $sku,
+            'value' => $statusValue
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'sku' => $sku,
+            'stored_value' => $statusValue
+        ]);
+    }
+
+    public function saveNraToDatabase(Request $request)
+    {
+        $sku = $request->input('sku');
+        $value = $request->input('value'); // Should be "RA" or "NRA"
+
+        if (empty($sku) || $value === null || $value === '') {
+            return response()->json(['error' => 'SKU and value are required.'], 400);
+        }
+
+        // Validate value
+        if (!in_array($value, ['RA', 'NRA'])) {
+            return response()->json(['error' => 'Value must be RA or NRA.'], 400);
+        }
+        
+        // Save to WalmartDataView
+        $dataView = WalmartDataView::firstOrNew(['sku' => $sku]);
+        $existing = is_array($dataView->value) ? $dataView->value : (json_decode($dataView->value, true) ?? []);
+        
+        $existing['ra_nra'] = $value;
+        
+        $dataView->value = $existing;
+        $dataView->save();
+
+        return response()->json([
+            'success' => true,
+            'sku' => $sku,
+            'stored_value' => $existing
+        ]);
+    }
+
 
 
 
