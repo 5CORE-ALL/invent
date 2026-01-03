@@ -1180,8 +1180,31 @@
                         field: "ratings",
                         hozAlign: "center",
                         formatter: function(cell) {
-                            var value = cell.getValue();
-                            return value ? value + ' <span style="color: #ffc107;">★</span>' : '-';
+                            var row = cell.getRow().getData();
+                            var rating = row.ratings;
+                            var reviews = row.reviews;
+                            
+                            if (rating && reviews) {
+                                return '<div style="display: flex; flex-direction: column; align-items: center;">' +
+                                       '<div style="color: #ffc107; display: flex; align-items: center; gap: 4px;">' +
+                                       '<span style="color: #ffc107;">★</span>' +
+                                       '<span style="color: #ffc107;">' + rating + '</span>' +
+                                       '</div>' +
+                                       '<div style="font-size: 0.85em; color: #666; margin-top: 2px;">' + reviews + ' reviews</div>' +
+                                       '</div>';
+                            } else if (rating) {
+                                return '<div style="color: #ffc107; display: flex; align-items: center; gap: 4px; justify-content: center;">' +
+                                       '<span style="color: #ffc107;">★</span>' +
+                                       '<span style="color: #ffc107;">' + rating + '</span>' +
+                                       '</div>';
+                            } else if (reviews) {
+                                return '<div style="display: flex; flex-direction: column; align-items: center;">' +
+                                       '<div>-</div>' +
+                                       '<div style="font-size: 0.85em; color: #666; margin-top: 2px;">' + reviews + ' reviews</div>' +
+                                       '</div>';
+                            } else {
+                                return '-';
+                            }
                         },
                         width: 80
                     },

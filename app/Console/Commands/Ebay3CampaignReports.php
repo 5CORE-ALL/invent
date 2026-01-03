@@ -380,18 +380,7 @@ class Ebay3CampaignReports extends Command
         $clientId = env('EBAY_3_APP_ID');
         $clientSecret = env('EBAY_3_CERT_ID');
 
-        $scope = implode(' ', [
-            'https://api.ebay.com/oauth/api_scope',
-            'https://api.ebay.com/oauth/api_scope/sell.account',
-            'https://api.ebay.com/oauth/api_scope/sell.inventory',
-            'https://api.ebay.com/oauth/api_scope/sell.account',
-            'https://api.ebay.com/oauth/api_scope/sell.fulfillment',
-            'https://api.ebay.com/oauth/api_scope/sell.analytics.readonly',
-            'https://api.ebay.com/oauth/api_scope/sell.stores',
-            'https://api.ebay.com/oauth/api_scope/sell.finances',
-            'https://api.ebay.com/oauth/api_scope/sell.marketing',
-            'https://api.ebay.com/oauth/api_scope/sell.marketing.readonly'
-        ]);
+        $scope = 'https://api.ebay.com/oauth/api_scope/sell.marketing.readonly https://api.ebay.com/oauth/api_scope/sell.marketing';
 
         try {
             $response = Http::asForm()
@@ -407,9 +396,12 @@ class Ebay3CampaignReports extends Command
                 return $response->json()['access_token'];
             }
 
-            Log::error('eBay3 token refresh error', ['response' => $response->json()]);
+            $errorData = $response->json();
+            Log::error('eBay3 token refresh error', ['response' => $errorData]);
+            $this->error('eBay API Error: ' . ($errorData['error_description'] ?? $errorData['error'] ?? $response->body()));
         } catch (\Exception $e) {
             Log::error('eBay3 token refresh exception: ' . $e->getMessage());
+            $this->error('Exception: ' . $e->getMessage());
         }
 
         return null;

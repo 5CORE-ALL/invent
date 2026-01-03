@@ -10,6 +10,7 @@ use App\Models\WalmartCampaignReport;
 use App\Models\WalmartDataView;
 use App\Models\WalmartProductSheet;
 use App\Models\Walmart7ubDailyCount;
+use App\Models\MarketplacePercentage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Log;
@@ -59,6 +60,22 @@ class WalmartUtilisationController extends Controller
 
         $nrValues = WalmartDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
+        // Get percentage from database for GPFT%, PFT%, ROI% calculations
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'Walmart')->first();
+        $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.80; // Default to 80% if not found
+
+        // Get price data from walmart_api_data (same as walmart-tabulator-view)
+        $nonParentSkus = array_filter($skus, function($sku) {
+            return stripos($sku, 'PARENT') === false;
+        });
+        
+        $walmartLookup = DB::connection('apicentral')
+            ->table('walmart_api_data as api')
+            ->select('api.sku', 'api.price')
+            ->whereIn('api.sku', $nonParentSkus)
+            ->get()
+            ->keyBy('sku');
+
         // Get campaign data - prioritize L30 for status, fallback to L1, then L7
         $walmartCampaignReportsL30 = WalmartCampaignReport::where('report_range', 'L30')->whereIn('campaignName', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->campaignName));
         $walmartCampaignReportsL1  = WalmartCampaignReport::where('report_range', 'L1')->whereIn('campaignName', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->campaignName));
@@ -77,8 +94,8 @@ class WalmartUtilisationController extends Controller
             $sku = $normalizeSku($pm->sku);
             $parent = $pm->parent;
 
-            // Skip SKU rows that have a parent SKU
-            if (!empty($parent) && trim($parent) !== '') {
+            // Skip rows where SKU starts with "PARENT"
+            if (stripos($sku, 'PARENT') === 0) {
                 continue;
             }
 
@@ -146,6 +163,55 @@ class WalmartUtilisationController extends Controller
             } else {
                 $row['acos_l30'] = $spendL30 > 0 ? 100 : 0;
             }
+
+            // Get price from walmart_api_data
+            $price = 0;
+            if (isset($walmartLookup[$pm->sku])) {
+                $price = floatval($walmartLookup[$pm->sku]->price ?? 0);
+            }
+            // Fallback to WalmartProductSheet price if not in walmart_api_data
+            if ($price == 0 && $amazonSheet && isset($amazonSheet->price)) {
+                $price = floatval($amazonSheet->price ?? 0);
+            }
+            $row['price'] = $price;
+
+            // Get LP and Ship from ProductMaster
+            $values = $pm->Values ?: [];
+            $lp = $values['lp'] ?? 0;
+            if ($lp === 0 && isset($pm->lp)) {
+                $lp = floatval($pm->lp);
+            }
+            $ship = isset($values['ship']) ? floatval($values['ship']) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+
+            // Calculate AD% = (AD Spend / Sales) * 100
+            $adSpendL30 = $row['spend_l30'];
+            $w_l30 = $row['WA_L30'];
+            $salesAmount = $price * $w_l30;
+            $adPercent = 0;
+            if ($salesAmount > 0) {
+                $adPercent = round(($adSpendL30 / $salesAmount) * 100, 2);
+            } else if ($adSpendL30 > 0) {
+                $adPercent = 100; // If there's spend but no sales
+            }
+
+            // GPFT% Formula = ((price × percentage - ship - lp) / price) × 100
+            $gpftPercent = 0;
+            if ($price > 0) {
+                $gpftPercent = round((($price * $percentage - $ship - $lp) / $price) * 100, 2);
+            }
+            $row['GPFT'] = $gpftPercent;
+
+            // PFT% = GPFT% - AD%
+            $pftPercent = round($gpftPercent - $adPercent, 2);
+            $row['PFT'] = $pftPercent;
+
+            // ROI% = ((price * (percentage - AD%/100) - ship - lp) / lp) * 100
+            $roiPercent = 0;
+            $adDecimal = $adPercent / 100;
+            if ($lp > 0 && $price > 0) {
+                $roiPercent = round((($price * ($percentage - $adDecimal) - $ship - $lp) / $lp) * 100, 2);
+            }
+            $row['ROI'] = $roiPercent;
 
             // NR
             $row['NRA']  = '';
