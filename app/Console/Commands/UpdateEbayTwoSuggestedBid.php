@@ -227,8 +227,19 @@ class UpdateEbayTwoSuggestedBid extends Command
                     "sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_ads_bid_by_listing_id",
                     ['json' => ['requests' => $requests]]
                 );
-                $this->info("Campaign {$campaignId}: Updated " . json_encode($requests, JSON_PRETTY_PRINT) . " listings.");
+                $this->info("Campaign {$campaignId}: Updated " . count($requests) . " listings.");
                 Log::info("eBay campaign {$campaignId} bulk update response: " . $response->getBody()->getContents());
+            } catch (\GuzzleHttp\Exception\ClientException $e) {
+                $statusCode = $e->getResponse()->getStatusCode();
+                $responseBody = $e->getResponse()->getBody()->getContents();
+                
+                if ($statusCode === 404) {
+                    $this->warn("Campaign {$campaignId} not found (404). Skipping...");
+                    Log::warning("eBay campaign {$campaignId} not found: " . $responseBody);
+                } else {
+                    Log::error("Failed to update eBay campaign {$campaignId}: " . $e->getMessage());
+                    $this->error("Failed to update campaign {$campaignId} (Status: {$statusCode}). Check logs.");
+                }
             } catch (\Exception $e) {
                 Log::error("Failed to update eBay campaign {$campaignId}: " . $e->getMessage());
                 $this->error("Failed to update campaign {$campaignId}. Check logs.");

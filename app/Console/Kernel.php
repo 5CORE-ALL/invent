@@ -52,6 +52,7 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\EbayOverUtilzBidsAutoUpdate::class,
         \App\Console\Commands\EbayPinkDilKwBidsAutoUpdate::class,
         \App\Console\Commands\EbayPriceLessBidsAutoUpdate::class,
+        \App\Console\Commands\UpdateEbayOneBudget::class,
         \App\Console\Commands\AutoUpdateAmazonFbaOverKwBids::class,
         \App\Console\Commands\AutoUpdateAmazonFbaUnderKwBids::class,
         \App\Console\Commands\AutoUpdateAmazonFbaOverPtBids::class,
@@ -335,6 +336,9 @@ class Kernel extends ConsoleKernel
             ->dailyAt('12:00')
             ->timezone('Asia/Kolkata');
         $schedule->command('ebay3:update-suggestedbid')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata');
+        $schedule->command('ebay1:update-budget')
             ->dailyAt('12:00')
             ->timezone('Asia/Kolkata');
         // Walmart ad sheet sync command

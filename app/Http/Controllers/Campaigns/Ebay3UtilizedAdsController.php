@@ -241,6 +241,8 @@ class Ebay3UtilizedAdsController extends Controller
                     'adFees' => 0,
                     'sales' => 0,
                     'views' => 0,
+                    'clicks' => 0,
+                    'ad_sold' => 0,
                     'cvr' => 0,
                     'NR' => $nrValue,
                     'NRL' => $nrlValue,
@@ -271,6 +273,8 @@ class Ebay3UtilizedAdsController extends Controller
                 $campaignMap[$mapKey]['adFees'] = $adFees;
                 $campaignMap[$mapKey]['sales'] = $sales;
                 $campaignMap[$mapKey]['views'] = $views;
+                $campaignMap[$mapKey]['clicks'] = $views;
+                $campaignMap[$mapKey]['ad_sold'] = $attributedSales;
                 
                 // Calculate CVR: (attributed_sales / clicks) * 100
                 if ($views > 0) {
@@ -349,6 +353,8 @@ class Ebay3UtilizedAdsController extends Controller
                 'adFees' => 0,
                 'sales' => 0,
                 'views' => 0,
+                'clicks' => 0,
+                'ad_sold' => 0,
                 'cvr' => 0,
                 'NR' => $nrValue,
                 'NRL' => '',
@@ -377,6 +383,8 @@ class Ebay3UtilizedAdsController extends Controller
                     $campaignMap[$campaignId]['adFees'] = $adFees;
                     $campaignMap[$campaignId]['sales'] = $sales;
                     $campaignMap[$campaignId]['views'] = $views;
+                    $campaignMap[$campaignId]['clicks'] = $views;
+                    $campaignMap[$campaignId]['ad_sold'] = $attributedSales;
                     
                     // Calculate CVR: (attributed_sales / clicks) * 100
                     if ($views > 0) {

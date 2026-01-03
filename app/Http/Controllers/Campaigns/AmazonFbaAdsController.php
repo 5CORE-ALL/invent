@@ -452,7 +452,7 @@ class AmazonFbaAdsController extends Controller
 
         $amazonDataView = FbaManualData::where('sku', $sku)->first();
 
-        $jsonData = $amazonDataView && $amazonDataView->value ? $amazonDataView->value : [];
+        $jsonData = $amazonDataView && $amazonDataView->data ? $amazonDataView->data : [];
 
         $jsonData[$field] = $value;
 
@@ -463,7 +463,8 @@ class AmazonFbaAdsController extends Controller
 
         return response()->json([
             'status' => 200,
-            'message' => "...",
+            'message' => "Data updated successfully",
+            'success' => true,
             'updated_json' => $jsonData
         ]);
 
@@ -602,10 +603,6 @@ class AmazonFbaAdsController extends Controller
                 }
             }
 
-            if ($nra === 'NRA') {
-                continue;
-            }
-
             $budget = $matchedCampaignL7 ? ($matchedCampaignL7->campaignBudgetAmount ?? 0) : ($matchedCampaignL1 ? ($matchedCampaignL1->campaignBudgetAmount ?? 0) : 0);
             $l7_spend = $matchedCampaignL7 ? ($matchedCampaignL7->spend ?? 0) : 0;
             $l1_spend = $matchedCampaignL1 ? ($matchedCampaignL1->spend ?? 0) : 0;
@@ -689,6 +686,11 @@ class AmazonFbaAdsController extends Controller
             $row['clicks_L30'] = $matchedCampaignL30 ? ($matchedCampaignL30->clicks ?? 0) : 0;
             $row['clicks_L15'] = $matchedCampaign15 ? ($matchedCampaign15->clicks ?? 0) : 0;
             $row['clicks_L7'] = $matchedCampaignL7 ? ($matchedCampaignL7->clicks ?? 0) : 0;
+
+            // Add L30 fields for clicks, spend, and ad sold (purchases)
+            $row['l30_clicks'] = $row['clicks_L30'];
+            $row['l30_spend'] = $spend30;
+            $row['l30_purchases'] = $matchedCampaignL30 ? ($matchedCampaignL30->unitsSoldSameSku30d ?? 0) : 0;
 
             $row['NRL']  = '';
             $row['NRA'] = '';
@@ -893,6 +895,11 @@ class AmazonFbaAdsController extends Controller
             ->orderBy('seller_sku', 'asc')
             ->get();
 
+        // Calculate total unique FBA SKUs from the database
+        $totalFbaSkuCount = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
+            ->distinct('seller_sku')
+            ->count('seller_sku');
+
         // Extract seller SKUs for campaigns matching
         $sellerSkus = $fbaData->pluck('seller_sku')->unique()->toArray();
 
@@ -1007,18 +1014,11 @@ class AmazonFbaAdsController extends Controller
                 return $cleanName === $expected || $cleanName === ($expected . '.');
             });
 
-            if (!$matchedCampaignL7 && !$matchedCampaignL1) {
-                continue;
-            }
+            // Include all SKUs, even if they don't have campaigns
+            $campaignId = $matchedCampaignL7 ? ($matchedCampaignL7->campaign_id ?? '') : ($matchedCampaignL1 ? ($matchedCampaignL1->campaign_id ?? '') : '');
+            $campaignName = $matchedCampaignL7 ? ($matchedCampaignL7->campaignName ?? '') : ($matchedCampaignL1 ? ($matchedCampaignL1->campaignName ?? '') : '');
 
-            $campaignId = $matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? '');
-            $campaignName = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
-            
-            if (empty($campaignId) || empty($campaignName)) {
-                continue;
-            }
-
-            // Check NRA filter
+            // Check NRA filter (removed continue statement)
             $nra = '';
             $tpft = null;
             if (isset($nrValues[$sellerSku])) {
@@ -1032,16 +1032,12 @@ class AmazonFbaAdsController extends Controller
                 }
             }
 
-            if ($nra === 'NRA') {
-                continue;
-            }
-
             // Mark SKU as processed (unique filter)
             $processedSkus[] = $baseSkuUpper;
 
-            $budget = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? 0);
-            $l7_spend = $matchedCampaignL7->spend ?? 0;
-            $l1_spend = $matchedCampaignL1->spend ?? 0;
+            $budget = $matchedCampaignL7 ? ($matchedCampaignL7->campaignBudgetAmount ?? 0) : ($matchedCampaignL1 ? ($matchedCampaignL1->campaignBudgetAmount ?? 0) : 0);
+            $l7_spend = $matchedCampaignL7 ? ($matchedCampaignL7->spend ?? 0) : 0;
+            $l1_spend = $matchedCampaignL1 ? ($matchedCampaignL1->spend ?? 0) : 0;
 
             // Calculate UB7 and UB1
             $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
@@ -1063,29 +1059,29 @@ class AmazonFbaAdsController extends Controller
                 return $cleanName === $expected || $cleanName === ($expected . '.');
             });
 
+            $sales30 = $matchedCampaignL30 ? ($matchedCampaignL30->sales30d ?? 0) : 0;
+            $spend30 = $matchedCampaignL30 ? ($matchedCampaignL30->spend ?? 0) : 0;
+            $sales15 = ($matchedCampaign15 ? ($matchedCampaign15->sales14d ?? 0) : 0) + ($matchedCampaignL1 ? ($matchedCampaignL1->sales1d ?? 0) : 0);
+            $spend15 = $matchedCampaign15 ? ($matchedCampaign15->spend ?? 0) : 0;
+            $sales7 = $matchedCampaignL7 ? ($matchedCampaignL7->sales7d ?? 0) : 0;
+            $spend7 = $matchedCampaignL7 ? ($matchedCampaignL7->spend ?? 0) : 0;
+
             $row = [];
             $row['parent'] = '';
             $row['sku']    = $sellerSku;
             $row['INV']    = $fba->quantity_available ?? 0;
             $row['A_L30']    = $monthlySales ? ($monthlySales->l30_units ?? 0) : 0;
-            $row['L30']    = $shopify->quantity ?? 0;
+            $row['L30']    = $monthlySales ? ($monthlySales->l30_units ?? 0) : 0; // Changed to FBA L30 data
             $row['campaign_id'] = $campaignId;
             $row['campaignName'] = $campaignName;
-            $row['campaignStatus'] = $matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? '');
+            $row['campaignStatus'] = $matchedCampaignL7 ? ($matchedCampaignL7->campaignStatus ?? '') : ($matchedCampaignL1 ? ($matchedCampaignL1->campaignStatus ?? '') : '');
             $row['campaignBudgetAmount'] = $budget;
-            $row['sbid'] = $matchedCampaignL7->sbid ?? ($matchedCampaignL1->sbid ?? '');
-            $row['crnt_bid'] = $matchedCampaignL7->currentSpBidPrice ?? ($matchedCampaignL1->currentSpBidPrice ?? '');
+            $row['sbid'] = $matchedCampaignL7 ? ($matchedCampaignL7->sbid ?? '') : ($matchedCampaignL1 ? ($matchedCampaignL1->sbid ?? '') : '');
+            $row['crnt_bid'] = $matchedCampaignL7 ? ($matchedCampaignL7->currentSpBidPrice ?? '') : ($matchedCampaignL1 ? ($matchedCampaignL1->currentSpBidPrice ?? '') : '');
             $row['l7_spend'] = $l7_spend;
-            $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
+            $row['l7_cpc'] = $matchedCampaignL7 ? ($matchedCampaignL7->costPerClick ?? 0) : 0;
             $row['l1_spend'] = $l1_spend;
-            $row['l1_cpc'] = $matchedCampaignL1->costPerClick ?? 0;
-            
-            $sales30 = $matchedCampaignL30->sales30d ?? 0;
-            $spend30 = $matchedCampaignL30->spend ?? 0;
-            $sales15 = ($matchedCampaign15->sales14d ?? 0) + ($matchedCampaignL1->sales1d ?? 0);
-            $spend15 = $matchedCampaign15->spend ?? 0;
-            $sales7 = $matchedCampaignL7->sales7d ?? 0;
-            $spend7 = $matchedCampaignL7->spend ?? 0;
+            $row['l1_cpc'] = $matchedCampaignL1 ? ($matchedCampaignL1->costPerClick ?? 0) : 0;
 
             // ACOS L30
             if ($sales30 > 0) {
@@ -1115,9 +1111,12 @@ class AmazonFbaAdsController extends Controller
                 $row['acos_L7'] = 0;
             }
 
-            $row['clicks_L30'] = $matchedCampaignL30->clicks ?? 0;
-            $row['clicks_L15'] = $matchedCampaign15->clicks ?? 0;
-            $row['clicks_L7'] = $matchedCampaignL7->clicks ?? 0;
+            $row['clicks_L30'] = $matchedCampaignL30 ? ($matchedCampaignL30->clicks ?? 0) : 0;
+            $row['clicks_L15'] = $matchedCampaign15 ? ($matchedCampaign15->clicks ?? 0) : 0;
+            $row['clicks_L7'] = $matchedCampaignL7 ? ($matchedCampaignL7->clicks ?? 0) : 0;
+            $row['l30_clicks'] = $matchedCampaignL30 ? ($matchedCampaignL30->clicks ?? 0) : 0; // Added
+            $row['l30_spend'] = $matchedCampaignL30 ? ($matchedCampaignL30->spend ?? 0) : 0; // Added
+            $row['l30_purchases'] = $matchedCampaignL30 ? ($matchedCampaignL30->unitsSoldSameSku30d ?? 0) : 0; // Added
 
             $row['NRL']  = '';
             $row['NRA'] = '';
@@ -1137,6 +1136,7 @@ class AmazonFbaAdsController extends Controller
 
             $row['ub7'] = round($ub7, 2);
             $row['ub1'] = round($ub1, 2);
+            $row['hasCampaign'] = !empty($campaignId) && !empty($campaignName); // Indicate if a campaign exists
 
             $result[] = (object) $row;
         }
@@ -1146,6 +1146,7 @@ class AmazonFbaAdsController extends Controller
         return response()->json([
             'message' => 'Data fetched successfully',
             'data'    => $uniqueResult,
+            'total_fba_sku_count' => $totalFbaSkuCount,
             'status'  => 200,
         ]);
     }

@@ -1170,7 +1170,7 @@
                         hozAlign: "right",
                         formatter: function(cell) {
                             var value = parseFloat(cell.getValue() || 0);
-                            return value.toFixed(2) + "%";
+                            return value.toFixed(1) + "%";
                         },
                         sorter: "number",
                         width: 70
@@ -1180,6 +1180,39 @@
                         field: "campaignBudgetAmount",
                         hozAlign: "right",
                         formatter: (cell) => parseFloat(cell.getValue() || 0),
+                        sorter: "number",
+                        width: 80
+                    },
+                    {
+                        title: "SBGT",
+                        field: "suggestedBudget",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var acosRaw = row.acos;
+                            var acos = parseFloat(acosRaw);
+                            
+                            // If acos is 0 (no sales or no ad fees), set it to 100 for budget calculation
+                            // This matches the frontend logic: if(acos === 0) { acos = 100; }
+                            if (isNaN(acos) || acos === 0) {
+                                acos = 100;
+                            }
+                            
+                            // Calculate suggested budget based on ACOS rules:
+                            // - If ACOS < 4% then budget = $9
+                            // - If 4% ≤ ACOS < 8% then budget = $6
+                            // - If ACOS ≥ 8% (including 100% for no sales) then budget = $3
+                            var suggestedBudget = 0;
+                            if (acos < 4) {
+                                suggestedBudget = 9;
+                            } else if (acos >= 4 && acos < 8) {
+                                suggestedBudget = 6;
+                            } else {
+                                suggestedBudget = 3;
+                            }
+                            
+                            return suggestedBudget.toFixed(0);
+                        },
                         sorter: "number",
                         width: 80
                     },
@@ -1197,19 +1230,78 @@
                             }
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
+                            var acosValue = "";
                             if (acos === 0) {
                                 td.classList.add('red-bg');
-                                return "100%"; 
+                                acosValue = "100%"; 
                             } else if (acos < 7) {
                                 td.classList.add('pink-bg');
+                                acosValue = acos.toFixed(0) + "%";
                             } else if (acos >= 7 && acos <= 14) {
                                 td.classList.add('green-bg');
+                                acosValue = acos.toFixed(0) + "%";
                             } else if (acos > 14) {
                                 td.classList.add('red-bg');
+                                acosValue = acos.toFixed(0) + "%";
                             }
-                            return acos.toFixed(0) + "%";
+                            
+                            return '<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">' + acosValue + '<i class="fa-solid fa-info-circle toggle-metrics-btn" style="cursor: pointer; font-size: 12px; margin-left: 5px;" title="Toggle Clicks, Spend, Ad Sold"></i></div>';
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('toggle-metrics-btn') || e.target.closest('.toggle-metrics-btn')) {
+                                e.stopPropagation();
+                                var clicksVisible = table.getColumn('clicks').isVisible();
+                                var spendVisible = table.getColumn('adFees').isVisible();
+                                var adSoldVisible = table.getColumn('ad_sold').isVisible();
+                                
+                                if (clicksVisible || spendVisible || adSoldVisible) {
+                                    table.hideColumn('clicks');
+                                    table.hideColumn('adFees');
+                                    table.hideColumn('ad_sold');
+                                } else {
+                                    table.showColumn('clicks');
+                                    table.showColumn('adFees');
+                                    table.showColumn('ad_sold');
+                                }
+                            }
                         },
                         width: 70
+                    },
+                    {
+                        title: "CLICKS",
+                        field: "clicks",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            var value = parseInt(cell.getValue() || 0);
+                            return value.toLocaleString();
+                        },
+                        sorter: "number",
+                        visible: false,
+                        width: 80
+                    },
+                    {
+                        title: "SPEND",
+                        field: "adFees",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return value.toFixed(0);
+                        },
+                        sorter: "number",
+                        visible: false,
+                        width: 80
+                    },
+                    {
+                        title: "AD SOLD",
+                        field: "ad_sold",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            var value = parseInt(cell.getValue() || 0);
+                            return value.toLocaleString();
+                        },
+                        sorter: "number",
+                        visible: false,
+                        width: 90
                     },
                     {
                         title: "7 UB%",
@@ -2271,6 +2363,29 @@
                 }
                 // Ensure APR BID remains hidden
                 table.hideColumn('apr_bid');
+                
+                // Add click handler for toggle metrics button
+                setTimeout(function() {
+                    var acosHeader = document.querySelector('.tabulator-col[data-field="acos"] .toggle-metrics-btn');
+                    if (acosHeader) {
+                        acosHeader.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            var clicksVisible = table.getColumn('clicks').isVisible();
+                            var spendVisible = table.getColumn('adFees').isVisible();
+                            var adSoldVisible = table.getColumn('ad_sold').isVisible();
+                            
+                            if (clicksVisible || spendVisible || adSoldVisible) {
+                                table.hideColumn('clicks');
+                                table.hideColumn('adFees');
+                                table.hideColumn('ad_sold');
+                            } else {
+                                table.showColumn('clicks');
+                                table.showColumn('adFees');
+                                table.showColumn('ad_sold');
+                            }
+                        });
+                    }
+                }, 100);
 
                 // Update counts when data is filtered (debounced)
                 let filterTimeout = null;
