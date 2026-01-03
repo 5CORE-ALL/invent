@@ -365,6 +365,10 @@
                                                 <i class="fa-solid fa-check-double me-1"></i>
                                                 APR ALL SBID
                                             </button>
+                                            <button id="export-data-btn" class="btn btn-success btn-sm w-100">
+                                                <i class="fa-solid fa-download me-1"></i>
+                                                Export Data
+                                            </button>
                                         </div>
                                     </div>
                                 </div>
@@ -2064,6 +2068,194 @@
                             }
                     })
                     .catch(err => console.error(err));
+                }
+            });
+
+            // Export data button handler
+            document.getElementById("export-data-btn").addEventListener("click", function() {
+                if (typeof table !== 'undefined' && table) {
+                    // Get all data from table
+                    var allData = table.getData('all');
+                    
+                    // Get column definitions
+                    var columns = table.getColumns().filter(function(col) {
+                        var def = col.getDefinition();
+                        return def.field && def.title && def.visible !== false;
+                    });
+                    
+                    // Helper function to calculate SBID (same logic as formatter)
+                    function calculateSbidForExport(row) {
+                        var nraValue = row.NR ? row.NR.trim() : "";
+                        if (nraValue === 'NRA') {
+                            return '-';
+                        }
+                        
+                        var l1_cpc = parseFloat(row.l1_cpc) || 0;
+                        var l7_cpc = parseFloat(row.l7_cpc) || 0;
+                        var budget = parseFloat(row.campaignBudgetAmount) || 0;
+                        var ub7 = 0;
+                        var ub1 = 0;
+                        if (budget > 0) {
+                            ub7 = (parseFloat(row.l7_spend) || 0) / (budget * 7) * 100;
+                            ub1 = (parseFloat(row.l1_spend) || 0) / budget * 100;
+                        }
+                        
+                        var sbid = 0;
+                        if (currentUtilizationType === 'over') {
+                            var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
+                            if (cpcToUse > 1.25) {
+                                sbid = Math.floor(cpcToUse * 0.80 * 100) / 100;
+                            } else if (cpcToUse > 0) {
+                                sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
+                            } else {
+                                sbid = 0.50;
+                            }
+                        } else if (currentUtilizationType === 'under') {
+                            if (ub7 === 0 && ub1 === 0) {
+                                sbid = 0.50;
+                            } else {
+                                var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
+                                if (cpcToUse > 0) {
+                                    if (cpcToUse < 0.10) {
+                                        sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
+                                    } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
+                                        sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
+                                    } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
+                                        sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
+                                    } else {
+                                        sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
+                                    }
+                                } else {
+                                    sbid = 0.50;
+                                }
+                            }
+                        } else if (currentUtilizationType === 'correctly') {
+                            var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
+                            if (cpcToUse > 0) {
+                                sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
+                            } else {
+                                sbid = 0.50;
+                            }
+                        } else {
+                            // For 'all' type
+                            var rowAcos = parseFloat(row.acos) || 0;
+                            if (isNaN(rowAcos) || rowAcos === 0) {
+                                rowAcos = 100;
+                            }
+                            
+                            var l30 = parseFloat(row.L30 || 0);
+                            var inv = parseFloat(row.INV || 0);
+                            var dilDecimal = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? (l30 / inv) : 0;
+                            var dilPercent = parseFloat(dilDecimal) * 100;
+                            var isPink = (dilPercent >= 50);
+                            
+                            var isOverUtilized = false;
+                            var isUnderUtilized = false;
+                            
+                            if (!isPink) {
+                                if (ub7 > 99 && ub1 > 99) {
+                                    isOverUtilized = true;
+                                }
+                            }
+                            
+                            if (!isOverUtilized && ub7 < 66 && ub1 < 66 && !isPink) {
+                                isUnderUtilized = true;
+                            }
+                            
+                            if (isOverUtilized) {
+                                var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
+                                if (cpcToUse > 1.25) {
+                                    sbid = Math.floor(cpcToUse * 0.80 * 100) / 100;
+                                } else if (cpcToUse > 0) {
+                                    sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
+                                } else {
+                                    sbid = 0.50;
+                                }
+                            } else if (isUnderUtilized) {
+                                if (ub7 === 0 && ub1 === 0) {
+                                    sbid = 0.50;
+                                } else {
+                                    var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
+                                    if (cpcToUse > 0) {
+                                        if (cpcToUse < 0.10) {
+                                            sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
+                                        } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
+                                            sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
+                                        } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
+                                            sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
+                                        } else {
+                                            sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
+                                        }
+                                    } else {
+                                        sbid = 0.50;
+                                    }
+                                }
+                            } else {
+                                var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
+                                if (cpcToUse > 0) {
+                                    sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
+                                } else {
+                                    sbid = 0.50;
+                                }
+                            }
+                        }
+                        
+                        return (sbid === 0) ? '-' : sbid.toFixed(2);
+                    }
+                    
+                    // Build CSV content
+                    var csvContent = [];
+                    
+                    // Add headers
+                    var headers = [];
+                    columns.forEach(function(col) {
+                        headers.push(col.getDefinition().title);
+                    });
+                    csvContent.push(headers.join(','));
+                    
+                    // Add data rows
+                    allData.forEach(function(row) {
+                        var rowData = [];
+                        // Pre-calculate SBID and NR values
+                        var calculatedSbid = calculateSbidForExport(row);
+                        var nrValue = row.NR ? row.NR.trim() : '';
+                        var processedNr = nrValue || 'RA';
+                        
+                        columns.forEach(function(col) {
+                            var field = col.getField();
+                            var value;
+                            
+                            // Use calculated values for SBID and NR fields
+                            if (field === 'sbid') {
+                                value = calculatedSbid;
+                            } else if (field === 'NR') {
+                                value = processedNr;
+                            } else {
+                                value = row[field];
+                            }
+                            
+                            // Handle special formatting
+                            if (value === null || value === undefined) {
+                                value = '';
+                            } else if (typeof value === 'string' && value.includes(',')) {
+                                value = '"' + value + '"';
+                            }
+                            rowData.push(value);
+                        });
+                        csvContent.push(rowData.join(','));
+                    });
+                    
+                    // Download CSV
+                    var csvString = csvContent.join('\n');
+                    var blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+                    var link = document.createElement('a');
+                    var url = URL.createObjectURL(blob);
+                    link.setAttribute('href', url);
+                    link.setAttribute('download', 'ebay3-utilized-data.csv');
+                    link.style.visibility = 'hidden';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
                 }
             });
 
