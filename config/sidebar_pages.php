@@ -157,6 +157,7 @@ return [
 
     ['value' => 'walmart', 'text' => 'Walmart', 'group' => 'Marketplace'],
     ['value' => 'listing_walmart', 'text' => 'Listing Walmart', 'group' => 'Marketplace'],
+    ['value' => 'walmart_pricing', 'text' => 'Walmart Pricing', 'group' => 'Marketplace'],
 
     ['value' => 'aliexpress', 'text' => 'Aliexpress', 'group' => 'Marketplace'],
     ['value' => 'listing_aliexpress', 'text' => 'Listing Aliexpress', 'group' => 'Marketplace'],
