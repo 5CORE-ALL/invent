@@ -402,6 +402,7 @@ class ChannelMasterController extends Controller
         $nRoi = $metrics->n_roi ?? 0;
         $kwSpent = $metrics->kw_spent ?? 0;
         $ptSpent = $metrics->pmt_spent ?? 0;
+        $hlSpent = $metrics->hl_spent ?? 0;
         
         // Calculate growth
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
@@ -411,7 +412,7 @@ class ChannelMasterController extends Controller
         $gRoiL60 = 0;
 
         // Calculate Ads %
-        $adsPercentage = $l30Sales > 0 ? (($kwSpent + $ptSpent) / $l30Sales) * 100 : 0;
+        $adsPercentage = $l30Sales > 0 ? (($kwSpent + $ptSpent + $hlSpent) / $l30Sales) * 100 : 0;
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Amazon')->first();
@@ -439,7 +440,8 @@ class ChannelMasterController extends Controller
             'N ROI'      => round($nRoi, 2),
             'KW Spent'   => round($kwSpent, 2),
             'PMT Spent'  => round($ptSpent, 2),
-            'Total Ad Spend' => round($kwSpent + $ptSpent, 2),
+            'HL Spent'   => round($hlSpent, 2),
+            'Total Ad Spend' => round($kwSpent + $ptSpent + $hlSpent, 2),
             'Ads%'       => round($adsPercentage, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,

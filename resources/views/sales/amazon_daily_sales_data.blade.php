@@ -114,6 +114,7 @@
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge" style="color: white; font-weight: bold;">Total COGS: $0.00</span>
                         <span class="badge fs-6 p-2" id="pt-spent-badge" style="background-color: #28a745; color: white; font-weight: bold;">PT Spent: ${{ number_format($ptSpent ?? 0, 0) }}</span>
                         <span class="badge fs-6 p-2" id="kw-spent-badge" style="background-color: #ffc107; color: black; font-weight: bold;">KW Spent: ${{ number_format($kwSpent ?? 0, 0) }}</span>
+                        <span class="badge fs-6 p-2" id="hl-spent-badge" style="background-color: #dc3545; color: white; font-weight: bold;">HL Spent: ${{ number_format($hlSpent ?? 0, 0) }}</span>
                         <span class="badge fs-6 p-2" id="tacos-percentage-badge" style="background-color: #6f42c1; color: white; font-weight: bold;">TACOS %: 0%</span>
                         <span class="badge fs-6 p-2" id="m-pft-badge" style="background-color: #fd7e14; color: white; font-weight: bold;">N PFT: 0%</span>
                         <span class="badge fs-6 p-2" id="n-roi-badge" style="background-color: #e83e8c; color: white; font-weight: bold;">N ROI: 0%</span>
@@ -144,6 +145,7 @@
     let table = null;
     const KW_SPENT = {{ $kwSpent ?? 0 }};
     const PT_SPENT = {{ $ptSpent ?? 0 }};
+    const HL_SPENT = {{ $hlSpent ?? 0 }};
     
     // Toast notification function
     function showToast(message, type = 'info') {
@@ -558,15 +560,15 @@
             // Calculate ROI Percentage: (PFT Total / Total COGS) * 100
             const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
 
-            // Calculate TACOS Percentage: ((KW Spent + PT Spent) / Total Sales) * 100
-            const tacosPercentage = totalRevenue > 0 ? ((KW_SPENT + PT_SPENT) / totalRevenue) * 100 : 0;
+            // Calculate TACOS Percentage: ((KW Spent + PT Spent + HL Spent) / Total Sales) * 100
+            const tacosPercentage = totalRevenue > 0 ? ((KW_SPENT + PT_SPENT + HL_SPENT) / totalRevenue) * 100 : 0;
 
             // Calculate N PFT: GPFT % - TACOS %
             const mPft = pftPercentage - tacosPercentage;
             
             // Calculate N ROI: (Net Profit / Total COGS) * 100
-            // Net Profit = Total PFT - (KW Spent + PT Spent)
-            const netProfit = totalPft - (KW_SPENT + PT_SPENT);
+            // Net Profit = Total PFT - (KW Spent + PT Spent + HL Spent)
+            const netProfit = totalPft - (KW_SPENT + PT_SPENT + HL_SPENT);
             const nRoi = totalCogs > 0 ? (netProfit / totalCogs) * 100 : 0;
             
             // Calculate Ads %: (Sum of unique SKU KW+PT / Total Sales) * 100

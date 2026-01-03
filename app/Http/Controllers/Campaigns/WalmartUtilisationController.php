@@ -3,14 +3,17 @@
 namespace App\Http\Controllers\Campaigns;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\ApiController;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\WalmartCampaignReport;
 use App\Models\WalmartDataView;
 use App\Models\WalmartProductSheet;
 use App\Models\Walmart7ubDailyCount;
+use App\Models\MarketplacePercentage;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
 class WalmartUtilisationController extends Controller
@@ -57,6 +60,22 @@ class WalmartUtilisationController extends Controller
 
         $nrValues = WalmartDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
+        // Get percentage from database for GPFT%, PFT%, ROI% calculations
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'Walmart')->first();
+        $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.80; // Default to 80% if not found
+
+        // Get price data from walmart_api_data (same as walmart-tabulator-view)
+        $nonParentSkus = array_filter($skus, function($sku) {
+            return stripos($sku, 'PARENT') === false;
+        });
+        
+        $walmartLookup = DB::connection('apicentral')
+            ->table('walmart_api_data as api')
+            ->select('api.sku', 'api.price')
+            ->whereIn('api.sku', $nonParentSkus)
+            ->get()
+            ->keyBy('sku');
+
         // Get campaign data - prioritize L30 for status, fallback to L1, then L7
         $walmartCampaignReportsL30 = WalmartCampaignReport::where('report_range', 'L30')->whereIn('campaignName', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->campaignName));
         $walmartCampaignReportsL1  = WalmartCampaignReport::where('report_range', 'L1')->whereIn('campaignName', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->campaignName));
@@ -75,15 +94,19 @@ class WalmartUtilisationController extends Controller
             $sku = $normalizeSku($pm->sku);
             $parent = $pm->parent;
 
+            // Skip rows where SKU starts with "PARENT"
+            if (stripos($sku, 'PARENT') === 0) {
+                continue;
+            }
+
             $amazonSheet = $walmartProductSheet[$sku] ?? null;
             $shopify = $shopifyData[$sku] ?? null;
 
             // Campaign name & budget - get from any report range
             $matchedCampaign = $walmartCampaignReportsAll[$sku] ?? null;
 
-            if (!$matchedCampaign) {
-                continue;
-            }
+            // Check if campaign exists
+            $hasCampaign = $matchedCampaign !== null;
 
             // Metrics by report_range
             $matchedCampaignL30 = $walmartCampaignReportsL30[$sku] ?? null;
@@ -97,9 +120,10 @@ class WalmartUtilisationController extends Controller
             $row['L30']    = $shopify->quantity ?? 0;
             $row['WA_L30'] = $amazonSheet->l30 ?? 0;
 
-            // Campaign info (all SKUs)
+            // Campaign info (all SKUs) - set defaults if no campaign
             $row['campaignName'] = $matchedCampaign->campaignName ?? '';
-            $row['campaignBudgetAmount'] = $matchedCampaign->budget ?? '';
+            $row['campaignBudgetAmount'] = $matchedCampaign->budget ?? 0;
+            $row['hasCampaign'] = $hasCampaign;
             
             // Get status from L30 first, then L1, then L7, then any
             $status = null;
@@ -109,7 +133,7 @@ class WalmartUtilisationController extends Controller
                 $status = $matchedCampaignL1->status;
             } elseif ($matchedCampaignL7 && $matchedCampaignL7->status) {
                 $status = $matchedCampaignL7->status;
-            } elseif ($matchedCampaign->status) {
+            } elseif ($matchedCampaign && $matchedCampaign->status) {
                 $status = $matchedCampaign->status;
             }
             
@@ -118,11 +142,13 @@ class WalmartUtilisationController extends Controller
             if (in_array($statusUpper, ['LIVE', 'ENABLED', 'ACTIVE', 'RUNNING'])) {
                 $row['campaignStatus'] = 'LIVE';
             } else {
-                $row['campaignStatus'] = 'PAUSED';
+                $row['campaignStatus'] = $hasCampaign ? 'PAUSED' : '';
             }
 
-            // Metrics
+            // Metrics - set to 0 if no campaign
             $row['clicks_l30'] = $matchedCampaignL30 ? ($matchedCampaignL30->clicks ?? 0) : 0;
+            $row['spend_l30']  = $matchedCampaignL30 ? (float)($matchedCampaignL30->spend ?? 0) : 0;
+            $row['sales_l30']  = $matchedCampaignL30 ? (float)($matchedCampaignL30->sales ?? 0) : 0;
             $row['spend_l7']   = $matchedCampaignL7 ? ($matchedCampaignL7->spend ?? 0) : 0;
             $row['spend_l1']   = $matchedCampaignL1 ? ($matchedCampaignL1->spend ?? 0) : 0;
             $row['cpc_l7']     = $matchedCampaignL7 ? ($matchedCampaignL7->cpc ?? 0) : 0;
@@ -130,13 +156,62 @@ class WalmartUtilisationController extends Controller
             
             // ACOS calculation: (spend/sales) * 100
             // Use L30 data for ACOS
-            $spendL30 = $matchedCampaignL30 ? (float)($matchedCampaignL30->spend ?? 0) : 0;
-            $salesL30 = $matchedCampaignL30 ? (float)($matchedCampaignL30->sales ?? 0) : 0;
+            $spendL30 = $row['spend_l30'];
+            $salesL30 = $row['sales_l30'];
             if ($salesL30 > 0) {
                 $row['acos_l30'] = round(($spendL30 / $salesL30) * 100, 2);
             } else {
                 $row['acos_l30'] = $spendL30 > 0 ? 100 : 0;
             }
+
+            // Get price from walmart_api_data
+            $price = 0;
+            if (isset($walmartLookup[$pm->sku])) {
+                $price = floatval($walmartLookup[$pm->sku]->price ?? 0);
+            }
+            // Fallback to WalmartProductSheet price if not in walmart_api_data
+            if ($price == 0 && $amazonSheet && isset($amazonSheet->price)) {
+                $price = floatval($amazonSheet->price ?? 0);
+            }
+            $row['price'] = $price;
+
+            // Get LP and Ship from ProductMaster
+            $values = $pm->Values ?: [];
+            $lp = $values['lp'] ?? 0;
+            if ($lp === 0 && isset($pm->lp)) {
+                $lp = floatval($pm->lp);
+            }
+            $ship = isset($values['ship']) ? floatval($values['ship']) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+
+            // Calculate AD% = (AD Spend / Sales) * 100
+            $adSpendL30 = $row['spend_l30'];
+            $w_l30 = $row['WA_L30'];
+            $salesAmount = $price * $w_l30;
+            $adPercent = 0;
+            if ($salesAmount > 0) {
+                $adPercent = round(($adSpendL30 / $salesAmount) * 100, 2);
+            } else if ($adSpendL30 > 0) {
+                $adPercent = 100; // If there's spend but no sales
+            }
+
+            // GPFT% Formula = ((price × percentage - ship - lp) / price) × 100
+            $gpftPercent = 0;
+            if ($price > 0) {
+                $gpftPercent = round((($price * $percentage - $ship - $lp) / $price) * 100, 2);
+            }
+            $row['GPFT'] = $gpftPercent;
+
+            // PFT% = GPFT% - AD%
+            $pftPercent = round($gpftPercent - $adPercent, 2);
+            $row['PFT'] = $pftPercent;
+
+            // ROI% = ((price * (percentage - AD%/100) - ship - lp) / lp) * 100
+            $roiPercent = 0;
+            $adDecimal = $adPercent / 100;
+            if ($lp > 0 && $price > 0) {
+                $roiPercent = round((($price * ($percentage - $adDecimal) - $ship - $lp) / $lp) * 100, 2);
+            }
+            $row['ROI'] = $roiPercent;
 
             // NR
             $row['NRA']  = '';
@@ -153,19 +228,40 @@ class WalmartUtilisationController extends Controller
 
         $uniqueResult = collect($result)->unique('sku')->values()->all();
 
-        // Calculate totals from ALL L30 campaigns (not just filtered ones)
-        $allL30Campaigns = WalmartCampaignReport::where('report_range', 'L30')->get();
+        // Calculate totals ONLY from records that exist in the current Google Sheet
+        // Use recently updated records (within last 2 hours) to ensure we only count current Google Sheet data
+        // This avoids including old/stale records that are no longer in the Google Sheet
+        // For sales: Cast to DECIMAL to handle NULL and ensure proper numeric conversion
+        $totals = DB::table('walmart_campaign_reports')
+            ->where('report_range', 'L30')
+            ->where('updated_at', '>=', Carbon::now()->subHours(2))
+            ->selectRaw('
+                COALESCE(SUM(COALESCE(spend, 0)), 0) as total_spend,
+                COALESCE(SUM(COALESCE(CAST(sales AS DECIMAL(10,2)), 0)), 0) as total_sales
+            ')
+            ->first();
         
-        $totalSpend = 0;
-        $totalSales = 0;
-        
-        foreach ($allL30Campaigns as $campaign) {
-            $totalSpend += (float)($campaign->spend ?? 0);
-            $totalSales += (float)($campaign->sales ?? 0);
+        // If no recent records found, try fetching current Google Sheet data directly
+        if (($totals->total_spend ?? 0) == 0 && ($totals->total_sales ?? 0) == 0) {
+            $currentSheetCampaigns = $this->getCurrentGoogleSheetCampaigns();
+            if (!empty($currentSheetCampaigns)) {
+                $totals = DB::table('walmart_campaign_reports')
+                    ->where('report_range', 'L30')
+                    ->whereIn('campaignName', $currentSheetCampaigns)
+                    ->selectRaw('
+                        COALESCE(SUM(COALESCE(spend, 0)), 0) as total_spend,
+                        COALESCE(SUM(COALESCE(CAST(sales AS DECIMAL(10,2)), 0)), 0) as total_sales
+                    ')
+                    ->first();
+            }
         }
         
+        // Ensure proper decimal precision (round to 2 decimal places)
+        $totalSpend = round((float)($totals->total_spend ?? 0), 2);
+        $totalSales = round((float)($totals->total_sales ?? 0), 2);
+        
         // Calculate average ACOS: (total spend / total sales) * 100
-        $avgAcos = $totalSales > 0 ? ($totalSpend / $totalSales) * 100 : 0;
+        $avgAcos = $totalSales > 0 ? round(($totalSpend / $totalSales) * 100, 2) : 0;
 
         // Calculate and store today's 7UB counts
         $this->calculateAndStore7ubCounts($avgAcos, $uniqueResult);
@@ -299,6 +395,198 @@ class WalmartUtilisationController extends Controller
                 'message' => 'Error loading chart data: ' . $e->getMessage(),
                 'data' => [],
             ], 500);
+        }
+    }
+
+    /**
+     * Refresh Walmart sheet data from source
+     */
+    public function refreshWalmartSheet()
+    {
+        try {
+            $controller = new ApiController();
+            $sheet = $controller->fetchDataFromWalmartListingDataSheet();
+            $rows = collect($sheet->getData()->data ?? []);
+
+            $syncedCount = 0;
+            foreach ($rows as $row) {
+                $sku = trim($row->{'(Child) sku'} ?? '');
+                if (!$sku) continue;
+
+                WalmartProductSheet::updateOrCreate(
+                    ['sku' => $sku],
+                    [
+                        'price'     => $this->toDecimalOrNull($row->{'Price'} ?? null),
+                        'pft'       => $this->toDecimalOrNull($row->{'Pft%'} ?? null),
+                        'roi'       => $this->toDecimalOrNull($row->{'ROI%'} ?? null),
+                        'l30'       => $this->toIntOrNull($row->{'WL30'} ?? null),
+                        'l90'       => $this->toIntOrNull($row->{'WL90'} ?? null),
+                        'dil'       => $this->toDecimalOrNull($row->{'Dil%'} ?? null),
+                        'buy_link'  => trim($row->{'Buyer Link'} ?? ''),
+                        'views'     => $this->toIntOrNull($row->{'Views'} ?? null),
+                    ]
+                );
+                $syncedCount++;
+            }
+
+            return response()->json([
+                'status' => 200,
+                'message' => 'Walmart sheet synced successfully!',
+                'synced_count' => $syncedCount,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error refreshing Walmart sheet: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
+            return response()->json([
+                'status' => 500,
+                'message' => 'Error syncing Walmart sheet: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Refresh Walmart campaign report data (L30, L7, L1) from Google Sheet
+     */
+    public function refreshWalmartCampaignData()
+    {
+        try {
+            $url = "https://script.google.com/macros/s/AKfycbxWwC98yCcPDcXjXfKpbE0dMC74L0YfF0fx2HdG_i3G7BzSjuhD8H9X98byGQymFNbx/exec";
+
+            $response = \Illuminate\Support\Facades\Http::get($url);
+
+            if (!$response->ok()) {
+                return response()->json([
+                    'status' => 500,
+                    'message' => 'Failed to fetch campaign data from Google Sheet',
+                ], 500);
+            }
+
+            $json = $response->json();
+            $syncedCount = 0;
+
+            // Sync L1, L7, L30, L90 data
+            foreach (['L1', 'L7', 'L30', 'L90'] as $range) {
+                if (!isset($json[$range]['data'])) {
+                    continue;
+                }
+
+                foreach ($json[$range]['data'] as $row) {
+                    $campaignId = $row['campaign_id'] ?? null;
+                    if ($campaignId === "" || $campaignId === null) {
+                        $campaignId = null;
+                    }
+
+                    // Use attributed_sales from Google Sheet - try multiple field name formats
+                    $sales = $row['attributed_sales'] ?? 
+                             $row['total_attributed_sales'] ?? 
+                             $row['Attributed Sales'] ?? 
+                             $row['Total Attributed Sales'] ??
+                             $row['sales'] ??
+                             $row['Sales'] ??
+                             null;
+                    
+                    // Convert empty strings to null, ensure numeric values are properly cast to decimal
+                    // For sales: ensure it's converted to decimal even if it comes as string
+                    $budget = $this->toDecimalOrNull($row['daily_budget'] ?? null);
+                    $spend = $this->toDecimalOrNull($row['ad_spend'] ?? null);
+                    $salesValue = $this->toDecimalOrNull($sales);
+                    $cpc = $this->toDecimalOrNull($row['average_cpc'] ?? null);
+                    $impressions = $this->toIntOrNull($row['impressions'] ?? null);
+                    $clicks = $this->toIntOrNull($row['clicks'] ?? null);
+                    $sold = $this->toIntOrNull($row['units_sold'] ?? null);
+
+                    WalmartCampaignReport::updateOrCreate(
+                        [
+                            'campaign_id'  => $campaignId,
+                            'report_range' => $range,
+                        ],
+                        [
+                            'campaignName'  => $row['campaign_name'] ?? null,
+                            'budget'        => $budget,
+                            'spend'         => $spend,
+                            'sales'         => $salesValue,
+                            'cpc'           => $cpc,
+                            'impressions'   => $impressions,
+                            'clicks'        => $clicks,
+                            'sold'          => $sold,
+                            'status'        => $row['campaign_status'] ?? null,
+                        ]
+                    );
+                    $syncedCount++;
+                }
+            }
+
+            return response()->json([
+                'status' => 200,
+                'message' => 'Walmart campaign data synced successfully!',
+                'synced_count' => $syncedCount,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error refreshing Walmart campaign data: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
+            return response()->json([
+                'status' => 500,
+                'message' => 'Error syncing Walmart campaign data: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    private function toDecimalOrNull($value)
+    {
+        // Handle empty strings, null, and non-numeric values
+        if ($value === "" || $value === null) {
+            return null;
+        }
+        // Convert to float and round to 2 decimal places
+        if (is_numeric($value)) {
+            return round((float)$value, 2);
+        }
+        // Try to extract numeric value from string
+        $numericValue = filter_var($value, FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRAC);
+        return is_numeric($numericValue) ? round((float)$numericValue, 2) : null;
+    }
+
+    private function toIntOrNull($value)
+    {
+        return is_numeric($value) ? (int)$value : null;
+    }
+
+    /**
+     * Get list of campaign names currently in Google Sheet (L30 data only)
+     * This ensures we only sum data that exists in the current Google Sheet
+     */
+    private function getCurrentGoogleSheetCampaigns()
+    {
+        try {
+            $url = "https://script.google.com/macros/s/AKfycbxWwC98yCcPDcXjXfKpbE0dMC74L0YfF0fx2HdG_i3G7BzSjuhD8H9X98byGQymFNbx/exec";
+            
+            $response = \Illuminate\Support\Facades\Http::timeout(10)->get($url);
+            
+            if (!$response->ok()) {
+                Log::warning('Failed to fetch current Google Sheet data for totals calculation');
+                return [];
+            }
+            
+            $json = $response->json();
+            
+            // Get L30 data only
+            if (!isset($json['L30']['data'])) {
+                return [];
+            }
+            
+            // Extract unique campaign names from current Google Sheet
+            $campaignNames = [];
+            foreach ($json['L30']['data'] as $row) {
+                $campaignName = $row['campaign_name'] ?? null;
+                if ($campaignName && !empty(trim($campaignName))) {
+                    $campaignNames[] = trim($campaignName);
+                }
+            }
+            
+            return array_unique($campaignNames);
+        } catch (\Exception $e) {
+            Log::error('Error fetching current Google Sheet campaigns: ' . $e->getMessage());
+            return [];
         }
     }
 

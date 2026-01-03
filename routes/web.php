@@ -814,6 +814,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/bestbuy-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'getColumnVisibility'])->name('bestbuy.pricing.column.get');
     Route::post('/bestbuy-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'setColumnVisibility'])->name('bestbuy.pricing.column.set');
 
+    // Macy's Pricing Routes (Tabulator)
+    Route::get('/macys-pricing', [\App\Http\Controllers\MarketPlace\MacyController::class, 'macysTabulatorView'])->name('macys.pricing');
+    Route::get('/macys-data-json', [\App\Http\Controllers\MarketPlace\MacyController::class, 'macysDataJson'])->name('macys.data.json');
+    Route::post('/macys-update-nr-req', [\App\Http\Controllers\MarketPlace\MacyController::class, 'updateNrReq'])->name('macys.update.nr.req');
+    Route::post('/macys-save-sprice-tabulator', [\App\Http\Controllers\MarketPlace\MacyController::class, 'saveSpriceTabulator'])->name('macys.save.sprice.tabulator');
+    Route::get('/macys-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\MacyController::class, 'getTabulatorColumnVisibility'])->name('macys.pricing.column.get');
+    Route::post('/macys-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\MacyController::class, 'setTabulatorColumnVisibility'])->name('macys.pricing.column.set');
+
     
     // eBay 2 Sales Routes
     Route::get('/ebay2/daily-sales-data', [\App\Http\Controllers\Sales\Ebay2SalesController::class, 'getData'])->name('ebay2.daily.sales.data');
@@ -2733,6 +2741,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/walmart/correctly/utilized', 'correctlyUtilisedView')->name('walmart.correctly.utilized');
         Route::get('/walmart/utilized/kw/data', 'getWalmartAdsData');
         Route::get('/walmart/utilized/bgt/7ub-chart-data', 'get7ubChartData');
+        Route::post('/walmart/utilized/bgt/refresh-sheet', 'refreshWalmartSheet');
+        Route::post('/walmart/utilized/bgt/refresh-campaign-data', 'refreshWalmartCampaignData');
     });
 
     Route::controller(WalmartMissingAdsController::class)->group(function () {

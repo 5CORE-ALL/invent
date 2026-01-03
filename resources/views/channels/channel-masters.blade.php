@@ -812,6 +812,7 @@
                         <tr>
                             <th>Channel</th>
                             <th>R&A</th>
+                            <th>Sheet</th>
                             {{-- <th>Link</th> --}}
                             <th>Sheet Link</th>
                             {{-- <th class="text-center align-middle">
@@ -1819,6 +1820,12 @@
                         }
                     },
                     {
+                        data: 'Sheet',
+                        render: function (v, type, row) {
+                            return `<span class="metric-value">${v}</span>`;
+                        }
+                    },
+                    {
                         data: 'sheet_link',
                         visible: false,
                         render: function(data, type, row) {
@@ -1933,7 +1940,8 @@
                         render: function (v, type, row) {
                             const kwSpent = toNum(pick(row, ['KW Spent', 'kw_spent', 'kwSpent'], 0));
                             const pmtSpent = toNum(pick(row, ['PMT Spent', 'pmt_spent', 'pmtSpent'], 0));
-                            const totalSpent = kwSpent + pmtSpent;
+                            const hlSpent = toNum(pick(row, ['HL Spent', 'hl_spent', 'hlSpent'], 0));
+                            const totalSpent = kwSpent + pmtSpent + hlSpent;
                             
                             if (type === 'sort' || type === 'type') return totalSpent;
                             
@@ -1950,6 +1958,7 @@
                                     <option value="total" selected style="background-color: #91e1ff; color: black; font-weight: bold;">$${Math.round(totalSpent).toLocaleString('en-US')}</option>
                                     <option value="kw" style="background-color: #198754; color: white; font-weight: bold;">KW: $${kwSpent.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option>
                                     <option value="pmt" style="background-color: #ffc107; color: black; font-weight: bold;">PMT: $${pmtSpent.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option>
+                                    <option value="hl" style="background-color: #dc3545; color: white; font-weight: bold;">HL: $${hlSpent.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option>
                                 </select>
                             `;
                         }
@@ -2084,7 +2093,8 @@
                                 // Ad Spend data
                                 let kwSpent = toNum(pick(item, ['KW Spent', 'kw_spent', 'kwSpent'], 0), 0);
                                 let pmtSpent = toNum(pick(item, ['PMT Spent', 'pmt_spent', 'pmtSpent'], 0), 0);
-                                let totalAdSpend = toNum(pick(item, ['Total Ad Spend', 'total_spent', 'totalAdSpend'], 0), 0);
+                                let hlSpent = toNum(pick(item, ['HL Spent', 'hl_spent', 'hlSpent'], 0), 0);
+                                let totalAdSpend = kwSpent + pmtSpent + hlSpent;
 
                                 // Get type from backend (normalized to B2C, B2B, Dropship only)
                                 let channelType = pick(item, ['type'], 'B2C');
@@ -2098,11 +2108,17 @@
                                     channelType = 'B2C'; // Default everything else to B2C
                                 }
 
+                                let channelName = pick(item, ['channel', 'Channel', 'Channel '], '').toLowerCase().trim();
+                                let sheetChannels = ['temu', 'aliexpress', 'shein', 'mercari with ship', 'mercari without ship'];
+                                let nConnChannels = ['instagram shop', 'fb marketplace', 'pls', 'business 5core', 'wholesale central', 'depop.com', 'amazon fba', 'faire', 'topdawg'];
+                                let sheetValue = sheetChannels.includes(channelName) ? 'Sheet' : nConnChannels.includes(channelName) ? 'N Conn' : 'API';
+
                                 return {
                                     'Channel': pick(item, ['channel', 'Channel', 'Channel '], ''),
                                     'Link': pick(item, ['link', 'url', 'URL LINK', 'url_link'], ''),
                                     'sheet_link': pick(item, ['sheet_link', 'sheet_url', 'sheet'], ''),
                                     'R&A': toNum(pick(item, ['ra', 'R&A', 'R_and_A'], 0), 0),
+                                    'Sheet': sheetValue,
                                     'L-60 Sales': l60Sales,
                                     'L30 Sales': l30Sales,
                                     'Growth': growth,
@@ -2117,6 +2133,7 @@
                                     'Ads%': adsPercentage,
                                     'KW Spent': kwSpent,
                                     'PMT Spent': pmtSpent,
+                                    'HL Spent': hlSpent,
                                     'Total Ad Spend': totalAdSpend,
                                     'Red Margin': toNum(pick(item, ['red_margin', 'Total_pft', 'total_pft'], 0), 0),
                                     'NR': toNum(pick(item, ['nr','NR'], 0), 0),
