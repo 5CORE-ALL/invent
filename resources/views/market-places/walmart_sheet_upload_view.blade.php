@@ -1039,7 +1039,7 @@
 
             if (inventoryFilter !== 'all') {
                 table.addFilter(function(data) {
-                    const inv = parseFloat(data.total_qty) || 0;
+                    const inv = parseFloat(data.INV) || 0;
                     if (inventoryFilter === 'gt0') return inv > 0;
                     if (inventoryFilter === 'eq0') return inv === 0;
                     return true;
