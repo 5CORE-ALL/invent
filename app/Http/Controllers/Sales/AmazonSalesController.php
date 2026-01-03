@@ -61,9 +61,10 @@ class AmazonSalesController extends Controller
 
     public function getData(Request $request)
     {
-        // 32 days: yesterday se 31 din pehle tak
+        // L30: Last 30 days (yesterday minus 30 days = 31 days total, matching Amazon's date range)
+        // Example: If today is Jan 3, yesterday is Jan 2, start is Dec 3 (Dec 3 to Jan 2 = 31 days)
         $yesterday = \Carbon\Carbon::yesterday();
-        $startDate = $yesterday->copy()->subDays(31); // 32 days total
+        $startDate = $yesterday->copy()->subDays(30); // 31 days total (matches Amazon L30)
         $startDateStr = $startDate->format('Y-m-d');
         $yesterdayStr = $yesterday->format('Y-m-d');
 
@@ -251,5 +252,122 @@ class AmazonSalesController extends Controller
         $visibility = $request->input('visibility', []);
         session(['amazon_sales_column_visibility' => $visibility]);
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * Debug endpoint to verify data discrepancy
+     */
+    public function debugData(Request $request)
+    {
+        $yesterday = \Carbon\Carbon::yesterday();
+        $startDate = $yesterday->copy()->subDays(31); // 32 days total
+        
+        // Match Amazon's date range exactly (Dec 3 to Jan 2)
+        $amazonStartDate = \Carbon\Carbon::parse('2025-12-03');
+        $amazonEndDate = \Carbon\Carbon::parse('2026-01-02')->endOfDay();
+        
+        $debug = [];
+        
+        // 1. Date range info
+        $debug['date_ranges'] = [
+            'code_uses' => $startDate->format('Y-m-d') . ' to ' . $yesterday->format('Y-m-d'),
+            'amazon_shows' => '2025-12-03 to 2026-01-02',
+        ];
+        
+        // 2. Count total orders in date range (matching Amazon's range)
+        $totalOrders = DB::table('amazon_orders')
+            ->whereBetween('order_date', [$amazonStartDate, $amazonEndDate])
+            ->count();
+        $debug['total_orders'] = $totalOrders;
+        
+        // 3. Count non-cancelled orders
+        $nonCancelledOrders = DB::table('amazon_orders')
+            ->whereBetween('order_date', [$amazonStartDate, $amazonEndDate])
+            ->where('status', '!=', 'Canceled')
+            ->count();
+        $debug['non_cancelled_orders'] = $nonCancelledOrders;
+        
+        // 4. Orders WITHOUT items (potential missing data)
+        $ordersWithoutItems = DB::table('amazon_orders')
+            ->whereBetween('order_date', [$amazonStartDate, $amazonEndDate])
+            ->where('status', '!=', 'Canceled')
+            ->whereNotIn('id', function($q) {
+                $q->select('amazon_order_id')->from('amazon_order_items');
+            })
+            ->count();
+        $debug['orders_without_items'] = $ordersWithoutItems;
+        
+        // 5. Count order items via join
+        $itemCount = DB::table('amazon_orders as o')
+            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+            ->whereBetween('o.order_date', [$amazonStartDate, $amazonEndDate])
+            ->where('o.status', '!=', 'Canceled')
+            ->count();
+        $debug['total_order_items'] = $itemCount;
+        
+        // 6. Total quantity
+        $totalQty = DB::table('amazon_orders as o')
+            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+            ->whereBetween('o.order_date', [$amazonStartDate, $amazonEndDate])
+            ->where('o.status', '!=', 'Canceled')
+            ->sum('i.quantity');
+        $debug['total_quantity'] = $totalQty;
+        
+        // 7. Sum of all item prices (this should match Amazon's "Ordered product sales")
+        $totalSales = DB::table('amazon_orders as o')
+            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+            ->whereBetween('o.order_date', [$amazonStartDate, $amazonEndDate])
+            ->where('o.status', '!=', 'Canceled')
+            ->sum('i.price');
+        $debug['total_sales_from_items'] = round($totalSales, 2);
+        
+        // 8. Items with 0 price (potential missing price data)
+        $zeroPriceItems = DB::table('amazon_orders as o')
+            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+            ->whereBetween('o.order_date', [$amazonStartDate, $amazonEndDate])
+            ->where('o.status', '!=', 'Canceled')
+            ->where('i.price', '=', 0)
+            ->count();
+        $debug['items_with_zero_price'] = $zeroPriceItems;
+        
+        // 9. Sample of items with 0 price to check raw_data
+        $sampleZeroPrice = DB::table('amazon_orders as o')
+            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+            ->whereBetween('o.order_date', [$amazonStartDate, $amazonEndDate])
+            ->where('o.status', '!=', 'Canceled')
+            ->where('i.price', '=', 0)
+            ->select('i.raw_data', 'i.asin', 'i.sku', 'i.quantity', 'o.amazon_order_id')
+            ->limit(10)
+            ->get();
+        
+        $zeroPriceSamples = [];
+        foreach ($sampleZeroPrice as $item) {
+            $rawData = json_decode($item->raw_data, true);
+            $zeroPriceSamples[] = [
+                'order_id' => $item->amazon_order_id,
+                'asin' => $item->asin,
+                'sku' => $item->sku,
+                'quantity' => $item->quantity,
+                'has_item_price' => isset($rawData['ItemPrice']),
+                'item_price_raw' => $rawData['ItemPrice'] ?? 'NOT SET',
+            ];
+        }
+        $debug['zero_price_samples'] = $zeroPriceSamples;
+        
+        // 10. Amazon's expected values
+        $debug['amazon_expected'] = [
+            'total_order_items' => 4379,
+            'units_ordered' => 4639,
+            'ordered_product_sales' => 164459.86,
+        ];
+        
+        // 11. Calculate discrepancies
+        $debug['discrepancies'] = [
+            'missing_order_items' => 4379 - $itemCount,
+            'missing_units' => 4639 - $totalQty,
+            'missing_sales' => round(164459.86 - $totalSales, 2),
+        ];
+        
+        return response()->json($debug, 200, [], JSON_PRETTY_PRINT);
     }
 }

@@ -931,6 +931,7 @@ class ChannelMasterController extends Controller
             'KW Spent'   => round($kwSpent, 2),
             'PMT Spent'  => round($pmtSpent, 2),
             'Total Ad Spend' => round($kwSpent + $pmtSpent, 2),
+            'Ads%'       => round($tacosPercentage, 2),
             'TACOS %'    => round($tacosPercentage, 2),
             'N PFT'      => round($nPft, 2),
             'N ROI'      => round($nRoi, 2),

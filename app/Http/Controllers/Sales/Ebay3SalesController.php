@@ -16,15 +16,20 @@ class Ebay3SalesController extends Controller
 {
     public function index()
     {
+        // Use the latest report data (from last 30 days) to match UpdateMarketplaceDailyMetrics
+        $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30);
+        
         // Calculate KW Spent (from ebay_3_priority_reports - parent-wise)
         $kwSpent = DB::table('ebay_3_priority_reports')
             ->where('report_range', 'L30')
+            ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
             ->selectRaw('SUM(CAST(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "") AS DECIMAL(10,2))) as total_spend')
             ->value('total_spend') ?? 0;
 
         // Calculate PMT Spent (from ebay_3_general_reports - item-wise)
         $pmtSpent = DB::table('ebay_3_general_reports')
             ->where('report_range', 'L30')
+            ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
             ->selectRaw('SUM(CAST(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "") AS DECIMAL(10,2))) as total_spend')
             ->value('total_spend') ?? 0;
 
@@ -119,8 +124,10 @@ class Ebay3SalesController extends Controller
             }
 
             $quantity = floatval($order->quantity ?? 1);
-            $unitPrice = floatval($order->unit_price ?? 0);
-            $saleAmount = $unitPrice * $quantity;
+            // IMPORTANT: unit_price in DB is the TOTAL line item cost (not per unit)
+            $lineItemTotal = floatval($order->unit_price ?? 0);
+            $perUnitPrice = $quantity > 0 ? $lineItemTotal / $quantity : 0;
+            $saleAmount = $lineItemTotal; // Already the total
 
             // T Weight = Weight Act * Quantity
             $tWeight = $weightAct * $quantity;
@@ -137,17 +144,17 @@ class Ebay3SalesController extends Controller
             // COGS = LP * quantity
             $cogs = $lp * $quantity;
 
-            // PFT Each = (unit_price * 0.85) - lp - ship_cost (eBay 3 uses 85% margin)
-            $pftEach = ($unitPrice * 0.85) - $lp - $shipCost;
+            // PFT Each = (per_unit_price * 0.85) - lp - ship_cost (eBay 3 uses 85% margin)
+            $pftEach = ($perUnitPrice * 0.85) - $lp - $shipCost;
 
-            // PFT Each % = (pft_each / unit_price) * 100
-            $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;
+            // PFT Each % = (pft_each / per_unit_price) * 100
+            $pftEachPct = $perUnitPrice > 0 ? ($pftEach / $perUnitPrice) * 100 : 0;
 
             // T PFT = pft_each * quantity
             $pft = $pftEach * $quantity;
 
-            // ROI = (PFT / LP) * 100
-            $roi = $lp > 0 ? ($pft / $lp) * 100 : 0;
+            // ROI = (PFT / COGS) * 100
+            $roi = $cogs > 0 ? ($pft / $cogs) * 100 : 0;
 
             // Get KW Spent for this parent (match campaign name containing parent)
             $kwSpent = 0;
@@ -172,8 +179,8 @@ class Ebay3SalesController extends Controller
                 'parent' => $parent,
                 'title' => $order->title,
                 'quantity' => $order->quantity,
-                'sale_amount' => round($saleAmount, 2),
-                'price' => round($unitPrice, 2),
+                'sale_amount' => round($saleAmount, 2), // Total for line item
+                'price' => round($perUnitPrice, 2), // Per unit price
                 'order_date' => $order->creation_date,
                 'status' => $order->order_fulfillment_status,
                 'period' => $order->period,
