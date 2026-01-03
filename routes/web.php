@@ -840,6 +840,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon/daily-sales', [AmazonSalesController::class, 'index'])->name('amazon.daily.sales');
     Route::get('/amazon-column-visibility', [AmazonSalesController::class, 'getColumnVisibility']);
     Route::post('/amazon-column-visibility', [AmazonSalesController::class, 'saveColumnVisibility']);
+    Route::get('/amazon/debug-data', [AmazonSalesController::class, 'debugData'])->name('amazon.debug.data');
     
     // Doba Sales Routes
     Route::get('/doba/daily-sales-data', [DobaSalesController::class, 'getData'])->name('doba.daily.sales.data');

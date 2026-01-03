@@ -201,11 +201,13 @@
                         <span class="badge bg-warning fs-6 p-2" id="avg-dil-percent-badge" style="color: black; font-weight: bold;">DIL %: 0%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
                         
-                        <!-- Ad Spend -->
+                        <!-- Ad Spend & Net Metrics -->
                         <span class="badge bg-danger fs-6 p-2" id="total-tcos-badge" style="color: black; font-weight: bold;">Total TCOS: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="total-spend-l30-badge" style="color: black; font-weight: bold;">Total Spend L30: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="total-kw-spend-l30-badge" style="color: black; font-weight: bold;">KW Spend L30: $0.00</span>
                         <span class="badge bg-secondary fs-6 p-2" id="total-pmt-spend-l30-badge" style="color: black; font-weight: bold;">PMT Spend L30: $0.00</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-npft-badge" style="color: black; font-weight: bold;">Net PFT %: 0%</span>
+                        <span class="badge bg-success fs-6 p-2" id="total-npft-amt-badge" style="color: black; font-weight: bold;">Net PFT AMT: $0.00</span>
                     </div>
                 </div>
             </div>
@@ -1777,10 +1779,22 @@
             $('#avg-cvr-badge').text('Avg CVR: ' + avgCVR.toFixed(1) + '%');
             $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
 
-            $('#total-tcos-badge').text('Total TCOS: ' + Math.round(totalTcos));
+            // Calculate TCOS = (Total Ad Spend / Total Sales) * 100
+            const tcosPercent = totalSalesAmt > 0 ? ((totalSpendL30 / totalSalesAmt) * 100).toFixed(2) : '0.00';
+            
+            // Calculate Net PFT % = Avg GPFT % - TCOS %
+            const avgGpft = totalSalesAmt > 0 ? ((totalPftAmt / totalSalesAmt) * 100) : 0;
+            const nPftPercent = avgGpft - parseFloat(tcosPercent);
+            
+            // Calculate Net PFT Amount = Total PFT - Total Ad Spend
+            const nPftAmount = totalPftAmt - totalSpendL30;
+
+            $('#total-tcos-badge').text('Total TCOS: ' + tcosPercent + '%');
             $('#total-spend-l30-badge').text('Total Spend L30: $' + totalSpendL30.toFixed(2));
             $('#total-kw-spend-l30-badge').text('KW Spend L30: $' + totalKwSpendL30.toFixed(2));
             $('#total-pmt-spend-l30-badge').text('PMT Spend L30: $' + totalPmtSpendL30.toFixed(2));
+            $('#total-npft-badge').text('Net PFT %: ' + nPftPercent.toFixed(2) + '%');
+            $('#total-npft-amt-badge').text('Net PFT AMT: $' + Math.round(nPftAmount));
             $('#total-cogs-amt-badge').text('COGS AMT: $' + Math.round(totalLpAmt));
             const roiPercent = totalLpAmt > 0 ? Math.round((totalPftAmt / totalLpAmt) * 100) : 0;
             $('#roi-percent-badge').text('ROI %: ' + roiPercent + '%');
@@ -1792,9 +1806,8 @@
             $('#total-pft-amt-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
             $('#total-sales-amt-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
             
-            // Calculate Avg GPFT = (Total PFT AMT / Total Sales AMT) × 100
-            const avgGpft = totalSalesAmt > 0 ? ((totalPftAmt / totalSalesAmt) * 100).toFixed(1) : '0.0';
-            $('#avg-gpft-badge').text('Avg GPFT: ' + avgGpft + '%');
+            // Display Avg GPFT
+            $('#avg-gpft-badge').text('Avg GPFT: ' + avgGpft.toFixed(1) + '%');
             
             // Calculate Avg PFT = Average of individual PFT% values (same formula as row-level)
             let totalPftPercent = 0;
