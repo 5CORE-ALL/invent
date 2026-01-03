@@ -877,25 +877,8 @@
                         hozAlign: "right",
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue() || 0);
-                            return `
-                                <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px;">
-                                    <span>${Math.round(value) + "%"}</span>
-                                    <i class="fa fa-info-circle text-primary toggle-acos-cols-btn" 
-                                       style="cursor:pointer; pointer-events: auto;" 
-                                       title="Toggle SPEND L30, CLICKS L30, AD SOLD L30 columns"></i>
-                                </div>
-                            `;
-                        },
-                        visible: true,
-                    },
-                    {
-                        title: "ALD BGT",
-                        field: "acos_l30",
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const acos = parseFloat(cell.getValue() || 0);
-                            const aldBgt = calculateAldBgt(acos);
-                            return `<span class="fw-bold">${aldBgt}</span>`;
+                            var tooltipText = "Toggle SPEND L30, Clicks L30, AD SOLD L30 columns";
+                            return `<div class="text-center">${Math.round(value) + "%"}<i class="fa fa-info-circle ms-1 info-icon-acos-toggle" style="cursor: pointer; color: #0d6efd;" title="${tooltipText}"></i></div>`;
                         },
                         visible: true,
                     },
@@ -930,6 +913,17 @@
                             `;
                         },
                         visible: false
+                    },
+                    {
+                        title: "ALD BGT",
+                        field: "acos_l30",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const acos = parseFloat(cell.getValue() || 0);
+                            const aldBgt = calculateAldBgt(acos);
+                            return `<span class="fw-bold">${aldBgt}</span>`;
+                        },
+                        visible: true,
                     },
                     {
                         title: "AD CVR",
@@ -1864,24 +1858,27 @@
                     });
                 }
                 
-                // Check if clicked element or its parent has the toggle-acos-cols-btn class
-                const toggleAcosBtn = e.target.closest(".toggle-acos-cols-btn") || 
-                                     (e.target.classList && e.target.classList.contains("toggle-acos-cols-btn") ? e.target : null);
-                
-                if (toggleAcosBtn) {
+                // ACOS L30 info icon toggle for SPEND L30, Clicks L30, AD SOLD L30
+                if (e.target.classList.contains('info-icon-acos-toggle') || e.target.closest('.info-icon-acos-toggle')) {
                     e.stopPropagation();
-                    e.preventDefault();
-                    let colsToToggle = ["SPEND L30", "Clicks L30", "AD SOLD L30"];
-                    colsToToggle.forEach(colName => {
-                        let col = window.table.getColumn(colName);
-                        if (col) {
-                            col.toggle();
-                        }
-                    });
+                    var spendCol = window.table.getColumn('spend_l30');
+                    var clicksCol = window.table.getColumn('clicks_l30');
+                    var soldCol = window.table.getColumn('sold_l30');
+                    
+                    // Toggle visibility
+                    if (spendCol && spendCol.isVisible()) {
+                        spendCol.hide();
+                        clicksCol.hide();
+                        soldCol.hide();
+                    } else {
+                        spendCol.show();
+                        clicksCol.show();
+                        soldCol.show();
+                    }
                 }
                 
                 // Price info icon toggle for GPFT%, PFT%, ROI%
-                if (e.target.classList.contains('info-icon-price-toggle')) {
+                if (e.target.classList.contains('info-icon-price-toggle') || e.target.closest('.info-icon-price-toggle')) {
                     e.stopPropagation();
                     var gpftCol = window.table.getColumn('GPFT');
                     var pftCol = window.table.getColumn('PFT');
