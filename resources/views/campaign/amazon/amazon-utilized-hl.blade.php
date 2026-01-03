@@ -813,8 +813,10 @@
                             categorized = true;
                         }
 
-                        // Under-utilized check (priority 2: only if not over-utilized): ub7 < 66
-                        if (!categorized && ub7 < 66 && ub1 < 66) {
+                        // Under-utilized check (priority 2: only if not over-utilized): ub7 < 66 && ub1 < 66, campaign must exist, and NRA !== 'NRA'
+                        // Note: hasCampaign is already declared above (line 747)
+                        let rowNraForUnder = row.NRA ? row.NRA.trim() : "";
+                        if (!categorized && ub7 < 66 && ub1 < 66 && hasCampaign && rowNraForUnder !== 'NRA') {
                             underCount++;
                             categorized = true;
                         }
@@ -1433,8 +1435,7 @@
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var acos = parseFloat(row.acos) || 0;
-                            var price = parseFloat(row.price || 0);
-                            var sbgtAcos, sbgtPrice;
+                            var sbgtAcos;
 
                             // Calculate ACOS-based SBGT
                             if (acos < 5) {
@@ -1455,17 +1456,7 @@
                                 sbgtAcos = 1;
                             }
 
-                            // Calculate Price-based SBGT
-                            if (price > 100) {
-                                sbgtPrice = 5;
-                            } else if (price >= 50 && price <= 100) {
-                                sbgtPrice = 3;
-                            } else {
-                                sbgtPrice = 0; // No price-based SBGT for price < 50
-                            }
-
-                            // Return whichever is higher
-                            var sbgt = Math.max(sbgtAcos, sbgtPrice);
+                            var sbgt = sbgtAcos;
 
                             return `<div class="text-center"><span class="fw-bold sbgt-value">${sbgt}</span></div>`;
                         }
@@ -1659,23 +1650,10 @@
                             }
                             
                             var aSbid = 0;
-                            var aPrice = parseFloat(aData.price) || 0;
-                            var aUb1 = 0;
-                            if (aBudget > 0) {
-                                aUb1 = (parseFloat(aData.l1_spend) || 0) / aBudget * 100;
-                            }
                             
-                            // Special case: If UB7 and UB1 = 0%, use price-based default
+                            // Special case: If UB7 and UB1 = 0%, use default value
                             if (aUb7 === 0 && aUb1 === 0) {
-                                if (aPrice < 50) {
-                                    aSbid = 0.50;
-                                } else if (aPrice >= 50 && aPrice < 100) {
-                                    aSbid = 1.00;
-                                } else if (aPrice >= 100 && aPrice < 200) {
-                                    aSbid = 1.50;
-                                } else {
-                                    aSbid = 2.00;
-                                }
+                                aSbid = 1.00;
                             } else if (aRowType === 'over') {
                                 // Priority: L1 CPC → L7 CPC → AVG CPC → 1.00, then decrease by 10%
                                 var aAvgCpc = parseFloat(aData.avg_cpc) || 0;
@@ -1702,13 +1680,6 @@
                                 }
                             }
                             
-                            // Apply price-based caps
-                            if (aPrice < 10 && aSbid > 0.10) {
-                                aSbid = 0.10;
-                            } else if (aPrice >= 10 && aPrice < 20 && aSbid > 0.20) {
-                                aSbid = 0.20;
-                            }
-                            
                             // Calculate SBID for row B
                             var bL1Cpc = parseFloat(bData.l1_cpc) || 0;
                             var bL7Cpc = parseFloat(bData.l7_cpc) || 0;
@@ -1733,19 +1704,10 @@
                             }
                             
                             var bSbid = 0;
-                            var bPrice = parseFloat(bData.price) || 0;
                             
-                            // Special case: If UB7 and UB1 = 0%, use price-based default
+                            // Special case: If UB7 and UB1 = 0%, use default value
                             if (bUb7 === 0 && bUb1 === 0) {
-                                if (bPrice < 50) {
-                                    bSbid = 0.50;
-                                } else if (bPrice >= 50 && bPrice < 100) {
-                                    bSbid = 1.00;
-                                } else if (bPrice >= 100 && bPrice < 200) {
-                                    bSbid = 1.50;
-                                } else {
-                                    bSbid = 2.00;
-                                }
+                                bSbid = 1.00;
                             } else if (bRowType === 'over') {
                                 // Priority: L1 CPC → L7 CPC → AVG CPC → 1.00, then decrease by 10%
                                 var bAvgCpc = parseFloat(bData.avg_cpc) || 0;
@@ -1772,13 +1734,6 @@
                                 }
                             }
                             
-                            // Apply price-based caps
-                            if (bPrice < 10 && bSbid > 0.10) {
-                                bSbid = 0.10;
-                            } else if (bPrice >= 10 && bPrice < 20 && bSbid > 0.20) {
-                                bSbid = 0.20;
-                            }
-                            
                             return aSbid - bSbid;
                         },
                         visible: true,
@@ -1793,7 +1748,6 @@
                             }
 
                             var sbid = 0;
-                            var price = parseFloat(row.price) || 0;
                             var ub1 = 0;
                             if (budget > 0) {
                                 ub1 = (parseFloat(row.l1_spend) || 0) / budget * 100;
@@ -1809,17 +1763,9 @@
                                 rowUtilizationType = 'correctly';
                             }
 
-                            // Special case: If UB7 and UB1 = 0%, use price-based default
+                            // Special case: If UB7 and UB1 = 0%, use default value
                             if (ub7 === 0 && ub1 === 0) {
-                                if (price < 50) {
-                                    sbid = 0.50;
-                                } else if (price >= 50 && price < 100) {
-                                    sbid = 1.00;
-                                } else if (price >= 100 && price < 200) {
-                                    sbid = 1.50;
-                                } else {
-                                    sbid = 2.00;
-                                }
+                                sbid = 1.00;
                             } else if (rowUtilizationType === 'over') {
                                 // Over-utilized: Priority - L1 CPC → L7 CPC → AVG CPC → 1.00, then decrease by 10%
                                 var l1_cpc = parseFloat(row.l1_cpc) || 0;
@@ -1851,12 +1797,6 @@
                                 sbid = 0;
                             }
                             
-                            // Apply price-based caps
-                            if (price < 10 && sbid > 0.10) {
-                                sbid = 0.10;
-                            } else if (price >= 10 && price < 20 && sbid > 0.20) {
-                                sbid = 0.20;
-                            }
                             return sbid === 0 ? '-' : sbid;
                         }
                     },
@@ -1932,35 +1872,59 @@
                                 var rowData = cell.getRow().getData();
                                 var l1_cpc = parseFloat(rowData.l1_cpc) || 0;
                                 var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
+                                var avg_cpc = parseFloat(rowData.avg_cpc) || 0;
                                 var budget = parseFloat(rowData.campaignBudgetAmount) || 0;
                                 var ub7 = 0;
                                 if (budget > 0) {
                                     ub7 = (parseFloat(rowData.l7_spend) || 0) / (budget * 7) * 100;
                                 }
+                                var ub1 = 0;
+                                if (budget > 0) {
+                                    ub1 = (parseFloat(rowData.l1_spend) || 0) / budget * 100;
+                                }
 
-                                var sbid = '';
-                                if (currentUtilizationType === 'over') {
-                                    if (l7_cpc === 0) {
-                                        sbid = 0.75;
-                                    } else {
+                                // Determine utilization type for this row
+                                var rowUtilizationType = 'all';
+                                if (ub7 > 99 && ub1 > 99) {
+                                    rowUtilizationType = 'over';
+                                } else if (ub7 < 66 && ub1 < 66) {
+                                    rowUtilizationType = 'under';
+                                } else if (ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99) {
+                                    rowUtilizationType = 'correctly';
+                                }
+
+                                var sbid = 0;
+                                // Special case: If UB7 and UB1 = 0%, use default value
+                                if (ub7 === 0 && ub1 === 0) {
+                                    sbid = 1.00;
+                                } else if (rowUtilizationType === 'over') {
+                                    // Over-utilized: Priority - L1 CPC → L7 CPC → AVG CPC → 1.00, then decrease by 10%
+                                    if (l1_cpc > 0) {
+                                        sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
+                                    } else if (l7_cpc > 0) {
                                         sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
-                                    }
-                                } else if (currentUtilizationType === 'under') {
-                                    if (ub7 < 70) {
-                                        if (ub7 < 10 || l7_cpc === 0) {
-                                            sbid = 0.75;
-                                        } else if (l7_cpc > 0 && l7_cpc < 0.30) {
-                                            sbid = parseFloat((l7_cpc + 0.20).toFixed(2));
-                                        } else {
-                                            sbid = Math.floor((l7_cpc * 1.10) * 100) / 100;
-                                        }
+                                    } else if (avg_cpc > 0) {
+                                        sbid = Math.floor(avg_cpc * 0.90 * 100) / 100;
                                     } else {
-                                        sbid = '';
+                                        sbid = 1.00;
+                                    }
+                                } else if (rowUtilizationType === 'under') {
+                                    // Under-utilized: Priority - L1 CPC → L7 CPC → AVG CPC → 1.00, then increase by 10%
+                                    if (l1_cpc > 0) {
+                                        sbid = parseFloat((l1_cpc * 1.10).toFixed(2));
+                                    } else if (l7_cpc > 0) {
+                                        sbid = parseFloat((l7_cpc * 1.10).toFixed(2));
+                                    } else if (avg_cpc > 0) {
+                                        sbid = parseFloat((avg_cpc * 1.10).toFixed(2));
+                                    } else {
+                                        sbid = 1.00;
                                     }
                                 } else {
-                                    sbid = '';
+                                    // Correctly-utilized or all: no SBID change needed
+                                    sbid = 0;
                                 }
-                                if (sbid !== '') {
+
+                                if (sbid !== 0) {
                                     updateBid(sbid, rowData.campaign_id);
                                 }
                             }
@@ -2069,8 +2033,11 @@
                     // Over-utilized: ub7 > 99 && ub1 > 99
                     if (!(ub7 > 99 && ub1 > 99)) return false;
                 } else if (currentUtilizationType === 'under') {
-                    // Under-utilized: ub7 < 66
+                    // Under-utilized: ub7 < 66 && ub1 < 66, campaign must exist, and NRA !== 'NRA'
                     if (!(ub7 < 66 && ub1 < 66)) return false;
+                    if (!hasCampaign) return false;
+                    const rowNraForUnder = data.NRA ? data.NRA.trim() : "";
+                    if (rowNraForUnder === 'NRA') return false;
                 } else if (currentUtilizationType === 'correctly') {
                     // Correctly-utilized: ub7 >= 66 && ub7 <= 99
                     if (!(ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99)) return false;
@@ -2395,36 +2362,59 @@
                             var rowData = row.getData();
                             var l1_cpc = parseFloat(rowData.l1_cpc) || 0;
                             var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
+                            var avg_cpc = parseFloat(rowData.avg_cpc) || 0;
                             var budget = parseFloat(rowData.campaignBudgetAmount) || 0;
                             var ub7 = 0;
                             if (budget > 0) {
                                 ub7 = (parseFloat(rowData.l7_spend) || 0) / (budget * 7) * 100;
                             }
-
-                            var sbid = '';
-                            if (currentUtilizationType === 'over') {
-                                if (l7_cpc === 0) {
-                                    sbid = 0.75;
-                                } else {
-                                    sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
-                                }
-                            } else if (currentUtilizationType === 'under') {
-                                if (ub7 < 70) {
-                                    if (ub7 < 10 || l7_cpc === 0) {
-                                        sbid = 0.75;
-                                    } else if (l7_cpc > 0 && l7_cpc < 0.30) {
-                                        sbid = parseFloat((l7_cpc + 0.20).toFixed(2));
-                                    } else {
-                                        sbid = Math.floor((l7_cpc * 1.10) * 100) / 100;
-                                    }
-                                } else {
-                                    sbid = '';
-                                }
-                            } else {
-                                sbid = '';
+                            var ub1 = 0;
+                            if (budget > 0) {
+                                ub1 = (parseFloat(rowData.l1_spend) || 0) / budget * 100;
                             }
 
-                            if (sbid !== '') {
+                            // Determine utilization type for this row
+                            var rowUtilizationType = 'all';
+                            if (ub7 > 99 && ub1 > 99) {
+                                rowUtilizationType = 'over';
+                            } else if (ub7 < 66 && ub1 < 66) {
+                                rowUtilizationType = 'under';
+                            } else if (ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99) {
+                                rowUtilizationType = 'correctly';
+                            }
+
+                            var sbid = 0;
+                            // Special case: If UB7 and UB1 = 0%, use default value
+                            if (ub7 === 0 && ub1 === 0) {
+                                sbid = 1.00;
+                            } else if (rowUtilizationType === 'over') {
+                                // Over-utilized: Priority - L1 CPC → L7 CPC → AVG CPC → 1.00, then decrease by 10%
+                                if (l1_cpc > 0) {
+                                    sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
+                                } else if (l7_cpc > 0) {
+                                    sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
+                                } else if (avg_cpc > 0) {
+                                    sbid = Math.floor(avg_cpc * 0.90 * 100) / 100;
+                                } else {
+                                    sbid = 1.00;
+                                }
+                            } else if (rowUtilizationType === 'under') {
+                                // Under-utilized: Priority - L1 CPC → L7 CPC → AVG CPC → 1.00, then increase by 10%
+                                if (l1_cpc > 0) {
+                                    sbid = parseFloat((l1_cpc * 1.10).toFixed(2));
+                                } else if (l7_cpc > 0) {
+                                    sbid = parseFloat((l7_cpc * 1.10).toFixed(2));
+                                } else if (avg_cpc > 0) {
+                                    sbid = parseFloat((avg_cpc * 1.10).toFixed(2));
+                                } else {
+                                    sbid = 1.00;
+                                }
+                            } else {
+                                // Correctly-utilized or all: no SBID change needed
+                                sbid = 0;
+                            }
+
+                            if (sbid !== 0) {
                                 campaignIds.push(rowData.campaign_id);
                                 bids.push(sbid);
                             }
