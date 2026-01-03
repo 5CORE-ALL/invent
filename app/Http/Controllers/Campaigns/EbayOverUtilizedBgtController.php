@@ -507,6 +507,8 @@ class EbayOverUtilizedBgtController extends Controller
 
             $adFees   = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_ad_fees_payout_currency ?? 0);
             $sales    = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_sale_amount_payout_currency ?? 0 );
+            $clicks = (int) ($matchedCampaignL30->cpc_clicks ?? 0);
+            $attributedSales = (int) ($matchedCampaignL30->cpc_attributed_sales ?? 0);
 
             $acos = $sales > 0 ? ($adFees / $sales) * 100 : 0;
             
@@ -520,6 +522,16 @@ class EbayOverUtilizedBgtController extends Controller
             // Add L30 spend and sales for totals calculation
             $row['spend_l30'] = $adFees;
             $row['ad_sales_l30'] = $sales;
+
+            // Calculate CVR: (attributed_sales / clicks) * 100 (same as Ebay3UtilizedAdsController)
+            if ($clicks > 0) {
+                $row['cvr'] = round(($attributedSales / $clicks) * 100, 2);
+            } else {
+                $row['cvr'] = 0;
+            }
+            $row['clicks'] = $clicks;
+            $row['adFees'] = $adFees;
+            $row['ad_sold'] = $attributedSales;
 
             $row['l7_spend'] = (float) str_replace('USD ', '', $matchedCampaignL7->cpc_ad_fees_payout_currency ?? 0);
             $row['l7_cpc'] = (float) str_replace('USD ', '', $matchedCampaignL7->cost_per_click ?? 0);
@@ -595,6 +607,8 @@ class EbayOverUtilizedBgtController extends Controller
             $matchedCampaignL30 = $matchedCampaignL30 ?? $matchedCampaignL7;
             $adFees = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_ad_fees_payout_currency ?? 0);
             $sales = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_sale_amount_payout_currency ?? 0);
+            $clicks = (int) ($matchedCampaignL30->cpc_clicks ?? 0);
+            $attributedSales = (int) ($matchedCampaignL30->cpc_attributed_sales ?? 0);
 
             $acos = $sales > 0 ? ($adFees / $sales) * 100 : 0;
             
@@ -608,6 +622,16 @@ class EbayOverUtilizedBgtController extends Controller
             // Add L30 spend and sales for totals calculation
             $row['spend_l30'] = $adFees;
             $row['ad_sales_l30'] = $sales;
+
+            // Calculate CVR: (attributed_sales / clicks) * 100 (same as Ebay3UtilizedAdsController)
+            if ($clicks > 0) {
+                $row['cvr'] = round(($attributedSales / $clicks) * 100, 2);
+            } else {
+                $row['cvr'] = 0;
+            }
+            $row['clicks'] = $clicks;
+            $row['adFees'] = $adFees;
+            $row['ad_sold'] = $attributedSales;
 
             $row['l7_spend'] = $matchedCampaignL7 ? (float) str_replace('USD ', '', $matchedCampaignL7->cpc_ad_fees_payout_currency ?? 0) : 0;
             $row['l7_cpc'] = $matchedCampaignL7 ? (float) str_replace('USD ', '', $matchedCampaignL7->cost_per_click ?? 0) : 0;
@@ -1141,6 +1165,9 @@ class EbayOverUtilizedBgtController extends Controller
                     'acos' => 0,
                     'adFees' => 0,
                     'sales' => 0,
+                    'clicks' => 0,
+                    'ad_sold' => 0,
+                    'cvr' => 0,
                     'NR' => $nrValue,
                     'NRL' => $nrlValue,
                     'hasCampaign' => $hasCampaign,
@@ -1165,8 +1192,20 @@ class EbayOverUtilizedBgtController extends Controller
             if ($matchedCampaignL30) {
                 $adFees = (float) str_replace(['USD ', ','], '', $matchedCampaignL30->cpc_ad_fees_payout_currency ?? '0');
                 $sales = (float) str_replace(['USD ', ','], '', $matchedCampaignL30->cpc_sale_amount_payout_currency ?? '0');
+                $clicks = (int) ($matchedCampaignL30->cpc_clicks ?? 0);
+                $adSold = (int) ($matchedCampaignL30->cpc_attributed_sales ?? 0);
                 $campaignMap[$mapKey]['adFees'] = $adFees;
                 $campaignMap[$mapKey]['sales'] = $sales;
+                $campaignMap[$mapKey]['clicks'] = $clicks;
+                $campaignMap[$mapKey]['ad_sold'] = $adSold;
+                
+                // Calculate CVR: (attributed_sales / clicks) * 100 (same as Ebay3UtilizedAdsController)
+                if ($clicks > 0) {
+                    $campaignMap[$mapKey]['cvr'] = round(($adSold / $clicks) * 100, 2);
+                } else {
+                    $campaignMap[$mapKey]['cvr'] = 0;
+                }
+                
                 if ($sales > 0) {
                     $campaignMap[$mapKey]['acos'] = round(($adFees / $sales) * 100, 2);
                 } else if ($adFees > 0 && $sales == 0) {
@@ -1257,6 +1296,9 @@ class EbayOverUtilizedBgtController extends Controller
                 'acos' => 0,
                 'adFees' => 0,
                 'sales' => 0,
+                'clicks' => 0,
+                'ad_sold' => 0,
+                'cvr' => 0,
                 'NR' => $nrValue,
                 'NRL' => $nrlValue,
                 'hasCampaign' => true, // These campaigns always have campaigns
@@ -1279,8 +1321,20 @@ class EbayOverUtilizedBgtController extends Controller
                 }
 
                 if ($reportRange == 'L30') {
+                    $clicks = (int) ($campaign->cpc_clicks ?? 0);
+                    $adSold = (int) ($campaign->cpc_attributed_sales ?? 0);
                     $campaignMap[$campaignId]['adFees'] = $adFees;
                     $campaignMap[$campaignId]['sales'] = $sales;
+                    $campaignMap[$campaignId]['clicks'] = $clicks;
+                    $campaignMap[$campaignId]['ad_sold'] = $adSold;
+                    
+                    // Calculate CVR: (attributed_sales / clicks) * 100 (same as Ebay3UtilizedAdsController)
+                    if ($clicks > 0) {
+                        $campaignMap[$campaignId]['cvr'] = round(($adSold / $clicks) * 100, 2);
+                    } else {
+                        $campaignMap[$campaignId]['cvr'] = 0;
+                    }
+                    
                     if ($sales > 0) {
                         $campaignMap[$campaignId]['acos'] = round(($adFees / $sales) * 100, 2);
                     } else if ($adFees > 0 && $sales == 0) {

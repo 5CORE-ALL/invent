@@ -15,7 +15,7 @@ class FetchEbay3DailyData extends Command
      *
      * @var string
      */
-    protected $signature = 'ebay3:daily {--days=60 : Number of days to fetch}';
+    protected $signature = 'ebay3:daily {--days=30 : Number of days to fetch}';
 
     /**
      * The console command description.

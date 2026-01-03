@@ -904,6 +904,12 @@
                         <li>
                             <a href="{{ route('ebay2.daily.sales') }}">eBay 2 Sales Data</a>
                         </li>
+
+                        <li>
+                            <a href="{{ url('/ebay3/daily-sales') }}">eBay 3 Sales Data</a>
+                        </li>
+
+                      
                         <li>
                             <a href="{{ url('amazon/daily-sales') }}">Amazon Sales Data</a>
                         </li>

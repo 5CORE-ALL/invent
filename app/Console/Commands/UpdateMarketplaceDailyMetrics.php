@@ -603,33 +603,65 @@ class UpdateMarketplaceDailyMetrics extends Command
 
             $totalOrders++;
             $quantity = (int) ($order->quantity ?? 1);
-            $unitPrice = (float) ($order->unit_price ?? 0);
+            // IMPORTANT: unit_price in ebay3_daily_data is the TOTAL line item cost (not per unit)
+            $lineItemTotal = (float) ($order->unit_price ?? 0);
+            $perUnitPrice = $quantity > 0 ? $lineItemTotal / $quantity : 0;
             
             $totalQuantity += $quantity;
-            $totalRevenue += $unitPrice * $quantity;
+            $totalRevenue += $lineItemTotal; // Already the total, don't multiply by quantity
 
-            if ($quantity > 0 && $unitPrice > 0) {
-                $totalWeightedPrice += $unitPrice * $quantity;
+            if ($quantity > 0 && $perUnitPrice > 0) {
+                $totalWeightedPrice += $perUnitPrice * $quantity;
                 $totalQuantityForPrice += $quantity;
             }
 
-            // Get LP, Ship from ProductMaster
+            // Get LP, Ship and Weight Act from ProductMaster
             $lp = 0;
             $ship = 0;
+            $weightAct = 0;
             if (isset($productMasters[$sku])) {
                 $pm = $productMasters[$sku];
                 $values = is_array($pm->Values) ? $pm->Values :
                         (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                $lp = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-                $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
+                
+                // Get LP
+                foreach ($values as $k => $v) {
+                    if (strtolower($k) === "lp") {
+                        $lp = floatval($v);
+                        break;
+                    }
+                }
+                if ($lp === 0 && isset($pm->lp)) {
+                    $lp = floatval($pm->lp);
+                }
+                
+                // Get Ship
+                $ship = isset($values['ship']) ? (float) $values['ship'] : (isset($pm->ship) ? floatval($pm->ship) : 0);
+                
+                // Get Weight Act
+                if (isset($values['wt_act'])) {
+                    $weightAct = floatval($values['wt_act']);
+                }
+            }
+
+            // T Weight = Weight Act * Quantity
+            $tWeight = $weightAct * $quantity;
+
+            // Ship Cost calculation (same as Ebay3SalesController)
+            if ($quantity == 1) {
+                $shipCost = $ship;
+            } elseif ($quantity > 1 && $tWeight < 20) {
+                $shipCost = $ship / $quantity;
+            } else {
+                $shipCost = $ship;
             }
 
             // COGS = LP * quantity
             $cogs = $lp * $quantity;
             $totalCogs += $cogs;
 
-            // PFT Each = (unit_price * 0.85) - lp - ship
-            $pftEach = ($unitPrice * $percentageDecimal) - $lp - $ship;
+            // PFT Each = (per_unit_price * 0.85) - lp - ship_cost
+            $pftEach = ($perUnitPrice * $percentageDecimal) - $lp - $shipCost;
 
             // T PFT = pft_each * quantity
             $pft = $pftEach * $quantity;
@@ -641,9 +673,13 @@ class UpdateMarketplaceDailyMetrics extends Command
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
         // Calculate KW and PMT Spent for eBay 3
+        // Use the latest report data (from last 30 days of updated_at) to avoid accumulating old reports
+        $thirtyDaysAgo = Carbon::now()->subDays(30);
+        
         // KW Spent from ebay_3_priority_reports
         $kwSpent = DB::table('ebay_3_priority_reports')
             ->where('report_range', 'L30')
+            ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
             ->get()
             ->sum(function ($r) {
                 return (float) preg_replace('/[^\d.]/', '', $r->cpc_ad_fees_payout_currency ?? '0');
@@ -652,6 +688,7 @@ class UpdateMarketplaceDailyMetrics extends Command
         // PMT Spent from ebay_3_general_reports
         $pmtSpent = DB::table('ebay_3_general_reports')
             ->where('report_range', 'L30')
+            ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
             ->get()
             ->sum(function ($r) {
                 return (float) preg_replace('/[^\d.]/', '', $r->ad_fees ?? '0');
