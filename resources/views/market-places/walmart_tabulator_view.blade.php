@@ -428,11 +428,15 @@
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const wL30 = parseFloat(row['W_L30']) || 0;
-                            const insightsViews = parseFloat(row['insights_views']) || 0;
+                            // Use page_views first, fallback to insights_views
+                            let pageViews = parseFloat(row['page_views']) || 0;
+                            if (pageViews === 0) {
+                                pageViews = parseFloat(row['insights_views']) || 0;
+                            }
 
-                            if (insightsViews === 0) return '<span style="color: #6c757d; font-weight: 600;">0.0%</span>';
+                            if (pageViews === 0) return '<span style="color: #6c757d; font-weight: 600;">0.0%</span>';
 
-                            const cvr = (wL30 / insightsViews) * 100;
+                            const cvr = (wL30 / pageViews) * 100;
                             let color = '';
                             
                             // getCvrColor logic from Amazon
@@ -446,8 +450,11 @@
                         sorter: function(a, b, aRow, bRow) {
                             const calcCVR = (row) => {
                                 const wL30 = parseFloat(row['W_L30']) || 0;
-                                const insightsViews = parseFloat(row['insights_views']) || 0;
-                                return insightsViews === 0 ? 0 : (wL30 / insightsViews) * 100;
+                                let pageViews = parseFloat(row['page_views']) || 0;
+                                if (pageViews === 0) {
+                                    pageViews = parseFloat(row['insights_views']) || 0;
+                                }
+                                return pageViews === 0 ? 0 : (wL30 / pageViews) * 100;
                             };
                             return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
                         },
@@ -456,7 +463,7 @@
 
                      {
                         title: "Views",
-                        field: "insights_views",
+                        field: "page_views",
                         hozAlign: "center",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
@@ -464,7 +471,11 @@
                             // Empty for parent rows
                             if (rowData.is_parent_summary) return '';
 
-                            const views = cell.getValue();
+                            // Use page_views first, fallback to insights_views
+                            let views = cell.getValue();
+                            if (!views || views === 0) {
+                                views = rowData.insights_views || 0;
+                            }
 
                             if (!views || views === 0) {
                                 return '<span style="color: #999;">0</span>';
@@ -1253,7 +1264,7 @@
                         const lp = parseFloat(row.LP_productmaster) || 0;
                         const ship = parseFloat(row.Ship_productmaster) || 0;
                         const inv = parseFloat(row.INV) || 0;
-                        const views = parseFloat(row.insights_views) || 0;
+                        const views = parseFloat(row.page_views) || parseFloat(row.insights_views) || 0;
                         const adSpend = parseFloat(row.AD_Spend_L30) || 0;
                         const kwSpend = parseFloat(row.kw_spend_L30) || 0;
                         const pmtSpend = parseFloat(row.pmt_spend_L30) || 0;

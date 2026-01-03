@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
-use App\Models\WalmartMetrics;
+use App\Models\WalmartPricingSales;
 use App\Models\WalmartProductSheet;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -94,8 +94,8 @@ class WalmartControllerMarket extends Controller
         // Also get Listed/Live from WalmartDataView
         $walmartDataViews = WalmartDataView::whereIn('sku', $skus)->get()->keyBy('sku');
 
-        // Fetch Walmart product sheet data
-        $walmartMetrics = WalmartMetrics::whereIn('sku', $skus)->get()->keyBy('sku');
+        // Fetch Walmart pricing sales data
+        $walmartPricingSalesData = WalmartPricingSales::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $nrValues = [];
         $listedValues = [];
@@ -168,15 +168,40 @@ class WalmartControllerMarket extends Controller
                 $processedItem['SCVR'] = 0;
             }
 
-            // Add data from walmart_product_sheets if available
-            if (isset($walmartMetrics[$sku])) {
-                $walmartMetric = $walmartMetrics[$sku];
-                $processedItem['sheet_price'] = $walmartMetric->price ?? 0;
-                $processedItem['sheet_pft'] = $walmartMetric->pft ?? 0;
-                $processedItem['sheet_roi'] = $walmartMetric->roi ?? 0;
-                $processedItem['sheet_l30'] = $walmartMetric->l30 ?? 0; // Walmart L30
-                $processedItem['sheet_dil'] = $walmartMetric->dil ?? 0; // Walmart Dilution
-                $processedItem['buy_link'] = $walmartMetric->buy_link ?? '';
+            // Add data from walmart_pricing_sales if available
+            if (isset($walmartPricingSalesData[$sku])) {
+                $pricingSales = $walmartPricingSalesData[$sku];
+                $sheetPrice = floatval($pricingSales->current_price ?? 0);
+                $sheetL30 = intval($pricingSales->l30_qty ?? 0);
+                $lpVal = floatval($processedItem['LP'] ?? 0);
+                $shipVal = floatval($processedItem['Ship'] ?? 0);
+                
+                $processedItem['sheet_price'] = $sheetPrice;
+                $processedItem['sheet_l30'] = $sheetL30; // Walmart L30
+                
+                // Calculate sheet_pft = ((price * percentage - lp - ship) / price) * 100
+                if ($sheetPrice > 0) {
+                    $processedItem['sheet_pft'] = round((($sheetPrice * $percentageValue - $lpVal - $shipVal) / $sheetPrice) * 100, 2);
+                } else {
+                    $processedItem['sheet_pft'] = 0;
+                }
+                
+                // Calculate sheet_roi = ((price * percentage - lp - ship) / lp) * 100
+                if ($lpVal > 0) {
+                    $processedItem['sheet_roi'] = round((($sheetPrice * $percentageValue - $lpVal - $shipVal) / $lpVal) * 100, 2);
+                } else {
+                    $processedItem['sheet_roi'] = 0;
+                }
+                
+                // Calculate sheet_dil = (L30 / INV) * 100
+                $invVal = floatval($processedItem['INV'] ?? 0);
+                if ($invVal > 0) {
+                    $processedItem['sheet_dil'] = round(($sheetL30 / $invVal) * 100, 2);
+                } else {
+                    $processedItem['sheet_dil'] = 0;
+                }
+                
+                $processedItem['buy_link'] = '';
             } else {
                 $processedItem['sheet_price'] = 0;
                 $processedItem['sheet_pft'] = 0;
@@ -684,33 +709,8 @@ class WalmartControllerMarket extends Controller
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Walmart')->first();
         $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 1;
 
-        // Fetch data from apicentral database
-        $walmartLookup = DB::connection('apicentral')
-            ->table('walmart_api_data as api')
-            ->select(
-                'api.sku',
-                'api.price',
-                DB::raw('COALESCE(m.l30, 0) as l30'),
-                DB::raw('COALESCE(m.l60, 0) as l60')
-            )
-            ->leftJoin('walmart_metrics as m', 'api.sku', '=', 'm.sku')
-            ->whereIn('api.sku', $nonParentSkus)
-            ->get()
-            ->keyBy('sku');
-
-        // Fetch buybox price and views from walmart_insights
-        $walmartInsights = DB::connection('apicentral')
-            ->table('walmart_insights')
-            ->select('sku', 'buy_box_base_price', 'buy_box_total_price', 'views')
-            ->whereIn('sku', $nonParentSkus)
-            ->get()
-            ->keyBy('sku');
-
-        // Fetch page views from walmart_listing_qualities
-        $walmartListingQualities = DB::connection('apicentral')
-            ->table('walmart_listing_qualities')
-            ->select('sku', 'page_views')
-            ->whereIn('sku', $nonParentSkus)
+        // Fetch data from walmart_pricing_sales table (local)
+        $walmartPricingSales = WalmartPricingSales::whereIn('sku', $nonParentSkus)
             ->get()
             ->keyBy('sku');
 
@@ -795,26 +795,16 @@ class WalmartControllerMarket extends Controller
             $item['LP_productmaster'] = $lp;
             $item['Ship_productmaster'] = $ship;
 
-            // Get Walmart API data
-            if (isset($walmartLookup[$sku])) {
-                $walmartData = $walmartLookup[$sku];
-                $item['price'] = $walmartData->price ?? 0;
-                $item['W_L30'] = $walmartData->l30 ?? 0; // Walmart L30
-                $item['l60'] = $walmartData->l60 ?? 0;
-            }
-
-            // Get buybox price and views from walmart_insights
-            if (isset($walmartInsights[$sku])) {
-                $insights = $walmartInsights[$sku];
-                $item['buybox_base_price'] = $insights->buy_box_base_price ?? 0;
-                $item['buybox_total_price'] = $insights->buy_box_total_price ?? 0;
-                $item['insights_views'] = $insights->views ?? 0;
-            }
-
-            // Get page views from walmart_listing_qualities
-            if (isset($walmartListingQualities[$sku])) {
-                $qualities = $walmartListingQualities[$sku];
-                $item['page_views'] = $qualities->page_views ?? 0;
+            // Get Walmart data from walmart_pricing_sales table
+            if (isset($walmartPricingSales[$sku])) {
+                $pricingSales = $walmartPricingSales[$sku];
+                $item['price'] = $pricingSales->current_price ?? 0;
+                $item['W_L30'] = $pricingSales->l30_qty ?? 0; // Walmart L30 quantity
+                $item['l60'] = $pricingSales->l60_qty ?? 0;
+                $item['buybox_base_price'] = $pricingSales->buy_box_base_price ?? 0;
+                $item['buybox_total_price'] = $pricingSales->buy_box_total_price ?? 0;
+                $item['insights_views'] = $pricingSales->views ?? 0;
+                $item['page_views'] = $pricingSales->page_views ?? 0;
             }
 
             // Get Shopify data
@@ -910,12 +900,16 @@ class WalmartControllerMarket extends Controller
                 $item['E Dil%'] = round(($l30 / $inv) * 100, 2);
             }
 
-            // CVR = (W_L30 / Sess30) * 100 (Sess30 set to 0 for now, so CVR will be 0)
-            $sess30 = 0; // Walmart doesn't have views data yet
-            $item['Sess30'] = $sess30;
+            // CVR = (W_L30 / page_views) * 100 - using last30DaysPageViews from listing quality API
+            $pageViews = floatval($item['page_views']);
+            // Fallback to insights_views (traffic level) if page_views not available
+            if ($pageViews <= 0) {
+                $pageViews = floatval($item['insights_views']);
+            }
+            $item['Sess30'] = $pageViews; // Using page_views as sessions for Walmart
             $item['CVR_L30'] = 0;
-            if ($sess30 > 0) {
-                $item['CVR_L30'] = round(($w_l30 / $sess30) * 100, 2);
+            if ($pageViews > 0) {
+                $item['CVR_L30'] = round(($w_l30 / $pageViews) * 100, 2);
             }
 
             // SGPFT% = ((SPRICE * percentage - ship - lp) / SPRICE) * 100
