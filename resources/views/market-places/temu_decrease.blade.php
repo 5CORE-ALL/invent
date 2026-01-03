@@ -150,6 +150,10 @@
                         <i class="fa fa-eye"></i> Show All
                     </button>
 
+                    <button type="button" class="btn btn-sm btn-success" id="export-btn">
+                        <i class="fa fa-download"></i> Export CSV
+                    </button>
+
                     <button id="decrease-btn" class="btn btn-sm btn-warning">
                         <i class="fas fa-arrow-down"></i> Decrease Mode
                     </button>
@@ -1627,6 +1631,11 @@
             });
             buildColumnDropdown();
             saveColumnVisibilityToServer();
+        });
+
+        // Export functionality
+        $('#export-btn').on('click', function() {
+            table.download("csv", "temu_decrease_data.csv");
         });
     });
 </script>
