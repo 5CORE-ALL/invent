@@ -375,7 +375,9 @@ class WalmartSheetUploadController extends Controller
                 ->merge($orderData->keys())
                 ->unique();
             
-            $productMasterRows = ProductMaster::whereIn('sku', $allSkus)->get()->keyBy('sku');
+            $productMasterRows = ProductMaster::whereIn('sku', $allSkus)->get()->keyBy(function($item) {
+                return strtoupper(trim($item->sku));
+            });
             $shopifyData = ShopifySku::whereIn('sku', $allSkus)->get()->keyBy('sku');
             
             // Fetch spend data from WalmartCampaignReport (L30) - campaign name matches SKU
@@ -393,34 +395,36 @@ class WalmartSheetUploadController extends Controller
                 $price = $priceData->get($sku);
                 $listing = $listingData->get($sku);
                 $orders = $orderData->get($sku);
-                $pm = $productMasterRows->get($sku);
+                $pm = $productMasterRows->get(strtoupper(trim($sku)));
                 $shopify = $shopifyData->get($sku);
                 
                 // Get campaign data
                 $normalizedSku = $normalizeSku($sku);
                 $campaignL30 = $walmartCampaignReportsL30->get($normalizedSku);
                 
-                // Get LP and Ship from ProductMaster
+                // Get LP and Ship from ProductMaster - ensure we always get values when available
                 $lp = 0;
                 $ship = 0;
                 if ($pm) {
-                    $pmValues = is_array($pm->Values) 
-                        ? $pm->Values 
+                    $pmValues = is_array($pm->Values)
+                        ? $pm->Values
                         : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                    
-                    foreach ($pmValues as $k => $v) {
-                        if (strtolower($k) === 'lp') {
-                            $lp = floatval($v);
-                            break;
-                        }
+
+                    // Get LP from Values JSON field
+                    if (isset($pmValues['lp']) && $pmValues['lp'] !== null && $pmValues['lp'] !== '') {
+                        $lp = floatval($pmValues['lp']);
                     }
+
+                    // Get Ship from Values JSON field
+                    if (isset($pmValues['ship']) && $pmValues['ship'] !== null && $pmValues['ship'] !== '') {
+                        $ship = floatval($pmValues['ship']);
+                    }
+
+                    // Fallback: try direct columns if they exist (though they don't based on schema)
                     if ($lp === 0 && isset($pm->lp)) {
                         $lp = floatval($pm->lp);
                     }
-                    
-                    if (isset($pmValues["ship"])) {
-                        $ship = floatval($pmValues["ship"]);
-                    } elseif (isset($pm->ship)) {
+                    if ($ship === 0 && isset($pm->ship)) {
                         $ship = floatval($pm->ship);
                     }
                 }
@@ -428,8 +432,8 @@ class WalmartSheetUploadController extends Controller
                 // Get price (SPRICE)
                 $sprice = floatval($price->price ?? $price->comparison_price ?? 0);
                 
-                // Get quantities (from Shopify L30 sales)
-                $totalQty = $shopify ? intval($shopify->quantity) : 0;
+                // Get quantities (from Walmart orders)
+                $totalQty = $orders ? intval($orders->total_qty) : 0;
                 $totalOrders = $orders ? intval($orders->total_orders) : 0;
                 $totalRevenue = $orders ? floatval($orders->total_revenue) : 0;
                 
@@ -438,18 +442,6 @@ class WalmartSheetUploadController extends Controller
                 
                 // Calculate COGS = (LP + Ship) × Total Qty
                 $cogs = ($lp + $ship) * $totalQty;
-                
-                // Calculate GPFT (Gross Profit) = (SPRICE × 0.80 - LP - Ship) × Total Qty
-                $gpft = ($sprice * 0.80 - $lp - $ship) * $totalQty;
-                
-                // Calculate SPFT% = ((SPRICE × 0.80 - LP - Ship) / SPRICE) × 100
-                $spft = $sprice > 0 ? ((($sprice * 0.80 - $lp - $ship) / $sprice) * 100) : 0;
-                
-                // Calculate SROI% = ((SPRICE × 0.80 - LP - Ship) / LP) × 100
-                $sroi = $lp > 0 ? ((($sprice * 0.80 - $lp - $ship) / $lp) * 100) : 0;
-                
-                // Calculate GROI% = (GPFT / COGS) × 100
-                $groi = $cogs > 0 ? (($gpft / $cogs) * 100) : 0;
                 
                 // Get Ad Spend from campaign data (L30)
                 $adSpendL30 = $campaignL30 ? floatval($campaignL30->spend ?? 0) : 0;
@@ -463,10 +455,42 @@ class WalmartSheetUploadController extends Controller
                     $adsPercent = 100; // If there's spend but no sales
                 }
                 
-                // For compatibility: profit = GPFT, profit_percent = SPFT%, roi_percent = GROI%
-                $profit = $gpft;
-                $profitPercent = $spft;
-                $roiPercent = $groi;
+                // Convert AD% to decimal for calculations
+                $adDecimal = $adsPercent / 100;
+                
+                // ===== MATCH AMAZON FORMULAS EXACTLY (FBM 80% commission) =====
+                
+                // GPFT% = ((price × 0.80 - ship - lp) / price) × 100
+                // This is Gross Profit % BEFORE ads
+                $gpft = $sprice > 0 ? ((($sprice * 0.80 - $ship - $lp) / $sprice) * 100) : 0;
+                
+                // GROI% = ((price × 0.80 - lp - ship) / lp) × 100
+                // This is Gross ROI BEFORE ads
+                $groi = $lp > 0 ? ((($sprice * 0.80 - $lp - $ship) / $lp) * 100) : 0;
+                
+                // PFT% = GPFT% - AD%
+                // This is Net Profit % AFTER ads
+                $pft = $gpft - $adsPercent;
+                
+                // ROI% = ((price × (0.80 - AD%/100) - ship - lp) / lp) × 100
+                // This is Net ROI AFTER ads
+                $roi = 0;
+                if ($lp > 0 && $sprice > 0) {
+                    $roi = (($sprice * (0.80 - $adDecimal) - $ship - $lp) / $lp) * 100;
+                }
+                
+                // ===== AMOUNT CALCULATIONS =====
+                
+                // GPFT Amount (Gross Profit Total) = (SPRICE × 0.80 - LP - Ship) × Total Qty
+                $gpftAmount = ($sprice * 0.80 - $lp - $ship) * $totalQty;
+                
+                // PFT Amount (Net Profit Total After Ads) = GPFT Amount - Ad Spend
+                $pftAmount = $gpftAmount - $adSpendL30;
+                
+                // For compatibility with frontend
+                $profit = $pftAmount; // Net profit after ads
+                $profitPercent = $pft; // PFT% (net profit % after ads)
+                $roiPercent = $roi; // ROI% (net roi % after ads)
                 
                 // Ad metrics (from WalmartCampaignReport L30)
                 $spend = $adSpendL30;
@@ -496,15 +520,17 @@ class WalmartSheetUploadController extends Controller
                     // Calculated fields (with Walmart 80% commission)
                     'w_l30' => $wL30,
                     'cogs' => $cogs,
-                    'gpft' => $gpft,
-                    'spft' => $spft,
-                    'sroi' => $sroi,
-                    'groi' => $groi,
+                    'gpft' => $gpft, // GPFT% - Gross Profit % (before ads)
+                    'groi' => $groi, // GROI% - Gross ROI % (before ads)
+                    'pft' => $pft, // PFT% - Net Profit % (after ads) = GPFT% - AD%
+                    'roi' => $roi, // ROI% - Net ROI % (after ads)
+                    'gpft_amount' => $gpftAmount, // GPFT Amount - Gross Profit Total
+                    'pft_amount' => $pftAmount, // PFT Amount - Net Profit Total (after ads)
                     
                     // Compatibility fields for Temu-style view
-                    'profit' => $profit,
-                    'profit_percent' => $profitPercent,
-                    'roi_percent' => $roiPercent,
+                    'profit' => $profit, // Net profit amount after ads
+                    'profit_percent' => $profitPercent, // PFT% (net profit % after ads)
+                    'roi_percent' => $roiPercent, // ROI% (net roi % after ads)
                     
                     // Ad metrics (placeholder - can add ad data table later)
                     'ads_percent' => $adsPercent,

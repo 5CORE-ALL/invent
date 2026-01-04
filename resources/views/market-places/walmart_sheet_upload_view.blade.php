@@ -88,8 +88,8 @@
                     <!-- Inventory Filter -->
                     <div>
                         <select id="inventory-filter" class="form-select form-select-sm" style="width: 140px;">
-                            <option value="all">All Inventory</option>
-                            <option value="gt0" selected>INV &gt; 0</option>
+                            <option value="all" selected>All Inventory</option>
+                            <option value="gt0">INV &gt; 0</option>
                             <option value="eq0">INV = 0</option>
                         </select>
                     </div>
@@ -170,7 +170,7 @@
                         <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">AVG GPFT: 0%</span>
                         <span class="badge bg-info fs-6 p-2" id="avg-pft-badge" style="color: black; font-weight: bold;">AVG PFT: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
-                        <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">Avg CVR: 0.00%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">Avg CVR: 0.0%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="cvr-badge" style="color: black; font-weight: bold;">CVR: 0.00%</span>
                         
@@ -180,7 +180,7 @@
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: black; font-weight: bold;">0 Sold Count: 0</span>
                         
                         <!-- Financial Metrics -->
-                        <span class="badge bg-danger fs-6 p-2" id="total-tcos-badge" style="color: white; font-weight: bold;">Total TCOS: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="total-tcos-badge" style="color: white; font-weight: bold;">Total TCOS: 0</span>
                         <span class="badge bg-warning fs-6 p-2" id="total-spend-badge" style="color: black; font-weight: bold;">Total SPEND L30: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="total-cogs-badge" style="color: black; font-weight: bold;">COGS AMT: $0.00</span>
                         <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI %: 0%</span>
@@ -503,14 +503,21 @@
         }
 
         function updateSummary() {
+            if (!table) {
+                console.log('Table not initialized yet');
+                return;
+            }
             const data = table.getData("all");
+            console.log('Table data length:', data.length);
+            console.log('First few rows:', data.slice(0, 3));
             
             let totalProducts = data.length;
             let totalOrders = 0;
             let totalQuantity = 0;
-            let totalTcos = 0;
             let totalSpendL30 = 0;
-            let totalPftAmt = 0;
+            let totalTcos = 0;
+            let totalGpftAmt = 0; // Gross Profit Total (before ads)
+            let totalPftAmt = 0; // Net Profit Total (after ads)
             let totalSalesAmt = 0;
             let totalCogsAmt = 0;
             let totalWalmartL30 = 0;
@@ -529,6 +536,8 @@
                 const adSpend = parseFloat(row['spend']) || 0;
                 const adsPercent = parseFloat(row['ads_percent']) || 0;
                 
+                console.log('Processing row:', row['sku'], 'qty:', qty, 'price:', price, 'lp:', lp);
+                
                 totalQuantity += qty;
                 totalOrders += parseInt(row['total_orders']) || 0;
                 
@@ -541,16 +550,11 @@
                 const salesAmt = parseFloat(row['total_revenue']) || 0;
                 totalSalesAmt += salesAmt;
                 
-                // Ad spend (TCOS)
-                totalSpendL30 += adSpend;
-                totalTcos += adsPercent;
+                // GPFT Amount from data (pre-calculated gross profit)
+                totalGpftAmt += parseFloat(row['gpft_amount']) || 0;
                 
-                // Profit calculation (GPFT formula, but total amount)
-                // PFT = (Price × 0.80 - LP - Ship) × Qty
-                const adDecimal = adsPercent / 100;
-                const profitPerUnit = (price * (0.80 - adDecimal)) - ship - lp;
-                const profitTotal = profitPerUnit * qty;
-                totalPftAmt += profitTotal;
+                // PFT Amount from data (pre-calculated net profit after ads)
+                totalPftAmt += parseFloat(row['pft_amount']) || 0;
                 
                 // COGS = LP × Qty (not including ship for ROI calc)
                 const cogs = lp * qty;
@@ -568,7 +572,7 @@
                     dilCount++;
                 }
                 
-                // Walmart L30 (total sales value)
+                // Walmart L30 (total sales value from actual orders)
                 totalWalmartL30 += salesAmt;
                 
                 // Count SKUs with 0 sold
@@ -577,23 +581,31 @@
                 }
             });
             
-            // Calculate averages (same logic as Amazon)
+            // ===== MATCH AMAZON SUMMARY CALCULATIONS =====
+            
+            // Calculate averages
             const avgPrice = totalQty > 0 ? totalWeightedPrice / totalQty : 0;
             
-            // AVG GPFT% = (Total PFT / Total Sales) * 100 (before ads impact on profit calc)
-            // But we already subtracted ads in profit calc, so we need to add it back for GPFT
-            const avgGpft = totalSalesAmt > 0 ? ((totalPftAmt / totalSalesAmt) * 100) : 0;
+            // AVG GPFT% = (Total GPFT Amount / Total Sales) × 100
+            // This is Gross Profit % BEFORE ads
+            const avgGpft = totalSalesAmt > 0 ? ((totalGpftAmt / totalSalesAmt) * 100) : 0;
             
-            // TACOS% = (Total Ad Spend / Total Sales) * 100
+            // TACOS% = (Total Ad Spend / Total Sales) × 100
             const tacosPercent = totalSalesAmt > 0 ? ((totalSpendL30 / totalSalesAmt) * 100) : 0;
             
-            // AVG PFT% = GPFT% - TACOS% (net after ads) - but since we already included ads in calc, this is same as avgGpft
-            const avgPft = avgGpft; // Already includes ad impact
+            // AVG PFT% = GPFT% - TACOS%
+            // This is Net Profit % AFTER ads
+            const avgPft = avgGpft - tacosPercent;
             
-            // ROI% = (Total PFT / Total COGS) * 100
+            // ROI% = (Total PFT Amount / Total COGS) × 100
+            // This is Net ROI AFTER ads
             const roiPercent = totalCogsAmt > 0 ? ((totalPftAmt / totalCogsAmt) * 100) : 0;
             
-            // CVR = (Total Qty / Total Views) * 100
+            // GROI% = (Total GPFT Amount / Total COGS) × 100
+            // This is Gross ROI BEFORE ads
+            const groiPercent = totalCogsAmt > 0 ? ((totalGpftAmt / totalCogsAmt) * 100) : 0;
+            
+            // CVR = (Total Qty / Total Views) × 100
             const avgCvr = totalViews > 0 ? (totalQty / totalViews * 100) : 0;
             
             // AVG DIL %
@@ -628,12 +640,16 @@
                     // Update TACOS% with actual order sales and campaign spend
                     // TACOS = (Campaign Spend / Actual Order Sales) * 100
                     const actualTacosPercent = totalSalesAmt > 0 ? ((campaignSpendTotal / totalSalesAmt) * 100) : 0;
-                    $('#total-tcos-badge').text('Total TCOS: ' + actualTacosPercent.toFixed(1) + '%');
+                    $('#total-tcos-badge').text('Total TCOS: ' + Math.round(totalTcos));
+                    
+                    // Recalculate AVG PFT% with actual TACOS (matching Amazon logic)
+                    const actualAvgPft = avgGpft - actualTacosPercent;
+                    $('#avg-pft-badge').text('AVG PFT: ' + actualAvgPft.toFixed(1) + '%');
                 })
                 .catch(error => {
                     console.error('Error fetching campaign spend data:', error);
                     $('#total-spend-badge').text('Total SPEND L30: Error');
-                    $('#total-tcos-badge').text('Total TCOS: Error');
+                    $('#total-tcos-badge').text('Total TCOS: ' + Math.round(totalTcos));
                 });
             
             $('#total-cogs-badge').text('COGS AMT: $' + Math.round(totalCogsAmt).toLocaleString());
@@ -669,6 +685,10 @@
             paginationSize: 100,
             paginationSizeSelector: [10, 25, 50, 100, 200],
             paginationCounter: "rows",
+            ajaxError: function(xhr, textStatus, errorThrown) {
+                console.error('Table ajax error:', xhr.status, textStatus, errorThrown);
+                console.error('Response:', xhr.responseText);
+            },
             columns: [
                 {
                     title: "SKU",
@@ -693,17 +713,11 @@
                 },
                 {
                     title: "Dil",
-                    field: "dil_percent",
+                    field: "dil_percent", // Use backend calculated DIL%
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const INV = parseFloat(rowData.INV) || 0;
-                        const OVL30 = parseFloat(rowData.L30) || 0;
-
-                        if (INV === 0) return '<span style="color: #6c757d;">0%</span>';
-
-                        const dil = (OVL30 / INV) * 100;
+                        const dil = parseFloat(cell.getValue()) || 0;
                         let color = '';
 
                         // Color logic same as Amazon
@@ -725,19 +739,24 @@
                 },
                 {
                     title: "CVR %",
-                    field: "conversion_rate",
+                    field: "cvr_percent", // Calculate as WL30 / Views
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        const value = parseFloat(cell.getValue()) || 0;
+                        const rowData = cell.getRow().getData();
+                        const wl30 = parseInt(rowData['total_qty']) || 0;
+                        const views = parseInt(rowData['page_views']) || 0;
+                        const cvr = views > 0 ? (wl30 / views) * 100 : 0;
+                        
                         let color = '#000';
                         
-                        if (value <= 4) color = '#a00211';
-                        else if (value > 4 && value <= 7) color = '#ffc107';
-                        else if (value > 7 && value <= 10) color = '#28a745';
-                        else color = '#ff1493';
+                        if (cvr === 0) color = '#6c757d'; // gray for 0
+                        else if (cvr <= 4) color = '#a00211'; // red
+                        else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
+                        else if (cvr > 7 && cvr <= 10) color = '#28a745'; // green
+                        else color = '#ff1493'; // pink (>10)
                         
-                        return `<span style="color: ${color}; font-weight: 600;">${value.toFixed(1)}%</span>`;
+                        return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
                     },
                     width: 90
                 },
@@ -769,7 +788,7 @@
                 },
                 {
                     title: "GPRFT %",
-                    field: "profit_percent",
+                    field: "gpft", // Show GPFT% (Gross Profit % - BEFORE ads)
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
@@ -800,7 +819,7 @@
                 },
                 {
                     title: "GROI %",
-                    field: "roi_percent",
+                    field: "groi", // Show GROI% (Gross ROI % - BEFORE ads)
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
@@ -812,33 +831,25 @@
                 },
                 {
                     title: "NPFT %",
-                    field: "npft_percent",
+                    field: "pft", // Show PFT% (Net Profit % - AFTER ads)
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const gprft = parseFloat(rowData['profit_percent']) || 0;
-                        const ads = parseFloat(rowData['ads_percent']) || 0;
-                        const npft = gprft - ads;
-                        
-                        const colorClass = getPftColor(npft);
-                        return `<span class="walmart-percent-value ${colorClass}">${Math.round(npft)}%</span>`;
+                        const value = parseFloat(cell.getValue()) || 0;
+                        const colorClass = getPftColor(value);
+                        return `<span class="walmart-percent-value ${colorClass}">${Math.round(value)}%</span>`;
                     },
                     width: 100
                 },
                 {
                     title: "NROI %",
-                    field: "nroi_percent",
+                    field: "roi", // Show ROI% (Net ROI % - AFTER ads)
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const groi = parseFloat(rowData['roi_percent']) || 0;
-                        const ads = parseFloat(rowData['ads_percent']) || 0;
-                        const nroi = groi - ads;
-                        
-                        const colorClass = getRoiColor(nroi);
-                        return `<span class="walmart-percent-value ${colorClass}">${Math.round(nroi)}%</span>`;
+                        const value = parseFloat(cell.getValue()) || 0;
+                        const colorClass = getRoiColor(value);
+                        return `<span class="walmart-percent-value ${colorClass}">${Math.round(value)}%</span>`;
                     },
                     width: 100
                 },
@@ -1064,18 +1075,19 @@
 
             if (cvrFilter !== 'all') {
                 table.addFilter(function(data) {
-                    const cvr = parseFloat(data.conversion_rate) || 0;
-                    const cvrRounded = Math.round(cvr * 100) / 100;
+                    const wl30 = parseInt(data['total_qty']) || 0;
+                    const views = parseInt(data['page_views']) || 0;
+                    const cvrPercent = views > 0 ? (wl30 / views) * 100 : 0;
                     
-                    if (cvrFilter === '0-0') return cvrRounded === 0;
-                    if (cvrFilter === '0.01-1') return cvrRounded >= 0.01 && cvrRounded <= 1;
-                    if (cvrFilter === '1-2') return cvrRounded > 1 && cvrRounded <= 2;
-                    if (cvrFilter === '2-3') return cvrRounded > 2 && cvrRounded <= 3;
-                    if (cvrFilter === '3-4') return cvrRounded > 3 && cvrRounded <= 4;
-                    if (cvrFilter === '0-4') return cvrRounded >= 0 && cvrRounded <= 4;
-                    if (cvrFilter === '4-7') return cvrRounded > 4 && cvrRounded <= 7;
-                    if (cvrFilter === '7-10') return cvrRounded > 7 && cvrRounded <= 10;
-                    if (cvrFilter === '10plus') return cvrRounded > 10;
+                    if (cvrFilter === '0-0') return cvrPercent === 0;
+                    if (cvrFilter === '0.01-1') return cvrPercent >= 0.01 && cvrPercent <= 1;
+                    if (cvrFilter === '1-2') return cvrPercent > 1 && cvrPercent <= 2;
+                    if (cvrFilter === '2-3') return cvrPercent > 2 && cvrPercent <= 3;
+                    if (cvrFilter === '3-4') return cvrPercent > 3 && cvrPercent <= 4;
+                    if (cvrFilter === '0-4') return cvrPercent >= 0 && cvrPercent <= 4;
+                    if (cvrFilter === '4-7') return cvrPercent > 4 && cvrPercent <= 7;
+                    if (cvrFilter === '7-10') return cvrPercent > 7 && cvrPercent <= 10;
+                    if (cvrFilter === '10plus') return cvrPercent > 10;
                     return true;
                 });
             }
