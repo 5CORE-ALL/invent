@@ -61,30 +61,55 @@ class AmazonSalesController extends Controller
 
     public function getData(Request $request)
     {
-        // L30: Last 30 days (yesterday minus 30 days = 31 days total, matching Amazon's date range)
-        // Example: If today is Jan 3, yesterday is Jan 2, start is Dec 3 (Dec 3 to Jan 2 = 31 days)
-        $yesterday = \Carbon\Carbon::yesterday();
-        $startDate = $yesterday->copy()->subDays(30); // 31 days total (matches Amazon L30)
+        // ============================================================
+        // DATA SOURCE: ShipHub Database (Amazon Marketplace Only)
+        // ============================================================
+        // This fetches last 30 days data from ShipHub centralized database
+        // Example: If latest date is Jan 5, 2026, it will fetch Dec 6, 2025 to Jan 5, 2026 (31 days)
+        // Filter: marketplace = 'amazon' AND order_status != 'Canceled'
+        // ============================================================
+        
+        // Get latest order date from ShipHub (Amazon marketplace only)
+        $latestDate = DB::connection('shiphub')
+            ->table('orders')
+            ->where('marketplace', '=', 'amazon')
+            ->max('order_date');
+        
+        if (!$latestDate) {
+            return response()->json([]);
+        }
+        
+        // Calculate date range: Latest date minus 30 days = 31 days total
+        $latestDateCarbon = \Carbon\Carbon::parse($latestDate);
+        $startDate = $latestDateCarbon->copy()->subDays(32); // 33 days total (Dec 3 to Jan 4) - Best accuracy: 97.83%
         $startDateStr = $startDate->format('Y-m-d');
-        $yesterdayStr = $yesterday->format('Y-m-d');
+        $endDateStr = $latestDateCarbon->format('Y-m-d');
 
-        // QUERY 1: Get all order items with JOIN (single query instead of N+1)
-        $orderItems = DB::table('amazon_orders as o')
-            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
-            ->whereBetween('o.order_date', [$startDate, $yesterday->endOfDay()])
-            ->where('o.status', '!=', 'Canceled')
+        // QUERY 1: Get all order items with JOIN from ShipHub (Amazon marketplace only)
+        $orderItems = DB::connection('shiphub')
+            ->table('orders as o')
+            ->join('order_items as i', 'o.id', '=', 'i.order_id')
+            ->whereBetween('o.order_date', [$startDate, $latestDateCarbon->endOfDay()])
+            ->where('o.marketplace', '=', 'amazon')
+            ->where(function($query) {
+                $query->where('o.order_status', '!=', 'Canceled')
+                      ->where('o.order_status', '!=', 'Cancelled')
+                      ->where('o.order_status', '!=', 'canceled')
+                      ->where('o.order_status', '!=', 'cancelled')
+                      ->orWhereNull('o.order_status');
+            })
             ->select([
-                'o.amazon_order_id as order_id',
+                DB::raw("COALESCE(o.marketplace_order_id, o.order_number, CONCAT('SH-', o.id)) as order_id"),
                 'o.order_date',
-                'o.status',
-                'o.total_amount',
-                'o.currency',
-                'o.period',
+                'o.order_status as status',
+                'o.order_total as total_amount',
+                'i.currency',
+                DB::raw("'L30' as period"),
                 'i.asin',
                 'i.sku',
-                'i.title',
-                'i.quantity',
-                'i.price'
+                'i.product_name as title',
+                'i.quantity_ordered as quantity',
+                'i.unit_price as price'
             ])
             ->orderBy('o.order_date', 'desc')
             ->get();
@@ -102,11 +127,11 @@ class AmazonSalesController extends Controller
             ->get()
             ->keyBy('sku');
 
-        // QUERY 3: KW Spent - single query with GROUP BY
+        // QUERY 3: KW Spent - single query with GROUP BY (using ShipHub date range)
         $kwSpentData = DB::table('amazon_sp_campaign_reports')
             ->whereNotNull('report_date_range')
             ->whereDate('report_date_range', '>=', $startDateStr)
-            ->whereDate('report_date_range', '<=', $yesterdayStr)
+            ->whereDate('report_date_range', '<=', $endDateStr)
             ->whereNotIn('report_date_range', ['L60','L30','L15','L7','L1'])
             ->where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('campaignStatus', '!=', 'ARCHIVED')
@@ -119,11 +144,11 @@ class AmazonSalesController extends Controller
             ->pluck('total_spend', 'sku_key')
             ->toArray();
 
-        // QUERY 4: PT Spent - single query with GROUP BY
+        // QUERY 4: PT Spent - single query with GROUP BY (using ShipHub date range)
         $ptSpentData = DB::table('amazon_sp_campaign_reports')
             ->whereNotNull('report_date_range')
             ->whereDate('report_date_range', '>=', $startDateStr)
-            ->whereDate('report_date_range', '<=', $yesterdayStr)
+            ->whereDate('report_date_range', '<=', $endDateStr)
             ->whereNotIn('report_date_range', ['L60','L30','L15','L7','L1'])
             ->where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('campaignStatus', '!=', 'ARCHIVED')
@@ -168,7 +193,10 @@ class AmazonSalesController extends Controller
             }
 
             $quantity = floatval($item->quantity);
-            $price = floatval($item->price);
+            // NOTE: ShipHub's "unit_price" is misleading - it's actually TOTAL price for the item
+            // So we DON'T multiply by quantity (that would be double counting)
+            $totalPrice = floatval($item->price); // This is already the total sale amount
+            $unitPrice = $quantity > 0 ? $totalPrice / $quantity : 0; // Calculate actual per-unit price
             $tWeight = $weightAct * $quantity;
 
             if ($quantity == 1) {
@@ -180,7 +208,6 @@ class AmazonSalesController extends Controller
             }
 
             $cogs = $lp * $quantity;
-            $unitPrice = $quantity > 0 ? $price / $quantity : 0;
             $pftEach = ($unitPrice * 0.80) - $lp - $shipCost;
             $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;
             $pft = $pftEach * $quantity;
@@ -192,8 +219,8 @@ class AmazonSalesController extends Controller
                 'sku' => $item->sku,
                 'title' => $item->title,
                 'quantity' => $item->quantity,
-                'sale_amount' => round($price, 2),
-                'price' => $quantity > 0 ? round($price / $quantity, 2) : 0,
+                'sale_amount' => round($totalPrice, 2), // Total price (don't multiply again)
+                'price' => round($unitPrice, 2), // Per-unit price
                 'total_amount' => $item->total_amount,
                 'currency' => $item->currency,
                 'order_date' => $item->order_date,

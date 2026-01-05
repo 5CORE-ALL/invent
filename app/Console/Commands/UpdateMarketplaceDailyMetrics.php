@@ -85,17 +85,46 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateAmazonMetrics($date)
     {
-        // 32 days: yesterday se 31 din pehle tak (matching AmazonSalesController)
-        $yesterday = Carbon::yesterday();
-        $startDate = $yesterday->copy()->subDays(31); // 32 days total
+        // 33 days: Get latest Amazon order date from ShipHub and calculate 33-day range
+        $latestDate = DB::connection('shiphub')
+            ->table('orders')
+            ->where('marketplace', '=', 'amazon')
+            ->max('order_date');
 
-        // Get orders using date range (like AmazonSalesController)
-        $orders = AmazonOrder::with('items')
-            ->whereBetween('order_date', [$startDate, $yesterday->endOfDay()])
-            ->where('status', '!=', 'Canceled')
+        if (!$latestDate) {
+            return null;
+        }
+
+        $latestDateCarbon = Carbon::parse($latestDate);
+        $startDate = $latestDateCarbon->copy()->subDays(32); // 33 days total (matches AmazonSalesController)
+
+        // Get order items from ShipHub (matching AmazonSalesController exactly)
+        $orderItems = DB::connection('shiphub')
+            ->table('orders as o')
+            ->join('order_items as i', 'o.id', '=', 'i.order_id')
+            ->whereBetween('o.order_date', [$startDate, $latestDateCarbon->endOfDay()])
+            ->where('o.marketplace', '=', 'amazon')
+            ->where(function($query) {
+                $query->where('o.order_status', '!=', 'Canceled')
+                      ->where('o.order_status', '!=', 'Cancelled')
+                      ->orWhereNull('o.order_status');
+            })
+            ->select([
+                'o.marketplace_order_id as order_id',
+                'o.order_number',
+                'o.order_date',
+                'o.order_status as status',
+                'o.order_total as total_amount',
+                'i.sku',
+                'i.product_name as title',
+                'i.quantity_ordered as quantity',
+                'i.unit_price as price', // This is TOTAL price for item line in ShipHub
+                'i.asin',
+                'i.currency',
+            ])
             ->get();
 
-        if ($orders->isEmpty()) {
+        if ($orderItems->isEmpty()) {
             return null;
         }
 
@@ -117,67 +146,62 @@ class UpdateMarketplaceDailyMetrics extends Command
         $adUpdates = $marketplaceData ? $marketplaceData->ad_updates : 0;
         $margin = ($percentage - $adUpdates) / 100;
 
-        foreach ($orders as $order) {
-            foreach ($order->items as $item) {
-                // Count ALL items (matching Channel Master exactly)
-                $totalOrders++;
-                
-                $quantity = (int) ($item->quantity ?? 1);
-                $price = (float) ($item->price ?? 0);
-                
-                $totalQuantity += $quantity;
-                $totalRevenue += $price;
+        // Process order items from ShipHub (matching AmazonSalesController)
+        foreach ($orderItems as $item) {
+            $totalOrders++;
+            
+            $quantity = (int) ($item->quantity ?? 1);
+            // IMPORTANT: unit_price in ShipHub is TOTAL price for the line (not per unit)
+            $totalPrice = (float) ($item->price ?? 0);
+            $unitPrice = $quantity > 0 ? $totalPrice / $quantity : 0;
+            
+            $totalQuantity += $quantity;
+            $totalRevenue += $totalPrice; // Use total price directly
 
-                if ($quantity > 0 && $price > 0) {
-                    $pricePerUnit = $price / $quantity;
-                    $totalWeightedPrice += $pricePerUnit * $quantity;
-                    $totalQuantityForPrice += $quantity;
-                }
-
-                // Get LP, Ship and wt_act from ProductMaster
-                $sku = strtoupper($item->sku);
-                $lp = 0;
-                $ship = 0;
-                $weightAct = 0;
-
-                if (isset($productMasters[$sku])) {
-                    $pm = $productMasters[$sku];
-                    $values = is_array($pm->Values) ? $pm->Values :
-                            (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                    
-                    // Keys are lowercase: lp, ship, wt_act
-                    if (isset($values['lp'])) $lp = (float) $values['lp'];
-                    if (isset($values['ship'])) $ship = (float) $values['ship'];
-                    if (isset($values['wt_act'])) $weightAct = (float) $values['wt_act'];
-                }
-
-                // T Weight = Weight Act * Quantity
-                $tWeight = $weightAct * $quantity;
-
-                // Ship Cost calculation (same as AmazonSalesController):
-                // If quantity is 1: ship_cost = ship
-                // If quantity > 1 and t_weight < 20: ship_cost = ship / quantity
-                // Otherwise: ship_cost = ship
-                if ($quantity == 1) {
-                    $shipCost = $ship;
-                } elseif ($quantity > 1 && $tWeight < 20) {
-                    $shipCost = $ship / $quantity;
-                } else {
-                    $shipCost = $ship;
-                }
-
-                // COGS = LP * quantity (sirf LP, ship nahi)
-                $cogs = $lp * $quantity;
-                $totalCogs += $cogs;
-
-                // PFT Each = (unit_price * 0.80) - lp - ship_cost
-                $unitPrice = $quantity > 0 ? $price / $quantity : 0;
-                $pftEach = ($unitPrice * 0.80) - $lp - $shipCost;
-
-                // T PFT = pft_each * quantity
-                $pft = $pftEach * $quantity;
-                $totalPft += $pft;
+            if ($quantity > 0 && $unitPrice > 0) {
+                $totalWeightedPrice += $unitPrice * $quantity;
+                $totalQuantityForPrice += $quantity;
             }
+
+            // Get LP, Ship and wt_act from ProductMaster
+            $sku = strtoupper($item->sku ?? '');
+            $lp = 0;
+            $ship = 0;
+            $weightAct = 0;
+
+            if ($sku && isset($productMasters[$sku])) {
+                $pm = $productMasters[$sku];
+                $values = is_array($pm->Values) ? $pm->Values :
+                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                
+                // Keys are lowercase: lp, ship, wt_act
+                if (isset($values['lp'])) $lp = (float) $values['lp'];
+                if (isset($values['ship'])) $ship = (float) $values['ship'];
+                if (isset($values['wt_act'])) $weightAct = (float) $values['wt_act'];
+            }
+
+            // T Weight = Weight Act * Quantity
+            $tWeight = $weightAct * $quantity;
+
+            // Ship Cost calculation (same as AmazonSalesController):
+            if ($quantity == 1) {
+                $shipCost = $ship;
+            } elseif ($quantity > 1 && $tWeight < 20) {
+                $shipCost = $ship / $quantity;
+            } else {
+                $shipCost = $ship;
+            }
+
+            // COGS = LP * quantity (only LP, not Ship)
+            $cogs = $lp * $quantity;
+            $totalCogs += $cogs;
+
+            // PFT Each = (unit_price * 0.80) - lp - ship_cost
+            $pftEach = ($unitPrice * 0.80) - $lp - $shipCost;
+
+            // T PFT = pft_each * quantity
+            $pft = $pftEach * $quantity;
+            $totalPft += $pft;
         }
 
         $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
