@@ -34,13 +34,13 @@ class ListingAmazonController extends Controller
     public function getViewListingAmazonData(Request $request)
     {
         $productMasters = ProductMaster::whereNull('deleted_at')
-            ->select('id', 'sku', 'parent')
+            ->select('id', 'sku', 'parent', 'Values')
             ->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
         // Load all data in one go with proper indexing
         $shopifyData = ShopifySku::whereIn('sku', $skus)
-            ->select('sku', 'inv', 'quantity')
+            ->select('sku', 'inv', 'quantity', 'image_src')
             ->get()
             ->keyBy('sku');
         
@@ -130,6 +130,28 @@ class ListingAmazonController extends Controller
                 $nr_req = 'REQ';
             }
             
+            // Get status from ProductMaster Values field
+            $status = null;
+            $image_path = null;
+            if ($item->Values) {
+                $values = is_array($item->Values) ? $item->Values : json_decode($item->Values, true);
+                if (is_array($values)) {
+                    $status = $values['status'] ?? null;
+                    $image_path = $values['image_path'] ?? null;
+                }
+            }
+            
+            // Get image from Shopify first, then fallback to local image_path (same as product-master)
+            $shopifyImage = isset($shopifyData[$childSku]) ? ($shopifyData[$childSku]->image_src ?? null) : null;
+            
+            if ($shopifyImage) {
+                $image_path = $shopifyImage; // Use Shopify URL
+            } elseif ($image_path) {
+                $image_path = '/' . ltrim($image_path, '/'); // Use local path, ensure leading slash
+            } else {
+                $image_path = null;
+            }
+            
             $row = [
                 'id' => $item->id,
                 'sku' => $childSku,
@@ -141,7 +163,9 @@ class ListingAmazonController extends Controller
                 'listed' => $listed,
                 'buyer_link' => $buyer_link,
                 'seller_link' => $seller_link,
-                'listing_status' => $listing_status
+                'listing_status' => $listing_status,
+                'status' => $status, // Status from ProductMaster
+                'image_path' => $image_path // Image path (Shopify first, then local)
             ];
             
             $processedData[] = $row;
