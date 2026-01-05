@@ -58,6 +58,11 @@ class ListingAmazonController extends Controller
         foreach ($productMasters as $item) {
             $childSku = $item->sku;
             
+            // Skip SKUs that start with "PARENT"
+            if (str_starts_with(strtoupper(trim($childSku)), 'PARENT')) {
+                continue;
+            }
+            
             // Default values
             $nr_req = 'REQ'; // Default to REQ (shows as RL)
             $nr = null; // NR field for amazon-tabulator-view compatibility
@@ -178,10 +183,15 @@ class ListingAmazonController extends Controller
 
         foreach ($productMasters as $item) {
             $sku = trim($item->sku);
+            
+            // Skip SKUs that start with "PARENT"
+            if (str_starts_with(strtoupper($sku), 'PARENT')) {
+                continue;
+            }
+            
             $inv = $shopifyData[$sku]->inv ?? 0;
-            $isParent = stripos($sku, 'PARENT') !== false;
 
-            if ($isParent || floatval($inv) <= 0) continue;
+            if (floatval($inv) <= 0) continue;
 
             $status = $statusData[$sku]->value ?? null;
             if (is_string($status)) {
