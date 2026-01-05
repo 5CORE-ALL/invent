@@ -2721,8 +2721,36 @@
                         $(this).prop('checked', selectedSkus.has(sku));
                     });
                     updateSelectAllCheckbox();
+                    
+                    // Add refresh button to Links column header if not already added
+                    const linksCol = table.getColumn('links_column');
+                    if (linksCol) {
+                        const headerElement = linksCol.getElement();
+                        if (headerElement && !headerElement.querySelector('#refresh-links-btn')) {
+                            const titleElement = headerElement.querySelector('.tabulator-col-title');
+                            if (titleElement) {
+                                const buttonHtml = '<button id="refresh-links-btn" class="btn btn-sm btn-primary" style="padding: 2px 8px; font-size: 10px; line-height: 1.2; margin-bottom: 4px;" title="Refresh All Links"><i class="fa fa-refresh"></i> Refresh</button>';
+                                titleElement.innerHTML = buttonHtml + '<div>Links</div>';
+                            }
+                        }
+                    }
                 }, 100);
             });
+
+            // Add refresh button to Links column header after table is built
+            setTimeout(function() {
+                const linksCol = table.getColumn('links_column');
+                if (linksCol) {
+                    const headerElement = linksCol.getElement();
+                    if (headerElement && !headerElement.querySelector('#refresh-links-btn')) {
+                        const titleElement = headerElement.querySelector('.tabulator-col-title');
+                        if (titleElement) {
+                            const buttonHtml = '<button id="refresh-links-btn" class="btn btn-sm btn-primary" style="padding: 2px 8px; font-size: 10px; line-height: 1.2; margin-bottom: 4px;" title="Refresh All Links"><i class="fa fa-refresh"></i> Refresh</button>';
+                            titleElement.innerHTML = buttonHtml + '<div>Links</div>';
+                        }
+                    }
+                }
+            }, 500);
 
             // Toggle column from dropdown
             document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
@@ -2913,6 +2941,59 @@
                 },
                 complete: function() {
                     uploadBtn.prop('disabled', false).html('Upload & Import');
+                }
+            });
+        });
+
+        // Refresh Links Button Handler
+        $(document).on('click', '#refresh-links-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const $btn = $(this);
+            const originalHtml = $btn.html();
+            
+            // Disable button and show loading state
+            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Refreshing...');
+            
+            // Show toast notification
+            showToast('info', 'Refreshing links for all SKUs...');
+            
+            $.ajax({
+                url: '/amazon/refresh-links',
+                type: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                data: {
+                    update_all: true
+                },
+                success: function(response) {
+                    if (response.status === 'success') {
+                        showToast('success', response.message || `Successfully updated ${response.updated || 0} links`);
+                        
+                        // Reload table data
+                        if (typeof table !== 'undefined' && table.reload) {
+                            table.reload(function() {
+                                showToast('success', 'Table refreshed with updated links');
+                            });
+                        } else {
+                            // Fallback: reload page if table.reload is not available
+                            setTimeout(function() {
+                                location.reload();
+                            }, 1000);
+                        }
+                    } else {
+                        showToast('error', response.message || 'Failed to refresh links');
+                    }
+                },
+                error: function(xhr) {
+                    const error = xhr.responseJSON?.message || 'Failed to refresh links';
+                    showToast('error', error);
+                },
+                complete: function() {
+                    // Re-enable button
+                    $btn.prop('disabled', false).html(originalHtml);
                 }
             });
         });

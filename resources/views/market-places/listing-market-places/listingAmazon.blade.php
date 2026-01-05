@@ -1061,6 +1061,23 @@
             /* Red */
             color: white;
         }
+
+        /* Filter Badge Styles */
+        .filter-badge {
+            transition: all 0.2s ease;
+            border: 2px solid transparent;
+        }
+
+        .filter-badge:hover {
+            transform: scale(1.05);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .filter-badge.active {
+            border: 2px solid #007bff;
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+            font-weight: bold;
+        }
     </style>
 @endsection
 
@@ -1167,6 +1184,52 @@
                         </div>
                     </div>
 
+                    <!-- Filter Badges Section -->
+                    <div class="d-flex flex-wrap align-items-center gap-2 mb-3 p-3" style="background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6;">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="font-weight-bold">Filters:</span>
+                            <span class="badge badge-light filter-badge" data-filter="sku" id="badge-total-sku" style="cursor: pointer; padding: 8px 12px; font-size: 14px;">
+                                SKU: <span id="badge-total-sku-count">0</span>
+                            </span>
+                            <span class="badge badge-light filter-badge" data-filter="batch" id="badge-batch-total" style="cursor: pointer; padding: 8px 12px; font-size: 14px;">
+                                Batch: <span id="badge-batch-total-count">0</span>
+                            </span>
+                            <span class="badge badge-light filter-badge" data-filter="inv" id="badge-inv-total" style="cursor: pointer; padding: 8px 12px; font-size: 14px; background: #17a2b8; color: white;">
+                                INV: <span id="badge-inv-total-count">0</span>
+                            </span>
+                            <span class="badge filter-badge" data-filter="nr" id="badge-nr-total" style="cursor: pointer; padding: 8px 12px; font-size: 14px; background: #dc3545; color: white;">
+                                NR: <span id="badge-nr-total-count">0</span>
+                            </span>
+                            <span class="badge filter-badge" data-filter="rl" id="badge-rl-total" style="cursor: pointer; padding: 8px 12px; font-size: 14px; background: #28a745; color: white;">
+                                RL: <span id="badge-rl-total-count">0</span>
+                            </span>
+                            <span class="badge filter-badge" data-filter="without-link" id="badge-without-link-total" style="cursor: pointer; padding: 8px 12px; font-size: 14px; background: #dc3545; color: white;">
+                                Without Link: <span id="badge-without-link-total-count">0</span>
+                            </span>
+                            <span class="badge filter-badge" data-filter="listed" id="badge-listed-total" style="cursor: pointer; padding: 8px 12px; font-size: 14px; background: #28a745; color: white;">
+                                Listed: <span id="badge-listed-total-count">0</span>
+                            </span>
+                            <span class="badge filter-badge" data-filter="pending" id="badge-pending-total" style="cursor: pointer; padding: 8px 12px; font-size: 14px; background: #dc3545; color: white;">
+                                Pending: <span id="badge-pending-total-count">0</span>
+                            </span>
+                            <span class="badge filter-badge" data-filter="active-status" id="badge-active-status-total" style="cursor: pointer; padding: 8px 12px; font-size: 14px; background: #28a745; color: white;">
+                                Active: <span id="badge-active-status-total-count">0</span>
+                            </span>
+                            <span class="badge filter-badge" data-filter="inactive-status" id="badge-inactive-status-total" style="cursor: pointer; padding: 8px 12px; font-size: 14px; background: #dc3545; color: white;">
+                                Inactive: <span id="badge-inactive-status-total-count">0</span>
+                            </span>
+                            <span class="badge filter-badge" data-filter="missing-status" id="badge-missing-status-total" style="cursor: pointer; padding: 8px 12px; font-size: 14px; background: #ffc107; color: #000;">
+                                Missing: <span id="badge-missing-status-total-count">0</span>
+                            </span>
+                            <span class="badge filter-badge" data-filter="nr-status" id="badge-nr-status-total" style="cursor: pointer; padding: 8px 12px; font-size: 14px; background: #dc3545; color: white;">
+                                NR Status: <span id="badge-nr-status-total-count">0</span>
+                            </span>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-secondary ml-auto" id="clear-filters-btn" style="padding: 8px 16px;">
+                            <i class="fas fa-times"></i> Clear Filters
+                        </button>
+                    </div>
+
                     <div class="table-container">
                         <table class="custom-resizable-table" id="listing-table">
                             <thead>
@@ -1177,10 +1240,6 @@
                                                 Parent <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="batch-total" 
-                                                style="display:inline-block; background:#17a2b8; color:white; border-radius:8px; padding:8px 18px; font-weight:600; font-size:15px;">
-                                                0
-                                            </div>
                                             <div class="mt-1 dropdown-search-container">
                                                 <input type="text" class="form-control form-control-sm parent-search"
                                                     placeholder="Search parent..." id="parentSearch">
@@ -1194,10 +1253,6 @@
                                                 Sku <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="total-sku" 
-                                                style="display:inline-block; background:#007bff; color:white; border-radius:8px; padding:8px 18px; font-weight:600; font-size:15px;">
-                                                0
-                                            </div>
                                             <div class="mt-1 dropdown-search-container">
                                                 <input type="text" class="form-control form-control-sm sku-search"
                                                     placeholder="Search SKU..." id="skuSearch">
@@ -1211,72 +1266,41 @@
                                                 INV <span class="sort-arrow">↓</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="inv-total">0</div>
                                         </div>
                                     </th>
-                                    <th data-field="nr_req" style="vertical-align: middle; white-space: nowrap;">
+                                    <th data-field="NR" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
-                                                RL/NRL
+                                                NR/RL
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div style="display: flex; gap: 5px;">
-                                                <div class="metric-total" id="rl-total"
-                                                    style="display:inline-block; background:#28a745; color:white; border-radius:8px; padding:8px 12px; font-weight:600; font-size:15px;">
-                                                    0</div>
-                                                <div class="metric-total" id="nrl-total"
-                                                    style="display:inline-block; background:#dc3545; color:white; border-radius:8px; padding:8px 12px; font-weight:600; font-size:15px;">
-                                                    0</div>
-                                            </div>
                                         </div>
                                     </th>
-                                    <th data-field="nr_req" style="vertical-align: middle; white-space: nowrap;">
+                                    <th data-field="links" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                LINK
+                                            <div class="d-flex align-items-center" style="gap: 8px;">
+                                                <button id="refresh-links-btn" class="btn btn-sm btn-primary" style="padding: 2px 8px; font-size: 10px; line-height: 1.2;" title="Refresh All Links">
+                                                    <i class="fa fa-refresh"></i> Refresh
+                                                </button>
+                                                <span>Links</span>
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="without-link-total"
-                                                style="display:inline-block; background:#dc3545; color:white; border-radius:8px; padding:8px 18px; font-weight:600; font-size:15px;">
-                                                0
-                                            </div>
                                         </div>
                                     </th>
-                                    <th data-field="listed" style="vertical-align: middle; white-space: nowrap;">
+                                    <th data-field="listed" style="vertical-align: middle; white-space: nowrap; display: none;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
                                                 Listed/Pending
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div>
-                                                <span class="metric-total" id="listed-total"
-                                                    style="display:inline-block; background:#28a745; color:white; border-radius:8px; padding:4px 12px; font-weight:600; font-size:15px;">
-                                                    0
-                                                </span>
-                                                <span class="metric-total" id="pending-total"
-                                                    style="display:inline-block; background:#dc3545; color:white; border-radius:8px; padding:4px 12px; font-weight:600; font-size:15px; margin-left:6px;">
-                                                    0
-                                                </span>
-                                            </div>
                                         </div>
                                     </th>
                                     <th data-field="listing_status" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
-                                                Listing Status
+                                                Status
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div style="display: flex; gap: 5px;">
-                                                <div class="metric-total" id="active-status-total"
-                                                    style="display:inline-block; background:#28a745; color:white; border-radius:8px; padding:4px 8px; font-weight:600; font-size:13px;">
-                                                    0</div>
-                                                <div class="metric-total" id="inactive-status-total"
-                                                    style="display:inline-block; background:#dc3545; color:white; border-radius:8px; padding:4px 8px; font-weight:600; font-size:13px;">
-                                                    0</div>
-                                                <div class="metric-total" id="missing-status-total"
-                                                    style="display:inline-block; background:#ffc107; color:#000; border-radius:8px; padding:4px 8px; font-weight:600; font-size:13px;">
-                                                    0</div>
-                                            </div>
                                         </div>
                                     </th>
                                 </tr>
@@ -1606,58 +1630,73 @@
                 $row.append($('<td>').text(item.sku)); // SKU
                 $row.append($('<td>').css('text-align', 'center').text(item.INV)); // INV
 
-                // NR/REQ dropdown only for non-parent rows
+                // NR/RL column (matching amazon-tabulator-view format)
                 if (!item.sku.includes('PARENT')) {
-                    const $dropdown = $('<select>')
-                        .addClass('nr-req-dropdown form-control form-control-sm')
-                        .append('<option value="REQ" class="req-option">RL</option>')
-                        .append('<option value="NR" class="nr-option">NRL</option>');
-
-                    const initialValue = item.nr_req || 'REQ';
-                    $dropdown.val(initialValue);
-
-                    if (initialValue === 'REQ') {
-                        $dropdown.css('background-color', '#28a745').css('color', 'black');
-                    } else if (initialValue === 'NR') {
-                        $dropdown.css('background-color', '#dc3545').css('color', 'black');
+                    const nrValue = item.NR || 'REQ';
+                    let bgColor = '#28a745'; // Green for REQ/RL
+                    let textColor = 'black';
+                    if (nrValue === 'NR') {
+                        bgColor = '#dc3545'; // Red for NR
+                        textColor = 'black';
                     }
 
-                    $row.append($('<td>').append($dropdown));
+                    const $nrDropdown = $('<select>')
+                        .addClass('form-select form-select-sm nr-select')
+                        .attr('data-sku', item.sku)
+                        .css({
+                            'border': '1px solid #ddd',
+                            'text-align': 'center',
+                            'cursor': 'pointer',
+                            'padding': '2px 4px',
+                            'font-size': '16px',
+                            'width': '50px',
+                            'height': '28px',
+                            'background-color': bgColor,
+                            'color': textColor
+                        })
+                        .append(`<option value="REQ" ${nrValue === 'REQ' ? 'selected' : ''}>🟢</option>`)
+                        .append(`<option value="NR" ${nrValue === 'NR' ? 'selected' : ''}>🔴</option>`);
+
+                    $row.append($('<td>').css('text-align', 'center').append($nrDropdown));
                 } else {
                     $row.append($('<td>').text('')); // Empty cell for parent rows
                 }
 
-                // --- BUYER LINK, SELLER LINK, AND PEN ICON IN ONE TD ---
-                const $linkCell = $('<td>');
-
-                // Buyer Link
-                if (parseFloat(item.INV) > 0 && item.buyer_link) {
-                    $linkCell.append(
-                        `<a href="${item.buyer_link}" target="_blank" style="color:#007bff;text-decoration:underline;margin-right:8px;">Buyer</a>`
-                    );
+                // Links column (matching amazon-tabulator-view format)
+                const $linkCell = $('<td>').css({
+                    'text-align': 'center',
+                    'vertical-align': 'middle'
+                });
+                
+                const buyerLink = item.buyer_link || '';
+                const sellerLink = item.seller_link || '';
+                
+                let html = '<div style="display: flex; flex-direction: column; gap: 4px; align-items: center;">';
+                
+                if (sellerLink) {
+                    html += `<a href="${sellerLink}" target="_blank" class="text-info" style="font-size: 12px; text-decoration: none;">
+                        <i class="fa fa-link"></i> S Link
+                    </a>`;
                 }
-
-                // Seller Link
-                if (parseFloat(item.INV) > 0 && item.seller_link) {
-                    $linkCell.append(
-                        `<a href="${item.seller_link}" target="_blank" style="color:#007bff;text-decoration:underline;margin-right:8px;">Seller</a>`
-                    );
+                
+                if (buyerLink) {
+                    html += `<a href="${buyerLink}" target="_blank" class="text-success" style="font-size: 12px; text-decoration: none;">
+                        <i class="fa fa-link"></i> B Link
+                    </a>`;
                 }
-
-                // Pen icon (always show for non-parent rows, or adjust as needed)
+                
+                if (!sellerLink && !buyerLink) {
+                    html += '<span class="text-muted" style="font-size: 12px;">-</span>';
+                }
+                
+                // Add edit icon for non-parent rows
                 if (!item.sku.includes('PARENT')) {
-                    $linkCell.append(
-                        $('<i>')
-                        .addClass('fas fa-pen text-primary link-edit-icon')
-                        .css({
-                            cursor: 'pointer',
-                            marginLeft: '6px'
-                        })
-                        .attr('title', 'Edit Links')
-                        .data('sku', item.sku)
-                    );
+                    html += `<i class="fas fa-pen text-primary link-edit-icon" style="cursor: pointer; font-size: 12px; margin-top: 4px;" title="Edit Links" data-sku="${item.sku}"></i>`;
                 }
-
+                
+                html += '</div>';
+                $linkCell.html(html);
+                
                 $row.append($linkCell);
 
                 // Listed/Pending dropdown only for non-parent rows
@@ -1680,25 +1719,28 @@
                         $listedDropdown.css('background-color', '#6c757d').css('color', 'white');
                     }
 
-                    $row.append($('<td>').append($listedDropdown));
+                    $row.append($('<td>').css('display', 'none').append($listedDropdown));
                 } else {
-                    $row.append($('<td>').text('')); // Empty cell for parent rows
+                    $row.append($('<td>').css('display', 'none').text('')); // Empty cell for parent rows
                 }
 
                 // Listing Status column
                 const $statusCell = $('<td>').css('text-align', 'center');
-                if (item.listing_status) {
+                // If NR is set to 'NR', show NR instead of MISSING
+                if (item.NR === 'NR') {
+                    $statusCell.html('<span style="background:#dc3545; color:white; padding:8px 18px; border-radius:8px; font-weight:600; font-size:15px;">NR</span>');
+                } else if (item.listing_status) {
                     let statusBadge = '';
                     if (item.listing_status === 'ACTIVE') {
-                        statusBadge = '<span style="background:#28a745; color:white; padding:4px 12px; border-radius:8px; font-weight:600; font-size:13px;">ACTIVE</span>';
+                        statusBadge = '<span style="background:#28a745; color:white; padding:8px 18px; border-radius:8px; font-weight:600; font-size:15px;">ACTIVE</span>';
                     } else if (item.listing_status === 'INACTIVE') {
-                        statusBadge = '<span style="background:#dc3545; color:white; padding:4px 12px; border-radius:8px; font-weight:600; font-size:13px;">INACTIVE</span>';
+                        statusBadge = '<span style="background:#dc3545; color:white; padding:8px 18px; border-radius:8px; font-weight:600; font-size:15px;">INACTIVE</span>';
                     } else {
-                        statusBadge = '<span style="background:#6c757d; color:white; padding:4px 12px; border-radius:8px; font-weight:600; font-size:13px;">' + item.listing_status + '</span>';
+                        statusBadge = '<span style="background:#6c757d; color:white; padding:8px 18px; border-radius:8px; font-weight:600; font-size:15px;">' + item.listing_status + '</span>';
                     }
                     $statusCell.html(statusBadge);
                 } else {
-                    $statusCell.html('<span style="background:#ffc107; color:#000; padding:4px 12px; border-radius:8px; font-weight:600; font-size:13px;">MISSING</span>');
+                    $statusCell.html('<span style="background:#ffc107; color:#000; padding:8px 18px; border-radius:8px; font-weight:600; font-size:15px;">MISSING</span>');
                 }
                 $row.append($statusCell);
 
@@ -1881,12 +1923,15 @@
                         reqTotal: 0,
                         rlTotal: 0,
                         nrlTotal: 0,
+                        nrTotal: 0, // Count for NR (from NR field)
+                        rlTotalNR: 0, // Count for RL (from NR field)
                         withoutLinkTotal: 0,
                         listedTotal: 0,
                         pendingTotal: 0,
                         activeStatusTotal: 0,
                         inactiveStatusTotal: 0,
                         missingStatusTotal: 0,
+                        nrStatusTotal: 0, // Count for NR from listing status
                         rowCount: 0
                     };
 
@@ -1911,6 +1956,16 @@
                                 metrics.rlTotal++;
                             }
                             
+                            // For NR/RL column: Count based on NR field (matching amazon-tabulator-view)
+                            // NR = 'NR' means NR (red)
+                            // NR = 'REQ' means RL (green)
+                            if (item.NR === 'NR') {
+                                metrics.nrTotal++;
+                            } else {
+                                // Default to RL if NR is 'REQ' or any other value
+                                metrics.rlTotalNR++;
+                            }
+                            
                             // Count missing links for all non-parent rows
                             if (!item.buyer_link && !item.seller_link) {
                                 metrics.withoutLinkTotal++;
@@ -1927,7 +1982,10 @@
                             }
                             
                             // Count listing status
-                            if (item.listing_status === 'ACTIVE') {
+                            // If NR is set to 'NR', count it as NR status
+                            if (item.NR === 'NR') {
+                                metrics.nrStatusTotal++;
+                            } else if (item.listing_status === 'ACTIVE') {
                                 metrics.activeStatusTotal++;
                             } else if (item.listing_status === 'INACTIVE') {
                                 metrics.inactiveStatusTotal++;
@@ -1940,18 +1998,19 @@
                         }
                     });
 
-                    $('#total-sku').text(metrics.totalSku);
-                    $('#batch-total').text(metrics.batchTotal);
-                    $('#inv-total').text(metrics.invTotal.toLocaleString());
-                    $('#req-total').text(metrics.reqTotal);
-                    $('#rl-total').text(metrics.rlTotal);
-                    $('#nrl-total').text(metrics.nrlTotal);
-                    $('#without-link-total').text(metrics.withoutLinkTotal);
-                    $('#listed-total').text(metrics.listedTotal); // Green
-                    $('#pending-total').text(metrics.pendingTotal); // Red
-                    $('#active-status-total').text(metrics.activeStatusTotal); // Green
-                    $('#inactive-status-total').text(metrics.inactiveStatusTotal); // Red
-                    $('#missing-status-total').text(metrics.missingStatusTotal); // Yellow
+                    // Update badge counts at top
+                    $('#badge-total-sku-count').text(metrics.totalSku);
+                    $('#badge-batch-total-count').text(metrics.batchTotal);
+                    $('#badge-inv-total-count').text(metrics.invTotal.toLocaleString());
+                    $('#badge-nr-total-count').text(metrics.nrTotal); // Red badge for NR
+                    $('#badge-rl-total-count').text(metrics.rlTotalNR); // Green badge for RL
+                    $('#badge-without-link-total-count').text(metrics.withoutLinkTotal);
+                    $('#badge-listed-total-count').text(metrics.listedTotal); // Green
+                    $('#badge-pending-total-count').text(metrics.pendingTotal); // Red
+                    $('#badge-active-status-total-count').text(metrics.activeStatusTotal); // Green
+                    $('#badge-inactive-status-total-count').text(metrics.inactiveStatusTotal); // Red
+                    $('#badge-missing-status-total-count').text(metrics.missingStatusTotal); // Yellow
+                    $('#badge-nr-status-total-count').text(metrics.nrStatusTotal); // NR from listing status
                 } catch (error) {
                     console.error('Error in calculateTotals:', error);
                     resetMetricsToZero();
@@ -1959,19 +2018,132 @@
             }
 
             function resetMetricsToZero() {
-                $('#total-sku').text('0');
-                $('#batch-total').text('0');
-                $('#inv-total').text('0');
-                $('#req-total').text('0');
-                $('#rl-total').text('0');
-                $('#nrl-total').text('0');
-                $('#without-link-total').text('0');
-                $('#listed-total').text('0');
-                $('#pending-total').text('0');
-                $('#active-status-total').text('0');
-                $('#inactive-status-total').text('0');
-                $('#missing-status-total').text('0');
+                $('#badge-total-sku-count').text('0');
+                $('#badge-batch-total-count').text('0');
+                $('#badge-inv-total-count').text('0');
+                $('#badge-nr-total-count').text('0');
+                $('#badge-rl-total-count').text('0');
+                $('#badge-without-link-total-count').text('0');
+                $('#badge-listed-total-count').text('0');
+                $('#badge-pending-total-count').text('0');
+                $('#badge-active-status-total-count').text('0');
+                $('#badge-inactive-status-total-count').text('0');
+                $('#badge-missing-status-total-count').text('0');
+                $('#badge-nr-status-total-count').text('0');
             }
+            
+            // Track active filters
+            let activeFilters = new Set();
+            
+            // Function to apply badge filter
+            function applyBadgeFilter(filterType) {
+                // Map filter types to badge IDs
+                const badgeIdMap = {
+                    'sku': 'badge-total-sku',
+                    'batch': 'badge-batch-total',
+                    'inv': 'badge-inv-total',
+                    'nr': 'badge-nr-total',
+                    'rl': 'badge-rl-total',
+                    'without-link': 'badge-without-link-total',
+                    'listed': 'badge-listed-total',
+                    'pending': 'badge-pending-total',
+                    'active-status': 'badge-active-status-total',
+                    'inactive-status': 'badge-inactive-status-total',
+                    'missing-status': 'badge-missing-status-total',
+                    'nr-status': 'badge-nr-status-total'
+                };
+                
+                const badgeId = badgeIdMap[filterType];
+                if (!badgeId) return;
+                
+                // Toggle filter
+                if (activeFilters.has(filterType)) {
+                    activeFilters.delete(filterType);
+                    $(`#${badgeId}`).removeClass('active');
+                } else {
+                    activeFilters.add(filterType);
+                    $(`#${badgeId}`).addClass('active');
+                }
+                
+                // Apply all active filters
+                filteredData = [...tableData];
+                
+                activeFilters.forEach(filter => {
+                    switch(filter) {
+                        case 'sku':
+                            filteredData = filteredData.filter(item => !item.sku.includes('PARENT'));
+                            break;
+                        case 'batch':
+                            filteredData = filteredData.filter(item => item.sku.includes('PARENT'));
+                            break;
+                        case 'inv':
+                            filteredData = filteredData.filter(item => parseFloat(item.INV) > 0);
+                            break;
+                        case 'nr':
+                            filteredData = filteredData.filter(item => item.NR === 'NR');
+                            break;
+                        case 'rl':
+                            filteredData = filteredData.filter(item => item.NR === 'REQ' || !item.NR || item.NR !== 'NR');
+                            break;
+                        case 'without-link':
+                            filteredData = filteredData.filter(item => !item.buyer_link && !item.seller_link);
+                            break;
+                        case 'listed':
+                            filteredData = filteredData.filter(item => item.listed === 'Listed');
+                            break;
+                        case 'pending':
+                            filteredData = filteredData.filter(item => item.listed === 'Pending');
+                            break;
+                        case 'active-status':
+                            filteredData = filteredData.filter(item => item.listing_status === 'ACTIVE');
+                            break;
+                        case 'inactive-status':
+                            filteredData = filteredData.filter(item => item.listing_status === 'INACTIVE');
+                            break;
+                        case 'missing-status':
+                            filteredData = filteredData.filter(item => !item.listing_status && item.NR !== 'NR');
+                            break;
+                        case 'nr-status':
+                            filteredData = filteredData.filter(item => item.NR === 'NR');
+                            break;
+                    }
+                });
+                
+                currentPage = 1;
+                renderTable();
+                calculateTotals();
+            }
+            
+            // Function to clear all filters
+            function clearAllFilters() {
+                activeFilters.clear();
+                $('.filter-badge').removeClass('active');
+                // Reset dropdown filters to 'all'
+                $('#row-data-type').val('sku');
+                $('#combined-filter').val('pending');
+                $('#inv-filter').val('all');
+                $('#nr-req-filter').val('all');
+                $('#link-filter').val('all');
+                $('#listed-filter').val('all');
+                $('#search-input').val('');
+                currentDataTypeFilter = 'sku';
+                currentInvFilter = 'all';
+                filteredData = [...tableData];
+                currentPage = 1;
+                renderTable();
+                calculateTotals();
+            }
+            
+            // Add click handlers for filter badges
+            $(document).on('click', '.filter-badge', function() {
+                const filterType = $(this).data('filter');
+                applyBadgeFilter(filterType);
+            });
+            
+            // Clear filters button
+            $('#clear-filters-btn').on('click', function() {
+                clearAllFilters();
+            });
 
             // Initialize enhanced dropdowns
             function initEnhancedDropdowns() {
@@ -2375,35 +2547,6 @@
                 });
             }
 
-            $(document).on('change', '.nr-req-dropdown', function() {
-                const $row = $(this).closest('tr');
-                const sku = $row.find('td').eq(1).text().trim();
-                const nr_req = $(this).val();
-                
-                // Update color based on selection
-                if (nr_req === 'REQ') {
-                    $(this).css('background-color', '#28a745').css('color', 'white');
-                } else if (nr_req === 'NR') {
-                    $(this).css('background-color', '#dc3545').css('color', 'white');
-                    
-                    // When NR is selected, also change Listed dropdown to NRL
-                    const $listedDropdown = $row.find('.listed-dropdown');
-                    $listedDropdown.val('NRL');
-                    $listedDropdown.css('background-color', '#6c757d').css('color', 'white');
-                    
-                    // Update both nr_req and listed in the database
-                    saveStatusToDB(sku, {
-                        nr_req: nr_req,
-                        listed: 'NRL'
-                    });
-                    return; // Exit early since we're saving both values
-                }
-
-                saveStatusToDB(sku, {
-                    nr_req
-                });
-            });
-
             $(document).on('change', '.listed-dropdown', function() {
                 const $row = $(this).closest('tr');
                 const sku = $row.find('td').eq(1).text().trim();
@@ -2421,6 +2564,50 @@
                 saveStatusToDB(sku, {
                     listed
                 });
+            });
+
+            // Handle NR/RL dropdown change (matching amazon-tabulator-view)
+            $(document).on('change', '.nr-select', function() {
+                const $row = $(this).closest('tr');
+                const sku = $(this).data('sku');
+                const nrValue = $(this).val();
+                
+                // Update color based on selection
+                if (nrValue === 'REQ') {
+                    $(this).css('background-color', '#28a745').css('color', 'black');
+                } else if (nrValue === 'NR') {
+                    $(this).css('background-color', '#dc3545').css('color', 'black');
+                    
+                    // When NR is selected, also change Listed dropdown to NRL
+                    const $listedDropdown = $row.find('.listed-dropdown');
+                    if ($listedDropdown.length) {
+                        $listedDropdown.val('NRL');
+                        $listedDropdown.css('background-color', '#6c757d').css('color', 'white');
+                    }
+                }
+
+                // Sync with nr_req field - map NR to nr_req format
+                const nr_req = (nrValue === 'NR') ? 'NR' : 'REQ';
+                
+                // Update the local tableData
+                const item = tableData.find(row => row.sku === sku);
+                if (item) {
+                    item.NR = nrValue;
+                    item.nr_req = nr_req;
+                }
+
+                // Prepare data to save
+                const saveData = {
+                    nr_req: nr_req
+                };
+                
+                // If NR is selected, also update listed to NRL
+                if (nrValue === 'NR') {
+                    saveData.listed = 'NRL';
+                }
+
+                // Save to database
+                saveStatusToDB(sku, saveData);
             });
 
             $('#nr-req-filter').on('change', function() {
@@ -2484,6 +2671,76 @@
                 currentPage = 1;
                 renderTable();
                 calculateTotals();
+            });
+
+            // Refresh Links Button Handler
+            $('#refresh-links-btn').on('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const $btn = $(this);
+                const originalHtml = $btn.html();
+                
+                // Disable button and show loading state
+                $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Refreshing...');
+                
+                // Show notification
+                if (typeof showToast === 'function') {
+                    showToast('info', 'Refreshing links for all SKUs...');
+                } else {
+                    alert('Refreshing links for all SKUs...');
+                }
+                
+                $.ajax({
+                    url: '/amazon/refresh-links',
+                    type: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    data: {
+                        update_all: true
+                    },
+                    success: function(response) {
+                        if (response.status === 'success') {
+                            const message = response.message || `Successfully updated ${response.updated || 0} links`;
+                            
+                            if (typeof showToast === 'function') {
+                                showToast('success', message);
+                            } else {
+                                alert(message);
+                            }
+                            
+                            // Reload table data
+                            if (typeof loadTableData === 'function') {
+                                loadTableData();
+                            } else {
+                                // Fallback: reload page
+                                setTimeout(function() {
+                                    location.reload();
+                                }, 1000);
+                            }
+                        } else {
+                            const errorMsg = response.message || 'Failed to refresh links';
+                            if (typeof showToast === 'function') {
+                                showToast('error', errorMsg);
+                            } else {
+                                alert(errorMsg);
+                            }
+                        }
+                    },
+                    error: function(xhr) {
+                        const error = xhr.responseJSON?.message || 'Failed to refresh links';
+                        if (typeof showToast === 'function') {
+                            showToast('error', error);
+                        } else {
+                            alert(error);
+                        }
+                    },
+                    complete: function() {
+                        // Re-enable button
+                        $btn.prop('disabled', false).html(originalHtml);
+                    }
+                });
             });
         });
     </script>

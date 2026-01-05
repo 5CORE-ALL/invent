@@ -186,23 +186,17 @@
                         <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total SALES AMT: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">AVG GPFT: 0%</span>
                         <span class="badge bg-secondary fs-6 p-2" id="avg-pft" style="color: black; font-weight: bold;">AVG PFT: 0%</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
-                        <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">Avg CVR: 0.00%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
                         
                         <!-- Walmart Metrics -->
                         <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color: black; font-weight: bold;">Total Walmart INV: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color: black; font-weight: bold;">Total W L30: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold;">0 Sold Count: 0</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-dil-percent-badge" style="color: black; font-weight: bold;">DIL %: 0%</span>
                         
                         <!-- Financial Metrics -->
                         <span class="badge bg-warning fs-6 p-2" id="total-spend-l30-badge" style="color: black; font-weight: bold;">Total Spend L30: $0.00</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-cogs-amt-badge" style="color: black; font-weight: bold;">COGS AMT: $0.00</span>
                         <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI %: 0%</span>
                         
                         <!-- Status Counts -->
-                        <span class="badge bg-primary fs-6 p-2" id="total-sku-count-badge" style="color: black; font-weight: bold;">Total SKUs: 0</span>
                     </div>
                 </div>
             </div>
@@ -394,6 +388,7 @@
                         field: "E Dil%",
                         hozAlign: "center",
                         sorter: "number",
+                        visible: false,
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const INV = parseFloat(rowData.INV) || 0;
@@ -419,7 +414,8 @@
                         field: "W_L30",
                         hozAlign: "center",
                         width: 50,
-                        sorter: "number"
+                        sorter: "number",
+                        sorterParams: {dir: "asc"}
                     },
                     {
                         title: "CVR",
@@ -458,6 +454,7 @@
                             };
                             return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
                         },
+                        sorterParams: {dir: "asc"},
                         width: 60
                     },
 
@@ -848,40 +845,6 @@
                         },
                         width: 90
                     },
-                    {
-                        title: "KW SPEND L30",
-                        field: "kw_spend_L30",
-                        hozAlign: "center",
-                        sorter: "number",
-                        visible: false,
-                        formatter: function(cell) {
-                            const value = parseFloat(cell.getValue() || 0);
-                            return `$${value.toFixed(2)}`;
-                        },
-                        bottomCalc: "sum",
-                        bottomCalcFormatter: function(cell) {
-                            const value = cell.getValue();
-                            return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
-                        },
-                        width: 100
-                    },
-                    {
-                        title: "PMT SPEND L30",
-                        field: "pmt_spend_L30",
-                        hozAlign: "center",
-                        sorter: "number",
-                        visible: false,
-                        formatter: function(cell) {
-                            const value = parseFloat(cell.getValue() || 0);
-                            return `$${value.toFixed(2)}`;
-                        },
-                        bottomCalc: "sum",
-                        bottomCalcFormatter: function(cell) {
-                            const value = cell.getValue();
-                            return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
-                        },
-                        width: 100
-                    }
                 ]
             });
 
@@ -1242,8 +1205,6 @@
                 let totalWL30 = 0;
                 let zeroSoldCount = 0;
                 let totalSpendL30 = 0;
-                let totalKwSpendL30 = 0;
-                let totalPmtSpendL30 = 0;
                 let totalCogs = 0;
                 let totalPrices = 0;
                 let priceCount = 0;
@@ -1266,8 +1227,6 @@
                         const inv = parseFloat(row.INV) || 0;
                         const views = parseFloat(row.page_views) || parseFloat(row.insights_views) || 0;
                         const adSpend = parseFloat(row.AD_Spend_L30) || 0;
-                        const kwSpend = parseFloat(row.kw_spend_L30) || 0;
-                        const pmtSpend = parseFloat(row.pmt_spend_L30) || 0;
 
                         totalSalesAmt += price * wL30;
                         totalPftAmt += (price * MARKETPLACE_PERCENTAGE - lp - ship) * wL30;
@@ -1275,8 +1234,6 @@
                         totalInv += inv;
                         totalWL30 += wL30;
                         totalSpendL30 += adSpend;
-                        totalKwSpendL30 += kwSpend;
-                        totalPmtSpendL30 += pmtSpend;
                         totalCogs += lp * wL30;
                         
                         // Count SKUs with 0 sold (W_L30 = 0)

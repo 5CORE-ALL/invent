@@ -2662,6 +2662,132 @@ class OverallAmazonController extends Controller
         return response()->json($visibility);
     }
 
+    /**
+     * Refresh links for Amazon listings (quick method using existing ASIN data)
+     */
+    public function refreshAmazonLinks(Request $request)
+    {
+        try {
+            $sku = $request->input('sku');
+            $updateAll = $request->input('update_all', false);
+
+            if ($updateAll) {
+                // Update all SKUs using ASIN from amazon_datsheets
+                $skus = ProductMaster::whereNull('deleted_at')
+                    ->whereNotNull('sku')
+                    ->where('sku', '!=', '')
+                    ->where('sku', 'NOT LIKE', '%PARENT%')
+                    ->pluck('sku')
+                    ->unique()
+                    ->values();
+
+                $updated = 0;
+                $skipped = 0;
+
+                foreach ($skus as $currentSku) {
+                    $result = $this->updateLinksFromAsin($currentSku);
+                    if ($result['success']) {
+                        $updated++;
+                    } else {
+                        $skipped++;
+                    }
+                }
+
+                return response()->json([
+                    'status' => 'success',
+                    'message' => "Updated {$updated} SKUs, {$skipped} skipped (no ASIN)",
+                    'updated' => $updated,
+                    'skipped' => $skipped
+                ]);
+            } else {
+                if (!$sku) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'SKU is required'
+                    ], 400);
+                }
+
+                $result = $this->updateLinksFromAsin($sku);
+                
+                if ($result['success']) {
+                    return response()->json([
+                        'status' => 'success',
+                        'message' => 'Links updated successfully',
+                        'data' => $result['data']
+                    ]);
+                } else {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => $result['message']
+                    ], 400);
+                }
+            }
+        } catch (\Exception $e) {
+            Log::error('Error refreshing Amazon links', [
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to refresh links: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Update links from ASIN in amazon_datsheets (fast method, no API calls)
+     */
+    private function updateLinksFromAsin($sku)
+    {
+        try {
+            $amazonSheet = AmazonDatasheet::where('sku', $sku)->first();
+            
+            if (!$amazonSheet || !$amazonSheet->asin) {
+                return [
+                    'success' => false,
+                    'message' => 'ASIN not found for this SKU'
+                ];
+            }
+
+            $asin = $amazonSheet->asin;
+            $buyerLink = "https://www.amazon.com/dp/{$asin}";
+            $sellerLink = "https://sellercentral.amazon.com/inventory/ref=xx_invmgr_dnav_xx?asin={$asin}";
+
+            // Update links in amazon_data_view
+            $status = AmazonDataView::where('sku', $sku)->first();
+            $existing = $status ? $status->value : [];
+
+            $existing['buyer_link'] = $buyerLink;
+            $existing['seller_link'] = $sellerLink;
+
+            AmazonDataView::updateOrCreate(
+                ['sku' => $sku],
+                ['value' => $existing]
+            );
+
+            return [
+                'success' => true,
+                'data' => [
+                    'sku' => $sku,
+                    'asin' => $asin,
+                    'buyer_link' => $buyerLink,
+                    'seller_link' => $sellerLink
+                ]
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Error updating links from ASIN', [
+                'sku' => $sku,
+                'error' => $e->getMessage()
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'Error: ' . $e->getMessage()
+            ];
+        }
+    }
+
     public function exportAmazonPricingCVR(Request $request)
     {
         return $this->amazonDataService->exportPricingCVRToCSV($request);

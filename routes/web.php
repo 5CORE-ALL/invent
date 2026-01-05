@@ -952,6 +952,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon-column-visibility', [OverallAmazonController::class, 'getAmazonColumnVisibility'])->name('amazon.column.visibility');
     Route::post('/amazon-column-visibility', [OverallAmazonController::class, 'saveAmazonColumnVisibility'])->name('amazon.column.visibility.save');
     Route::get('/amazon-data-json', action: [OverallAmazonController::class, 'amazonDataJson'])->name('amazon.data.json');
+    Route::post('/amazon/refresh-links', [OverallAmazonController::class, 'refreshAmazonLinks'])->name('amazon.refresh.links');
     Route::post('/save-amazon-nr', [OverallAmazonController::class, 'saveNrToDatabase']);
     Route::post('/save-amazon-sprice', [OverallAmazonController::class, 'saveSpriceToDatabase']);
     Route::post('/apply-amazon-price', [OverallAmazonController::class, 'applyAmazonPrice']);
@@ -1080,6 +1081,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/listing-amazon', [ListingAmazonController::class, 'listingAmazon'])->name('listing.amazon');
     Route::get('/listing_amazon/view-data', [ListingAmazonController::class, 'getViewListingAmazonData']);
     Route::post('/listing_amazon/save-status', [ListingAmazonController::class, 'saveStatus']);
+    Route::post('/listing_amazon/fetch-links', [ListingAmazonController::class, 'fetchAndUpdateLinks'])->name('listing.amazon.fetch.links');
     Route::post('/listing_amazon/import', [ListingAmazonController::class, 'import'])->name('listing_amazon.import');
     Route::get('/listing_amazon/export', [ListingAmazonController::class, 'export'])->name('listing_amazon.export');
 
