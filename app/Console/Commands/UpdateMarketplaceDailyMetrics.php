@@ -1710,12 +1710,47 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateTikTokMetrics($date)
     {
-        // Get TikTok daily data (L30)
-        $data = TikTokDailyData::where('period', 'l30')
-            ->whereNotIn('order_status', ['CANCELLED', 'REFUNDED', 'CANCELED'])
+        // 33 days: Get latest TikTok order date from ShipHub and calculate 33-day range
+        $latestDate = DB::connection('shiphub')
+            ->table('orders')
+            ->where('marketplace', '=', 'tiktok')
+            ->max('order_date');
+
+        if (!$latestDate) {
+            return null;
+        }
+
+        $latestDateCarbon = Carbon::parse($latestDate);
+        $startDate = $latestDateCarbon->copy()->subDays(32); // 33 days total (matches Amazon)
+
+        // Get order items from ShipHub (matching TikTokSalesController exactly)
+        $orderItems = DB::connection('shiphub')
+            ->table('orders as o')
+            ->join('order_items as i', 'o.id', '=', 'i.order_id')
+            ->whereBetween('o.order_date', [$startDate, $latestDateCarbon->endOfDay()])
+            ->where('o.marketplace', '=', 'tiktok')
+            ->where(function($query) {
+                $query->where('o.order_status', '!=', 'Canceled')
+                      ->where('o.order_status', '!=', 'Cancelled')
+                      ->orWhereNull('o.order_status');
+            })
+            ->select([
+                'o.id as internal_order_id', // For grouping multi-item orders
+                'o.marketplace_order_id as order_id',
+                'o.order_number',
+                'o.order_date',
+                'o.order_status as status',
+                'o.order_total as total_amount',
+                'i.sku',
+                'i.product_name as title',
+                'i.quantity_ordered as quantity',
+                'i.unit_price as price', // This is TOTAL price for item line in ShipHub
+                'i.asin',
+                'i.currency',
+            ])
             ->get();
 
-        if ($data->isEmpty()) {
+        if ($orderItems->isEmpty()) {
             return null;
         }
 
@@ -1728,35 +1763,56 @@ class UpdateMarketplaceDailyMetrics extends Command
         $totalRevenue = 0;
         $totalCogs = 0;
         $totalPft = 0;
-        $totalCommission = 0;
         $totalWeightedPrice = 0;
         $totalQuantityForPrice = 0;
 
-        // TikTok uses 85% margin (15% platform fees approximately)
-        $margin = 0.85;
+        // TikTok margin fixed at 80%
+        $margin = 0.80; // 80% margin (20% TikTok fees)
 
-        foreach ($data as $row) {
-            if (!$row->order_id || $row->order_id === '') continue;
-
-            $totalOrders++;
-            $quantity = (int) ($row->quantity ?? 1);
-            $unitPrice = (float) ($row->unit_price ?? 0);
-            $totalAmount = (float) ($row->total_amount ?? 0);
-            $commission = (float) ($row->platform_commission ?? 0);
-            
-            $totalQuantity += $quantity;
-            $totalRevenue += $totalAmount;
-            $totalCommission += $commission;
-
-            if ($quantity > 0 && $unitPrice > 0) {
-                $totalWeightedPrice += $unitPrice * $quantity;
-                $totalQuantityForPrice += $quantity;
+        // Group items by order to handle multi-item orders correctly
+        $orderGroups = [];
+        foreach ($orderItems as $item) {
+            $orderId = $item->internal_order_id ?? 'unknown';
+            if (!isset($orderGroups[$orderId])) {
+                $orderGroups[$orderId] = [
+                    'order_total' => (float) ($item->total_amount ?? 0),
+                    'items' => []
+                ];
             }
+            $orderGroups[$orderId]['items'][] = $item;
+        }
 
-            // Get LP and Ship from ProductMaster
-            $sku = strtoupper($row->sku ?? '');
+        // Process order items from ShipHub (matching TikTokSalesController)
+        foreach ($orderGroups as $orderId => $orderData) {
+            $orderTotal = $orderData['order_total'];
+            $items = $orderData['items'];
+            $itemCount = count($items);
+            
+            // Distribute order_total across all items in the order
+            $pricePerItem = $itemCount > 0 ? $orderTotal / $itemCount : $orderTotal;
+            
+            foreach ($items as $item) {
+                $totalOrders++;
+                
+                $quantity = (int) ($item->quantity ?? 1);
+                
+                // TikTok FIX: Use distributed price per item
+                $totalPrice = $pricePerItem;
+                $unitPrice = $quantity > 0 ? $totalPrice / $quantity : 0;
+                
+                $totalQuantity += $quantity;
+                $totalRevenue += $totalPrice;
+
+                if ($quantity > 0 && $unitPrice > 0) {
+                    $totalWeightedPrice += $unitPrice * $quantity;
+                    $totalQuantityForPrice += $quantity;
+                }
+
+            // Get LP, Ship and wt_act from ProductMaster
+            $sku = strtoupper($item->sku ?? '');
             $lp = 0;
             $ship = 0;
+            $weightAct = 0;
 
             if ($sku && isset($productMasters[$sku])) {
                 $pm = $productMasters[$sku];
@@ -1780,24 +1836,43 @@ class UpdateMarketplaceDailyMetrics extends Command
                 } elseif (isset($pm->ship)) {
                     $ship = floatval($pm->ship);
                 }
+                
+                // Get Weight Act
+                if (isset($values['wt_act'])) {
+                    $weightAct = floatval($values['wt_act']);
+                }
             }
 
-            // COGS = LP * quantity
+            // T Weight = Weight Act * Quantity
+            $tWeight = $weightAct * $quantity;
+
+            // Ship Cost calculation (same as Amazon):
+            if ($quantity == 1) {
+                $shipCost = $ship;
+            } elseif ($quantity > 1 && $tWeight < 20) {
+                $shipCost = $ship / $quantity;
+            } else {
+                $shipCost = $ship;
+            }
+
+            // COGS = LP * quantity (only LP, not Ship)
             $cogs = $lp * $quantity;
             $totalCogs += $cogs;
 
-            // PFT Each = (unit_price * 0.85) - lp - ship
-            $pftEach = ($unitPrice * $margin) - $lp - $ship;
+            // PFT Each = (unit_price * margin) - lp - ship_cost
+            $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
 
             // T PFT = pft_each * quantity
             $pft = $pftEach * $quantity;
             $totalPft += $pft;
-        }
+            } // End foreach items
+        } // End foreach orderGroups
 
         $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
         $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
+        // TikTok has no ads currently, so N ROI = G ROI and N PFT = G PFT
         return [
             'total_orders' => $totalOrders,
             'total_quantity' => $totalQuantity,
@@ -1809,7 +1884,10 @@ class UpdateMarketplaceDailyMetrics extends Command
             'roi_percentage' => $roiPercentage,
             'avg_price' => $avgPrice,
             'l30_sales' => $totalRevenue,
-            'total_commission' => $totalCommission,
+            'kw_spent' => 0,
+            'pmt_spent' => 0,
+            'n_pft' => $totalPft,
+            'n_roi' => $roiPercentage,
         ];
     }
 
