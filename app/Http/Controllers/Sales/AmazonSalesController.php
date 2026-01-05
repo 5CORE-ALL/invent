@@ -211,7 +211,7 @@ class AmazonSalesController extends Controller
             $pftEach = ($unitPrice * 0.80) - $lp - $shipCost;
             $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;
             $pft = $pftEach * $quantity;
-            $roi = $lp > 0 ? ($pft / $lp) * 100 : 0;
+            $roi = $lp > 0 ? ($pftEach / $lp) * 100 : 0;
 
             $data[] = [
                 'order_id' => $item->order_id,
