@@ -34,13 +34,13 @@ class ListingAmazonController extends Controller
     public function getViewListingAmazonData(Request $request)
     {
         $productMasters = ProductMaster::whereNull('deleted_at')
-            ->select('id', 'sku', 'parent')
+            ->select('id', 'sku', 'parent', 'Values')
             ->get();
         $skus = $productMasters->pluck('sku')->unique()->toArray();
 
         // Load all data in one go with proper indexing
         $shopifyData = ShopifySku::whereIn('sku', $skus)
-            ->select('sku', 'inv', 'quantity')
+            ->select('sku', 'inv', 'quantity', 'image_src')
             ->get()
             ->keyBy('sku');
         
@@ -53,6 +53,9 @@ class ListingAmazonController extends Controller
             ->select('sku', 'listing_status')
             ->get()
             ->keyBy('sku');
+        
+        // Load NR values from AmazonListingStatus for fallback (matching amazon-tabulator-view)
+        $nrListingStatuses = AmazonListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $processedData = [];
         foreach ($productMasters as $item) {
@@ -73,18 +76,26 @@ class ListingAmazonController extends Controller
             
             if (isset($statusData[$childSku])) {
                 $status = $statusData[$childSku]->value;
-                // Read NRL field - "RL" means RL, "NRL" means NRL (synced with other Amazon pages)
+                if (!is_array($status)) {
+                    $status = json_decode($status, true) ?? [];
+                }
+                
+                // Read NRL field - matching amazon-tabulator-view logic exactly
+                // "NRL" means NRL (NR), "RL" or "REQ" means RL (REQ)
                 $nrlValue = $status['NRL'] ?? null;
                 if ($nrlValue === 'NRL') {
                     $nr_req = 'NR';
                     $nr = 'NR'; // For amazon-tabulator-view compatibility
-                } else if ($nrlValue === 'RL' || $nrlValue === 'REQ') {
-                    // Support both 'RL' (new format) and 'REQ' (old format) for backward compatibility
+                } else if ($nrlValue === 'REQ') {
+                    $nr_req = 'REQ';
+                    $nr = 'REQ'; // For amazon-tabulator-view compatibility
+                } else if ($nrlValue === 'RL') {
+                    // 'RL' is the format saved by saveStatus, map to 'REQ' for display
                     $nr_req = 'REQ';
                     $nr = 'REQ'; // For amazon-tabulator-view compatibility
                 } else {
-                    // Default to REQ if NRL field is null or any other value
-                    $nr = 'REQ'; // For amazon-tabulator-view compatibility
+                    // If NRL field is null or any other value, set NR to null (will fallback to AmazonListingStatus)
+                    $nr = null;
                 }
                 
                 $listedValue = $status['Listed'] ?? $status['listed'] ?? null;
@@ -95,9 +106,50 @@ class ListingAmazonController extends Controller
                 }
                 $buyer_link = $status['buyer_link'] ?? null;
                 $seller_link = $status['seller_link'] ?? null;
-            } else {
-                // If no status data, default NR to REQ
+            }
+            
+            // Fallback to AmazonListingStatus if NR not set from AmazonDataView (matching amazon-tabulator-view)
+            if ($nr === null) {
+                $listingStatus = $nrListingStatuses->get($childSku);
+                if ($listingStatus && $listingStatus->value) {
+                    $listingValue = is_array($listingStatus->value) ? $listingStatus->value : json_decode($listingStatus->value, true) ?? [];
+                    $nr = $listingValue['nr_req'] ?? null;
+                    // Only set links from listing status if not already set from AmazonDataView
+                    if ($buyer_link === null) {
+                        $buyer_link = $listingValue['buyer_link'] ?? null;
+                    }
+                    if ($seller_link === null) {
+                        $seller_link = $listingValue['seller_link'] ?? null;
+                    }
+                }
+            }
+            
+            // If still null after fallback, default to REQ
+            if ($nr === null) {
                 $nr = 'REQ';
+                $nr_req = 'REQ';
+            }
+            
+            // Get status from ProductMaster Values field
+            $status = null;
+            $image_path = null;
+            if ($item->Values) {
+                $values = is_array($item->Values) ? $item->Values : json_decode($item->Values, true);
+                if (is_array($values)) {
+                    $status = $values['status'] ?? null;
+                    $image_path = $values['image_path'] ?? null;
+                }
+            }
+            
+            // Get image from Shopify first, then fallback to local image_path (same as product-master)
+            $shopifyImage = isset($shopifyData[$childSku]) ? ($shopifyData[$childSku]->image_src ?? null) : null;
+            
+            if ($shopifyImage) {
+                $image_path = $shopifyImage; // Use Shopify URL
+            } elseif ($image_path) {
+                $image_path = '/' . ltrim($image_path, '/'); // Use local path, ensure leading slash
+            } else {
+                $image_path = null;
             }
             
             $row = [
@@ -111,7 +163,9 @@ class ListingAmazonController extends Controller
                 'listed' => $listed,
                 'buyer_link' => $buyer_link,
                 'seller_link' => $seller_link,
-                'listing_status' => $listing_status
+                'listing_status' => $listing_status,
+                'status' => $status, // Status from ProductMaster
+                'image_path' => $image_path // Image path (Shopify first, then local)
             ];
             
             $processedData[] = $row;

@@ -771,36 +771,29 @@
                             const sku = rowData.sku;
                             let value = cell.getValue();
                             
-                            // Handle different value formats - no default, keep empty if not set
+                            // Handle different value formats - default to "RL" (green dot) if not set
                             let hasValue = false;
-                            let normalizedValue = null;
-                            
-                            // Check if value exists and is not empty/null/undefined
-                            if (value !== null && value !== undefined && value !== '' && String(value).trim() !== '') {
-                                normalizedValue = String(value).trim().toUpperCase();
+                            if (value && value !== '' && value !== null && value !== undefined) {
+                                value = String(value).trim().toUpperCase();
                                 // Ensure value is either RL or NRL
-                                if (normalizedValue === "RL" || normalizedValue === "NRL") {
+                                if (value === "RL" || value === "NRL") {
                                     hasValue = true;
-                                    value = normalizedValue;
                                 } else {
-                                    // Invalid value, treat as empty
-                                    hasValue = false;
-                                    value = null;
+                                    value = "RL"; // Default to RL
+                                    hasValue = true;
                                 }
                             } else {
-                                // No value set
-                                hasValue = false;
-                                value = null;
+                                value = "RL"; // Default to RL (green dot)
+                                hasValue = true;
                             }
                             
-                            const dotClass = hasValue ? (value === "RL" ? "green" : "red") : "";
-                            const displayHtml = hasValue 
-                                ? `<span class="status-dot ${dotClass}"></span>`
-                                : `<span class="status-dot" style="background-color: transparent; border: 1px solid #ced4da;"></span>`;
+                            const isGreen = value === "RL";
+                            const dotClass = isGreen ? "green" : "red";
+                            const displayHtml = `<span class="status-dot ${dotClass}"></span>`;
 
                             return `
                                 <div class="dot-dropdown" style="position: relative; width: 100%;">
-                                    <button type="button" class="dot-dropdown-btn" data-sku="${sku}" data-field="NRL" data-value="${value || ''}" style="justify-content: center;">
+                                    <button type="button" class="dot-dropdown-btn" data-sku="${sku}" data-field="NRL" data-value="${value || 'RL'}" style="justify-content: center;">
                                         ${displayHtml}
                                     </button>
                                     <div class="dot-dropdown-menu">
@@ -1390,12 +1383,21 @@
                 // Close dropdown
                 menu.removeClass("show");
 
-                // Update table cell value
-                const cellElement = button.closest(".tabulator-cell");
-                if (cellElement.length && window.table) {
-                    const row = cellElement.closest(".tabulator-row");
-                    if (row.length && row[0]) {
-                        const tabulatorRow = window.table.getRowFromElement(row[0]);
+                // Update table cell value using SKU to find the row
+                if (window.table && sku) {
+                    try {
+                        // Find row by SKU
+                        const rows = window.table.getRows();
+                        let tabulatorRow = null;
+                        
+                        for (let i = 0; i < rows.length; i++) {
+                            const rowData = rows[i].getData();
+                            if (rowData.sku === sku) {
+                                tabulatorRow = rows[i];
+                                break;
+                            }
+                        }
+                        
                         if (tabulatorRow) {
                             const rowData = tabulatorRow.getData();
                             rowData[field] = value;
@@ -1424,17 +1426,57 @@
                                 }
                             }
                             
+                            // Update the row data - this will trigger Tabulator to refresh the row
                             tabulatorRow.update(rowData);
-                            console.log(`Table updated - ${field}: ${value}`);
                             
-                            // If NRA was updated, also refresh the MISSING column cell to show yellow dot if needed
+                            // The button display is already updated manually above
+                            // For the MISSING column, manually update its HTML if NRA was changed
                             if (field === "NRA" || (field === "NRL" && value === "NRL")) {
+                                // Manually update the MISSING column cell HTML
                                 const missingCell = tabulatorRow.getCell("hasCampaign");
                                 if (missingCell) {
-                                    missingCell.reformat();
+                                    const missingData = tabulatorRow.getData();
+                                    const inv = parseFloat(missingData.INV || 0);
+                                    const hasCampaign = missingData.hasCampaign ?? (missingData.campaignName?.trim() !== '');
+                                    const nraValue = missingData.NRA;
+                                    const isNRA = nraValue && String(nraValue).trim().toUpperCase() === "NRA";
+                                    
+                                    // Don't show red dot for 0 INV items
+                                    if (inv === 0) {
+                                        const cellElement = missingCell.getElement();
+                                        if (cellElement) {
+                                            cellElement.innerHTML = `<div style="display: flex; align-items: center; justify-content: center;">
+                                                <span class="status-dot green" title="0 INV - Not applicable"></span>
+                                            </div>`;
+                                        }
+                                    } else {
+                                        // If campaign is missing and NRA is selected, show yellow dot
+                                        let dotColor, title;
+                                        if (!hasCampaign && isNRA) {
+                                            dotColor = 'yellow';
+                                            title = 'Campaign Missing - NRA Selected';
+                                        } else if (hasCampaign) {
+                                            dotColor = 'green';
+                                            title = 'Campaign Exists';
+                                        } else {
+                                            dotColor = 'red';
+                                            title = 'Campaign Missing';
+                                        }
+                                        
+                                        const cellElement = missingCell.getElement();
+                                        if (cellElement) {
+                                            cellElement.innerHTML = `<div style="display: flex; align-items: center; justify-content: center;">
+                                                <span class="status-dot ${dotColor}" title="${title}"></span>
+                                            </div>`;
+                                        }
+                                    }
                                 }
                             }
+                        } else {
+                            console.warn(`Row not found for SKU: ${sku}`);
                         }
+                    } catch (error) {
+                        console.error('Error updating table row:', error);
                     }
                 }
 
