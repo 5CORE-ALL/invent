@@ -53,10 +53,18 @@ class ListingAmazonController extends Controller
             ->select('sku', 'listing_status')
             ->get()
             ->keyBy('sku');
+        
+        // Load NR values from AmazonListingStatus for fallback (matching amazon-tabulator-view)
+        $nrListingStatuses = AmazonListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $processedData = [];
         foreach ($productMasters as $item) {
             $childSku = $item->sku;
+            
+            // Skip SKUs that start with "PARENT"
+            if (str_starts_with(strtoupper(trim($childSku)), 'PARENT')) {
+                continue;
+            }
             
             // Default values
             $nr_req = 'REQ'; // Default to REQ (shows as RL)
@@ -68,18 +76,26 @@ class ListingAmazonController extends Controller
             
             if (isset($statusData[$childSku])) {
                 $status = $statusData[$childSku]->value;
-                // Read NRL field - "RL" means RL, "NRL" means NRL (synced with other Amazon pages)
+                if (!is_array($status)) {
+                    $status = json_decode($status, true) ?? [];
+                }
+                
+                // Read NRL field - matching amazon-tabulator-view logic exactly
+                // "NRL" means NRL (NR), "RL" or "REQ" means RL (REQ)
                 $nrlValue = $status['NRL'] ?? null;
                 if ($nrlValue === 'NRL') {
                     $nr_req = 'NR';
                     $nr = 'NR'; // For amazon-tabulator-view compatibility
-                } else if ($nrlValue === 'RL' || $nrlValue === 'REQ') {
-                    // Support both 'RL' (new format) and 'REQ' (old format) for backward compatibility
+                } else if ($nrlValue === 'REQ') {
+                    $nr_req = 'REQ';
+                    $nr = 'REQ'; // For amazon-tabulator-view compatibility
+                } else if ($nrlValue === 'RL') {
+                    // 'RL' is the format saved by saveStatus, map to 'REQ' for display
                     $nr_req = 'REQ';
                     $nr = 'REQ'; // For amazon-tabulator-view compatibility
                 } else {
-                    // Default to REQ if NRL field is null or any other value
-                    $nr = 'REQ'; // For amazon-tabulator-view compatibility
+                    // If NRL field is null or any other value, set NR to null (will fallback to AmazonListingStatus)
+                    $nr = null;
                 }
                 
                 $listedValue = $status['Listed'] ?? $status['listed'] ?? null;
@@ -90,9 +106,28 @@ class ListingAmazonController extends Controller
                 }
                 $buyer_link = $status['buyer_link'] ?? null;
                 $seller_link = $status['seller_link'] ?? null;
-            } else {
-                // If no status data, default NR to REQ
+            }
+            
+            // Fallback to AmazonListingStatus if NR not set from AmazonDataView (matching amazon-tabulator-view)
+            if ($nr === null) {
+                $listingStatus = $nrListingStatuses->get($childSku);
+                if ($listingStatus && $listingStatus->value) {
+                    $listingValue = is_array($listingStatus->value) ? $listingStatus->value : json_decode($listingStatus->value, true) ?? [];
+                    $nr = $listingValue['nr_req'] ?? null;
+                    // Only set links from listing status if not already set from AmazonDataView
+                    if ($buyer_link === null) {
+                        $buyer_link = $listingValue['buyer_link'] ?? null;
+                    }
+                    if ($seller_link === null) {
+                        $seller_link = $listingValue['seller_link'] ?? null;
+                    }
+                }
+            }
+            
+            // If still null after fallback, default to REQ
+            if ($nr === null) {
                 $nr = 'REQ';
+                $nr_req = 'REQ';
             }
             
             $row = [
@@ -178,10 +213,15 @@ class ListingAmazonController extends Controller
 
         foreach ($productMasters as $item) {
             $sku = trim($item->sku);
+            
+            // Skip SKUs that start with "PARENT"
+            if (str_starts_with(strtoupper($sku), 'PARENT')) {
+                continue;
+            }
+            
             $inv = $shopifyData[$sku]->inv ?? 0;
-            $isParent = stripos($sku, 'PARENT') !== false;
 
-            if ($isParent || floatval($inv) <= 0) continue;
+            if (floatval($inv) <= 0) continue;
 
             $status = $statusData[$sku]->value ?? null;
             if (is_string($status)) {
