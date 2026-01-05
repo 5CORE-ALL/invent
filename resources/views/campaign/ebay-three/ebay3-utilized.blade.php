@@ -611,17 +611,11 @@
                             rowAcos = 100;
                         }
 
-                        // Check DIL color
-                        let l30 = parseFloat(row.L30 || 0);
-                        let dilDecimal = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? (l30 / inv) : 0;
-                        let dilColor = getDilColor(dilDecimal);
-                        let isPink = (dilColor === "pink");
-
                         // Mutually exclusive categorization (same as controller for eBay3)
                         let categorized = false;
 
                     // Over-utilized check (priority 1) - Double condition: both UB7 AND UB1 must be > 99
-                    if (!isPink && !categorized) {
+                    if (!categorized) {
                         if (ub7 > 99 && ub1 > 99) {
                                 overCount++;
                                 categorized = true;
@@ -629,7 +623,7 @@
                         }
 
                     // Under-utilized check (priority 2: only if not over-utilized) - Double condition: both UB7 AND UB1 must be < 66
-                    if (!categorized && ub7 < 66 && ub1 < 66 && !isPink) {
+                    if (!categorized && ub7 < 66 && ub1 < 66) {
                             underCount++;
                             categorized = true;
                         }
@@ -1313,14 +1307,8 @@
                             
                             // Different color logic based on utilization type (ebay3 specific)
                             if (currentUtilizationType === 'over') {
-                                // Over-utilized: Check ACOS first, then UB7
-                                var rowAcos = parseFloat(row.acos) || 0;
-                                if (isNaN(rowAcos) || rowAcos === 0) {
-                                    rowAcos = 100;
-                                }
-                                if (rowAcos > totalACOSValue) {
-                                    td.classList.add('pink-bg');
-                                } else if (ub7 >= 70 && ub7 <= 90) {
+                                // Over-utilized: Check UB7 only
+                                if (ub7 >= 70 && ub7 <= 90) {
                                     td.classList.add('green-bg');
                                 } else if (ub7 > 90) {
                                     td.classList.add('pink-bg');
@@ -1421,6 +1409,22 @@
                                 var ub1 = budget > 0 ? (parseFloat(rowData.l1_spend) || 0) / budget * 100 : 0;
                                 var sbid = 0;
                                 
+                                // Special rule: If UB7 = 0% and UB1 = 0%, set SBID to 0.50 (ebay3 doesn't have price field)
+                                if (ub7 === 0 && ub1 === 0) {
+                                    return 0.50;
+                                }
+                                
+                                // Rule: If both UB7 and UB1 are above 99%, set SBID as L1_CPC * 0.90
+                                if (ub7 > 99 && ub1 > 99) {
+                                    if (l1Cpc > 0) {
+                                        return Math.floor(l1Cpc * 0.90 * 100) / 100;
+                                    } else if (l7Cpc > 0) {
+                                        return Math.floor(l7Cpc * 0.90 * 100) / 100;
+                                    } else {
+                                        return 0;
+                                    }
+                                }
+                                
                                 if (currentUtilizationType === 'over') {
                                     // If L1 CPC > 1.25, use L1 CPC * 0.80, otherwise use L1 CPC * 0.90
                                     var cpcToUse = (l1Cpc && !isNaN(l1Cpc) && l1Cpc > 0) ? l1Cpc : ((l7Cpc && !isNaN(l7Cpc) && l7Cpc > 0) ? l7Cpc : 0);
@@ -1466,26 +1470,17 @@
                                         rowAcos = 100;
                                     }
                                     
-                                    // Check DIL color
-                                    var l30 = parseFloat(rowData.L30 || 0);
-                                    var inv = parseFloat(rowData.INV || 0);
-                                    var dilDecimal = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? (l30 / inv) : 0;
-                                    var dilPercent = parseFloat(dilDecimal) * 100;
-                                    var isPink = (dilPercent >= 50); // DIL >= 50% is pink
-                                    
                                     // Determine utilization status
                                     var isOverUtilized = false;
                                     var isUnderUtilized = false;
                                     
                                     // Check over-utilized first (priority 1) - Double condition: both UB7 AND UB1 must be > 99
-                                    if (!isPink) {
-                                        if (ub7 > 99 && ub1 > 99) {
-                                            isOverUtilized = true;
-                                        }
+                                    if (ub7 > 99 && ub1 > 99) {
+                                        isOverUtilized = true;
                                     }
                                     
                                     // Check under-utilized (priority 2: only if not over-utilized) - Double condition: both UB7 AND UB1 must be < 66
-                                    if (!isOverUtilized && ub7 < 66 && ub1 < 66 && !isPink) {
+                                    if (!isOverUtilized && ub7 < 66 && ub1 < 66) {
                                         isUnderUtilized = true;
                                     }
                                     
@@ -1561,8 +1556,31 @@
                                 ub1 = (parseFloat(row.l1_spend) || 0) / budget * 100;
                             }
                             
-                            // eBay3 SBID calculation logic (KEEP THIS - DO NOT CHANGE)
                             var sbid = 0;
+                            
+                            // Special rule: If UB7 = 0% and UB1 = 0%, set SBID to 0.50 (ebay3 doesn't have price field)
+                            if (ub7 === 0 && ub1 === 0) {
+                                sbid = 0.50;
+                                return sbid.toFixed(2);
+                            }
+                            
+                            // Rule: If both UB7 and UB1 are above 99%, set SBID as L1_CPC * 0.90
+                            if (ub7 > 99 && ub1 > 99) {
+                                if (l1_cpc > 0) {
+                                    sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
+                                } else if (l7_cpc > 0) {
+                                    sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
+                                } else {
+                                    sbid = 0;
+                                }
+                                // Check if SBID is 0
+                                if (sbid === 0) {
+                                    return '-';
+                                }
+                                return sbid.toFixed(2);
+                            }
+                            
+                            // eBay3 SBID calculation logic
                             if (currentUtilizationType === 'over') {
                                 // If L1 CPC > 1.25, use L1 CPC * 0.80, otherwise use L1 CPC * 0.90
                                 if (l1_cpc > 1.25) {
@@ -1610,27 +1628,17 @@
                                     rowAcos = 100;
                                 }
 
-                                // Check DIL color
-                                var l30 = parseFloat(row.L30 || 0);
-                                var inv = parseFloat(row.INV || 0);
-                                var dilDecimal = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? (l30 /
-                                    inv) : 0;
-                                var dilColor = getDilColor(dilDecimal);
-                                var isPink = (dilColor === "pink");
-
                                 // Determine utilization status
                                 var isOverUtilized = false;
                                 var isUnderUtilized = false;
 
                                 // Check over-utilized first (priority 1) - Double condition: both UB7 AND UB1 must be > 99
-                                if (!isPink) {
-                                    if (ub7 > 99 && ub1 > 99) {
-                                        isOverUtilized = true;
-                                    }
+                                if (ub7 > 99 && ub1 > 99) {
+                                    isOverUtilized = true;
                                 }
 
                                 // Check under-utilized (priority 2: only if not over-utilized) - Double condition: both UB7 AND UB1 must be < 66
-                                if (!isOverUtilized && ub7 < 66 && ub1 < 66 && !isPink) {
+                                if (!isOverUtilized && ub7 < 66 && ub1 < 66) {
                                     isUnderUtilized = true;
                                 }
 
@@ -1726,9 +1734,21 @@
                                     ub1 = (parseFloat(rowData.l1_spend) || 0) / budget * 100;
                                 }
                                 
-                                // eBay3 SBID calculation logic (KEEP THIS - DO NOT CHANGE)
                                 var sbid = 0;
-                                if (currentUtilizationType === 'over') {
+                                
+                                // Special rule: If UB7 = 0% and UB1 = 0%, set SBID to 0.50 (ebay3 doesn't have price field)
+                                if (ub7 === 0 && ub1 === 0) {
+                                    sbid = 0.50;
+                                } else if (ub7 > 99 && ub1 > 99) {
+                                    // Rule: If both UB7 and UB1 are above 99%, set SBID as L1_CPC * 0.90
+                                    if (l1_cpc > 0) {
+                                        sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
+                                    } else if (l7_cpc > 0) {
+                                        sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
+                                    } else {
+                                        sbid = 0;
+                                    }
+                                } else if (currentUtilizationType === 'over') {
                                     // If L1 CPC > 1.25, use L1 CPC * 0.80, otherwise use L1 CPC * 0.90
                                     if (l1_cpc > 1.25) {
                                         sbid = Math.floor(l1_cpc * 0.80 * 100) / 100;
@@ -1776,27 +1796,17 @@
                                         rowAcos = 100;
                                     }
 
-                                    // Check DIL color
-                                    var l30 = parseFloat(rowData.L30 || 0);
-                                    var inv = parseFloat(rowData.INV || 0);
-                                    var dilDecimal = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? (
-                                        l30 / inv) : 0;
-                                    var dilColor = getDilColor(dilDecimal);
-                                    var isPink = (dilColor === "pink");
-
                                     // Determine utilization status
                                     var isOverUtilized = false;
                                     var isUnderUtilized = false;
 
                                     // Check over-utilized first (priority 1) - Double condition: both UB7 AND UB1 must be > 99
-                                    if (!isPink) {
-                                        if (ub7 > 99 && ub1 > 99) {
-                                            isOverUtilized = true;
-                                        }
+                                    if (ub7 > 99 && ub1 > 99) {
+                                        isOverUtilized = true;
                                     }
 
                                     // Check under-utilized (priority 2: only if not over-utilized) - Double condition: both UB7 AND UB1 must be < 66
-                                    if (!isOverUtilized && ub7 < 66 && ub1 < 66 && !isPink) {
+                                    if (!isOverUtilized && ub7 < 66 && ub1 < 66) {
                                         isUnderUtilized = true;
                                     }
 
@@ -2012,19 +2022,9 @@
                     if (!(ub7 > 99 && ub1 > 99)) {
                         return false;
                     }
-                    // Exclude pink DIL
-                    let l30 = parseFloat(data.L30 || 0);
-                    let dilDecimal = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? (l30 / inv) : 0;
-                    let dilColor = getDilColor(dilDecimal);
-                    if (dilColor === "pink") return false;
                 } else if (currentUtilizationType === 'under') {
                     // Double condition: both UB7 AND UB1 must be < 66
                     if (!(ub7 < 66 && ub1 < 66)) return false;
-                    // Exclude pink DIL
-                    let l30 = parseFloat(data.L30 || 0);
-                    let dilDecimal = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? (l30 / inv) : 0;
-                    let dilColor = getDilColor(dilDecimal);
-                    if (dilColor === "pink") return false;
                 } else if (currentUtilizationType === 'correctly') {
                     // Double condition: both UB7 AND UB1 must be between 66% and 99% (both green)
                     if (!((ub7 >= 66 && ub7 <= 99) && (ub1 >= 66 && ub1 <= 99))) return false;
@@ -2160,6 +2160,23 @@
                         }
                         
                         var sbid = 0;
+                        
+                        // Special rule: If UB7 = 0% and UB1 = 0%, set SBID to 0.50 (ebay3 doesn't have price field)
+                        if (ub7 === 0 && ub1 === 0) {
+                            return (0.50).toFixed(2);
+                        }
+                        
+                        // Rule: If both UB7 and UB1 are above 99%, set SBID as L1_CPC * 0.90
+                        if (ub7 > 99 && ub1 > 99) {
+                            if (l1_cpc > 0) {
+                                return (Math.floor(l1_cpc * 0.90 * 100) / 100).toFixed(2);
+                            } else if (l7_cpc > 0) {
+                                return (Math.floor(l7_cpc * 0.90 * 100) / 100).toFixed(2);
+                            } else {
+                                return '-';
+                            }
+                        }
+                        
                         if (currentUtilizationType === 'over') {
                             var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
                             if (cpcToUse > 1.25) {
@@ -2202,22 +2219,14 @@
                                 rowAcos = 100;
                             }
                             
-                            var l30 = parseFloat(row.L30 || 0);
-                            var inv = parseFloat(row.INV || 0);
-                            var dilDecimal = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? (l30 / inv) : 0;
-                            var dilPercent = parseFloat(dilDecimal) * 100;
-                            var isPink = (dilPercent >= 50);
-                            
                             var isOverUtilized = false;
                             var isUnderUtilized = false;
                             
-                            if (!isPink) {
-                                if (ub7 > 99 && ub1 > 99) {
-                                    isOverUtilized = true;
-                                }
+                            if (ub7 > 99 && ub1 > 99) {
+                                isOverUtilized = true;
                             }
                             
-                            if (!isOverUtilized && ub7 < 66 && ub1 < 66 && !isPink) {
+                            if (!isOverUtilized && ub7 < 66 && ub1 < 66) {
                                 isUnderUtilized = true;
                             }
                             
@@ -2347,9 +2356,23 @@
                             ub1 = (parseFloat(rowData.l1_spend) || 0) / budget * 100;
                         }
                         
-                        // eBay3 SBID calculation logic (KEEP THIS - DO NOT CHANGE)
                         var sbid = 0;
-                        if (currentUtilizationType === 'over') {
+                        
+                        // Special rule: If UB7 = 0% and UB1 = 0%, set SBID to 0.50 (ebay3 doesn't have price field)
+                        if (ub7 === 0 && ub1 === 0) {
+                            sbid = 0.50;
+                        } else if (ub7 > 99 && ub1 > 99) {
+                            // Rule: If both UB7 and UB1 are above 99%, set SBID as L1_CPC * 0.90
+                            if (l1_cpc > 0) {
+                                sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
+                            } else if (l7_cpc > 0) {
+                                sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
+                            } else {
+                                sbid = 0;
+                            }
+                        } else {
+                            // Continue with utilization type checks only if global checks didn't match
+                            if (currentUtilizationType === 'over') {
                             // If L1 CPC > 1.25, use L1 CPC * 0.80, otherwise use L1 CPC * 0.90
                             if (l1_cpc > 1.25) {
                                 sbid = Math.floor(l1_cpc * 0.80 * 100) / 100;
@@ -2395,27 +2418,17 @@
                                 rowAcos = 100;
                             }
 
-                            // Check DIL color
-                            var l30 = parseFloat(rowData.L30 || 0);
-                            var inv = parseFloat(rowData.INV || 0);
-                            var dilDecimal = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? (l30 /
-                                inv) : 0;
-                            var dilColor = getDilColor(dilDecimal);
-                            var isPink = (dilColor === "pink");
-
                             // Determine utilization status
                             var isOverUtilized = false;
                             var isUnderUtilized = false;
 
                             // Check over-utilized first (priority 1) - Double condition: both UB7 AND UB1 must be > 99
-                            if (!isPink) {
-                                if (ub7 > 99 && ub1 > 99) {
-                                    isOverUtilized = true;
-                                }
+                            if (ub7 > 99 && ub1 > 99) {
+                                isOverUtilized = true;
                             }
 
                             // Check under-utilized (priority 2: only if not over-utilized) - Double condition: both UB7 AND UB1 must be < 66
-                            if (!isOverUtilized && ub7 < 66 && ub1 < 66 && !isPink) {
+                            if (!isOverUtilized && ub7 < 66 && ub1 < 66) {
                                 isUnderUtilized = true;
                             }
 

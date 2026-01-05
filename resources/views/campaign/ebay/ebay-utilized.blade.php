@@ -1328,14 +1328,8 @@
                             
                             // Different color logic based on utilization type
                             if (currentUtilizationType === 'over') {
-                                // Over-utilized: Check ACOS first, then UB7
-                                var rowAcos = parseFloat(row.acos) || 0;
-                                if (isNaN(rowAcos) || rowAcos === 0) {
-                                    rowAcos = 100;
-                                }
-                                if (rowAcos > totalACOSValue) {
-                                    td.classList.add('pink-bg');
-                                } else if (ub7 >= 66 && ub7 <= 99) {
+                                // Over-utilized: Check UB7 only
+                                if (ub7 >= 66 && ub7 <= 99) {
                                     td.classList.add('green-bg');
                                 } else if (ub7 > 99) {
                                     td.classList.add('pink-bg');
@@ -1469,11 +1463,6 @@
                                     }
                                 }
                                 
-                                // Global rule: If L7_CPC is 0, set SBID to 0.75 regardless of utilization type
-                                if (l7Cpc === 0) {
-                                    return 0.50;
-                                }
-                                
                                 // Rule: If both UB7 and UB1 are above 99%, set SBID as L1_CPC * 0.90
                                 if (ub7 > 99 && ub1 > 99) {
                                     if (l1Cpc > 0) {
@@ -1492,30 +1481,19 @@
                                         rowAcos = 100;
                                     }
                                     
-                                    // Check DIL color
-                                    var l30 = parseFloat(rowData.L30 || 0);
                                     var inv = parseFloat(rowData.INV || 0);
-                                    var dilDecimal = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? (
-                                        l30 / inv) : 0;
-                                    var dilColor = getDilColor(dilDecimal);
-                                    var isPink = (dilColor === "pink");
-                                    
                                     // Determine utilization status
                                     var isOverUtilized = false;
                                     var isUnderUtilized = false;
                                     
                                     // Check over-utilized first
-                                    if (!isPink) {
-                                        var condition1 = (rowAcos > totalACOSValue && ub7 > 99);
-                                        var condition2 = (rowAcos <= totalACOSValue && ub7 > 99);
-                                        if (condition1 || condition2) {
-                                            isOverUtilized = true;
-                                        }
+                                    if (ub7 > 99 && ub1 > 99) {
+                                        isOverUtilized = true;
                                     }
                                     
                                     // Check under-utilized
-                                    if (!isOverUtilized && ub7 < 66 && ub1 < 66 && parseFloat(
-                                            rowData.price || 0) >= 20 && inv > 0 && !isPink) {
+                                    // Remove price >= 20 check to match backend command logic
+                                    if (!isOverUtilized && ub7 < 66 && ub1 < 66 && inv > 0) {
                                         isUnderUtilized = true;
                                     }
                                     
@@ -1734,12 +1712,6 @@
                                 return sbid.toFixed(2);
                             }
                             
-                            // Global rule: If L7_CPC is 0, set SBID to 0.75 regardless of utilization type
-                            if (l7_cpc === 0) {
-                                sbid = 0.75;
-                                return sbid.toFixed(2);
-                            }
-                            
                             // Rule: If both UB7 and UB1 are above 99%, set SBID as L1_CPC * 0.90
                             if (ub7 > 99 && ub1 > 99) {
                                 if (l1_cpc > 0) {
@@ -1763,38 +1735,19 @@
                                     rowAcos = 100;
                                 }
                                 
-                                // Check DIL color
-                                var l30 = parseFloat(row.L30 || 0);
-                                var inv = parseFloat(row.INV || 0);
-                                var dilDecimal = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? (l30 /
-                                    inv) : 0;
-                                // Helper function to get DIL color
-                                function getDilColorLocal(value) {
-                                    var percent = parseFloat(value) * 100;
-                                    if (percent < 16.66) return 'red';
-                                    if (percent >= 16.66 && percent < 25) return 'yellow';
-                                    if (percent >= 25 && percent < 50) return 'green';
-                                    return 'pink';
-                                }
-                                var dilColor = getDilColorLocal(dilDecimal);
-                                var isPink = (dilColor === "pink");
-                                
                                 // Determine utilization status (same logic as combinedFilter)
                                 var isOverUtilized = false;
                                 var isUnderUtilized = false;
                                 
                                 // Check over-utilized first (priority 1)
-                                if (!isPink) {
-                                    var condition1 = (rowAcos > totalACOSValue && ub7 > 99);
-                                    var condition2 = (rowAcos <= totalACOSValue && ub7 > 99);
-                                    if (condition1 || condition2) {
-                                        isOverUtilized = true;
-                                    }
+                                if (ub7 > 99 && ub1 > 99) {
+                                    isOverUtilized = true;
                                 }
                                 
                                 // Check under-utilized (priority 2: only if not over-utilized)
-                                if (!isOverUtilized && ub7 < 66 && ub1 < 66 && parseFloat(row
-                                        .price || 0) >= 20 && inv > 0 && !isPink) {
+                                var inv = parseFloat(row.INV || 0);
+                                // Remove price >= 20 check to match backend command logic
+                                if (!isOverUtilized && ub7 < 66 && ub1 < 66 && inv > 0) {
                                     isUnderUtilized = true;
                                 }
                                 
@@ -1839,6 +1792,7 @@
                                     } else {
                                         // Use L1CPC if available (not 0, not NaN), otherwise use L7CPC
                                         var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
+                                        
                                         if (cpcToUse > 0) {
                                             if (cpcToUse < 0.10) {
                                                 sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
@@ -1912,6 +1866,7 @@
                                 } else {
                                     // Use L1CPC if available, otherwise use L7CPC
                                     var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
+                                    
                                     if (cpcToUse > 0) {
                                         if (cpcToUse < 0.10) {
                                             sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
@@ -2006,10 +1961,7 @@
                                 
                                 var sbid = 0;
                                 
-                                // Global rule: If L7_CPC is 0, set SBID to 0.75 regardless of utilization type
-                                if (l7_cpc === 0) {
-                                    sbid = 0.75;
-                                } else if (ub7 > 99 && ub1 > 99) {
+                                if (ub7 > 99 && ub1 > 99) {
                                     // Rule: If both UB7 and UB1 are above 99%, set SBID as L1_CPC * 0.90
                                     if (l1_cpc > 0) {
                                         sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
@@ -2025,30 +1977,19 @@
                                         rowAcos = 100;
                                     }
                                     
-                                    // Check DIL color
-                                    var l30 = parseFloat(rowData.L30 || 0);
                                     var inv = parseFloat(rowData.INV || 0);
-                                    var dilDecimal = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? (
-                                        l30 / inv) : 0;
-                                    var dilColor = getDilColor(dilDecimal);
-                                    var isPink = (dilColor === "pink");
-                                    
                                     // Determine utilization status
                                     var isOverUtilized = false;
                                     var isUnderUtilized = false;
                                     
                                     // Check over-utilized first
-                                    if (!isPink) {
-                                        var condition1 = (rowAcos > totalACOSValue && ub7 > 99);
-                                        var condition2 = (rowAcos <= totalACOSValue && ub7 > 99);
-                                        if (condition1 || condition2) {
-                                            isOverUtilized = true;
-                                        }
+                                    if (ub7 > 99 && ub1 > 99) {
+                                        isOverUtilized = true;
                                     }
                                     
                                     // Check under-utilized
-                                    if (!isOverUtilized && ub7 < 66 && ub1 < 66 && parseFloat(
-                                            rowData.price || 0) >= 20 && inv > 0 && !isPink) {
+                                    // Remove price >= 20 check to match backend command logic
+                                    if (!isOverUtilized && ub7 < 66 && ub1 < 66 && inv > 0) {
                                         isUnderUtilized = true;
                                     }
                                     
@@ -2503,10 +2444,7 @@ document.getElementById("apr-all-sbid-btn").addEventListener("click", function()
                         
                         var sbid = 0;
                         
-                        // Global rule: If L7_CPC is 0, set SBID to 0.75 regardless of utilization type
-                        if (l7_cpc === 0) {
-                            sbid = 0.75;
-                        } else if (ub7 > 99 && ub1 > 99) {
+                        if (ub7 > 99 && ub1 > 99) {
                             // Rule: If both UB7 and UB1 are above 99%, set SBID as L1_CPC * 0.90
                             if (l1_cpc > 0) {
                                 sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
@@ -2522,32 +2460,21 @@ document.getElementById("apr-all-sbid-btn").addEventListener("click", function()
                                 rowAcos = 100;
                             }
                             
-                            // Check DIL color
-                            var l30 = parseFloat(rowData.L30 || 0);
-                            var inv = parseFloat(rowData.INV || 0);
-                            var dilDecimal = (!isNaN(l30) && !isNaN(inv) && inv !== 0) ? (l30 /
-                                inv) : 0;
-                            var dilColor = getDilColor(dilDecimal);
-                            var isPink = (dilColor === "pink");
-                            
                             // Determine utilization status
                             var isOverUtilized = false;
                             var isUnderUtilized = false;
                             var ub1 = budget > 0 ? (parseFloat(rowData.l1_spend) || 0) / budget *
                                 100 : 0;
+                            var inv = parseFloat(rowData.INV || 0);
                             
                             // Check over-utilized first
-                            if (!isPink) {
-                                var condition1 = (rowAcos > totalACOSValue && ub7 > 99);
-                                var condition2 = (rowAcos <= totalACOSValue && ub7 > 99);
-                                if (condition1 || condition2) {
-                                    isOverUtilized = true;
-                                }
+                            if (ub7 > 99 && ub1 > 99) {
+                                isOverUtilized = true;
                             }
                             
                             // Check under-utilized
-                            if (!isOverUtilized && ub7 < 66 && ub1 < 66 && parseFloat(rowData
-                                    .price || 0) >= 20 && inv > 0 && !isPink) {
+                            // Remove price >= 20 check to match backend command logic
+                            if (!isOverUtilized && ub7 < 66 && ub1 < 66 && inv > 0) {
                                 isUnderUtilized = true;
                             }
                             

@@ -154,12 +154,12 @@ class UpdateEbayThreeSuggestedBid extends Command
                         // Determine new bid based on CVR ranges - flat values
                         $newBid = 2; // Default minimum
                         
-                        // New rule: if CVR between 0.01-1% OR DIL red OR views < 100, set to 8%
-                        if (($cvr >= 0.01 && $cvr <= 1) || $views < 100) {
-                            $newBid = 8; // Flat 8%
-                        } elseif ($cvr < 0.01) {
+                        // Priority 1: If CVR < 0.01% (including 0.00%), use ESBID
+                        if ($cvr < 0.01) {
                             // For very low CVR, keep current ESBID (matches frontend logic)
                             $newBid = $esbid;
+                        } elseif (($cvr >= 0.01 && $cvr <= 1) || $views < 100) {
+                            $newBid = 8; // Flat 8%
                         } elseif ($cvr >= 1.01 && $cvr <= 2) {
                             $newBid = 7; // Flat 7%
                         } elseif ($cvr >= 2.01 && $cvr <= 3) {
@@ -176,11 +176,6 @@ class UpdateEbayThreeSuggestedBid extends Command
 
                         // Cap newBid to maximum of 15
                         $newBid = min($newBid, 15);
-                        
-                        // If ov_dil is greater than 100%, set newBid to 2
-                        if ($ov_dil > 1) {
-                            $newBid = 2;
-                        }
                         
                         $listing->new_bid = $newBid;
                         $updatedListings++;

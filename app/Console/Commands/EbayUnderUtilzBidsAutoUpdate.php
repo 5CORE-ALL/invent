@@ -24,6 +24,11 @@ class EbayUnderUtilzBidsAutoUpdate extends Command
 
     public function handle()
     {
+        // Set unlimited execution time for long-running processes
+        set_time_limit(0);
+        ini_set('max_execution_time', 0);
+        ini_set('memory_limit', '1024M');
+
         $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         $this->info("🚀 Starting eBay Under-Utilized Bids Auto-Update");
         $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
@@ -100,8 +105,6 @@ class EbayUnderUtilzBidsAutoUpdate extends Command
         
         $this->info("");
 
-        $campaignIds = collect($validCampaigns)->pluck('campaign_id')->toArray();
-        $newBids = collect($validCampaigns)->pluck('sbid')->toArray();
         $campaignNames = collect($validCampaigns)->pluck('campaign_name', 'campaign_id')->toArray();
         
         // Create mapping of campaign_id to bid for easy lookup
@@ -110,26 +113,83 @@ class EbayUnderUtilzBidsAutoUpdate extends Command
             $campaignBidMap[$campaign->campaign_id] = $campaign->sbid ?? 0;
         }
 
-        $this->info("🔄 Updating bids via eBay API...");
-        $result = $updateOverUtilizedBids->updateAutoKeywordsBidDynamic($campaignIds, $newBids);
+        // Process campaigns in batches to avoid timeout
+        $batchSize = 5; // Process 5 campaigns at a time
+        $campaignBatches = array_chunk($validCampaigns, $batchSize);
+        $totalBatches = count($campaignBatches);
         
-        // Parse the result
-        $resultData = $result->getData(true);
-        $status = $resultData['status'] ?? 'unknown';
-        $message = $resultData['message'] ?? 'No message';
-        $data = $resultData['data'] ?? [];
+        $this->info("🔄 Updating bids via eBay API (processing in {$totalBatches} batches of {$batchSize} campaigns each)...");
+        $this->info("");
+
+        $allResults = [];
+        $totalSuccess = 0;
+        $totalFailed = 0;
+        $hasError = false;
+
+        foreach ($campaignBatches as $batchIndex => $batch) {
+            $batchNumber = $batchIndex + 1;
+            $this->info("📦 Processing batch {$batchNumber}/{$totalBatches}...");
+            
+            $campaignIds = collect($batch)->pluck('campaign_id')->toArray();
+            $newBids = collect($batch)->pluck('sbid')->toArray();
+            
+            try {
+                $result = $updateOverUtilizedBids->updateAutoKeywordsBidDynamic($campaignIds, $newBids);
+                
+                // Parse the result
+                $resultData = $result->getData(true);
+                $status = $resultData['status'] ?? 'unknown';
+                $data = $resultData['data'] ?? [];
+                
+                if ($status != 200) {
+                    $hasError = true;
+                }
+                
+                // Merge results
+                $allResults = array_merge($allResults, $data);
+                
+                // Count successes and failures for this batch
+                foreach ($data as $item) {
+                    if (($item['status'] ?? '') === 'error') {
+                        $totalFailed++;
+                    } else {
+                        $totalSuccess++;
+                    }
+                }
+                
+                $this->info("   ✅ Batch {$batchNumber} completed");
+                
+            } catch (\Exception $e) {
+                $hasError = true;
+                $this->error("   ❌ Batch {$batchNumber} failed: " . $e->getMessage());
+                
+                // Add error entries for all campaigns in this batch
+                foreach ($batch as $campaign) {
+                    $allResults[] = [
+                        "campaign_id" => $campaign->campaign_id ?? 'unknown',
+                        "status" => "error",
+                        "message" => $e->getMessage(),
+                    ];
+                    $totalFailed++;
+                }
+            }
+            
+            // Small delay between batches to avoid rate limiting
+            if ($batchIndex < $totalBatches - 1) {
+                sleep(2);
+            }
+        }
 
         $this->info("");
         $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         $this->info("📊 Update Results");
         $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        $this->info("Status: " . ($status == 200 ? "✅ Success" : ($status == 207 ? "⚠️  Partial Success" : "❌ Failed")));
-        $this->info("Message: {$message}");
+        $this->info("Status: " . (!$hasError ? "✅ Success" : ($totalSuccess > 0 ? "⚠️  Partial Success" : "❌ Failed")));
         $this->info("");
 
         // Group results by campaign_id
         $campaignResults = [];
-        foreach ($data as $item) {
+        foreach ($allResults as $item) {
             $campId = $item['campaign_id'] ?? 'unknown';
             if (!isset($campaignResults[$campId])) {
                 $campaignResults[$campId] = [
@@ -149,17 +209,11 @@ class EbayUnderUtilzBidsAutoUpdate extends Command
         }
 
         // Display results per campaign
-        $totalSuccess = 0;
-        $totalFailed = 0;
-        
         foreach ($campaignResults as $campId => $result) {
             $campaignName = $result['campaign_name'];
             $success = $result['success'];
             $failed = $result['failed'];
             $newBid = $campaignBidMap[$campId] ?? 'N/A';
-            
-            $totalSuccess += $success;
-            $totalFailed += $failed;
             
             if ($failed > 0) {
                 $this->warn("   ❌ Campaign: {$campaignName} (ID: {$campId}) | Bid: \${$newBid}");
@@ -196,6 +250,10 @@ class EbayUnderUtilzBidsAutoUpdate extends Command
         $ebayMetricData = EbayMetric::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $ebayCampaignReportsL7 = EbayPriorityReport::where('report_range', 'L7')
+            ->where('campaignStatus', 'RUNNING')
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
             ->where(function ($q) use ($skus) {
                 foreach ($skus as $sku) {
                     $q->orWhere('campaign_name', 'LIKE', '%' . $sku . '%');
@@ -204,6 +262,10 @@ class EbayUnderUtilzBidsAutoUpdate extends Command
             ->get();
 
         $ebayCampaignReportsL1 = EbayPriorityReport::where('report_range', 'L1')
+            ->where('campaignStatus', 'RUNNING')
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
             ->where(function ($q) use ($skus) {
                 foreach ($skus as $sku) {
                     $q->orWhere('campaign_name', 'LIKE', '%' . $sku . '%');
@@ -244,10 +306,10 @@ class EbayUnderUtilzBidsAutoUpdate extends Command
             $row['campaign_name'] = $matchedCampaignL7->campaign_name ?? ($matchedCampaignL1->campaign_name ?? '');
             $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? '');
 
-            $row['l7_spend'] = (float) str_replace('USD ', '', $matchedCampaignL7->cpc_ad_fees_payout_currency ?? 0);
-            $row['l7_cpc'] = (float) str_replace('USD ', '', $matchedCampaignL7->cost_per_click ?? 0);
-            $row['l1_spend'] = (float) str_replace('USD ', '', $matchedCampaignL1->cpc_ad_fees_payout_currency ?? 0);
-            $row['l1_cpc'] = (float) str_replace('USD ', '', $matchedCampaignL1->cost_per_click ?? 0);
+            $row['l7_spend'] = (float) str_replace(['USD ', ','], '', $matchedCampaignL7->cpc_ad_fees_payout_currency ?? '0');
+            $row['l7_cpc'] = (float) str_replace(['USD ', ','], '', $matchedCampaignL7->cost_per_click ?? '0');
+            $row['l1_spend'] = (float) str_replace(['USD ', ','], '', $matchedCampaignL1->cpc_ad_fees_payout_currency ?? '0');
+            $row['l1_cpc'] = (float) str_replace(['USD ', ','], '', $matchedCampaignL1->cost_per_click ?? '0');
 
             $l1_cpc = floatval($row['l1_cpc']);
             $l7_cpc = floatval($row['l7_cpc']);
