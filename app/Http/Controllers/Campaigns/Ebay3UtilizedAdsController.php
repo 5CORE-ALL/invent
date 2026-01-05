@@ -828,8 +828,9 @@ class Ebay3UtilizedAdsController extends Controller
      */
     public function updateAutoKeywordsBidDynamic(array $campaignIds, array $newBids)
     {
-        ini_set('max_execution_time', 300);
-        ini_set('memory_limit', '512M');
+        // Set longer timeout for API operations (10 minutes per batch)
+        ini_set('max_execution_time', 600);
+        ini_set('memory_limit', '1024M');
 
         if (empty($campaignIds) || empty($newBids)) {
             return response()->json([
@@ -899,10 +900,11 @@ class Ebay3UtilizedAdsController extends Controller
                     Log::info("Updating " . count($keywordChunk) . " keywords for campaign {$campaignId}, ad group {$adGroupId} with bid {$newBid}");
 
                     try {
-                        $response = Http::withHeaders([
-                            'Authorization' => "Bearer {$accessToken}",
-                            'Content-Type'  => 'application/json',
-                        ])->post($endpoint, $payload);
+                        $response = Http::timeout(120) // 2 minute timeout per request
+                            ->withHeaders([
+                                'Authorization' => "Bearer {$accessToken}",
+                                'Content-Type'  => 'application/json',
+                            ])->post($endpoint, $payload);
 
                         Log::info("API Response for campaign {$campaignId}: Status " . $response->status(), [
                             'response_body' => $response->body()
@@ -1117,10 +1119,11 @@ class Ebay3UtilizedAdsController extends Controller
                     Log::info("Updating " . count($keywordChunk) . " keywords for campaign {$campaignId}, ad group {$adGroupId} with bid {$newBid}");
 
                     try {
-                        $response = Http::withHeaders([
-                            'Authorization' => "Bearer {$accessToken}",
-                            'Content-Type'  => 'application/json',
-                        ])->post($endpoint, $payload);
+                        $response = Http::timeout(120) // 2 minute timeout per request
+                            ->withHeaders([
+                                'Authorization' => "Bearer {$accessToken}",
+                                'Content-Type'  => 'application/json',
+                            ])->post($endpoint, $payload);
 
                         Log::info("API Response for campaign {$campaignId}: Status " . $response->status(), [
                             'response_body' => $response->body()
