@@ -67,6 +67,85 @@
             color: #e83e8c !important;
             background: none !important;
         }
+
+        /* ========== STATUS INDICATORS ========== */
+        .status-circle {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            border: 1px solid #ddd;
+        }
+
+        .status-circle.default {
+            background-color: #6c757d;
+        }
+
+        .status-circle.red {
+            background-color: #dc3545;
+        }
+
+        .status-circle.yellow {
+            background-color: #ffc107;
+        }
+
+        .status-circle.blue {
+            background-color: #3591dc;
+        }
+
+        .status-circle.green {
+            background-color: #28a745;
+        }
+
+        .status-circle.pink {
+            background-color: #e83e8c;
+        }
+
+        /* ========== DROPDOWN STYLING ========== */
+        .manual-dropdown-container {
+            position: relative;
+            display: inline-block;
+        }
+
+        .manual-dropdown-container .dropdown-menu {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            z-index: 1000;
+            display: none;
+            min-width: 200px;
+            padding: 0.5rem 0;
+            margin: 0;
+            background-color: #fff;
+            border: 1px solid #dee2e6;
+            border-radius: 0.375rem;
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+        }
+
+        .manual-dropdown-container.show .dropdown-menu {
+            display: block;
+        }
+
+        .dropdown-item {
+            display: block;
+            width: 100%;
+            padding: 0.5rem 1rem;
+            clear: both;
+            font-weight: 400;
+            color: #212529;
+            text-align: inherit;
+            text-decoration: none;
+            white-space: nowrap;
+            background-color: transparent;
+            border: 0;
+            cursor: pointer;
+        }
+
+        .dropdown-item:hover {
+            color: #1e2125;
+            background-color: #e9ecef;
+        }
     </style>
 @endsection
 
@@ -89,8 +168,8 @@
                     <!-- Inventory Filter -->
                     <div>
                         <select id="inventory-filter" class="form-select form-select-sm" style="width: 140px;">
-                            <option value="all" selected>All Inventory</option>
-                            <option value="gt0">INV &gt; 0</option>
+                            <option value="all">All Inventory</option>
+                            <option value="gt0" selected>INV &gt; 0</option>
                             <option value="eq0">INV = 0</option>
                         </select>
                     </div>
@@ -124,6 +203,25 @@
                             <option value="7-10">7-10%</option>
                             <option value="10plus">10%+</option>
                         </select>
+                    </div>
+
+                    <!-- DIL Filter -->
+                    <div class="dropdown manual-dropdown-container">
+                        <button class="btn btn-light dropdown-toggle" type="button" id="dilFilterDropdown">
+                            <span class="status-circle default"></span> DIL%
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="dilFilterDropdown">
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="all">
+                                    <span class="status-circle default"></span> All DIL</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="red">
+                                    <span class="status-circle red"></span> Red (&lt;16.7%)</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="yellow">
+                                    <span class="status-circle yellow"></span> Yellow (16.7-25%)</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="green">
+                                    <span class="status-circle green"></span> Green (25-50%)</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="pink">
+                                    <span class="status-circle pink"></span> Pink (50%+)</a></li>
+                        </ul>
                     </div>
 
                     <div class="dropdown d-inline-block">
@@ -711,14 +809,31 @@
                 },
                 {
                     title: "Dil",
-                    field: "dil_percent", // Use backend calculated DIL%
+                    field: "dil_calculated", // Calculate DIL from OV L30/INV
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: function(a, b, aRow, bRow) {
+                        const calcDIL = (row) => {
+                            const inv = parseFloat(row['INV']) || 0;
+                            const ovl30 = parseFloat(row['L30']) || 0;
+                            return inv === 0 ? 0 : (ovl30 / inv) * 100;
+                        };
+                        return calcDIL(aRow.getData()) - calcDIL(bRow.getData());
+                    },
                     formatter: function(cell) {
-                        const dil = parseFloat(cell.getValue()) || 0;
+                        const rowData = cell.getRow().getData();
+                        const inv = parseFloat(rowData['INV']) || 0;
+                        const ovl30 = parseFloat(rowData['L30']) || 0;
+                        
+                        // DIL Formula: (OV L30 ÷ INV) × 100
+                        // Shows sales velocity ratio compared to current inventory
+                        const dil = inv === 0 ? 0 : (ovl30 / inv) * 100;
                         let color = '';
-
-                        // Color logic same as Amazon
+                        
+                        // Red: <16.7% (Critical - low velocity relative to inventory)
+                        // Yellow: 16.7-25% (Warning - moderate velocity) 
+                        // Green: 25-50% (Good - healthy velocity)
+                        // Pink: 50%+ (Excellent - high velocity)
+                        
                         if (dil < 16.66) color = '#a00211'; // red
                         else if (dil >= 16.66 && dil < 25) color = '#ffc107'; // yellow
                         else if (dil >= 25 && dil < 50) color = '#28a745'; // green
@@ -1047,6 +1162,7 @@
             const inventoryFilter = $('#inventory-filter').val();
             const gpftFilter = $('#gpft-filter').val();
             const cvrFilter = $('#cvr-filter').val();
+            const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
             const skuSearch = $('#sku-search').val();
 
             table.clearFilter();
@@ -1099,12 +1215,70 @@
                 });
             }
 
+            if (dilFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const inv = parseFloat(data['INV']) || 0;
+                    const ovl30 = parseFloat(data['L30']) || 0;
+                    const dil = inv === 0 ? 0 : (ovl30 / inv) * 100;
+                    
+                    // Amazon-style DIL color ranges
+                    if (dilFilter === 'red') return dil < 16.66;
+                    if (dilFilter === 'yellow') return dil >= 16.66 && dil < 25;
+                    if (dilFilter === 'green') return dil >= 25 && dil < 50;
+                    if (dilFilter === 'pink') return dil >= 50;
+                    return true;
+                });
+            }
+
             updateSummary();
             updateSelectAllCheckbox();
         }
 
         $('#inventory-filter, #gpft-filter, #cvr-filter').on('change', function() {
             applyFilters();
+        });
+
+        // Initialize dropdown functionality (Amazon-style)
+        $(document).on('click', '.manual-dropdown-container .btn', function(e) {
+            e.stopPropagation();
+            const container = $(this).closest('.manual-dropdown-container');
+            
+            // Close other dropdowns
+            $('.manual-dropdown-container').not(container).removeClass('show');
+            
+            // Toggle current dropdown
+            container.toggleClass('show');
+        });
+
+        $(document).on('click', '.column-filter', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const $item = $(this);
+            const column = $item.data('column');
+            const color = $item.data('color');
+            const container = $item.closest('.manual-dropdown-container');
+            const button = container.find('.btn');
+            
+            // Update active state
+            container.find('.column-filter').removeClass('active');
+            $item.addClass('active');
+            
+            // Update button text and icon
+            const statusCircle = $item.find('.status-circle').clone();
+            const text = $item.text().trim();
+            button.html('').append(statusCircle).append(' ' + column.toUpperCase());
+            
+            // Close dropdown
+            container.removeClass('show');
+            
+            // Apply filters
+            applyFilters();
+        });
+
+        // Close dropdowns when clicking outside
+        $(document).on('click', function() {
+            $('.manual-dropdown-container').removeClass('show');
         });
 
         table.on('cellEdited', function(cell) {
