@@ -1124,6 +1124,18 @@
                                     <option value="NR">NRL</option>
                                 </select>
                             </div>
+                            <div class="form-group col-md-4">
+                                <label for="status-filter" class="mr-2">Status:</label>
+                                <select id="status-filter" class="form-control form-control-sm">
+                                    <option value="all" data-count="0">All (0)</option>
+                                    <option value="active" data-count="0">Active (0)</option>
+                                    <option value="inactive" data-count="0">Inactive (0)</option>
+                                    <option value="DC" data-count="0">DC (0)</option>
+                                    <option value="upcoming" data-count="0">Upcoming (0)</option>
+                                    <option value="2BDC" data-count="0">2BDC (0)</option>
+                                    <option value="missing" data-count="0">Missing (0)</option>
+                                </select>
+                            </div>
                         </div>
                         <div class="form-row">
                             <div class="form-group col-md-4">
@@ -1234,6 +1246,22 @@
                         <table class="custom-resizable-table" id="listing-table">
                             <thead>
                                 <tr>
+                                    <th data-field="image_path" style="vertical-align: middle; white-space: nowrap;">
+                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                            <div class="d-flex align-items-center">
+                                                Images
+                                            </div>
+                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                        </div>
+                                    </th>
+                                    <th data-field="status" style="vertical-align: middle; white-space: nowrap;">
+                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                            <div class="d-flex align-items-center">
+                                                Status
+                                            </div>
+                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                        </div>
+                                    </th>
                                     <th data-field="parent" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center">
                                             <div class="d-flex align-items-center sortable-header">
@@ -1298,7 +1326,7 @@
                                     <th data-field="listing_status" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
-                                                Status
+                                                Amazon Status
                                             </div>
                                             <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
                                         </div>
@@ -1416,6 +1444,11 @@
             let currentEditingElement = null;
             let currentDataTypeFilter = 'sku'; // Track data type filter (all, sku, parent)
             let currentInvFilter = 'all'; // Track INV filter (all, inv-only)
+            let currentNrReqFilter = 'all'; // Track NR/REQ filter
+            let currentLinkFilter = 'all'; // Track LINK filter
+            let currentListedFilter = 'all'; // Track Listed filter
+            let currentStatusFilter = 'all'; // Track Status filter
+            let currentCombinedFilter = 'pending'; // Track combined filter
 
             // --- Dropdown Click Handler ---
             $('.manual-dropdown-container .column-filter').on('click', function() {
@@ -1626,6 +1659,24 @@
                     $row.addClass('parent-row');
                 }
 
+                // Images column (first)
+                const $imageCell = $('<td>').css('text-align', 'center');
+                if (item.image_path) {
+                    $imageCell.html(`<img src="${item.image_path}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;">`);
+                } else {
+                    $imageCell.html('-');
+                }
+                $row.append($imageCell);
+
+                // Status column (from ProductMaster)
+                const $statusCell = $('<td>');
+                if (item.status) {
+                    $statusCell.text(item.status);
+                } else {
+                    $statusCell.text('-');
+                }
+                $row.append($statusCell);
+
                 $row.append($('<td>').text(item.parent)); // Parent
                 $row.append($('<td>').text(item.sku)); // SKU
                 $row.append($('<td>').css('text-align', 'center').text(item.INV)); // INV
@@ -1724,11 +1775,11 @@
                     $row.append($('<td>').css('display', 'none').text('')); // Empty cell for parent rows
                 }
 
-                // Listing Status column
-                const $statusCell = $('<td>').css('text-align', 'center');
+                // Listing Status column (Amazon Status)
+                const $amazonStatusCell = $('<td>').css('text-align', 'center');
                 // If NR is set to 'NR', show NR instead of MISSING
                 if (item.NR === 'NR') {
-                    $statusCell.html('<span style="background:#dc3545; color:white; padding:8px 18px; border-radius:8px; font-weight:600; font-size:15px;">NR</span>');
+                    $amazonStatusCell.html('<span style="background:#dc3545; color:white; padding:8px 18px; border-radius:8px; font-weight:600; font-size:15px;">NR</span>');
                 } else if (item.listing_status) {
                     let statusBadge = '';
                     if (item.listing_status === 'ACTIVE') {
@@ -1738,11 +1789,11 @@
                     } else {
                         statusBadge = '<span style="background:#6c757d; color:white; padding:8px 18px; border-radius:8px; font-weight:600; font-size:15px;">' + item.listing_status + '</span>';
                     }
-                    $statusCell.html(statusBadge);
+                    $amazonStatusCell.html(statusBadge);
                 } else {
-                    $statusCell.html('<span style="background:#ffc107; color:#000; padding:8px 18px; border-radius:8px; font-weight:600; font-size:15px;">MISSING</span>');
+                    $amazonStatusCell.html('<span style="background:#ffc107; color:#000; padding:8px 18px; border-radius:8px; font-weight:600; font-size:15px;">MISSING</span>');
                 }
-                $row.append($statusCell);
+                $row.append($amazonStatusCell);
 
                 return $row;
             }
@@ -1932,7 +1983,15 @@
                         inactiveStatusTotal: 0,
                         missingStatusTotal: 0,
                         nrStatusTotal: 0, // Count for NR from listing status
-                        rowCount: 0
+                        rowCount: 0,
+                        // Status counts (from ProductMaster)
+                        statusAll: 0,
+                        statusActive: 0,
+                        statusInactive: 0,
+                        statusDC: 0,
+                        statusUpcoming: 0,
+                        status2BDC: 0,
+                        statusMissing: 0
                     };
 
                     // Use tableData instead of filteredData to show totals for all data
@@ -1992,6 +2051,25 @@
                             } else if (!item.listing_status) {
                                 metrics.missingStatusTotal++;
                             }
+                            
+                            // Count Status column values (from ProductMaster)
+                            metrics.statusAll++;
+                            if (item.status) {
+                                const statusLower = item.status.toLowerCase();
+                                if (statusLower === 'active') {
+                                    metrics.statusActive++;
+                                } else if (statusLower === 'inactive') {
+                                    metrics.statusInactive++;
+                                } else if (statusLower === 'dc') {
+                                    metrics.statusDC++;
+                                } else if (statusLower === 'upcoming') {
+                                    metrics.statusUpcoming++;
+                                } else if (statusLower === '2bdc') {
+                                    metrics.status2BDC++;
+                                }
+                            } else {
+                                metrics.statusMissing++;
+                            }
                         } else {
                             // Count parent rows for Batch total
                             metrics.batchTotal++;
@@ -2011,6 +2089,15 @@
                     $('#badge-inactive-status-total-count').text(metrics.inactiveStatusTotal); // Red
                     $('#badge-missing-status-total-count').text(metrics.missingStatusTotal); // Yellow
                     $('#badge-nr-status-total-count').text(metrics.nrStatusTotal); // NR from listing status
+                    
+                    // Update Status filter dropdown counts
+                    $('#status-filter option[value="all"]').text('All (' + metrics.statusAll + ')').attr('data-count', metrics.statusAll);
+                    $('#status-filter option[value="active"]').text('Active (' + metrics.statusActive + ')').attr('data-count', metrics.statusActive);
+                    $('#status-filter option[value="inactive"]').text('Inactive (' + metrics.statusInactive + ')').attr('data-count', metrics.statusInactive);
+                    $('#status-filter option[value="DC"]').text('DC (' + metrics.statusDC + ')').attr('data-count', metrics.statusDC);
+                    $('#status-filter option[value="upcoming"]').text('Upcoming (' + metrics.statusUpcoming + ')').attr('data-count', metrics.statusUpcoming);
+                    $('#status-filter option[value="2BDC"]').text('2BDC (' + metrics.status2BDC + ')').attr('data-count', metrics.status2BDC);
+                    $('#status-filter option[value="missing"]').text('Missing (' + metrics.statusMissing + ')').attr('data-count', metrics.statusMissing);
                 } catch (error) {
                     console.error('Error in calculateTotals:', error);
                     resetMetricsToZero();
@@ -2030,44 +2117,25 @@
                 $('#badge-inactive-status-total-count').text('0');
                 $('#badge-missing-status-total-count').text('0');
                 $('#badge-nr-status-total-count').text('0');
+                // Reset Status filter counts
+                $('#status-filter option[value="all"]').text('All (0)').attr('data-count', '0');
+                $('#status-filter option[value="active"]').text('Active (0)').attr('data-count', '0');
+                $('#status-filter option[value="inactive"]').text('Inactive (0)').attr('data-count', '0');
+                $('#status-filter option[value="DC"]').text('DC (0)').attr('data-count', '0');
+                $('#status-filter option[value="upcoming"]').text('Upcoming (0)').attr('data-count', '0');
+                $('#status-filter option[value="2BDC"]').text('2BDC (0)').attr('data-count', '0');
+                $('#status-filter option[value="missing"]').text('Missing (0)').attr('data-count', '0');
             }
             
             // Track active filters
             let activeFilters = new Set();
             
-            // Function to apply badge filter
-            function applyBadgeFilter(filterType) {
-                // Map filter types to badge IDs
-                const badgeIdMap = {
-                    'sku': 'badge-total-sku',
-                    'batch': 'badge-batch-total',
-                    'inv': 'badge-inv-total',
-                    'nr': 'badge-nr-total',
-                    'rl': 'badge-rl-total',
-                    'without-link': 'badge-without-link-total',
-                    'listed': 'badge-listed-total',
-                    'pending': 'badge-pending-total',
-                    'active-status': 'badge-active-status-total',
-                    'inactive-status': 'badge-inactive-status-total',
-                    'missing-status': 'badge-missing-status-total',
-                    'nr-status': 'badge-nr-status-total'
-                };
-                
-                const badgeId = badgeIdMap[filterType];
-                if (!badgeId) return;
-                
-                // Toggle filter
-                if (activeFilters.has(filterType)) {
-                    activeFilters.delete(filterType);
-                    $(`#${badgeId}`).removeClass('active');
-                } else {
-                    activeFilters.add(filterType);
-                    $(`#${badgeId}`).addClass('active');
-                }
-                
-                // Apply all active filters
+            // Unified function to apply all filters (both dropdown and badge)
+            function applyAllFiltersUnified() {
+                // Start with all data
                 filteredData = [...tableData];
                 
+                // Apply badge filters first
                 activeFilters.forEach(filter => {
                     switch(filter) {
                         case 'sku':
@@ -2109,9 +2177,97 @@
                     }
                 });
                 
+                // Apply dropdown filters on top of badge filters
+                // Combined filter
+                if (currentCombinedFilter === 'inv') {
+                    filteredData = filteredData.filter(item => parseFloat(item.INV) > 0);
+                } else if (currentCombinedFilter === 'req-nrl') {
+                    filteredData = filteredData.filter(item => 
+                        item.nr_req === 'REQ' && !item.buyer_link && !item.seller_link
+                    );
+                } else if (currentCombinedFilter === 'pending') {
+                    filteredData = filteredData.filter(item => item.listed === 'Pending');
+                }
+                
+                // Data Type filter
+                if (currentDataTypeFilter === 'parent') {
+                    filteredData = filteredData.filter(item => item.is_parent);
+                } else if (currentDataTypeFilter === 'sku') {
+                    filteredData = filteredData.filter(item => 
+                        !item.is_parent && 
+                        (item.listing_status === 'INACTIVE' || !item.listing_status)
+                    );
+                }
+                
+                // INV filter
+                if (currentInvFilter === 'inv-only') {
+                    filteredData = filteredData.filter(item => parseFloat(item.INV) > 0);
+                }
+                
+                // NR/REQ filter
+                if (currentNrReqFilter !== 'all') {
+                    filteredData = filteredData.filter(item => item.nr_req === currentNrReqFilter);
+                }
+                
+                // LINK filter
+                if (currentLinkFilter === 'with-link') {
+                    filteredData = filteredData.filter(item => item.buyer_link || item.seller_link);
+                } else if (currentLinkFilter === 'without-link') {
+                    filteredData = filteredData.filter(item => !item.buyer_link && !item.seller_link);
+                }
+                
+                // Listed filter
+                if (currentListedFilter !== 'all') {
+                    filteredData = filteredData.filter(item => item.listed === currentListedFilter);
+                }
+                
+                // Status filter
+                if (currentStatusFilter === 'missing') {
+                    filteredData = filteredData.filter(item => !item.status || item.status === '');
+                } else if (currentStatusFilter !== 'all') {
+                    filteredData = filteredData.filter(item => {
+                        if (!item.status) return false;
+                        return item.status.toLowerCase() === currentStatusFilter.toLowerCase();
+                    });
+                }
+                
                 currentPage = 1;
                 renderTable();
                 calculateTotals();
+            }
+            
+            // Function to apply badge filter
+            function applyBadgeFilter(filterType) {
+                // Map filter types to badge IDs
+                const badgeIdMap = {
+                    'sku': 'badge-total-sku',
+                    'batch': 'badge-batch-total',
+                    'inv': 'badge-inv-total',
+                    'nr': 'badge-nr-total',
+                    'rl': 'badge-rl-total',
+                    'without-link': 'badge-without-link-total',
+                    'listed': 'badge-listed-total',
+                    'pending': 'badge-pending-total',
+                    'active-status': 'badge-active-status-total',
+                    'inactive-status': 'badge-inactive-status-total',
+                    'missing-status': 'badge-missing-status-total',
+                    'nr-status': 'badge-nr-status-total'
+                };
+                
+                const badgeId = badgeIdMap[filterType];
+                if (!badgeId) return;
+                
+                // Toggle filter
+                if (activeFilters.has(filterType)) {
+                    activeFilters.delete(filterType);
+                    $(`#${badgeId}`).removeClass('active');
+                } else {
+                    activeFilters.add(filterType);
+                    $(`#${badgeId}`).addClass('active');
+                }
+                
+                // Apply all filters (both badge and dropdown)
+                applyAllFiltersUnified();
             }
             
             // Function to clear all filters
@@ -2125,13 +2281,18 @@
                 $('#nr-req-filter').val('all');
                 $('#link-filter').val('all');
                 $('#listed-filter').val('all');
+                $('#status-filter').val('all');
                 $('#search-input').val('');
+                // Reset filter state variables
                 currentDataTypeFilter = 'sku';
                 currentInvFilter = 'all';
-                filteredData = [...tableData];
-                currentPage = 1;
-                renderTable();
-                calculateTotals();
+                currentNrReqFilter = 'all';
+                currentLinkFilter = 'all';
+                currentListedFilter = 'all';
+                currentStatusFilter = 'all';
+                currentCombinedFilter = 'pending';
+                // Apply all filters (which will show all data since all filters are reset)
+                applyAllFiltersUnified();
             }
             
             // Add click handlers for filter badges
@@ -2282,7 +2443,7 @@
 
                 $('#row-data-type').on('change', function() {
                     currentDataTypeFilter = $(this).val();
-                    applyAllFilters();
+                    applyAllFiltersUnified();
                 });
             }
 
@@ -2417,31 +2578,8 @@
             }
 
             function applyAllFilters() {
-                // Start with all data
-                filteredData = [...tableData];
-
-                // Apply Data Type filter (Parent/SKU/All)
-                if (currentDataTypeFilter === 'parent') {
-                    filteredData = filteredData.filter(item => item.is_parent);
-                } else if (currentDataTypeFilter === 'sku') {
-                    // For SKU: show only non-parent rows with INACTIVE or MISSING status
-                    filteredData = filteredData.filter(item => 
-                        !item.is_parent && 
-                        (item.listing_status === 'INACTIVE' || !item.listing_status)
-                    );
-                }
-                // else 'all' - no data type filtering
-
-                // Apply INV filter on top of data type filter
-                if (currentInvFilter === 'inv-only') {
-                    filteredData = filteredData.filter(item => parseFloat(item.INV) > 0);
-                }
-                // else 'all' - no INV filtering
-
-                // Reset to first page and render
-                currentPage = 1;
-                renderTable();
-                calculateTotals();
+                // Use the unified filter function
+                applyAllFiltersUnified();
             }
 
             // Show notification
@@ -2476,33 +2614,14 @@
 
             // Handle combined filter change
             $('#combined-filter').on('change', function() {
-                const selectedValue = $(this).val();
-
-                if (selectedValue === 'all') {
-                    // Show all rows
-                    filteredData = [...tableData];
-                } else if (selectedValue === 'inv') {
-                    // Show all rows with INV > 0
-                    filteredData = tableData.filter(item => parseFloat(item.INV) > 0);
-                } else if (selectedValue === 'req-nrl') {
-                    // Show all REQ rows without buyer_link AND seller_link
-                    filteredData = tableData.filter(item => 
-                        item.nr_req === 'REQ' && !item.buyer_link && !item.seller_link
-                    );
-                } else if (selectedValue === 'pending') {
-                    // Show all rows with Listed = Pending
-                    filteredData = tableData.filter(item => item.listed === 'Pending');
-                }
-
-                currentPage = 1;
-                renderTable();
-                calculateTotals();
+                currentCombinedFilter = $(this).val();
+                applyAllFiltersUnified();
             });
 
             // Handle INV filter change
             $('#inv-filter').on('change', function() {
                 currentInvFilter = $(this).val();
-                applyAllFilters();
+                applyAllFiltersUnified();
             });
 
             // Save links when submitting the modal
@@ -2611,19 +2730,8 @@
             });
 
             $('#nr-req-filter').on('change', function() {
-                const selectedValue = $(this).val();
-
-                if (selectedValue === 'all') {
-                    // Show all rows
-                    filteredData = [...tableData];
-                } else {
-                    // Filter rows based on NR/REQ value
-                    filteredData = tableData.filter(item => item.nr_req === selectedValue);
-                }
-
-                currentPage = 1; // Reset to the first page
-                renderTable(); // Re-render the table
-                calculateTotals(); // Recalculate totals
+                currentNrReqFilter = $(this).val();
+                applyAllFiltersUnified();
             });
 
             $(document).on('click', '.link-edit-icon', function() {
@@ -2641,36 +2749,19 @@
             });
 
             $('#link-filter').on('change', function() {
-                const selectedValue = $(this).val();
-
-                if (selectedValue === 'all') {
-                    // Show all rows
-                    filteredData = [...tableData];
-                } else if (selectedValue === 'with-link') {
-                    // Filter rows with buyer or seller links
-                    filteredData = tableData.filter(item => item.buyer_link || item.seller_link);
-                } else if (selectedValue === 'without-link') {
-                    // Filter rows without buyer or seller links
-                    filteredData = tableData.filter(item => !item.buyer_link && !item.seller_link);
-                }
-
-                currentPage = 1; // Reset to the first page
-                renderTable(); // Re-render the table
-                calculateTotals(); // Recalculate totals
+                currentLinkFilter = $(this).val();
+                applyAllFiltersUnified();
             });
 
             $('#listed-filter').on('change', function() {
-                const selectedValue = $(this).val();
+                currentListedFilter = $(this).val();
+                applyAllFiltersUnified();
+            });
 
-                if (selectedValue === 'all') {
-                    filteredData = [...tableData];
-                } else {
-                    filteredData = tableData.filter(item => item.listed === selectedValue);
-                }
-
-                currentPage = 1;
-                renderTable();
-                calculateTotals();
+            // Handle Status filter change
+            $('#status-filter').on('change', function() {
+                currentStatusFilter = $(this).val();
+                applyAllFiltersUnified();
             });
 
             // Refresh Links Button Handler
