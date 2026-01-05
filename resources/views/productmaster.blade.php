@@ -3013,6 +3013,22 @@
                 `;
                         } else if (colName === "Action" || colName === "Verified Data") {
                             th.textContent = colName;
+                        } else if (colName === "STATUS") {
+                            // Special handling for STATUS column with all status options
+                            const filterId = `filter${colName.replace(/\s+/g, '').replace(/[()]/g, '')}`;
+                            const savedFilterValue = existingFilterValues && existingFilterValues[colName] ? existingFilterValues[colName] : 'all';
+                            th.innerHTML = `
+                    <div style="font-size: 9px;">${colName}</div>
+                    <select id="${filterId}" class="form-control form-control-sm mt-1 missing-data-filter" style="font-size: 9px; padding: 2px 4px;" data-column="${colName}">
+                        <option value="all" ${savedFilterValue === 'all' ? 'selected' : ''}>All</option>
+                        <option value="missing" ${savedFilterValue === 'missing' ? 'selected' : ''}>Missing</option>
+                        <option value="active" ${savedFilterValue === 'active' ? 'selected' : ''}>Active</option>
+                        <option value="inactive" ${savedFilterValue === 'inactive' ? 'selected' : ''}>Inactive</option>
+                        <option value="DC" ${savedFilterValue === 'DC' ? 'selected' : ''}>DC</option>
+                        <option value="upcoming" ${savedFilterValue === 'upcoming' ? 'selected' : ''}>Upcoming</option>
+                        <option value="2BDC" ${savedFilterValue === '2BDC' ? 'selected' : ''}>2BDC</option>
+                    </select>
+                `;
                         } else {
                             // Add filter dropdown for missing data
                             const filterId = `filter${colName.replace(/\s+/g, '').replace(/[()]/g, '')}`;
@@ -3440,11 +3456,48 @@
                 // Apply missing data filters for each column
                 document.querySelectorAll('.missing-data-filter').forEach(filter => {
                     const filterValue = filter.value;
-                    if (filterValue === 'missing') {
-                        const columnName = filter.getAttribute('data-column');
-                        if (!columnName) return; // Skip if no column name
-                        const fieldName = getFieldNameFromColumn(columnName);
-                        
+                    const columnName = filter.getAttribute('data-column');
+                    if (!columnName || filterValue === 'all') return; // Skip if no column name or 'all' selected
+                    
+                    const fieldName = getFieldNameFromColumn(columnName);
+                    
+                    // Special handling for STATUS column with specific status values
+                    if (columnName === 'STATUS' && filterValue !== 'missing') {
+                        // Filter by specific status value
+                        filteredData = filteredData.filter(item => {
+                            let value = null;
+                            
+                            // First, try to get value directly from item object
+                            if (item[fieldName] !== undefined && item[fieldName] !== null) {
+                                value = item[fieldName];
+                            } else {
+                                // Get from Values JSON if available
+                                let values = {};
+                                if (item.Values) {
+                                    if (Array.isArray(item.Values)) {
+                                        values = item.Values;
+                                    } else if (typeof item.Values === 'string') {
+                                        try {
+                                            values = JSON.parse(item.Values);
+                                        } catch (e) {
+                                            values = {};
+                                        }
+                                    } else {
+                                        values = item.Values;
+                                    }
+                                }
+                                
+                                // Try to get from Values JSON
+                                if (values[fieldName] !== undefined && values[fieldName] !== null) {
+                                    value = values[fieldName];
+                                }
+                            }
+                            
+                            // Compare status value (case-insensitive)
+                            return value && String(value).toLowerCase() === String(filterValue).toLowerCase();
+                        });
+                    } else if (filterValue === 'missing') {
+                        // Original missing data filter logic
                         filteredData = filteredData.filter(item => {
                             let value = null;
                             
