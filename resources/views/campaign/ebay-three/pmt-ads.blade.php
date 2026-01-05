@@ -1568,7 +1568,7 @@
                                             {{-- <div class="metric-total" id="ovdil-total">0%</div> --}}
                                         </div>
                                     </th>
-                                    <th data-field="s_bid">ES BID</th>
+                                    <th data-field="esbid">ES BID</th>
                                     <th data-field="s_bid">S BID</th>
 
                                     <th data-field="total_views" style="vertical-align: middle; white-space: nowrap;">
@@ -2950,24 +2950,25 @@
 
                     $row.append($('<td data-field="esbid">').text(item.ESBID));
                     
-                    // Calculate CVR first
+                    // Calculate SCVR first (eBay L30 / PmtClkL30 * 100)
                     let ebayL30 = Number(item['eBay L30']) || 0;
+                    let pmtClkL30 = Number(item['PmtClkL30']) || 0;
                     let views = Number(item.VIEWS) || 0;
-                    let scvr = views > 0 ? (ebayL30 / views) * 100 : 0;
+                    let scvr = pmtClkL30 > 0 ? (ebayL30 / pmtClkL30) * 100 : 0;
 
                     // Check if DIL is red (ov_dil < 0.1666, which is < 16.66%)
                     let dilPercent = parseFloat(item.ov_dil || 0) * 100;
                     let isDilRed = dilPercent < 16.66;
 
-                    // Calculate SBID based on CVR ranges
+                    // Calculate SBID based on SCVR ranges
                     let sbidValue;
                     
                     // Priority 1: If SCVR < 0.01% (including 0.00%), use ESBID
                     if (scvr < 0.01) {
-                        sbidValue = parseFloat(item.ESBID) || 0; // Use ESBID for CVR < 0.01%
-                    } else if ((scvr >= 0.01 && scvr <= 1) || views < 100) {
-                        sbidValue = 8; // Flat 8
-                    } else if (scvr >= 1.01 && scvr <= 2) {
+                        sbidValue = parseFloat(item.ESBID) || 0; // Use ESBID for SCVR < 0.01%
+                    } 
+                    // Priority 2: Check SCVR ranges first (higher priority)
+                    else if (scvr >= 1.01 && scvr <= 2) {
                         sbidValue = 7; // Flat 7
                     } else if (scvr >= 2.01 && scvr <= 3) {
                         sbidValue = 6; // Flat 6
@@ -2977,8 +2978,15 @@
                         sbidValue = 4; // Flat 4
                     } else if (scvr >= 7.01 && scvr <= 13) {
                         sbidValue = 3; // Flat 3
-                    } else { // scvr > 13
+                    } else if (scvr > 13) {
                         sbidValue = 2; // Flat 2
+                    } 
+                    // Priority 3: If SCVR between 0.01-1% OR views < 100, set to 8%
+                    else if ((scvr >= 0.01 && scvr <= 1) || views < 100) {
+                        sbidValue = 8; // Flat 8
+                    } else {
+                        // Fallback: default to 8
+                        sbidValue = 8;
                     }
 
                     // Cap sbidValue to maximum of 15
@@ -4795,9 +4803,12 @@
                         'ov_dil': 'ov_dil',
                         'el_30': 'eBay L30',
                         'c_bid': 'CBID',
-                        's_bid': 'ESBID',
+                        'cbid': 'CBID',
+                        'esbid': 'ESBID',
+                        's_bid': 'SBID', // S BID is calculated, not ESBID
                         'total_views': 'VIEWS',
-                        'cvr': 'SCVR',
+                        'cvr': 'SCVR', // SCVR is calculated dynamically
+                        'pmtclkl7': 'PmtClkL7',
                         'views': 'PmtClkL30',
                         'price': 'eBay Price',
                         'pft': 'PFT %',
@@ -4824,14 +4835,51 @@
                     $('.sort-arrow').html('↓');
                     $(this).find('.sort-arrow').html(currentSort.direction === 1 ? '↑' : '↓');
 
+                    // Function to calculate SCVR (same logic as in renderTable)
+                    function calculateSCVR(item) {
+                        const ebayL30 = Number(item['eBay L30']) || 0;
+                        const pmtClkL30 = Number(item['PmtClkL30']) || 0;
+                        return pmtClkL30 > 0 ? (ebayL30 / pmtClkL30) * 100 : 0;
+                    }
+
+                    // Function to calculate SBID (same logic as in renderTable)
+                    function calculateSBID(item) {
+                        const scvr = calculateSCVR(item);
+                        const views = Number(item.VIEWS) || 0;
+                        const dilPercent = (parseFloat(item.ov_dil || 0) * 100) || 0;
+                        const isDilRed = dilPercent < 16.66;
+                        
+                        let sbidValue;
+                        if (scvr < 0.01) {
+                            sbidValue = parseFloat(item.ESBID || 0) || 0;
+                        } else if (scvr >= 1.01 && scvr <= 2) {
+                            sbidValue = 7;
+                        } else if (scvr >= 2.01 && scvr <= 3) {
+                            sbidValue = 6;
+                        } else if (scvr >= 3.01 && scvr <= 5) {
+                            sbidValue = 5;
+                        } else if (scvr >= 5.01 && scvr <= 7) {
+                            sbidValue = 4;
+                        } else if (scvr >= 7.01 && scvr <= 13) {
+                            sbidValue = 3;
+                        } else if (scvr > 13) {
+                            sbidValue = 2;
+                        } else if ((scvr >= 0.01 && scvr <= 1) || isDilRed || views < 100) {
+                            sbidValue = 8;
+                        } else {
+                            sbidValue = 8;
+                        }
+                        return Math.min(sbidValue, 15);
+                    }
+
                     // Pre-calculate if field is numeric (outside sort for performance)
                     const numericFieldsSet = new Set([
                         'sl_no', 'INV', 'L30', 'ov_dil', 'eBay L30', 'E Dil%', 
-                        'eBay Price', 'PFT %', 'Roi', 'Tacos30', 'SCVR', 'PmtClkL30', 
+                        'eBay Price', 'PFT %', 'Roi', 'Tacos30', 'SCVR', 'PmtClkL30', 'PmtClkL7',
                         'SPRICE', 'SPFT', 'SROI', 'Sales L30', 'Profit', 'VIEWS',
-                        'CBID', 'ESBID', 'TPFT',
-                        'inv', 'ov_l30', 'el_30', 'c_bid', 's_bid', 'total_views',
-                        'cvr', 'views', 'price', 'pft', 'roi', 'tpft', 'troi'
+                        'CBID', 'ESBID', 'SBID', 'TPFT',
+                        'inv', 'ov_l30', 'el_30', 'c_bid', 'cbid', 'esbid', 's_bid', 'total_views',
+                        'cvr', 'pmtclkl7', 'views', 'price', 'pft', 'roi', 'tpft', 'troi'
                     ]);
                     const isNumeric = numericFieldsSet.has(dataField) || numericFieldsSet.has(originalField);
                     
@@ -4839,8 +4887,22 @@
                     let getValue;
                     if (dataField === 'ov_dil' || originalField === 'ov_dil') {
                         getValue = (item) => parseFloat(item.ov_dil || 0) || 0;
+                    } else if (dataField === 'SBID' || originalField === 's_bid') {
+                        // S BID is calculated dynamically
+                        getValue = (item) => calculateSBID(item);
+                    } else if (dataField === 'SCVR' || originalField === 'cvr') {
+                        // SCVR is calculated dynamically
+                        getValue = (item) => calculateSCVR(item);
+                    } else if (dataField === 'PmtClkL7' || originalField === 'pmtclkl7') {
+                        // PmtClkL7 is in raw_data
+                        getValue = (item) => parseFloat(item.raw_data?.PmtClkL7 || 0) || 0;
                     } else if (isNumeric) {
-                        getValue = (item) => parseFloat(item[dataField] || 0) || 0;
+                        getValue = (item) => {
+                            const value = item[dataField];
+                            if (value === null || value === undefined || value === '') return 0;
+                            const parsed = parseFloat(value);
+                            return isNaN(parsed) ? 0 : parsed;
+                        };
                     } else {
                         getValue = (item) => item[dataField] || '';
                     }

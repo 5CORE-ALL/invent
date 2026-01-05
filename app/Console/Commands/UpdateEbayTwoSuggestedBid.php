@@ -6,7 +6,6 @@ use App\Models\Ebay2GeneralReport;
 use App\Models\Ebay2Metric;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Cache;
 use App\Models\EbayMetric;
@@ -105,15 +104,15 @@ class UpdateEbayTwoSuggestedBid extends Command
                 return 0;
             }
 
-            // Get L7 clicks from ebaygeneral report
+            // Get L30 data (clicks) from ebaygeneral report for SCVR calculation
             $this->info('Loading eBay general report data...');
-            $ebayGeneralL7 = Ebay2GeneralReport::select('listing_id', 'clicks')
-                ->where('report_range', 'L7')
+            $ebayGeneralL30 = Ebay2GeneralReport::select('listing_id', 'clicks')
+                ->where('report_range', 'L30')
                 ->get()
                 ->keyBy('listing_id');
             
         // Process ProductMaster data in chunks and update campaign listings
-        $this->info('Processing bid updates...');
+        $this->info('Processing bid updates based on SCVR...');
         $updatedListings = 0;
         
         ProductMaster::whereNull('deleted_at')
@@ -124,7 +123,7 @@ class UpdateEbayTwoSuggestedBid extends Command
                 $shopifyData, 
                 $ebayMetricsNormalized, 
                 $campaignListings, 
-                $ebayGeneralL7, 
+                $ebayGeneralL30, 
                 &$updatedListings
             ) {
                 foreach ($productMasters as $pm) {
@@ -133,12 +132,14 @@ class UpdateEbayTwoSuggestedBid extends Command
 
                     if ($ebayMetric && $ebayMetric->item_id && $campaignListings->has($ebayMetric->item_id)) {
                         $listing = $campaignListings[$ebayMetric->item_id];
+                        $l30Data = $ebayGeneralL30->get($ebayMetric->item_id);
                         
-                        // Calculate CVR (Conversion Rate) = (eBay L30 Sales / Views) * 100
-                        // This matches the frontend calculation: scvr = (ebayL30 / views) * 100
+                        // Calculate SCVR (Sales Conversion Rate) = (eBay L30 Sales / PmtClkL30) * 100
+                        // This matches the frontend calculation: scvr = (ebayL30 / PmtClkL30) * 100
                         $ebay_l30 = (int) ($ebayMetric->ebay_l30 ?? 0);
-                        $views = (int) ($ebayMetric->views ?? 0);
-                        $cvr = $views > 0 ? ($ebay_l30 / $views) * 100 : 0;
+                        $pmtClkL30 = $l30Data ? (int) ($l30Data->clicks ?? 0) : 0; // PmtClkL30 from general report
+                        $views = (int) ($ebayMetric->views ?? 0); // Keep for views < 100 check
+                        $cvr = $pmtClkL30 > 0 ? ($ebay_l30 / $pmtClkL30) * 100 : 0;
                         
                         // Get ESBID (suggested bid from bid_percentage in campaign listing)
                         $esbid = (float) ($listing->suggested_bid ?? 0);
@@ -152,16 +153,16 @@ class UpdateEbayTwoSuggestedBid extends Command
                         $dilPercent = $ov_dil * 100;
                         $isDilRed = $dilPercent < 16.66;
                         
-                        // Determine new bid based on CVR ranges - flat values
+                        // Determine new bid based on SCVR ranges - flat values
                         $newBid = 2; // Default minimum
                         
-                        // Priority 1: If CVR < 0.01% (including 0.00%), use ESBID
+                        // Priority 1: If SCVR < 0.01% (including 0.00%), use ESBID
                         if ($cvr < 0.01) {
-                            // For very low CVR, keep current ESBID (matches frontend logic)
+                            // For very low SCVR, keep current ESBID (matches frontend logic)
                             $newBid = $esbid;
-                        } elseif (($cvr >= 0.01 && $cvr <= 1) || $views < 100) {
-                            $newBid = 8; // Flat 8%
-                        } elseif ($cvr >= 1.01 && $cvr <= 2) {
+                        } 
+                        // Priority 2: Check SCVR ranges first (higher priority)
+                        elseif ($cvr >= 1.01 && $cvr <= 2) {
                             $newBid = 7; // Flat 7%
                         } elseif ($cvr >= 2.01 && $cvr <= 3) {
                             $newBid = 6; // Flat 6%
@@ -173,12 +174,20 @@ class UpdateEbayTwoSuggestedBid extends Command
                             $newBid = 3; // Flat 3%
                         } elseif ($cvr > 13) {
                             $newBid = 2; // Flat 2%
+                        } 
+                        // Priority 3: If SCVR between 0.01-1% OR views < 100 OR DIL red, set to 8%
+                        elseif (($cvr >= 0.01 && $cvr <= 1) || $views < 100 || $isDilRed) {
+                            $newBid = 8; // Flat 8%
+                        } else {
+                            // Fallback: default to 8
+                            $newBid = 8;
                         }
 
                         // Cap newBid to maximum of 15
                         $newBid = min($newBid, 15);
                         
                         $listing->new_bid = $newBid;
+                        $this->info("SKU: {$pm->sku} | SBID: {$newBid}");
                         $updatedListings++;
                     }
                 }
@@ -223,21 +232,16 @@ class UpdateEbayTwoSuggestedBid extends Command
                     ['json' => ['requests' => $requests]]
                 );
                 $this->info("Campaign {$campaignId}: Updated " . count($requests) . " listings.");
-                Log::info("eBay campaign {$campaignId} bulk update response: " . $response->getBody()->getContents());
             } catch (\GuzzleHttp\Exception\ClientException $e) {
                 $statusCode = $e->getResponse()->getStatusCode();
-                $responseBody = $e->getResponse()->getBody()->getContents();
                 
                 if ($statusCode === 404) {
                     $this->warn("Campaign {$campaignId} not found (404). Skipping...");
-                    Log::warning("eBay campaign {$campaignId} not found: " . $responseBody);
                 } else {
-                    Log::error("Failed to update eBay campaign {$campaignId}: " . $e->getMessage());
-                    $this->error("Failed to update campaign {$campaignId} (Status: {$statusCode}). Check logs.");
+                    $this->error("Failed to update campaign {$campaignId} (Status: {$statusCode}).");
                 }
             } catch (\Exception $e) {
-                Log::error("Failed to update eBay campaign {$campaignId}: " . $e->getMessage());
-                $this->error("Failed to update campaign {$campaignId}. Check logs.");
+                $this->error("Failed to update campaign {$campaignId}: " . $e->getMessage());
             }
         }
 
@@ -245,11 +249,9 @@ class UpdateEbayTwoSuggestedBid extends Command
             return 0;
             
         } catch (Exception $e) {
-            Log::error('eBay bid update command failed: ' . $e->getMessage());
             $this->error('Command failed: ' . $e->getMessage());
             return 1;
         } catch (\Throwable $e) {
-            Log::error('eBay bid update command failed with throwable: ' . $e->getMessage());
             $this->error('Command failed with error: ' . $e->getMessage());
             return 1;
         }
@@ -321,7 +323,6 @@ class UpdateEbayTwoSuggestedBid extends Command
             throw new Exception("Failed to refresh token: " . json_encode($data));
             
         } catch (Exception $e) {
-            Log::error('Failed to get eBay access token: ' . $e->getMessage());
             throw $e;
         }
     }

@@ -355,7 +355,7 @@
                                     <select id="inv-filter" class="form-select form-select-md">
                                         <option value="ALL">ALL</option>
                                         <option value="INV_0">0 INV</option>
-                                        <option value="OTHERS">OTHERS</option>
+                                        <option value="OTHERS" selected>OTHERS</option>
                                     </select>
 
                                     <select id="nrl-filter" class="form-select form-select-md">
