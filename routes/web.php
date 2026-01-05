@@ -1066,6 +1066,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/import-walmart-ratings', [WalmartControllerMarket::class, 'importWalmartRatings'])->name('walmart.ratings.import');
     Route::post('/update-walmart-rating', [WalmartControllerMarket::class, 'updateWalmartRating'])->name('walmart.rating.update');
 
+    // Walmart Sheet Upload Routes (Separate Controller) - Like Temu with Truncate
+    Route::get('/walmart-sheet-upload', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'index'])->name('walmart.sheet.upload');
+    Route::post('/walmart-sheet-upload-price', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'uploadPriceData'])->name('walmart-sheet-upload-price');
+    Route::post('/walmart-sheet-upload-listing-views', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'uploadListingViewsData'])->name('walmart-sheet-upload-listing-views');
+    Route::post('/walmart-sheet-upload-order', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'uploadOrderData'])->name('walmart-sheet-upload-order');
+    Route::get('/walmart-sheet-upload-data-json', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'getCombinedDataJson'])->name('walmart-sheet-upload-data-json');
+    Route::get('/walmart-sheet-upload-summary', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'getSummaryStats'])->name('walmart-sheet-upload-summary');
+
+
     //Listing Audit amazon
     Route::get('/listing-audit-amazon', action: [ListingAuditAmazonController::class, 'listingAuditAmazon'])->name('listing.audit.amazon');
     Route::get('/listing-amazon', [ListingAmazonController::class, 'listingAmazon'])->name('listing.amazon');

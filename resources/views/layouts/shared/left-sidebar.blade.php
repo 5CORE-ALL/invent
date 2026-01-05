@@ -2698,6 +2698,9 @@
                                         <a href="{{ url('walmart-tabulator-view') }}">Walmart Pricing - CVR</a>
                                     </li>
                                     <li>
+                                        <a href="{{ route('walmart.sheet.upload') }}">Walmart Pricing</a>
+                                    </li>
+                                    <li>
                                         <a href="{{ route('walmart.utilized.bgt') }}">Walmart BGT Util.</a>
                                     </li>
                                     <li>
