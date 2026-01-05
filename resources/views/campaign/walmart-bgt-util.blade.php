@@ -819,7 +819,11 @@
                             const sku = rowData.sku;
                             let value = cell.getValue();
                             
-                            // Handle different value formats - default to "RA" (green dot) if not set
+                            // Check NRL value - if NRL is "NRL", then NRA should default to "NRA"
+                            const nrlValue = rowData.NRL;
+                            const isNrlRed = nrlValue && String(nrlValue).trim().toUpperCase() === "NRL";
+                            
+                            // Handle different value formats
                             let hasValue = false;
                             if (value && value !== '' && value !== null && value !== undefined) {
                                 value = String(value).trim().toUpperCase();
@@ -827,11 +831,13 @@
                                 if (value === "RA" || value === "NRA") {
                                     hasValue = true;
                                 } else {
-                                    value = "RA"; // Default to RA
+                                    // If NRL is NRL, default to NRA, otherwise default to RA
+                                    value = isNrlRed ? "NRA" : "RA";
                                     hasValue = true;
                                 }
                             } else {
-                                value = "RA"; // Default to RA (green dot)
+                                // If NRL is NRL, default to NRA, otherwise default to RA
+                                value = isNrlRed ? "NRA" : "RA";
                                 hasValue = true;
                             }
                             
@@ -841,7 +847,7 @@
 
                             return `
                                 <div class="dot-dropdown" style="position: relative; width: 100%;">
-                                    <button type="button" class="dot-dropdown-btn" data-sku="${sku}" data-field="NRA" data-value="${value || 'RA'}" style="justify-content: center;">
+                                    <button type="button" class="dot-dropdown-btn" data-sku="${sku}" data-field="NRA" data-value="${value || (isNrlRed ? 'NRA' : 'RA')}" style="justify-content: center;">
                                         ${displayHtml}
                                     </button>
                                     <div class="dot-dropdown-menu">
