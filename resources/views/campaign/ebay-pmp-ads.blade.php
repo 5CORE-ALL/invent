@@ -3002,11 +3002,13 @@
                     // Calculate SBID based on CVR ranges
                     let sbidValue;
                     
-                    // New rule: if SBID between 0.01-1% OR DIL red OR views < 100, set to 8%
-                    if ((scvr >= 0.01 && scvr <= 1) || views < 100) {
+                    // Priority 1: If SCVR < 0.01% (including 0.00%), use ESBID
+                    if (scvr < 0.01) {
+                        sbidValue = parseFloat(item.ESBID) || 0; // Use ESBID for CVR < 0.01%
+                    } 
+                    // Priority 2: If SCVR between 0.01-1% OR views < 100, set to 8%
+                    else if ((scvr >= 0.01 && scvr <= 1) || views < 100) {
                         sbidValue = 8; // Flat 8
-                    } else if (scvr < 0.01) {
-                        sbidValue = item.ESBID || 0; // Use ESBID for CVR < 0.01%
                     } else if (scvr >= 1.01 && scvr <= 2) {
                         sbidValue = 7; // Flat 7
                     } else if (scvr >= 2.01 && scvr <= 3) {
@@ -3024,11 +3026,6 @@
                     // Cap sbidValue to maximum of 15
                     sbidValue = Math.min(sbidValue, 15);
 
-                    // If ov_dil is greater than 100%, set sbid to 0
-                    if (item.ov_dil > 1) {
-                        sbidValue = 2;
-                    }
-
                     $row.append($('<td data-field="sbid">').html(
                         `<span class="dil-percent-value">
                            ${sbidValue.toFixed(1)}
@@ -3041,7 +3038,7 @@
 
                     $row.append($('<td>').html(
                         `<span class="dil-percent-value" style="color: ${getCvrColor(scvr)}">
-                           ${scvr.toFixed(1)}%
+                           ${scvr.toFixed(2)}%
                         </span>`
                     ));
 
@@ -4895,11 +4892,13 @@
                         
                         let sbidValue;
                         
-                        // New rule: if SBID between 0.01-1% OR DIL red OR views < 100, set to 8%
-                        if ((scvr >= 0.01 && scvr <= 1) || isDilRed || views < 100) {
-                            sbidValue = 8;
-                        } else if (scvr < 0.01) {
+                        // Priority 1: If SCVR < 0.01% (including 0.00%), use ESBID
+                        if (scvr < 0.01) {
                             sbidValue = parseFloat(item.ESBID || 0) || 0;
+                        } 
+                        // Priority 2: If SCVR between 0.01-1% OR DIL red OR views < 100, set to 8%
+                        else if ((scvr >= 0.01 && scvr <= 1) || isDilRed || views < 100) {
+                            sbidValue = 8;
                         } else if (scvr >= 1.01 && scvr <= 2) {
                             sbidValue = 7;
                         } else if (scvr >= 2.01 && scvr <= 3) {
@@ -4916,11 +4915,6 @@
                         
                         // Cap sbidValue to maximum of 15
                         sbidValue = Math.min(sbidValue, 15);
-                        
-                        // If ov_dil is greater than 100%, set sbid to 2
-                        if (item.ov_dil > 1) {
-                            sbidValue = 2;
-                        }
                         
                         return sbidValue;
                     }

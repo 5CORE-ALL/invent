@@ -112,9 +112,11 @@ class StockMappingController extends Controller
             'doba'    => [DobaListingStatus::class,    'inventory_doba'],
             'temu'    => [TemuListingStatus::class,    'inventory_temu'],
             'macy'    => [MacysListingStatus::class,   'inventory_macy'],
-            'ebay1'   => [EbayListingStatus::class,    'inventory_ebay1'],
-            'ebay2'   => [EbayTwoListingStatus::class, 'inventory_ebay2'],
-            'ebay3'   => [EbayThreeListingStatus::class,'inventory_ebay3'],
+            // Ebay platforms are excluded because their inventory is already in ProductStockMapping table
+            // and EbayListingStatus tables don't have 'inventory' field in their value JSON
+            // 'ebay1'   => [EbayListingStatus::class,    'inventory_ebay1'],
+            // 'ebay2'   => [EbayTwoListingStatus::class, 'inventory_ebay2'],
+            // 'ebay3'   => [EbayThreeListingStatus::class,'inventory_ebay3'],
             'bestbuy' => [BestbuyUSAListingStatus::class,'inventory_bestbuy'],
             'tiendamia' => [TiendamiaListingStatus::class,'inventory_tiendamia'],
             'pls' => [PlsListingStatus::class, 'inventory_pls'],
@@ -140,6 +142,9 @@ class StockMappingController extends Controller
                     }
                 });
             }
+            
+            // Ebay inventory is already loaded from ProductStockMapping table above
+            // No need to fetch from listing status tables as they don't contain inventory data
 
             // After all marketplace assignments, fill missing PLS/Business5Core with Shopify inventory
             foreach ($data as $item) {

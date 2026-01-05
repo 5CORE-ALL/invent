@@ -159,6 +159,10 @@ class EbayOverUtilzBidsAutoUpdate extends Command
         $ebayMetricData = EbayMetric::whereIn('sku', $skus)->get()->keyBy('sku');
 
         $ebayCampaignReportsL7 = EbayPriorityReport::where('report_range', 'L7')
+            ->where('campaignStatus', 'RUNNING')
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
             ->where(function ($q) use ($skus) {
                 foreach ($skus as $sku) {
                     $q->orWhere('campaign_name', 'LIKE', '%' . $sku . '%');
@@ -167,6 +171,10 @@ class EbayOverUtilzBidsAutoUpdate extends Command
             ->get();
 
         $ebayCampaignReportsL1 = EbayPriorityReport::where('report_range', 'L1')
+            ->where('campaignStatus', 'RUNNING')
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
             ->where(function ($q) use ($skus) {
                 foreach ($skus as $sku) {
                     $q->orWhere('campaign_name', 'LIKE', '%' . $sku . '%');
@@ -175,6 +183,10 @@ class EbayOverUtilzBidsAutoUpdate extends Command
             ->get();
 
         $ebayCampaignReportsL30 = EbayPriorityReport::where('report_range', 'L30')
+            ->where('campaignStatus', 'RUNNING')
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
             ->where(function ($q) use ($skus) {
                 foreach ($skus as $sku) {
                     $q->orWhere('campaign_name', 'LIKE', '%' . $sku . '%');
@@ -194,8 +206,8 @@ class EbayOverUtilzBidsAutoUpdate extends Command
         $totalSalesAll = 0;
 
         foreach ($allL30Campaigns as $campaign) {
-            $adFees = (float) str_replace('USD ', '', $campaign->cpc_ad_fees_payout_currency ?? 0);
-            $sales = (float) str_replace('USD ', '', $campaign->cpc_sale_amount_payout_currency ?? 0);
+            $adFees = (float) str_replace(['USD ', ','], '', $campaign->cpc_ad_fees_payout_currency ?? '0');
+            $sales = (float) str_replace(['USD ', ','], '', $campaign->cpc_sale_amount_payout_currency ?? '0');
             $totalSpendAll += $adFees;
             $totalSalesAll += $sales;
         }
@@ -250,15 +262,15 @@ class EbayOverUtilzBidsAutoUpdate extends Command
             $row['campaignBudgetAmount'] = $campaignForDisplay->campaignBudgetAmount ?? '';
             $row['sku'] = $pm->sku;
 
-            $row['l7_spend'] = (float) str_replace('USD ', '', $matchedCampaignL7->cpc_ad_fees_payout_currency ?? 0);
-            $row['l7_cpc'] = (float) str_replace('USD ', '', $matchedCampaignL7->cost_per_click ?? 0);
-            $row['l1_spend'] = (float) str_replace('USD ', '', $matchedCampaignL1->cpc_ad_fees_payout_currency ?? 0);
-            $row['l1_cpc'] = (float) str_replace('USD ', '', $matchedCampaignL1->cost_per_click ?? 0);
+            $row['l7_spend'] = (float) str_replace(['USD ', ','], '', $matchedCampaignL7->cpc_ad_fees_payout_currency ?? '0');
+            $row['l7_cpc'] = (float) str_replace(['USD ', ','], '', $matchedCampaignL7->cost_per_click ?? '0');
+            $row['l1_spend'] = (float) str_replace(['USD ', ','], '', $matchedCampaignL1->cpc_ad_fees_payout_currency ?? '0');
+            $row['l1_cpc'] = (float) str_replace(['USD ', ','], '', $matchedCampaignL1->cost_per_click ?? '0');
 
             // Calculate ACOS from L30 data (use L30 if available, otherwise use L7)
             $matchedCampaignL30 = $matchedCampaignL30 ?? $matchedCampaignL7;
-            $adFeesL30 = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_ad_fees_payout_currency ?? 0);
-            $salesL30 = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_sale_amount_payout_currency ?? 0);
+            $adFeesL30 = (float) str_replace(['USD ', ','], '', $matchedCampaignL30->cpc_ad_fees_payout_currency ?? '0');
+            $salesL30 = (float) str_replace(['USD ', ','], '', $matchedCampaignL30->cpc_sale_amount_payout_currency ?? '0');
             $acos = $salesL30 > 0 ? ($adFeesL30 / $salesL30) * 100 : 0;
             
             // If acos is 0 (no sales or no ad fees), set it to 100 for comparison

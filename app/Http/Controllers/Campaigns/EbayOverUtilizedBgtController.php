@@ -136,8 +136,9 @@ class EbayOverUtilizedBgtController extends Controller
 
     public function updateAutoKeywordsBidDynamic(array $campaignIds, array $newBids)
     {
-        ini_set('max_execution_time', 300);
-        ini_set('memory_limit', '512M');
+        // Set longer timeout for API operations (10 minutes per batch)
+        ini_set('max_execution_time', 600);
+        ini_set('memory_limit', '1024M');
 
         if (empty($campaignIds) || empty($newBids)) {
             return [
@@ -181,10 +182,11 @@ class EbayOverUtilizedBgtController extends Controller
                     $endpoint = "https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_keyword";
 
                     try {
-                        $response = Http::withHeaders([
-                            'Authorization' => "Bearer {$accessToken}",
-                            'Content-Type'  => 'application/json',
-                        ])->post($endpoint, $payload);
+                        $response = Http::timeout(120) // 2 minute timeout per request
+                            ->withHeaders([
+                                'Authorization' => "Bearer {$accessToken}",
+                                'Content-Type'  => 'application/json',
+                            ])->post($endpoint, $payload);
 
                         if ($response->successful()) {
                             $respData = $response->json();
