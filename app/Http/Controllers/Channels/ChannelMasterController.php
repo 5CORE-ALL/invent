@@ -365,30 +365,43 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // Get metrics from marketplace_daily_metrics table (pre-calculated)
+        // Get metrics from marketplace_daily_metrics table (pre-calculated from ShipHub)
         $metrics = MarketplaceDailyMetric::where('channel', 'Amazon')->latest('date')->first();
         
-        // Get L60 data from orders for comparison
-        $l60OrdersQuery = AmazonOrder::where('period', 'l60')
-            ->where('status', '!=', 'Canceled');
-        $l60Orders = $l60OrdersQuery->count();
-        
-        // Calculate L60 Sales
-        $sixtyDaysAgo = now()->subDays(60);
-        $thirtyDaysAgo = now()->subDays(30);
-        $l60OrderItems = AmazonOrder::where('order_date', '>=', $sixtyDaysAgo)
-            ->where('order_date', '<', $thirtyDaysAgo)
-            ->where('status', '!=', 'Canceled')
-            ->join('amazon_order_items', 'amazon_orders.id', '=', 'amazon_order_items.amazon_order_id')
-            ->select('amazon_order_items.price', 'amazon_order_items.quantity')
-            ->get();
-        
-        $l60Sales = 0;
-        foreach ($l60OrderItems as $item) {
-            $quantity = (float) $item->quantity;
-            if ($quantity > 0) {
-                $l60Sales += (float) $item->price;
-            }
+        // Get L60 data from ShipHub (33-66 days ago range)
+        // L30 is latest-32 days (33 days), so L60 is 33-65 days before latest (next 33 days)
+        $latestDate = DB::connection('shiphub')
+            ->table('orders')
+            ->where('marketplace', '=', 'amazon')
+            ->max('order_date');
+
+        if ($latestDate) {
+            $latestDateCarbon = \Carbon\Carbon::parse($latestDate);
+            $l60StartDate = $latestDateCarbon->copy()->subDays(65); // 66 days ago
+            $l60EndDate = $latestDateCarbon->copy()->subDays(33); // 34 days ago
+            
+            // Get L60 order items from ShipHub
+            $l60OrderItems = DB::connection('shiphub')
+                ->table('orders as o')
+                ->join('order_items as i', 'o.id', '=', 'i.order_id')
+                ->whereBetween('o.order_date', [$l60StartDate, $l60EndDate])
+                ->where('o.marketplace', '=', 'amazon')
+                ->where(function($query) {
+                    $query->where('o.order_status', '!=', 'Canceled')
+                          ->where('o.order_status', '!=', 'Cancelled')
+                          ->orWhereNull('o.order_status');
+                })
+                ->select(
+                    DB::raw('COUNT(i.id) as order_count'),
+                    DB::raw('SUM(i.unit_price) as total_sales')
+                )
+                ->first();
+            
+            $l60Orders = $l60OrderItems->order_count ?? 0;
+            $l60Sales = $l60OrderItems->total_sales ?? 0;
+        } else {
+            $l60Orders = 0;
+            $l60Sales = 0;
         }
 
         $l30Sales = $metrics->total_sales ?? 0;
