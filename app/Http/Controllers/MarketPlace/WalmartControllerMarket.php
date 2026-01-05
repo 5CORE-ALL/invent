@@ -378,25 +378,34 @@ class WalmartControllerMarket extends Controller
             return response()->json(['error' => 'Value must be RL or NRL.'], 400);
         }
         
-        // Save to WalmartListingStatus
-        $status = WalmartListingStatus::where('sku', $sku)->first();
+        // Normalize SKU the same way as getWalmartAdsData does
+        $normalizeSku = fn($sku) => strtoupper(trim(preg_replace('/\s+/', ' ', str_replace("\xc2\xa0", ' ', $sku))));
+        $normalizedSku = $normalizeSku($sku);
+        
+        // Find existing record by normalized SKU (check both original and normalized)
+        $status = WalmartListingStatus::where('sku', $normalizedSku)
+            ->orWhere('sku', $sku)
+            ->first();
         $statusValue = [];
         
         if ($status) {
             $statusValue = is_array($status->value) ? $status->value : (json_decode($status->value, true) ?? []);
-            WalmartListingStatus::where('sku', $sku)->delete();
+            // Delete all records with this SKU (both normalized and original)
+            WalmartListingStatus::where('sku', $normalizedSku)
+                ->orWhere('sku', $sku)
+                ->delete();
         }
         
         $statusValue['rl_nrl'] = $value;
         
         WalmartListingStatus::create([
-            'sku' => $sku,
+            'sku' => $normalizedSku,
             'value' => $statusValue
         ]);
 
         return response()->json([
             'success' => true,
-            'sku' => $sku,
+            'sku' => $normalizedSku,
             'stored_value' => $statusValue
         ]);
     }
@@ -415,8 +424,27 @@ class WalmartControllerMarket extends Controller
             return response()->json(['error' => 'Value must be RA or NRA.'], 400);
         }
         
-        // Save to WalmartDataView
-        $dataView = WalmartDataView::firstOrNew(['sku' => $sku]);
+        // Normalize SKU the same way as getWalmartAdsData does
+        $normalizeSku = fn($sku) => strtoupper(trim(preg_replace('/\s+/', ' ', str_replace("\xc2\xa0", ' ', $sku))));
+        $normalizedSku = $normalizeSku($sku);
+        
+        // Find existing record by normalized SKU (check both original and normalized)
+        $dataView = WalmartDataView::where('sku', $normalizedSku)
+            ->orWhere('sku', $sku)
+            ->first();
+        
+        // If not found, create new with normalized SKU
+        if (!$dataView) {
+            $dataView = new WalmartDataView();
+            $dataView->sku = $normalizedSku;
+            $dataView->value = [];
+        } else {
+            // Update SKU to normalized version if different
+            if ($dataView->sku !== $normalizedSku) {
+                $dataView->sku = $normalizedSku;
+            }
+        }
+        
         $existing = is_array($dataView->value) ? $dataView->value : (json_decode($dataView->value, true) ?? []);
         
         $existing['ra_nra'] = $value;
@@ -426,7 +454,7 @@ class WalmartControllerMarket extends Controller
 
         return response()->json([
             'success' => true,
-            'sku' => $sku,
+            'sku' => $normalizedSku,
             'stored_value' => $existing
         ]);
     }
