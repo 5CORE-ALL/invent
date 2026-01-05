@@ -1,6 +1,7 @@
 @extends('layouts.vertical', ['title' => 'Walmart Pricing', 'sidenav' => 'condensed'])
 
 @section('css')
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
@@ -172,7 +173,6 @@
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">Avg CVR: 0.0%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="cvr-badge" style="color: black; font-weight: bold;">CVR: 0.00%</span>
                         
                         <!-- Walmart Metrics -->
                         <span class="badge bg-primary fs-6 p-2" id="total-products-badge" style="color: black; font-weight: bold;">Total Products: 0</span>
@@ -180,13 +180,11 @@
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: black; font-weight: bold;">0 Sold Count: 0</span>
                         
                         <!-- Financial Metrics -->
-                        <span class="badge bg-danger fs-6 p-2" id="total-tcos-badge" style="color: white; font-weight: bold;">Total TCOS: 0</span>
                         <span class="badge bg-warning fs-6 p-2" id="total-spend-badge" style="color: black; font-weight: bold;">Total SPEND L30: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="total-cogs-badge" style="color: black; font-weight: bold;">COGS AMT: $0.00</span>
                         <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI %: 0%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-orders-badge" style="color: black; font-weight: bold;">Total Orders: 0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="total-walmart-l30-badge" style="color: black; font-weight: bold;">Total Walmart L30: $0</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-dil-percent-badge" style="color: black; font-weight: bold;">DIL %: 0%</span>
                     </div>
                 </div>
             </div>
@@ -735,13 +733,22 @@
                     field: "total_qty",
                     hozAlign: "center",
                     sorter: "number",
+                    sorterParams: {dir: "asc"},
                     width: 80
                 },
                 {
                     title: "CVR %",
                     field: "cvr_percent", // Calculate as WL30 / Views
                     hozAlign: "center",
-                    sorter: "number",
+                    sorter: function(a, b, aRow, bRow) {
+                        const calcCVR = (row) => {
+                            const wl30 = parseInt(row['total_qty']) || 0;
+                            const views = parseInt(row['page_views']) || 0;
+                            return views === 0 ? 0 : (wl30 / views) * 100;
+                        };
+                        return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
+                    },
+                    sorterParams: {dir: "asc"},
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const wl30 = parseInt(rowData['total_qty']) || 0;
@@ -1001,30 +1008,30 @@
                     field: "lp",
                     hozAlign: "center",
                     sorter: "number",
-                    formatter: "money",
-                    formatterParams: {
-                        decimal: ".",
-                        thousand: ",",
-                        symbol: "$",
-                        precision: 2
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        if (value === 0) {
+                            return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 4px; border-radius: 3px;" title="Missing LP from Product Master">⚠️ $0.00</span>';
+                        }
+                        return '<span style="color: #28a745; font-weight: 600;">$' + value.toFixed(2) + '</span>';
                     },
                     width: 100,
-                    visible: false
+                    visible: true
                 },
                 {
                     title: "Ship",
                     field: "ship",
                     hozAlign: "center",
                     sorter: "number",
-                    formatter: "money",
-                    formatterParams: {
-                        decimal: ".",
-                        thousand: ",",
-                        symbol: "$",
-                        precision: 2
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        if (value === 0) {
+                            return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 4px; border-radius: 3px;" title="Missing Ship from Product Master">⚠️ $0.00</span>';
+                        }
+                        return '<span style="color: #28a745; font-weight: 600;">$' + value.toFixed(2) + '</span>';
                     },
                     width: 100,
-                    visible: false
+                    visible: true
                 }
             ]
         });

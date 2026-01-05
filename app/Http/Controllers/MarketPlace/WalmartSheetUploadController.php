@@ -344,7 +344,7 @@ class WalmartSheetUploadController extends Controller
     }
 
     /**
-     * Get combined data with summary statistics (Like Temu) - Aggregated by SKU
+     * Get combined data with summary statistics (Like BestBuy) - Start with ProductMaster SKUs
      */
     public function getCombinedDataJson()
     {
@@ -352,8 +352,27 @@ class WalmartSheetUploadController extends Controller
             set_time_limit(300);
             ini_set('memory_limit', '512M');
             
-            $priceData = WalmartPriceData::all()->keyBy('sku');
-            $listingData = WalmartListingViewsData::all()->keyBy('sku');
+            // 1. Start with ProductMaster (same as BestBuy controller)
+            $productMasters = ProductMaster::orderBy("parent", "asc")
+                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+                ->orderBy("sku", "asc")
+                ->get();
+
+            // Filter out PARENT rows (same as BestBuy)
+            $productMasters = $productMasters->filter(function ($item) {
+                return stripos($item->sku, 'PARENT') === false;
+            })->values();
+
+            // 2. Get SKU list from ProductMaster
+            $skus = $productMasters->pluck("sku")
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+            
+            // 3. Fetch related data using ProductMaster SKUs
+            $priceData = WalmartPriceData::whereIn('sku', $skus)->get()->keyBy('sku');
+            $listingData = WalmartListingViewsData::whereIn('sku', $skus)->get()->keyBy('sku');
             
             // Aggregate orders by SKU (sum quantities and count orders)
             $orderData = WalmartOrderData::selectRaw('
@@ -366,23 +385,16 @@ class WalmartSheetUploadController extends Controller
                 SUM(tax) as total_tax
             ')
             ->where('status', '!=', 'Canceled')
+            ->whereIn('sku', $skus)
             ->groupBy('sku')
             ->get()
             ->keyBy('sku');
             
-            $allSkus = collect($priceData->keys())
-                ->merge($listingData->keys())
-                ->merge($orderData->keys())
-                ->unique();
-            
-            $productMasterRows = ProductMaster::whereIn('sku', $allSkus)->get()->keyBy(function($item) {
-                return strtoupper(trim($item->sku));
-            });
-            $shopifyData = ShopifySku::whereIn('sku', $allSkus)->get()->keyBy('sku');
+            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
             
             // Fetch spend data from WalmartCampaignReport (L30) - campaign name matches SKU
             $normalizeSku = fn($sku) => strtoupper(trim(preg_replace('/\s+/', ' ', str_replace("\xc2\xa0", ' ', $sku))));
-            $normalizedSkus = $allSkus->map($normalizeSku)->values()->all();
+            $normalizedSkus = collect($skus)->map($normalizeSku)->values()->all();
             
             $walmartCampaignReportsL30 = WalmartCampaignReport::where('report_range', 'L30')
                 ->whereIn('campaignName', $normalizedSkus)
@@ -391,42 +403,44 @@ class WalmartSheetUploadController extends Controller
 
             $data = [];
 
-            foreach ($allSkus as $sku) {
+            // 4. Build Result - Loop through ProductMaster (same as BestBuy)
+            foreach ($productMasters as $pm) {
+                $sku = strtoupper($pm->sku);
+                $parent = $pm->parent;
+                
                 $price = $priceData->get($sku);
                 $listing = $listingData->get($sku);
                 $orders = $orderData->get($sku);
-                $pm = $productMasterRows->get(strtoupper(trim($sku)));
                 $shopify = $shopifyData->get($sku);
                 
                 // Get campaign data
                 $normalizedSku = $normalizeSku($sku);
                 $campaignL30 = $walmartCampaignReportsL30->get($normalizedSku);
                 
-                // Get LP and Ship from ProductMaster - ensure we always get values when available
+                // Get LP and Ship from ProductMaster - use same logic as BestBuyPricingController
                 $lp = 0;
                 $ship = 0;
-                if ($pm) {
-                    $pmValues = is_array($pm->Values)
-                        ? $pm->Values
-                        : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
 
-                    // Get LP from Values JSON field
-                    if (isset($pmValues['lp']) && $pmValues['lp'] !== null && $pmValues['lp'] !== '') {
-                        $lp = floatval($pmValues['lp']);
+                // Get LP using foreach loop (same as BestBuy controller)
+                foreach ($values as $k => $v) {
+                    if (strtolower($k) === "lp") {
+                        $lp = floatval($v);
+                        break;
                     }
+                }
 
-                    // Get Ship from Values JSON field
-                    if (isset($pmValues['ship']) && $pmValues['ship'] !== null && $pmValues['ship'] !== '') {
-                        $ship = floatval($pmValues['ship']);
-                    }
+                // Get Ship from Values JSON field
+                if (isset($values['ship']) && $values['ship'] !== null && $values['ship'] !== '') {
+                    $ship = floatval($values['ship']);
+                }
 
-                    // Fallback: try direct columns if they exist (though they don't based on schema)
-                    if ($lp === 0 && isset($pm->lp)) {
-                        $lp = floatval($pm->lp);
-                    }
-                    if ($ship === 0 && isset($pm->ship)) {
-                        $ship = floatval($pm->ship);
-                    }
+                // Fallback: try direct columns if they exist
+                if ($lp === 0 && isset($pm->lp)) {
+                    $lp = floatval($pm->lp);
+                }
+                if ($ship === 0 && isset($pm->ship)) {
+                    $ship = floatval($pm->ship);
                 }
 
                 // Get price (SPRICE)
@@ -496,7 +510,8 @@ class WalmartSheetUploadController extends Controller
                 $spend = $adSpendL30;
 
                 $row = [
-                    'sku' => $sku,
+                    'sku' => $pm->sku, // Use original SKU from ProductMaster
+                    'parent' => $parent, // Add parent field (same as BestBuy)
                     'INV' => $shopify ? intval($shopify->inv) : 0,
                     'L30' => $shopify ? intval($shopify->quantity) : 0,
                     'product_name' => $price->product_name ?? $listing->product_name ?? null,
@@ -536,14 +551,8 @@ class WalmartSheetUploadController extends Controller
                     'ads_percent' => $adsPercent,
                     'spend' => $spend,
                     
-                    // Additional useful fields
-                    'comparison_price' => $price->comparison_price ?? null,
-                    'buy_box_price' => $price->buy_box_price ?? null,
-                    'ratings' => $price->ratings ?? $listing->ratings ?? null,
-                    'reviews_count' => $price->reviews_count ?? null,
-                    'lifecycle_status' => $price->lifecycle_status ?? null,
-                    'publish_status' => $price->publish_status ?? null,
-                    'brand' => $price->brand ?? null,
+                    // Image from ProductMaster Values (same as BestBuy)
+                    'image_path' => $shopify->image_src ?? ($values["image_path"] ?? ($pm->image_path ?? null)),
                 ];
 
                 $data[] = $row;
