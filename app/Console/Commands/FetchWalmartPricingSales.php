@@ -60,22 +60,29 @@ class FetchWalmartPricingSales extends Command
         $this->info('Access token received.');
 
         // Step 1: Fetch pricing insights
-        $this->info('Step 1/4: Fetching pricing insights...');
+        $this->info('Step 1/5: Fetching pricing insights...');
         $pricingData = $this->fetchPricingInsights();
         $this->info("  Fetched pricing data for " . count($pricingData) . " SKUs");
 
         // Step 2: Fetch listing quality for views/pageViews
-        $this->info('Step 2/4: Fetching listing quality (views)...');
+        $this->info('Step 2/5: Fetching listing quality (views)...');
         $listingQualityData = $this->fetchListingQuality();
         $this->info("  Fetched listing quality for " . count($listingQualityData) . " SKUs");
 
         // Step 3: Calculate order counts from WalmartDailyData or fetch from API
-        $this->info('Step 3/4: Calculating order counts...');
+        $this->info('Step 3/5: Calculating order counts...');
         $orderCounts = $this->calculateOrderCounts($days);
         $this->info("  Calculated order counts for " . count($orderCounts) . " SKUs");
 
-        // Step 4: Merge and store data
-        $this->info('Step 4/4: Storing data...');
+        // Step 4: Submit inventory feed and get feed ID
+        $this->info('Step 4/5: Submitting inventory feed...');
+        $feedId = $this->submitInventoryFeed($pricingData);
+        if ($feedId) {
+            $this->info("  Feed submitted successfully. Feed ID: {$feedId}");
+        }
+
+        // Step 5: Merge and store data
+        $this->info('Step 5/5: Storing data...');
         $this->mergeAndStoreData($pricingData, $orderCounts, $listingQualityData);
 
         $elapsed = round(microtime(true) - $startTime, 2);
@@ -141,7 +148,16 @@ class FetchWalmartPricingSales extends Command
             ]);
 
             if (!$response->successful()) {
-                $this->error("Pricing insights API failed: " . $response->body());
+                $errorBody = $response->body();
+                
+                // Check for rate limit error
+                if (strpos($errorBody, 'REQUEST_THRESHOLD_VIOLATED') !== false) {
+                    $this->warn("Rate limit hit on page {$pageNumber}. Waiting 60 seconds...");
+                    sleep(60);
+                    continue; // Retry same page
+                }
+                
+                $this->error("Pricing insights API failed: " . $errorBody);
                 break;
             }
 
@@ -216,7 +232,16 @@ class FetchWalmartPricingSales extends Command
             }
 
             if (!$response->successful()) {
-                $this->error("Listing quality API failed: " . $response->body());
+                $errorBody = $response->body();
+                
+                // Check for rate limit error
+                if (strpos($errorBody, 'REQUEST_THRESHOLD_VIOLATED') !== false) {
+                    $this->warn("Rate limit hit on page {$page}. Waiting 60 seconds...");
+                    sleep(60);
+                    continue; // Retry same page
+                }
+                
+                $this->error("Listing quality API failed: " . $errorBody);
                 break;
             }
 
@@ -552,6 +577,135 @@ class FetchWalmartPricingSales extends Command
             Log::error('Failed to upsert Walmart pricing sales: ' . $e->getMessage());
             $this->error('Upsert failed: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Submit inventory feed to Walmart and get feed ID
+     */
+    protected function submitInventoryFeed(array $pricingData): ?string
+    {
+        if (empty($pricingData)) {
+            $this->warn('No pricing data available for inventory feed');
+            return null;
+        }
+
+        // Create inventory feed XML
+        $xml = $this->createInventoryFeedXml($pricingData);
+        
+        try {
+            $response = Http::withoutVerifying()
+                ->withHeaders([
+                    'WM_QOS.CORRELATION_ID' => uniqid(),
+                    'WM_SEC.ACCESS_TOKEN' => $this->token,
+                    'WM_SVC.NAME' => 'Walmart Marketplace',
+                    'Content-Type' => 'multipart/form-data',
+                ])
+                ->attach('file', $xml, 'inventory_feed.xml', ['Content-Type' => 'application/xml'])
+                ->post($this->baseUrl . '/v3/feeds?feedType=inventory');
+
+            if ($response->successful()) {
+                $responseBody = $response->body();
+                $feedId = null;
+                
+                $this->info("  Feed response received (length: " . strlen($responseBody) . " chars)");
+                
+                // Try parsing as JSON first
+                $jsonData = json_decode($responseBody, true);
+                if ($jsonData && isset($jsonData['feedId'])) {
+                    $feedId = $jsonData['feedId'];
+                    $this->info("  Parsed as JSON");
+                } else {
+                    // Parse XML response
+                    try {
+                        $xml = simplexml_load_string($responseBody);
+                        if ($xml && isset($xml->feedId)) {
+                            $feedId = (string) $xml->feedId;
+                            $this->info("  Parsed as XML");
+                        }
+                    } catch (\Exception $e) {
+                        $this->warn('Failed to parse feed response: ' . $e->getMessage());
+                    }
+                }
+                
+                if ($feedId) {
+                    $this->info("  Inventory feed submitted. Feed ID: {$feedId}");
+                    
+                    // Store feed ID for tracking
+                    Log::info("Walmart Inventory Feed Submitted", [
+                        'feed_id' => $feedId,
+                        'item_count' => count($pricingData),
+                        'timestamp' => now()
+                    ]);
+                    
+                    return $feedId;
+                } else {
+                    $this->warn('Feed submitted but no feed ID found in response: ' . substr($responseBody, 0, 200) . '...');
+                }
+            } else {
+                $this->error('Feed submission failed: ' . $response->body());
+            }
+            
+        } catch (\Exception $e) {
+            $this->error('Feed submission error: ' . $e->getMessage());
+            Log::error('Walmart feed submission failed: ' . $e->getMessage());
+        }
+        
+        return null;
+    }
+
+    /**
+     * Create inventory feed XML
+     */
+    protected function createInventoryFeedXml(array $pricingData): string
+    {
+        $xml = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
+        $xml .= '<InventoryFeed xmlns="http://walmart.com/">' . "\n";
+        $xml .= '  <InventoryHeader>' . "\n";
+        $xml .= '    <version>1.4</version>' . "\n";
+        $xml .= '  </InventoryHeader>' . "\n";
+        
+        // Take first 100 items to avoid huge feeds
+        $items = array_slice($pricingData, 0, 100, true);
+        
+        foreach ($items as $sku => $item) {
+            $inventoryCount = $item['inventoryCount'] ?? 0;
+            
+            $xml .= '  <inventory>' . "\n";
+            $xml .= '    <sku>' . htmlspecialchars($sku) . '</sku>' . "\n";
+            $xml .= '    <quantity>' . "\n";
+            $xml .= '      <unit>EACH</unit>' . "\n";
+            $xml .= '      <amount>' . max(0, (int) $inventoryCount) . '</amount>' . "\n";
+            $xml .= '    </quantity>' . "\n";
+            $xml .= '  </inventory>' . "\n";
+        }
+        
+        $xml .= '</InventoryFeed>';
+        
+        return $xml;
+    }
+
+    /**
+     * Get feed status by feed ID
+     */
+    protected function getFeedStatus(string $feedId): ?array
+    {
+        try {
+            $response = Http::withoutVerifying()->withHeaders([
+                'WM_QOS.CORRELATION_ID' => uniqid(),
+                'WM_SEC.ACCESS_TOKEN' => $this->token,
+                'WM_SVC.NAME' => 'Walmart Marketplace',
+                'Accept' => 'application/json',
+            ])->get($this->baseUrl . "/v3/feeds/{$feedId}");
+
+            if ($response->successful()) {
+                return $response->json();
+            }
+            
+        } catch (\Exception $e) {
+            Log::error("Failed to get feed status for {$feedId}: " . $e->getMessage());
+        }
+        
+        return null;
     }
 }
 

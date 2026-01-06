@@ -153,6 +153,7 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 @endsection
 
 @section('content')
@@ -412,26 +413,32 @@
 
     <!-- SKU Metrics Chart Modal -->
     <div class="modal fade" id="skuMetricsModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
+        <div class="modal-dialog modal-xl">
             <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Metrics Chart for <span id="modalSkuName"></span></h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="fa fa-chart-line me-2"></i>Metrics Chart for <span id="modalSkuName" class="fw-bold"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label">Date Range:</label>
-                        <select id="sku-chart-days-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
-                            <option value="7" selected>Last 7 Days</option>
-                            <option value="14">Last 14 Days</option>
-                            <option value="30">Last 30 Days</option>
-                            <option value="60">Last 60 Days</option>
-                        </select>
+                    <div class="mb-3 d-flex justify-content-between align-items-center">
+                        <div>
+                            <label class="form-label fw-bold mb-0 me-2">Date Range:</label>
+                            <select id="sku-chart-days-filter" class="form-select form-select-sm d-inline-block" style="width: auto;">
+                                <option value="7" selected>Last 7 Days</option>
+                                <option value="14">Last 14 Days</option>
+                                <option value="30">Last 30 Days</option>
+                                <option value="60">Last 60 Days</option>
+                            </select>
+                        </div>
+                        <div class="text-muted">
+                            <small><i class="fa fa-info-circle"></i> Hover over data points for detailed information</small>
+                        </div>
                     </div>
-                    <div id="chart-no-data-message" class="alert alert-info" style="display: none;">
-                        No historical data available for this SKU. Data will appear after running the metrics collection command.
+                    <div id="chart-no-data-message" class="alert alert-warning" style="display: none;">
+                        <i class="fa fa-exclamation-triangle me-2"></i>
+                        <strong>No Data Available:</strong> No historical data available for this SKU. Data will appear after running the metrics collection command.
                     </div>
-                    <div style="height: 400px;">
+                    <div style="height: 500px; position: relative;">
                         <canvas id="skuMetricsChart"></canvas>
                     </div>
                 </div>
@@ -473,8 +480,13 @@
 
     function initSkuMetricsChart() {
         const ctx = document.getElementById('skuMetricsChart').getContext('2d');
+        
+        // Register datalabels plugin
+        Chart.register(ChartDataLabels);
+        
         skuMetricsChart = new Chart(ctx, {
             type: 'line',
+            plugins: [ChartDataLabels],
             data: {
                 labels: [],
                 datasets: [
@@ -482,40 +494,148 @@
                         label: 'Price (USD)',
                         data: [],
                         borderColor: '#FF0000',
-                        backgroundColor: 'rgba(255, 0, 0, 0.1)',
-                        borderWidth: 2,
+                        backgroundColor: 'rgba(255, 0, 0, 0.2)',
+                        borderWidth: 3,
                         pointRadius: 4,
                         pointHoverRadius: 6,
+                        pointBackgroundColor: '#FF0000',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
                         yAxisID: 'y',
-                        tension: 0.4
+                        tension: 0.1, // Less smooth for better variation visibility
+                        fill: false,
+                        spanGaps: true,
+                        datalabels: {
+                            display: true, // Show all labels
+                            align: function(context) {
+                                // Alternate positions to avoid overlap
+                                const index = context.dataIndex;
+                                return index % 2 === 0 ? 'top' : 'bottom';
+                            },
+                            anchor: 'center',
+                            offset: function(context) {
+                                const index = context.dataIndex;
+                                return index % 2 === 0 ? 10 : 10;
+                            },
+                            clamp: true,
+                            color: '#FFFFFF',
+                            backgroundColor: '#FF0000',
+                            borderRadius: 3,
+                            padding: { top: 1, bottom: 1, left: 3, right: 3 },
+                            font: {
+                                weight: 'bold',
+                                size: 8
+                            },
+                            formatter: function(value) {
+                                return value ? '$' + value.toFixed(2) : '';
+                            }
+                        }
                     },
                     {
                         label: 'Views',
                         data: [],
                         borderColor: '#0000FF',
-                        backgroundColor: 'rgba(0, 0, 255, 0.1)',
-                        borderWidth: 2,
+                        backgroundColor: 'rgba(0, 0, 255, 0.2)',
+                        borderWidth: 3,
                         pointRadius: 4,
                         pointHoverRadius: 6,
-                        yAxisID: 'y',
-                        tension: 0.4
+                        pointBackgroundColor: '#0000FF',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        yAxisID: 'y2', // Separate axis for Views
+                        tension: 0.1,
+                        fill: false,
+                        spanGaps: true,
+                        datalabels: {
+                            display: true, // Show all labels
+                            align: function(context) {
+                                // Alternate opposite to Price - if Price is top, Views is left
+                                const index = context.dataIndex;
+                                return index % 2 === 0 ? 'left' : 'right';
+                            },
+                            anchor: 'center',
+                            offset: function(context) {
+                                const index = context.dataIndex;
+                                return index % 2 === 0 ? 12 : 12;
+                            },
+                            clamp: true,
+                            color: '#FFFFFF',
+                            backgroundColor: '#0000FF',
+                            borderRadius: 3,
+                            padding: { top: 1, bottom: 1, left: 3, right: 3 },
+                            font: {
+                                weight: 'bold',
+                                size: 8
+                            },
+                            formatter: function(value) {
+                                return value ? value.toLocaleString() : '';
+                            }
+                        }
                     },
                     {
                         label: 'CVR%',
                         data: [],
                         borderColor: '#008000',
-                        backgroundColor: 'rgba(0, 128, 0, 0.1)',
-                        borderWidth: 2,
+                        backgroundColor: 'rgba(0, 128, 0, 0.2)',
+                        borderWidth: 3,
                         pointRadius: 4,
                         pointHoverRadius: 6,
+                        pointBackgroundColor: '#008000',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
                         yAxisID: 'y1',
-                        tension: 0.4
+                        tension: 0.1,
+                        fill: false,
+                        spanGaps: true, // Connect points across gaps (missing data)
+                        datalabels: {
+                            display: true, // Show all labels
+                            align: function(context) {
+                                // Position based on index pattern - alternate top/bottom opposite to Price
+                                const index = context.dataIndex;
+                                const dataLength = context.dataset.data.length;
+                                // Last point always goes right to avoid edge crowding
+                                if (index === dataLength - 1) return 'left';
+                                return index % 2 === 0 ? 'bottom' : 'top';
+                            },
+                            anchor: function(context) {
+                                const index = context.dataIndex;
+                                const dataLength = context.dataset.data.length;
+                                if (index === dataLength - 1) return 'end';
+                                return 'center';
+                            },
+                            offset: function(context) {
+                                const index = context.dataIndex;
+                                const dataLength = context.dataset.data.length;
+                                if (index === dataLength - 1) return 15; // More offset for last point
+                                return 10;
+                            },
+                            clamp: true,
+                            color: '#FFFFFF',
+                            backgroundColor: '#008000',
+                            borderRadius: 3,
+                            padding: { top: 1, bottom: 1, left: 3, right: 3 },
+                            font: {
+                                weight: 'bold',
+                                size: 8
+                            },
+                            formatter: function(value) {
+                                return value ? value.toFixed(1) + '%' : '';
+                            }
+                        }
                     }
                 ]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                layout: {
+                    padding: {
+                        top: 35,
+                        right: 40, // Extra padding to prevent label crowding at right edge
+                        bottom: 35,
+                        left: 20
+                    }
+                },
                 interaction: {
                     mode: 'index',
                     intersect: false,
@@ -527,26 +647,48 @@
                             usePointStyle: true,
                             padding: 15,
                             font: {
-                                size: 12
-                            }
+                                size: 13,
+                                weight: 'bold'
+                            },
+                            color: '#333'
                         }
                     },
                     title: {
                         display: true,
                         text: 'Walmart SKU Metrics',
                         font: {
-                            size: 16,
+                            size: 18,
                             weight: 'bold'
                         },
+                        color: '#1a1a1a',
                         padding: {
                             top: 10,
-                            bottom: 20
+                            bottom: 5
+                        }
+                    },
+                    subtitle: {
+                        display: true,
+                        text: 'Price (Left Axis) | Views (Blue Line) | CVR% (Right Axis)',
+                        font: {
+                            size: 12,
+                            style: 'italic'
+                        },
+                        color: '#666',
+                        padding: {
+                            bottom: 15
                         }
                     },
                     tooltip: {
                         enabled: true,
                         mode: 'index',
                         intersect: false,
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        titleColor: '#fff',
+                        bodyColor: '#fff',
+                        borderColor: '#ddd',
+                        borderWidth: 1,
+                        padding: 12,
+                        displayColors: true,
                         callbacks: {
                             label: function(context) {
                                 let label = context.dataset.label || '';
@@ -564,6 +706,11 @@
                                 return label + ': ' + value;
                             }
                         }
+                    },
+                    datalabels: {
+                        display: true,
+                        clamp: true, // Keep all labels inside chart boundaries
+                        clip: false // But don't clip them (hide), just reposition
                     }
                 },
                 scales: {
@@ -572,14 +719,21 @@
                             display: true,
                             text: 'Date',
                             font: {
-                                size: 12,
+                                size: 13,
                                 weight: 'bold'
-                            }
+                            },
+                            color: '#2c3e50'
                         },
                         ticks: {
                             font: {
-                                size: 11
-                            }
+                                size: 11,
+                                weight: '600'
+                            },
+                            color: '#34495e'
+                        },
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.05)',
+                            lineWidth: 1
                         }
                     },
                     y: {
@@ -588,23 +742,38 @@
                         position: 'left',
                         title: {
                             display: true,
-                            text: 'Price/Views',
+                            text: 'Price (USD)',
                             font: {
-                                size: 12,
+                                size: 13,
                                 weight: 'bold'
-                            }
+                            },
+                            color: '#FF0000'
                         },
-                        beginAtZero: true,
+                        beginAtZero: false,
+                        // Dynamic min/max set in loadSkuMetricsData for tight scale
                         ticks: {
                             font: {
-                                size: 11
+                                size: 11,
+                                weight: '600'
                             },
-                            callback: function(value, index, values) {
-                                if (values.length > 0 && Math.max(...values.map(v => v.value)) < 1000) {
-                                    return '$' + value.toFixed(0);
-                                }
-                                return value.toLocaleString();
+                            color: '#FF0000',
+                            callback: function(value) {
+                                return '$' + value.toFixed(2);
                             }
+                        },
+                        grid: {
+                            color: 'rgba(255, 0, 0, 0.1)',
+                            lineWidth: 1
+                        }
+                    },
+                    y2: {
+                        type: 'linear',
+                        display: false, // Hide axis but use for Views scaling
+                        position: 'left',
+                        beginAtZero: false,
+                        // Dynamic min/max set in loadSkuMetricsData for tight scale
+                        grid: {
+                            drawOnChartArea: false,
                         }
                     },
                     y1: {
@@ -613,22 +782,26 @@
                         position: 'right',
                         title: {
                             display: true,
-                            text: 'Percent (%)',
+                            text: 'CVR Percent (%)',
                             font: {
-                                size: 12,
+                                size: 13,
                                 weight: 'bold'
-                            }
+                            },
+                            color: '#006400'
                         },
-                        beginAtZero: true,
+                        beginAtZero: false, // Don't start at zero to show variations better
+                        // Dynamic min/max set in loadSkuMetricsData for tight scale
                         grid: {
                             drawOnChartArea: false,
                         },
                         ticks: {
                             font: {
-                                size: 11
+                                size: 11,
+                                weight: '600'
                             },
+                            color: '#008000',
                             callback: function(value) {
-                                return value.toFixed(0) + '%';
+                                return value.toFixed(1) + '%';
                             }
                         }
                     }
@@ -638,7 +811,6 @@
     }
 
     function loadSkuMetricsData(sku, days = 7) {
-        console.log('Loading metrics data for SKU:', sku, 'Days:', days);
         fetch(`/walmart-metrics-history?days=${days}&sku=${encodeURIComponent(sku)}`)
             .then(response => {
                 if (!response.ok) {
@@ -647,7 +819,6 @@
                 return response.json();
             })
             .then(data => {
-                console.log('Metrics data received:', data);
                 if (skuMetricsChart) {
                     if (!data || data.length === 0) {
                         console.warn('No data returned for SKU:', sku);
@@ -667,12 +838,49 @@
                     
                     skuMetricsChart.data.labels = data.map(d => d.date_formatted || d.date || '');
                     
-                    skuMetricsChart.data.datasets[0].data = data.map(d => d.price || 0);
-                    skuMetricsChart.data.datasets[1].data = data.map(d => d.views || 0);
-                    skuMetricsChart.data.datasets[2].data = data.map(d => d.cvr_percent || 0);
+                    const priceData = data.map(d => d.price || null);
+                    const viewsData = data.map(d => d.views || null);
+                    // Convert 0 CVR to null to avoid dramatic drops in the chart
+                    const cvrData = data.map(d => {
+                        const cvr = d.cvr_percent;
+                        return (cvr && cvr > 0) ? cvr : null;
+                    });
+                    
+                    skuMetricsChart.data.datasets[0].data = priceData;
+                    skuMetricsChart.data.datasets[1].data = viewsData;
+                    skuMetricsChart.data.datasets[2].data = cvrData;
+                    
+                    // Dynamically calculate min/max for each axis separately (shows small changes clearly)
+                    // Filter out null/0 values for proper scaling
+                    const priceMin = Math.min(...priceData.filter(p => p != null && p > 0));
+                    const priceMax = Math.max(...priceData.filter(p => p != null));
+                    const viewsMin = Math.min(...viewsData.filter(v => v != null && v > 0));
+                    const viewsMax = Math.max(...viewsData.filter(v => v != null));
+                    const cvrMin = Math.min(...cvrData.filter(c => c != null && c > 0));
+                    const cvrMax = Math.max(...cvrData.filter(c => c != null && c > 0));
+                    
+                    // Set tight ranges with minimal padding to show even 1-2 unit changes clearly
+                    // For Y axis (Price only) - 3% padding
+                    const yMin = priceMin * 0.97; // 3% below min
+                    const yMax = priceMax * 1.03; // 3% above max
+                    
+                    // For Y2 axis (Views only) - 3% padding
+                    const y2Min = viewsMin * 0.97; // 3% below min
+                    const y2Max = viewsMax * 1.03; // 3% above max
+                    
+                    // For Y1 axis (CVR%) - 5% padding
+                    const y1Min = cvrMin > 0 ? cvrMin * 0.95 : 0; // 5% below min
+                    const y1Max = cvrMax * 1.05; // 5% above max
+                    
+                    // Update scale options dynamically for each axis
+                    skuMetricsChart.options.scales.y.min = yMin;
+                    skuMetricsChart.options.scales.y.max = yMax;
+                    skuMetricsChart.options.scales.y2.min = y2Min;
+                    skuMetricsChart.options.scales.y2.max = y2Max;
+                    skuMetricsChart.options.scales.y1.min = y1Min;
+                    skuMetricsChart.options.scales.y1.max = y1Max;
                     
                     skuMetricsChart.update('active');
-                    console.log('Chart updated successfully with', data.length, 'data points');
                 }
             })
             .catch(error => {
@@ -857,8 +1065,6 @@
 
             let updatedCount = 0;
             
-            console.log(`Starting ${increaseModeActive ? 'increase' : 'decrease'} mode for`, selectedSkus.size, 'selected SKUs');
-
             // Loop through selected SKUs using the same approach as applySuggestAmazonPrice
             selectedSkus.forEach(sku => {
                 // Find the row using Tabulator's searchRows method
@@ -869,8 +1075,6 @@
                     const rowData = row.getData();
                     // Use only W Price for increase/decrease mode (not Amazon price)
                     const currentPrice = parseFloat(rowData['w_price']) || 0;
-                    
-                    console.log(`Processing SKU ${sku}: W Price = ${currentPrice}`);
                     
                     if (currentPrice > 0) {
                         let newSPrice;
@@ -900,17 +1104,11 @@
                             sprice: newSPrice
                         });
                         
-                        console.log(`Updated SKU ${sku}: sprice set to ${newSPrice}`);
                         updatedCount++;
-                    } else {
-                        console.log(`SKU ${sku}: No valid W Price found (${currentPrice}) - skipping`);
                     }
-                } else {
-                    console.log(`SKU ${sku}: Row not found in table`);
                 }
             });
             
-            console.log(`${increaseModeActive ? 'Increase' : 'Decrease'} complete: ${updatedCount} updated`);
             showToast(`${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s) based on W Price`, 'success');
             $('#discount-percentage-input').val('');
         }
@@ -925,8 +1123,6 @@
             let noAmazonPriceCount = 0;
             const updates = []; // Store updates for backend saving
 
-            console.log('Starting Amazon price application for', selectedSkus.size, 'selected SKUs');
-
             // Loop through selected SKUs
             selectedSkus.forEach(sku => {
                 // Find the row using Tabulator's searchRows method
@@ -936,8 +1132,6 @@
                     const row = rows[0]; // Get the first matching row
                     const rowData = row.getData();
                     const amazonPrice = parseFloat(rowData['a_price']);
-                    
-                    console.log(`Processing SKU ${sku}: Amazon price = ${amazonPrice}`);
                     
                     if (amazonPrice && amazonPrice > 0) {
                         // Update the row using the row object's update method
@@ -952,19 +1146,14 @@
                             amazon_price: amazonPrice
                         });
                         
-                        console.log(`Updated SKU ${sku}: sprice set to ${amazonPrice}`);
                         updatedCount++;
                     } else {
-                        console.log(`SKU ${sku}: No valid Amazon price (${amazonPrice})`);
                         noAmazonPriceCount++;
                     }
                 } else {
-                    console.log(`SKU ${sku}: Row not found in table`);
                     noAmazonPriceCount++;
                 }
             });
-            
-            console.log(`Update complete: ${updatedCount} updated, ${noAmazonPriceCount} skipped`);
             
             // Save to backend if there are updates
             if (updates.length > 0) {
@@ -990,7 +1179,6 @@
                     updates: updates
                 },
                 success: function(response) {
-                    console.log('Price updates saved successfully:', response);
                     if (response.success) {
                         showToast(`Price updates saved (expires in 12 hours): ${response.updated} record(s)`, 'success');
                         if (response.errors && response.errors.length > 0) {
@@ -1011,12 +1199,9 @@
 
         function updateSummary() {
             if (!table) {
-                console.log('Table not initialized yet');
                 return;
             }
             const data = table.getData("all");
-            console.log('Table data length:', data.length);
-            console.log('First few rows:', data.slice(0, 3));
             
             let totalProducts = data.length;
             let totalOrders = 0;
@@ -1043,8 +1228,6 @@
                 const ship = parseFloat(row['ship']) || 0;
                 const adSpend = parseFloat(row['spend']) || 0;
                 const adsPercent = parseFloat(row['ads_percent']) || 0;
-                
-                console.log('Processing row:', row['sku'], 'qty:', qty, 'price:', price, 'lp:', lp);
                 
                 totalQuantity += qty;
                 totalOrders += parseInt(row['total_orders']) || 0;
@@ -1209,6 +1392,9 @@
             paginationSize: 100,
             paginationSizeSelector: [10, 25, 50, 100, 200],
             paginationCounter: "rows",
+            initialSort: [
+                {column: "cvr_percent", dir: "asc"} // Sort by CVR lowest to highest on page load
+            ],
             ajaxError: function(xhr, textStatus, errorThrown) {
                 console.error('Table ajax error:', xhr.status, textStatus, errorThrown);
                 console.error('Response:', xhr.responseText);
@@ -1284,9 +1470,22 @@
                     title: "CVR %",
                     field: "cvr_percent", // Pre-calculated in controller as (W L30 / Views) * 100
                     hozAlign: "center",
-                    sorter: "number",
-                    sorterParams: {dir: "asc"},
+                    sorter: "number", // Use built-in number sorter
+                    headerSortStartingDir: "asc", // First click sorts lowest to highest
+                    accessor: function(value, data, type, params, column) {
+                        // Ensure value is always numeric for sorting
+                        // Remove any % symbols if present and parse as float
+                        if (typeof value === 'string') {
+                            return parseFloat(value.replace('%', '')) || 0;
+                        }
+                        return parseFloat(value) || 0;
+                    },
+                    accessorDownload: function(value, data, type, params, column) {
+                        // For downloads, return numeric value
+                        return parseFloat(value) || 0;
+                    },
                     formatter: function(cell) {
+                        // Get the numeric value (already cleaned by accessor)
                         const cvr = parseFloat(cell.getValue()) || 0;
                         
                         let color = '#000';
@@ -1298,6 +1497,9 @@
                         else color = '#ff1493'; // pink (>10)
                         
                         return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
+                    },
+                    sorterParams: {
+                        alignEmptyValues: "bottom", // Put empty/0 values at bottom when sorting desc
                     }
                 },
                 {
@@ -1729,9 +1931,44 @@
                     return;
                 }
                 
-                row.update({ [field]: newValue });
-                row.reformat();
-                showToast('Price updated successfully', 'success');
+                // Save sprice to database
+                if (field === 'sprice') {
+                    const sku = data.sku;
+                    
+                    fetch('/walmart-sheet-update-cell', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                        },
+                        body: JSON.stringify({
+                            sku: sku,
+                            field: field,
+                            value: newValue
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(result => {
+                        if (result.success) {
+                            row.update({ [field]: newValue });
+                            row.reformat();
+                            showToast('S PRC saved successfully', 'success');
+                        } else {
+                            showToast('Error saving S PRC: ' + (result.error || 'Unknown error'), 'error');
+                            cell.restoreOldValue();
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error saving S PRC:', error);
+                        showToast('Error saving S PRC', 'error');
+                        cell.restoreOldValue();
+                    });
+                } else {
+                    // For other price fields, just update locally
+                    row.update({ [field]: newValue });
+                    row.reformat();
+                    showToast('Price updated successfully', 'success');
+                }
             }
         });
 
