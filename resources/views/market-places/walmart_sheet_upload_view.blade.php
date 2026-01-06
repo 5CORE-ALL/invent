@@ -205,6 +205,16 @@
                         </select>
                     </div>
 
+                    <!-- BB Issue Filter -->
+                    <div>
+                        <select id="bb-issue-filter" class="form-select form-select-sm" style="width: 120px; color: red; font-weight: bold;">
+                            <option value="all">All Prices</option>
+                            <option value="bb-issue" style="color: red; font-weight: bold;">BB Issue</option>
+                        </select>
+                    </div>
+
+                    <!-- BB Issue Filter -->
+                 
                     <!-- DIL Filter -->
                     <div class="dropdown manual-dropdown-container">
                         <button class="btn btn-light dropdown-toggle" type="button" id="dilFilterDropdown">
@@ -276,6 +286,7 @@
                         <span class="badge bg-primary fs-6 p-2" id="total-products-badge" style="color: black; font-weight: bold;">Total Products: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: black; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: black; font-weight: bold;">0 Sold Count: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="bb-issue-count-badge" style="color: black; font-weight: bold;">BB Issue: 0</span>
                         
                         <!-- Financial Metrics -->
                         <span class="badge bg-warning fs-6 p-2" id="total-spend-badge" style="color: black; font-weight: bold;">Total SPEND L30: $0.00</span>
@@ -751,6 +762,7 @@
             let totalViews = 0;
             let totalDilPercent = 0;
             let dilCount = 0;
+            let bbIssueCount = 0; // Count of items where W Price < A Price
             
             data.forEach(row => {
                 const qty = parseInt(row['total_qty']) || 0;
@@ -798,6 +810,13 @@
                 
                 // Walmart L30 (total sales value from actual orders)
                 totalWalmartL30 += salesAmt;
+                
+                // Count if W Price < A Price (BB Issue)
+                const wPrice = parseFloat(row['w_price']) || 0;
+                const aPrice = parseFloat(row['a_price']) || 0;
+                if (wPrice > 0 && aPrice > 0 && wPrice < aPrice) {
+                    bbIssueCount++;
+                }
                 
                 // Count SKUs with 0 sold
                 if (qty === 0) {
@@ -849,6 +868,15 @@
             $('#total-products-badge').text('Total Products: ' + totalProducts.toLocaleString());
             $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
             $('#zero-sold-count-badge').text('0 Sold Count: ' + zeroSoldCount.toLocaleString());
+            
+            // Update BB Issue badge with green color when count is 0
+            const bbIssueBadge = $('#bb-issue-count-badge');
+            bbIssueBadge.text('BB Issue: ' + bbIssueCount.toLocaleString());
+            if (bbIssueCount === 0) {
+                bbIssueBadge.removeClass('bg-danger').addClass('bg-success');
+            } else {
+                bbIssueBadge.removeClass('bg-success').addClass('bg-danger');
+            }
             
             // Financial metrics
             $('#total-tcos-badge').text('Total TCOS: Calculating...');
@@ -1033,12 +1061,17 @@
                     hozAlign: "center",
                     sorter: "number",
                     editor: "input",
-                    formatter: "money",
-                    formatterParams: {
-                        decimal: ".",
-                        thousand: ",",
-                        symbol: "$",
-                        precision: 2
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const wPrice = parseFloat(cell.getValue()) || 0;
+                        const aPrice = parseFloat(rowData['a_price']) || 0;
+                        
+                        // If W Price < A Price, show in red (BB Issue)
+                        const isRedFlag = wPrice > 0 && aPrice > 0 && wPrice < aPrice;
+                        const color = isRedFlag ? '#a00211' : '#000';
+                        const fontWeight = isRedFlag ? 'bold' : 'normal';
+                        
+                        return `<span style="color: ${color}; font-weight: ${fontWeight};">$${wPrice.toFixed(2)}</span>`;
                     }
                 },
                
@@ -1284,6 +1317,7 @@
             const inventoryFilter = $('#inventory-filter').val();
             const gpftFilter = $('#gpft-filter').val();
             const cvrFilter = $('#cvr-filter').val();
+            const bbIssueFilter = $('#bb-issue-filter').val();
             const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
             const skuSearch = $('#sku-search').val();
 
@@ -1304,7 +1338,7 @@
 
             if (gpftFilter !== 'all') {
                 table.addFilter(function(data) {
-                    const gpft = parseFloat(data.profit_percent) || 0;
+                    const gpft = parseFloat(data.gpft) || 0;
                     
                     if (gpftFilter === 'negative') return gpft < 0;
                     if (gpftFilter === '0-10') return gpft >= 0 && gpft < 10;
@@ -1337,6 +1371,18 @@
                 });
             }
 
+            if (bbIssueFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const wPrice = parseFloat(data.w_price) || 0;
+                    const aPrice = parseFloat(data.a_price) || 0;
+                    
+                    if (bbIssueFilter === 'bb-issue') {
+                        return wPrice > 0 && aPrice > 0 && wPrice < aPrice;
+                    }
+                    return true;
+                });
+            }
+
             if (dilFilter !== 'all') {
                 table.addFilter(function(data) {
                     const inv = parseFloat(data['INV']) || 0;
@@ -1356,7 +1402,7 @@
             updateSelectAllCheckbox();
         }
 
-        $('#inventory-filter, #gpft-filter, #cvr-filter').on('change', function() {
+        $('#inventory-filter, #gpft-filter, #cvr-filter, #bb-issue-filter').on('change', function() {
             applyFilters();
         });
 
