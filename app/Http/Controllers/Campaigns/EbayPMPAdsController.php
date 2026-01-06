@@ -177,6 +177,15 @@ class EbayPMPAdsController extends Controller
 
     public function getEbayPmpAdsData()
     {
+        // SKU normalization function to handle spaces and whitespace
+        $normalizeSku = function ($sku) {
+            if (empty($sku)) return '';
+            $sku = strtoupper(trim($sku));
+            $sku = preg_replace('/\s+/u', ' ', $sku);         // collapse multiple spaces to single space
+            $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);  // remove hidden whitespace characters
+            return trim($sku);
+        };
+        
         $productMasters = ProductMaster::orderBy("parent", "asc")
             ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy("sku", "asc")
@@ -184,7 +193,15 @@ class EbayPMPAdsController extends Controller
 
         $skus = $productMasters->pluck("sku")->filter()->unique()->values()->all();
 
-        $shopifyData = ShopifySku::whereIn("sku", $skus)->get()->keyBy("sku");
+        // Fetch Shopify data with normalized SKU matching
+        $shopifyDataRaw = ShopifySku::whereIn("sku", $skus)->get();
+        $shopifyData = [];
+        foreach ($shopifyDataRaw as $shopify) {
+            // Store with normalized key for matching
+            $normalizedKey = $normalizeSku($shopify->sku);
+            $shopifyData[$normalizedKey] = $shopify;
+        }
+        
         $ebayMetrics = EbayMetric::whereIn("sku", $skus)->get();
         
         // Normalize SKUs by replacing non-breaking spaces with regular spaces for matching
@@ -265,7 +282,10 @@ class EbayPMPAdsController extends Controller
             $sku = strtoupper($pm->sku);
             $parent = $pm->parent;
 
-            $shopify = $shopifyData[$pm->sku] ?? null;
+            // Normalize the SKU for lookup
+            $normalizedSku = $normalizeSku($pm->sku);
+            
+            $shopify = $shopifyData[$normalizedSku] ?? null;
             $ebayMetric = $ebayMetricsNormalized[$pm->sku] ?? null;
             
             // Fallback: If exact match not found, try partial match

@@ -1050,6 +1050,15 @@ class EbayOverUtilizedBgtController extends Controller
 
     public function getEbayUtilizedAdsData()
     {
+        // SKU normalization function to handle spaces and whitespace
+        $normalizeSku = function ($sku) {
+            if (empty($sku)) return '';
+            $sku = strtoupper(trim($sku));
+            $sku = preg_replace('/\s+/u', ' ', $sku);         // collapse multiple spaces to single space
+            $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);  // remove hidden whitespace characters
+            return trim($sku);
+        };
+        
         $productMasters = ProductMaster::whereNull('deleted_at')
             ->orderBy('parent', 'asc')
             ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
@@ -1057,8 +1066,25 @@ class EbayOverUtilizedBgtController extends Controller
             ->get();
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
-        $ebayMetricData = EbayMetric::whereIn('sku', $skus)->get()->keyBy('sku');
+        
+        // Fetch Shopify data with normalized SKU matching
+        $shopifyDataRaw = ShopifySku::whereIn('sku', $skus)->get();
+        $shopifyData = [];
+        foreach ($shopifyDataRaw as $shopify) {
+            // Store with normalized key for matching
+            $normalizedKey = $normalizeSku($shopify->sku);
+            $shopifyData[$normalizedKey] = $shopify;
+        }
+        
+        // Fetch eBay metric data with normalized SKU matching
+        $ebayMetricDataRaw = EbayMetric::whereIn('sku', $skus)->get();
+        $ebayMetricData = [];
+        foreach ($ebayMetricDataRaw as $ebay) {
+            // Store with normalized key for matching
+            $normalizedKey = $normalizeSku($ebay->sku);
+            $ebayMetricData[$normalizedKey] = $ebay;
+        }
+        
         $nrValues = EbayDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
         $reports = EbayPriorityReport::whereIn('report_range', ['L7', 'L1', 'L30'])
@@ -1079,10 +1105,24 @@ class EbayOverUtilizedBgtController extends Controller
                 continue;
             }
 
-            $sku = strtoupper(trim($pm->sku));
+            // Normalize the SKU for both lookup and campaign matching
+            $normalizedSku = $normalizeSku($pm->sku);
+            $sku = $normalizedSku; // Use normalized SKU for campaign matching
             $parent = $pm->parent;
-            $shopify = $shopifyData[$pm->sku] ?? null;
-            $ebay = $ebayMetricData[$pm->sku] ?? null;
+            
+            // Try to get Shopify data using normalized key
+            $shopify = $shopifyData[$normalizedSku] ?? null;
+            if (!$shopify) {
+                // Fallback: Direct database lookup for edge cases
+                $shopify = ShopifySku::where('sku', $pm->sku)->first();
+            }
+            
+            // Try to get eBay metric data using normalized key
+            $ebay = $ebayMetricData[$normalizedSku] ?? null;
+            if (!$ebay) {
+                // Fallback: Direct database lookup for edge cases
+                $ebay = EbayMetric::where('sku', $pm->sku)->first();
+            }
 
             $nrValue = '';
             $nrlValue = '';
@@ -1097,10 +1137,10 @@ class EbayOverUtilizedBgtController extends Controller
                 }
             }
 
-            $matchedReports = $reports->filter(function ($item) use ($sku) {
-                $campaignSku = strtoupper(trim(rtrim($item->campaign_name ?? '', '.')));
-                $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                return $campaignSku === $cleanSku;
+            $matchedReports = $reports->filter(function ($item) use ($sku, $normalizeSku) {
+                $campaignName = $item->campaign_name ?? '';
+                $normalizedCampaignName = $normalizeSku($campaignName);
+                return $normalizedCampaignName === $sku;
             });
 
             // Check if campaign exists
@@ -1149,6 +1189,8 @@ class EbayOverUtilizedBgtController extends Controller
                     $ebaySkuSet[$sku] = true;
                 }
                 
+                $invValue = ($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0;
+                
                 $campaignMap[$mapKey] = [
                     'parent' => $parent,
                     'sku' => $pm->sku,
@@ -1156,7 +1198,7 @@ class EbayOverUtilizedBgtController extends Controller
                     'campaignName' => $campaignName,
                     'campaignBudgetAmount' => $campaignBudgetAmount,
                     'campaignStatus' => $campaignStatus,
-                    'INV' => ($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0,
+                    'INV' => $invValue,
                     'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
                     'price' => $price,
                     'ebay_l30' => $ebayL30,
@@ -1174,6 +1216,20 @@ class EbayOverUtilizedBgtController extends Controller
                     'NRL' => $nrlValue,
                     'hasCampaign' => $hasCampaign,
                 ];
+            } else {
+                // Entry already exists - update inventory if this SKU has higher inventory
+                if ($shopify && isset($shopify->inv)) {
+                    $currentInv = (int)$shopify->inv;
+                    $existingInv = (int)($campaignMap[$mapKey]['INV'] ?? 0);
+                    
+                    // Use the maximum inventory value
+                    if ($currentInv > $existingInv) {
+                        $campaignMap[$mapKey]['INV'] = $currentInv;
+                        $campaignMap[$mapKey]['L30'] = ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0;
+                        // Also update the SKU to show the one with inventory
+                        $campaignMap[$mapKey]['sku'] = $pm->sku;
+                    }
+                }
             }
 
             // Add campaign data if exists
@@ -1220,6 +1276,13 @@ class EbayOverUtilizedBgtController extends Controller
         $allCampaignIds = $reports->where('campaignStatus', 'RUNNING')->pluck('campaign_id')->unique();
         $processedCampaignIds = array_keys($campaignMap);
         
+        // Create a set of all ProductMaster SKUs (normalized) to check for duplicates
+        $productMasterSkuSet = [];
+        foreach ($productMasters as $pm) {
+            $normalizedSku = $normalizeSku($pm->sku);
+            $productMasterSkuSet[$normalizedSku] = true;
+        }
+        
         foreach ($allCampaignIds as $campaignId) {
             if (in_array($campaignId, $processedCampaignIds)) {
                 continue;
@@ -1232,6 +1295,13 @@ class EbayOverUtilizedBgtController extends Controller
 
             $firstCampaign = $campaignReports->first();
             $campaignName = $firstCampaign->campaign_name ?? '';
+            
+            // Check if this campaign name matches a ProductMaster SKU (avoid duplicates)
+            $normalizedCampaignName = $normalizeSku($campaignName);
+            if (isset($productMasterSkuSet[$normalizedCampaignName])) {
+                // Skip - this campaign is already processed as a ProductMaster SKU
+                continue;
+            }
             
             $matchedSku = null;
             foreach ($productMasters as $pm) {
@@ -1254,8 +1324,10 @@ class EbayOverUtilizedBgtController extends Controller
                 }
             }
 
-            $shopify = $matchedSku ? ($shopifyData[$matchedSku] ?? null) : null;
-            $ebay = $matchedSku ? ($ebayMetricData[$matchedSku] ?? null) : null;
+            // Use normalized SKU for lookups
+            $normalizedMatchedSku = $matchedSku ? $normalizeSku($matchedSku) : null;
+            $shopify = $normalizedMatchedSku ? ($shopifyData[$normalizedMatchedSku] ?? null) : null;
+            $ebay = $normalizedMatchedSku ? ($ebayMetricData[$normalizedMatchedSku] ?? null) : null;
             
             // Try to get price and ebay_l30 from EbayMetric using campaign name as SKU
             $price = 0;
