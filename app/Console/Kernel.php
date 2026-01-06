@@ -79,6 +79,7 @@ class Kernel extends ConsoleKernel
         FetchShopifyB2BMetrics::class,
         FetchShopifyB2CMetrics::class,
         \App\Console\Commands\RunAdvMastersCron::class,
+        \App\Console\Commands\CollectWalmartMetrics::class,
 
     ];
 
@@ -171,6 +172,11 @@ class Kernel extends ConsoleKernel
         // Collect eBay metrics for historical tracking
         $schedule->command('ebay:collect-metrics')
             ->dailyAt('23:35')
+            ->timezone('UTC');
+
+        // Collect Walmart metrics for historical tracking
+        $schedule->command('walmart:collect-metrics')
+            ->dailyAt('23:45')
             ->timezone('UTC');
 
         // Collect Amazon metrics for historical tracking
