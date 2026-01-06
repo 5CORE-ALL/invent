@@ -9,6 +9,7 @@ use App\Models\EbayPriorityReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 
 class EbayPriceLessBidsAutoUpdate extends Command
 {
@@ -24,9 +25,19 @@ class EbayPriceLessBidsAutoUpdate extends Command
 
     public function handle()
     {
-        $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        $this->info("🚀 Starting eBay Price Less Bids Auto-Update");
-        $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        try {
+            // Check database connection
+            try {
+                DB::connection()->getPdo();
+                $this->info("✓ Database connection OK");
+            } catch (\Exception $e) {
+                $this->error("✗ Database connection failed: " . $e->getMessage());
+                return 1;
+            }
+
+            $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            $this->info("🚀 Starting eBay Price Less Bids Auto-Update");
+            $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
         $updateOverUtilizedBids = new EbayOverUtilizedBgtController;
 
@@ -169,25 +180,46 @@ class EbayPriceLessBidsAutoUpdate extends Command
         }
 
         $this->info("");
-        $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        $this->info("📈 Summary: {$totalSuccess} keywords updated successfully, {$totalFailed} failed");
-        $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        
-        return 0;
+            $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            $this->info("📈 Summary: {$totalSuccess} keywords updated successfully, {$totalFailed} failed");
+            $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            
+            return 0;
+        } catch (\Exception $e) {
+            $this->error("✗ Error occurred: " . $e->getMessage());
+            $this->error("Stack trace: " . $e->getTraceAsString());
+            return 1;
+        } finally {
+            DB::disconnect();
+        }
     }
 
     public function getEbayPriceLessBidsCampaign(){
+        try {
+            $productMasters = ProductMaster::orderBy('parent', 'asc')
+                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+                ->orderBy('sku', 'asc')
+                ->get();
 
-        $productMasters = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-            ->orderBy('sku', 'asc')
-            ->get();
+            if ($productMasters->isEmpty()) {
+                $this->warn("No product masters found in database!");
+                return [];
+            }
 
-        $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+            $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            if (empty($skus)) {
+                $this->warn("No valid SKUs found!");
+                return [];
+            }
 
-        $ebayMetricData = EbayMetric::whereIn('sku', $skus)->get()->keyBy('sku');
+            $shopifyData = [];
+            $ebayMetricData = [];
+
+            if (!empty($skus)) {
+                $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+                $ebayMetricData = EbayMetric::whereIn('sku', $skus)->get()->keyBy('sku');
+            }
 
         $ebayCampaignReportsL7 = EbayPriorityReport::where('report_range', 'L7')
             ->where('campaignStatus', 'RUNNING')
@@ -316,9 +348,18 @@ class EbayPriceLessBidsAutoUpdate extends Command
                 }
             }
 
-        }
+            }
 
-        return $result;
+            DB::disconnect();
+            return $result;
+        
+        } catch (\Exception $e) {
+            $this->error("Error in getEbayPriceLessBidsCampaign: " . $e->getMessage());
+            $this->error("Stack trace: " . $e->getTraceAsString());
+            return [];
+        } finally {
+            DB::disconnect();
+        }
     }
 
 

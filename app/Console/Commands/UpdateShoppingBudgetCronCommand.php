@@ -24,10 +24,20 @@ class UpdateShoppingBudgetCronCommand extends Command
 
     public function handle()
     {
-        $this->info('Starting budget update cron for SHOPPING campaigns (ACOS-based)...');
+        try {
+            // Check database connection
+            try {
+                DB::connection()->getPdo();
+                $this->info("✓ Database connection OK");
+            } catch (\Exception $e) {
+                $this->error("✗ Database connection failed: " . $e->getMessage());
+                return 1;
+            }
 
-        $customerId = env('GOOGLE_ADS_LOGIN_CUSTOMER_ID');
-        $this->info("Customer ID: {$customerId}");
+            $this->info('Starting budget update cron for SHOPPING campaigns (ACOS-based)...');
+
+            $customerId = env('GOOGLE_ADS_LOGIN_CUSTOMER_ID');
+            $this->info("Customer ID: {$customerId}");
 
         // Calculate date ranges - same logic as GoogleAdsDateRangeTrait
         $today = now();
@@ -45,15 +55,32 @@ class UpdateShoppingBudgetCronCommand extends Command
 
         $this->info("Date range - L30: {$dateRanges['L30']['start']} to {$dateRanges['L30']['end']}");
 
-        // Fetch product masters
-        $productMasters = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-            ->orderBy('sku', 'asc')
-            ->get();
+            // Fetch product masters
+            $productMasters = ProductMaster::orderBy('parent', 'asc')
+                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+                ->orderBy('sku', 'asc')
+                ->get();
 
-        // Get all SKUs to fetch Shopify inventory data
-        $skus = $productMasters->pluck('sku')->toArray();
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            if ($productMasters->isEmpty()) {
+                $this->warn("No product masters found!");
+                DB::disconnect();
+                return 0;
+            }
+
+            // Get all SKUs to fetch Shopify inventory data
+            $skus = $productMasters->pluck('sku')->filter()->unique()->values()->toArray();
+
+            if (empty($skus)) {
+                $this->warn("No valid SKUs found!");
+                DB::disconnect();
+                return 0;
+            }
+
+            $shopifyData = [];
+            if (!empty($skus)) {
+                $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            }
+            DB::disconnect();
 
         $this->info("Found " . $productMasters->count() . " product masters");
 
@@ -170,10 +197,17 @@ class UpdateShoppingBudgetCronCommand extends Command
             }
         }
 
-        $processedCount = count($campaignUpdates);
-        $this->info("Done. Processed: {$processedCount} unique SHOPPING campaign budgets.");
+            $processedCount = count($campaignUpdates);
+            $this->info("Done. Processed: {$processedCount} unique SHOPPING campaign budgets.");
 
-        return 0;
+            return 0;
+        } catch (\Exception $e) {
+            $this->error("✗ Error occurred: " . $e->getMessage());
+            $this->error("Stack trace: " . $e->getTraceAsString());
+            return 1;
+        } finally {
+            DB::disconnect();
+        }
     }
 }
 

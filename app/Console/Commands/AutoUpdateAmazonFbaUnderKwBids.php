@@ -7,6 +7,7 @@ use Illuminate\Console\Command;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\FbaTable;
 use App\Models\ShopifySku;
+use Illuminate\Support\Facades\DB;
 
 class AutoUpdateAmazonFbaUnderKwBids extends Command
 {
@@ -22,35 +23,81 @@ class AutoUpdateAmazonFbaUnderKwBids extends Command
 
     public function handle()
     {
-        $this->info("Starting Amazon bids auto-update...");
+        try {
+            $this->info("Starting Amazon bids auto-update...");
 
-        $updateKwBids = new AmazonSpBudgetController;
+            // Check database connection
+            try {
+                DB::connection()->getPdo();
+                $this->info("✓ Database connection OK");
+            } catch (\Exception $e) {
+                $this->error("✗ Database connection failed: " . $e->getMessage());
+                return 1;
+            }
 
-        $campaigns = $this->getAutomateAmzUtilizedBgtKw();
+            $updateKwBids = new AmazonSpBudgetController;
 
-        if (empty($campaigns)) {
-            $this->warn("No campaigns matched filter conditions.");
-            return 0;
+            $campaigns = $this->getAutomateAmzUtilizedBgtKw();
+
+            // Close connection after data fetching
+            DB::disconnect();
+
+            if (empty($campaigns)) {
+                $this->warn("No campaigns matched filter conditions.");
+                return 0;
+            }
+
+            // Filter out campaigns with empty/null campaign_id
+            $validCampaigns = collect($campaigns)->filter(function ($campaign) {
+                return !empty($campaign->campaign_id) && isset($campaign->sbid) && $campaign->sbid > 0;
+            })->values();
+
+            if ($validCampaigns->isEmpty()) {
+                $this->warn("No valid campaigns found (all have empty campaign_id or invalid bid).");
+                return 0;
+            }
+
+            $campaignIds = $validCampaigns->pluck('campaign_id')->toArray();
+            $newBids = $validCampaigns->pluck('sbid')->toArray();
+
+            // Ensure both arrays have the same length
+            if (count($campaignIds) !== count($newBids)) {
+                $this->error("Error: Campaign IDs and bids arrays have different lengths!");
+                return 1;
+            }
+
+            try {
+                $result = $updateKwBids->updateAutoCampaignKeywordsBid($campaignIds, $newBids);
+                $this->info("Update Result: " . json_encode($result));
+            } catch (\Exception $e) {
+                $this->error("Error updating campaign bids: " . $e->getMessage());
+                return 1;
+            }
+
+        } finally {
+            // Ensure connection is closed
+            DB::disconnect();
         }
 
-        $campaignIds = collect($campaigns)->pluck('campaign_id')->toArray();
-        $newBids = collect($campaigns)->pluck('sbid')->toArray();
-
-        $result = $updateKwBids->updateAutoCampaignKeywordsBid($campaignIds, $newBids);
-        $this->info("Update Result: " . json_encode($result));
-
+        return 0;
     }
 
     public function getAutomateAmzUtilizedBgtKw()
     {
-        $fbaData = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
-            ->orderBy('seller_sku', 'asc')
-            ->get();
+        try {
+            $fbaData = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
+                ->orderBy('seller_sku', 'asc')
+                ->get();
 
-        $sellerSkus = $fbaData->pluck('seller_sku')->filter()->unique()->values()->all();
-        $baseSkus = $fbaData->pluck('base_sku')->filter()->unique()->values()->all();
+            $sellerSkus = $fbaData->pluck('seller_sku')->filter()->unique()->values()->all();
+            $baseSkus = $fbaData->pluck('base_sku')->filter()->unique()->values()->all();
 
-        $shopifyData = ShopifySku::whereIn('sku', $baseSkus)->get()->keyBy('sku');
+            // Return empty array if no SKUs found
+            if (empty($sellerSkus) || empty($baseSkus)) {
+                return [];
+            }
+
+            $shopifyData = ShopifySku::whereIn('sku', $baseSkus)->get()->keyBy('sku');
 
         $amazonSpCampaignReportsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L7')
@@ -115,6 +162,12 @@ class AutoUpdateAmazonFbaUnderKwBids extends Command
             $row['INV']    = $shopify->inv ?? 0;
             $row['campaign_id'] = $matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? '');
             $row['campaignName'] = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
+
+            // Skip if campaign_id is empty
+            if (empty($row['campaign_id'])) {
+                continue;
+            }
+
             $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? '');
             $row['l7_spend'] = $matchedCampaignL7->spend ?? 0;
             $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
@@ -142,5 +195,9 @@ class AutoUpdateAmazonFbaUnderKwBids extends Command
             }
         }
         return $result;
+        } catch (\Exception $e) {
+            $this->info("Error in getAutomateAmzUtilizedBgtKw: " . $e->getMessage());
+            return [];
+        }
     }
 }

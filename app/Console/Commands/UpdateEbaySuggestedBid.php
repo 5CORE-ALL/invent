@@ -65,9 +65,24 @@ class UpdateEbaySuggestedBid extends Command
                 return 0;
             }
             
+            // Check database connection
+            try {
+                DB::connection()->getPdo();
+                $this->info("✓ Database connection OK");
+            } catch (\Exception $e) {
+                $this->error("✗ Database connection failed: " . $e->getMessage());
+                return 1;
+            }
+
             $this->info('Loading Shopify and eBay metrics data...');
-            $shopifyData = ShopifySku::whereIn("sku", $skus)->get()->keyBy("sku");
-            $ebayMetrics = EbayMetric::whereIn("sku", $skus)->get();
+            $shopifyData = [];
+            $ebayMetrics = collect();
+            
+            if (!empty($skus)) {
+                $shopifyData = ShopifySku::whereIn("sku", $skus)->get()->keyBy("sku");
+                $ebayMetrics = EbayMetric::whereIn("sku", $skus)->get();
+            }
+            DB::disconnect();
             
             if ($ebayMetrics->isEmpty()) {
                 $this->info('No eBay metrics found for the SKUs.');
@@ -275,6 +290,8 @@ class UpdateEbaySuggestedBid extends Command
         } catch (\Throwable $e) {
             $this->error('Command failed with error: ' . $e->getMessage());
             return 1;
+        } finally {
+            DB::disconnect();
         }
     }
 

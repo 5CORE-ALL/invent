@@ -6,7 +6,7 @@ use App\Models\Ebay3GeneralReport;
 use App\Models\Ebay3PriorityReport;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class Ebay3CampaignReports extends Command
@@ -30,11 +30,21 @@ class Ebay3CampaignReports extends Command
      */
     public function handle()
     {
-        $accessToken = $this->getAccessToken();
-        if (!$accessToken) {
-            $this->error('Failed to retrieve eBay3 access token.');
-            return;
-        }
+        try {
+            // Check database connection
+            try {
+                DB::connection()->getPdo();
+                $this->info("✓ Database connection OK");
+            } catch (\Exception $e) {
+                $this->error("✗ Database connection failed: " . $e->getMessage());
+                return;
+            }
+
+            $accessToken = $this->getAccessToken();
+            if (!$accessToken) {
+                $this->error('Failed to retrieve eBay3 access token.');
+                return;
+            }
 
         // Step 1: Fetch all campaigns once (campaigns don't change across date ranges)
         $this->info("Fetching all campaigns from eBay3...");
@@ -74,7 +84,13 @@ class Ebay3CampaignReports extends Command
             $this->fetchAndStoreCampaignReport($accessToken, $campaignsMap, $from, $to, $rangeKey);
         }
 
-        $this->info("✅ All campaign data processed.");
+            $this->info("✅ All campaign data processed.");
+        } catch (\Exception $e) {
+            $this->error("✗ Error occurred: " . $e->getMessage());
+            $this->error("Stack trace: " . $e->getTraceAsString());
+        } finally {
+            DB::disconnect();
+        }
     }
 
     private function fetchAndStoreCampaignReport($accessToken, $campaignsMap, $from, $to, $rangeKey)
@@ -137,13 +153,17 @@ class Ebay3CampaignReports extends Command
         $skippedCount = 0;
         
         // Store ALL campaigns from campaignsMap, not just those in report
-        foreach($campaignsMap as $campaignId => $campaignData){
+        // Process in chunks to avoid too many connections
+        $campaignsArray = array_chunk($campaignsMap, 100, true);
+        
+        foreach($campaignsArray as $chunkIndex => $campaignsChunk) {
+            foreach($campaignsChunk as $campaignId => $campaignData){
             $campaignName = $campaignData['name'];
             $campaignStatus = $campaignData['status'];
             $campaignBudget = $campaignData['daily_budget'];
 
             if (!$campaignName) {
-                Log::warning("Missing campaignName for ID: {$campaignId}");
+                $this->warn("Missing campaignName for ID: {$campaignId}");
                 $skippedCount++;
                 continue;
             }
@@ -181,7 +201,11 @@ class Ebay3CampaignReports extends Command
                     'channels' => $hasReportData ? ($reportItem['channels'] ?? null) : null,
                 ]
             );
-            $storedCount++;
+                $storedCount++;
+            }
+            
+            // Disconnect after each chunk
+            DB::disconnect();
         }
         
         $this->info("✅ ALL_CAMPAIGN_PERFORMANCE_SUMMARY_REPORT Data stored for range: {$rangeKey}");
@@ -230,10 +254,19 @@ class Ebay3CampaignReports extends Command
 
         $items = $this->downloadParseAndStoreReport($accessToken, $reportId, $rangeKey);
 
-        foreach($items as $item){
-            if (!$item || empty($item['listing_id'])) continue;
+        if (empty($items)) {
+            $this->warn("No items found in report for range: {$rangeKey}");
+            return;
+        }
+
+        // Process in chunks to avoid too many connections
+        $chunks = array_chunk($items, 100);
         
-            Ebay3GeneralReport::updateOrCreate(
+        foreach($chunks as $chunkIndex => $chunk) {
+            foreach($chunk as $item){
+                if (!$item || empty($item['listing_id'])) continue;
+            
+                Ebay3GeneralReport::updateOrCreate(
                 ['listing_id' => $item['listing_id'], 'report_range' => $rangeKey],
                 [
                     'campaign_id' => $item['campaign_id'] ?? null,
@@ -246,7 +279,11 @@ class Ebay3CampaignReports extends Command
                     'ctr' => is_numeric($item['ctr'] ?? null) ? (float)$item['ctr'] : 0,
                     'channels' => $item['channels'] ?? null,
                 ]
-            );
+                );
+            }
+            
+            // Disconnect after each chunk
+            DB::disconnect();
         }
         $this->info("✅ CAMPAIGN_PERFORMANCE_REPORT Data stored for range: {$rangeKey}");
     }
@@ -283,7 +320,7 @@ class Ebay3CampaignReports extends Command
                 ->get("https://api.ebay.com/sell/marketing/v1/ad_report_task/{$taskId}");
             
             if ($check->status() === 401 || $check->json('errors.0.message') === 'Invalid access token') {
-                logger()->error("Access token expired, refreshing...");
+                $this->warn("Access token expired, refreshing...");
 
                 $token = $this->getAccessToken();
                 $check = Http::withToken($token)
@@ -292,14 +329,12 @@ class Ebay3CampaignReports extends Command
             
             $status = $check['reportTaskStatus'] ?? 'IN_PROGRESS';
 
-            logger()->info("Polling status for $taskId: $status");
             $this->info("Polling status for $taskId: $status");
         } while (!in_array($status, ['SUCCESS','FAILED']));
 
         if ($status !== 'SUCCESS') {
-            logger()->error("Report task $taskId failed or timed out");
             $this->error("Report task $taskId failed or timed out");
-            return [];
+            return null;
         }
 
         $reportId = $check['reportId'] ?? null;
@@ -392,16 +427,15 @@ class Ebay3CampaignReports extends Command
                 ]);
 
             if ($response->successful()) {
-                Log::info('eBay3 token', ['response' => 'Token generated!']);
+                $this->info('eBay3 token generated successfully');
                 return $response->json()['access_token'];
             }
 
             $errorData = $response->json();
-            Log::error('eBay3 token refresh error', ['response' => $errorData]);
+            $this->error('eBay3 token refresh error: ' . json_encode($errorData));
             $this->error('eBay API Error: ' . ($errorData['error_description'] ?? $errorData['error'] ?? $response->body()));
         } catch (\Exception $e) {
-            Log::error('eBay3 token refresh exception: ' . $e->getMessage());
-            $this->error('Exception: ' . $e->getMessage());
+            $this->error('eBay3 token refresh exception: ' . $e->getMessage());
         }
 
         return null;
@@ -439,11 +473,6 @@ class Ebay3CampaignReports extends Command
                 }
                 
                 $this->error("Failed to fetch campaigns at offset {$offset}. Status: {$statusCode}, Response: {$errorBody}");
-                Log::error("eBay3 getAllCampaigns failed", [
-                    'offset' => $offset,
-                    'status' => $statusCode,
-                    'response' => $errorBody
-                ]);
                 break;
             }
 
@@ -488,7 +517,6 @@ class Ebay3CampaignReports extends Command
 
         $totalCampaigns = count($campaigns);
         $this->info("✅ Total campaigns fetched: {$totalCampaigns}");
-        Log::info("eBay3 getAllCampaigns completed", ['total_campaigns' => $totalCampaigns]);
 
         return $campaigns;
     }

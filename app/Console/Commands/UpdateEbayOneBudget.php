@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\EbayPriorityReport;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Cache;
 use Exception;
@@ -21,6 +22,15 @@ class UpdateEbayOneBudget extends Command
     public function handle()
     {
         try {
+            // Check database connection
+            try {
+                DB::connection()->getPdo();
+                $this->info("✓ Database connection OK");
+            } catch (\Exception $e) {
+                $this->error("✗ Database connection failed: " . $e->getMessage());
+                return 1;
+            }
+
             $this->info('Starting eBay1 campaign budget update...');
 
             $accessToken = $this->getEbayAccessToken();
@@ -35,6 +45,8 @@ class UpdateEbayOneBudget extends Command
             $campaignReports = EbayPriorityReport::where('report_range', 'L30')
                 ->where('campaignStatus', 'RUNNING')
                 ->get();
+            
+            DB::disconnect();
 
             if ($campaignReports->isEmpty()) {
                 $this->info('No running campaigns found.');
@@ -147,6 +159,8 @@ class UpdateEbayOneBudget extends Command
         } catch (\Throwable $e) {
             $this->error('Command failed with error: ' . $e->getMessage());
             return 1;
+        } finally {
+            DB::disconnect();
         }
     }
 

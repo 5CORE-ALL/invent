@@ -7,7 +7,7 @@ use App\Models\EbayTask;
 use Illuminate\Console\Command;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use ZipArchive;
 
 class FetchEbay2Metrics extends Command
@@ -31,23 +31,33 @@ class FetchEbay2Metrics extends Command
      */
     public function handle()
     {
-        $this->info('🚀 Starting eBay2 Metrics fetch...');
-        
-        $token = $this->getToken();
-        if (! $token) {
-            $this->error('❌ Token error');
-            return;
-        }
-        
-        $this->info('✅ Token obtained successfully');
+        try {
+            // Check database connection
+            try {
+                DB::connection()->getPdo();
+                $this->info("✓ Database connection OK");
+            } catch (\Exception $e) {
+                $this->error("✗ Database connection failed: " . $e->getMessage());
+                return 1;
+            }
 
-        $taskId = $this->getInventoryTaskId($token);
-        if (! $taskId) {
-            $this->error('Task error');
-            return;
-        }
+            $this->info('🚀 Starting eBay2 Metrics fetch...');
+            
+            $token = $this->getToken();
+            if (! $token) {
+                $this->error('❌ Token error');
+                return 1;
+            }
+            
+            $this->info('✅ Token obtained successfully');
 
-        $listingData = $this->processTask($taskId, $token);
+            $taskId = $this->getInventoryTaskId($token);
+            if (! $taskId) {
+                $this->error('Task error');
+                return 1;
+            }
+
+            $listingData = $this->processTask($taskId, $token);
         
         // Delete the task after successful processing to prevent reuse
         $this->deleteTask($taskId);
@@ -101,13 +111,20 @@ class FetchEbay2Metrics extends Command
                 ]
             );
         }
+        
+        DB::disconnect();
 
         // Clean up SKUs that are no longer active (not in current fetch)
         $uniqueActiveSkus = array_unique($activeSkus);
-        $deletedCount = Ebay2Metric::whereNotIn('sku', $uniqueActiveSkus)->delete();
+        if (!empty($uniqueActiveSkus)) {
+            $deletedCount = Ebay2Metric::whereNotIn('sku', $uniqueActiveSkus)->delete();
+        } else {
+            $deletedCount = 0;
+        }
         if ($deletedCount > 0) {
             $this->info("🗑️  Cleaned up {$deletedCount} inactive SKU records");
         }
+        DB::disconnect();
 
         // Update views per itemId -> sku list
         $this->updateViews($token, $itemIdToSku);
@@ -123,21 +140,35 @@ class FetchEbay2Metrics extends Command
         $l30 = $this->orderQty($token, $dateRanges['l30'], $existingItemIds);
         $l60 = $this->orderQty($token, $dateRanges['l60'], $existingItemIds);
 
-        // Save L7/L30/L60 for each SKU under the item
-        foreach ($existingItemIds as $itemId) {
-            $skus = $itemIdToSku[$itemId] ?? [];
-            foreach ($skus as $sku) {
-                Ebay2Metric::where('item_id', $itemId)
-                    ->where('sku', $sku)
-                    ->update([
-                        'ebay_l7' => $l7[$itemId] ?? 0,
-                        'ebay_l30' => $l30[$itemId] ?? 0,
-                        'ebay_l60' => $l60[$itemId] ?? 0,
-                    ]);
+            // Save L7/L30/L60 for each SKU under the item in chunks
+            $chunks = array_chunk($existingItemIds, 100, true);
+            foreach ($chunks as $chunk) {
+                foreach ($chunk as $itemId) {
+                    $skus = $itemIdToSku[$itemId] ?? [];
+                    if (!empty($skus)) {
+                        foreach ($skus as $sku) {
+                            Ebay2Metric::where('item_id', $itemId)
+                                ->where('sku', $sku)
+                                ->update([
+                                    'ebay_l7' => $l7[$itemId] ?? 0,
+                                    'ebay_l30' => $l30[$itemId] ?? 0,
+                                    'ebay_l60' => $l60[$itemId] ?? 0,
+                                ]);
+                        }
+                    }
+                }
+                DB::disconnect();
             }
-        }
 
-        $this->info('✅ eBay Metrics updated');
+            $this->info('✅ eBay Metrics updated');
+            return 0;
+        } catch (\Exception $e) {
+            $this->error("✗ Error occurred: " . $e->getMessage());
+            $this->error("Stack trace: " . $e->getTraceAsString());
+            return 1;
+        } finally {
+            DB::disconnect();
+        }
     }
 
     private function dateRanges()
@@ -198,17 +229,12 @@ class FetchEbay2Metrics extends Command
             } catch (\Throwable $e) {
                 if ($attempt < $maxRetries) {
                     $this->warn("⚠️  Token request exception (attempt {$attempt}/{$maxRetries}): " . $e->getMessage());
-                    Log::channel('daily')->warning('EBAY TOKEN EXCEPTION (retrying)', [
-                        'attempt' => $attempt,
-                        'message' => $e->getMessage(),
-                    ]);
+                    $this->warn('EBAY TOKEN EXCEPTION (retrying) - Attempt: ' . $attempt . ', Message: ' . $e->getMessage());
                     sleep(2);
                     continue;
                 }
                 
-                Log::channel('daily')->error('EBAY TOKEN EXCEPTION', [
-                    'message' => $e->getMessage(),
-                ]);
+                $this->error('EBAY TOKEN EXCEPTION: ' . $e->getMessage());
 
                 return null;
             }
@@ -301,10 +327,7 @@ class FetchEbay2Metrics extends Command
             }
         } catch (\Throwable $e) {
             $this->warn("⚠️  Failed to delete task {$taskId}: " . $e->getMessage());
-            Log::channel('daily')->warning('Failed to delete eBay task', [
-                'task_id' => $taskId,
-                'error' => $e->getMessage(),
-            ]);
+            $this->warn('Failed to delete eBay task - Task ID: ' . $taskId . ', Error: ' . $e->getMessage());
         }
     }
 
@@ -621,18 +644,22 @@ class FetchEbay2Metrics extends Command
                 $this->info("📊 Item {$id}: {$v} views");
 
                 $skus = $map[$id] ?? [];
-                foreach ($skus as $sku) {
-                    $updated = Ebay2Metric::where('item_id', $id)
-                        ->where('sku', $sku)
-                        ->update(['views' => $v]);
-                    
-                    if ($updated) {
-                        $this->info("✅ Updated views for {$id}/{$sku}: {$v}");
-                    } else {
-                        $this->warn("⚠️  Failed to update views for {$id}/{$sku}");
+                if (!empty($skus)) {
+                    foreach ($skus as $sku) {
+                        $updated = Ebay2Metric::where('item_id', $id)
+                            ->where('sku', $sku)
+                            ->update(['views' => $v]);
+                        
+                        if ($updated) {
+                            $this->info("✅ Updated views for {$id}/{$sku}: {$v}");
+                        } else {
+                            $this->warn("⚠️  Failed to update views for {$id}/{$sku}");
+                        }
                     }
                 }
             }
+            
+            DB::disconnect();
             
             // Add small delay between API calls
             if ($chunkIndex < count($chunks) - 1) {
@@ -704,12 +731,16 @@ class FetchEbay2Metrics extends Command
                 if (! $id) continue;
 
                 $skus = $map[$id] ?? [];
-                foreach ($skus as $sku) {
-                    Ebay2Metric::where('item_id', $id)
-                        ->where('sku', $sku)
-                        ->update(['l7_views' => $v]);
+                if (!empty($skus)) {
+                    foreach ($skus as $sku) {
+                        Ebay2Metric::where('item_id', $id)
+                            ->where('sku', $sku)
+                            ->update(['l7_views' => $v]);
+                    }
                 }
             }
+            
+            DB::disconnect();
             
             // Add small delay between API calls
             if ($chunkIndex < count($chunks) - 1) {
