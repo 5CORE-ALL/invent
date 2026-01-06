@@ -156,6 +156,25 @@
                         </select>
                     </div>
 
+                    <!-- DIL Filter -->
+                    <div class="dropdown d-inline-block">
+                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="dilFilterDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <span class="status-circle default"></span> DIL%
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="dilFilterDropdown">
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="all">
+                                    <span class="status-circle default"></span> All DIL</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="red">
+                                    <span class="status-circle red"></span> Red (&lt;16.7%)</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="yellow">
+                                    <span class="status-circle yellow"></span> Yellow (16.7-25%)</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="green">
+                                    <span class="status-circle green"></span> Green (25-50%)</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="pink">
+                                    <span class="status-circle pink"></span> Pink (50%+)</a></li>
+                        </ul>
+                    </div>
+
                     <!-- ADS Filter -->
                     <div>
                         <select id="ads-filter" class="form-select form-select-sm" style="width: 120px;">
@@ -209,25 +228,6 @@
                     <button type="button" id="clear-sprice-btn" class="btn btn-sm btn-danger">
                         <i class="fa fa-trash"></i> Clear SPRICE
                     </button>
-                    
-                    <!-- DIL Filter -->
-                    <div class="dropdown d-inline-block ms-2">
-                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="dilFilterDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                            <span class="status-circle default"></span> DIL%
-                        </button>
-                        <ul class="dropdown-menu" aria-labelledby="dilFilterDropdown">
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="all">
-                                    <span class="status-circle default"></span> All DIL</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="red">
-                                    <span class="status-circle red"></span> Red (&lt;16.7%)</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="yellow">
-                                    <span class="status-circle yellow"></span> Yellow (16.7-25%)</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="green">
-                                    <span class="status-circle green"></span> Green (25-50%)</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="pink">
-                                    <span class="status-circle pink"></span> Pink (50%+)</a></li>
-                        </ul>
-                    </div>
                 </div>
 
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
