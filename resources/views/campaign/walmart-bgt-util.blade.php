@@ -959,13 +959,13 @@
                             
                             var value = Math.round(ub7) + "%";
                             
-                            if (ub7 >= 70 && ub7 <= 90) {
+                            if (ub7 >= 66 && ub7 <= 99) {
                                 td.classList.add('green-bg');
                                 return value;
-                            } else if (ub7 > 90) {
+                            } else if (ub7 > 99) {
                                 // Pink badge - background on text
                                 return '<span style="background-color: #ff01d0; color: white; padding: 4px 8px; border-radius: 4px; display: inline-block;">' + value + '</span>';
-                            } else if (ub7 < 70) {
+                            } else if (ub7 < 66) {
                                 td.classList.add('red-bg');
                                 return value;
                             }
@@ -993,13 +993,13 @@
                             
                             var value = Math.round(ub1) + "%";
                             
-                            if (ub1 >= 70 && ub1 <= 90) {
+                            if (ub1 >= 66 && ub1 <= 99) {
                                 td.classList.add('green-bg');
                                 return value;
-                            } else if (ub1 > 90) {
+                            } else if (ub1 > 99) {
                                 // Pink badge - background on text
                                 return '<span style="background-color: #ff01d0; color: white; padding: 4px 8px; border-radius: 4px; display: inline-block;">' + value + '</span>';
-                            } else if (ub1 < 70) {
+                            } else if (ub1 < 66) {
                                 td.classList.add('red-bg');
                                 return value;
                             }
@@ -1041,6 +1041,7 @@
                                 return ''; // Return blank for missing ads
                             }
                             
+                            var cpc_l1 = parseFloat(row.cpc_l1) || 0;
                             var cpc_l7 = parseFloat(row.cpc_l7) || 0;
                             var spend_l7 = parseFloat(row.spend_l7) || 0;
                             var acos = parseFloat(row.acos_l30) || 0;
@@ -1051,22 +1052,21 @@
                             
                             var sbid;
                             
-                            // If 7UB is pink (> 90%): SBID = L7cpc * 0.90 (minimum 0.31)
-                            if (ub7 > 90) {
-                                sbid = cpc_l7 * 0.90;
-                                sbid = Math.max(sbid, 0.31); // Minimum value is 0.31
+                            // If both l1_cpc and l7_cpc are 0, then sbid = 0.50
+                            if (cpc_l1 === 0 && cpc_l7 === 0) {
+                                sbid = 0.50;
                             }
-                            // If 7UB is between 30-70%: SBID = L7cpc + 0.5
-                            else if (ub7 >= 30 && ub7 <= 70) {
-                                sbid = cpc_l7 + 0.5;
+                            // If ub7 > 99 then sbid = l1_cpc * 0.90
+                            else if (ub7 > 99) {
+                                sbid = cpc_l1 * 0.90;
                             }
-                            // If 7UB is below 30%: SBID = L7cpc + 0.10
-                            else if (ub7 < 30) {
-                                sbid = cpc_l7 + 0.10;
+                            // If ub7 < 66 then sbid = l7_cpc * 1.1
+                            else if (ub7 < 66) {
+                                sbid = cpc_l7 * 1.1;
                             }
-                            // For 70-90% range (green), use same logic as 30-70%
+                            // For ub7 between 66-99, use default (l7_cpc * 1.0 or keep current)
                             else {
-                                sbid = cpc_l7 + 0.5;
+                                sbid = cpc_l7;
                             }
                             
                             return sbid.toFixed(2);
@@ -1090,13 +1090,33 @@
                                 var row = cell.getRow().getData();
                                 var cpc_l1 = parseFloat(row.cpc_l1) || 0;
                                 var cpc_l7 = parseFloat(row.cpc_l7) || 0;
+                                var spend_l7 = parseFloat(row.spend_l7) || 0;
+                                var acos = parseFloat(row.acos_l30) || 0;
+                                var aldBgt = calculateAldBgt(acos);
+                                
+                                // Calculate 7UB = (L7 ad spend/(ald bgt*7))*100
+                                var ub7 = (aldBgt > 0 && aldBgt * 7 > 0) ? (spend_l7 / (aldBgt * 7)) * 100 : 0;
+                                
                                 var sbid;
-                                if(cpc_l1 > cpc_l7) {
-                                    sbid = (cpc_l1 * 0.9).toFixed(2);
-                                }else{
-                                    sbid = (cpc_l7 * 0.9).toFixed(2);
+                                
+                                // If both l1_cpc and l7_cpc are 0, then sbid = 0.50
+                                if (cpc_l1 === 0 && cpc_l7 === 0) {
+                                    sbid = 0.50;
                                 }
-                                updateBid(sbid, rowData.campaign_id);
+                                // If ub7 > 99 then sbid = l1_cpc * 0.90
+                                else if (ub7 > 99) {
+                                    sbid = cpc_l1 * 0.90;
+                                }
+                                // If ub7 < 66 then sbid = l7_cpc * 1.1
+                                else if (ub7 < 66) {
+                                    sbid = cpc_l7 * 1.1;
+                                }
+                                // For ub7 between 66-99, use default (l7_cpc * 1.0)
+                                else {
+                                    sbid = cpc_l7;
+                                }
+                                
+                                updateBid(sbid.toFixed(2), row.campaign_id);
                             }
                         },
                         visible: false
@@ -1272,6 +1292,83 @@
                         console.error('Error saving bulk NRA:', error);
                     });
             });
+
+            // APR ALL SBID Button Handler
+            document.getElementById("apr-all-sbid-btn").addEventListener("click", function() {
+                const selectedRows = window.table.getSelectedRows();
+                if (selectedRows.length === 0) {
+                    alert("Please select at least one row");
+                    return;
+                }
+
+                selectedRows.forEach(function(row) {
+                    var rowData = row.getData();
+                    
+                    // Check if campaign exists
+                    const hasCampaign = rowData.hasCampaign ?? (rowData.campaignName?.trim() !== '');
+                    if (!hasCampaign) {
+                        return; // Skip rows without campaigns
+                    }
+
+                    var cpc_l1 = parseFloat(rowData.cpc_l1) || 0;
+                    var cpc_l7 = parseFloat(rowData.cpc_l7) || 0;
+                    var spend_l7 = parseFloat(rowData.spend_l7) || 0;
+                    var acos = parseFloat(rowData.acos_l30) || 0;
+                    var aldBgt = calculateAldBgt(acos);
+                    
+                    // Calculate 7UB = (L7 ad spend/(ald bgt*7))*100
+                    var ub7 = (aldBgt > 0 && aldBgt * 7 > 0) ? (spend_l7 / (aldBgt * 7)) * 100 : 0;
+                    
+                    var sbid;
+                    
+                    // If both l1_cpc and l7_cpc are 0, then sbid = 0.50
+                    if (cpc_l1 === 0 && cpc_l7 === 0) {
+                        sbid = 0.50;
+                    }
+                    // If ub7 > 99 then sbid = l1_cpc * 0.90
+                    else if (ub7 > 99) {
+                        sbid = cpc_l1 * 0.90;
+                    }
+                    // If ub7 < 66 then sbid = l7_cpc * 1.1
+                    else if (ub7 < 66) {
+                        sbid = cpc_l7 * 1.1;
+                    }
+                    // For ub7 between 66-99, use default (l7_cpc * 1.0)
+                    else {
+                        sbid = cpc_l7;
+                    }
+                    
+                    // Update the bid
+                    updateBid(sbid.toFixed(2), rowData.campaign_id);
+                });
+            });
+
+            // Update Bid Function
+            function updateBid(aprBid, campaignId) {
+                if (!campaignId) {
+                    console.warn('No campaign ID provided for updateBid');
+                    return;
+                }
+
+                $.ajax({
+                    url: '/update-amazon-sp-bid-price',
+                    method: 'POST',
+                    data: {
+                        id: campaignId,
+                        crnt_bid: parseFloat(aprBid),
+                        _token: '{{ csrf_token() }}'
+                    },
+                    success: function(response) {
+                        console.log('Bid updated successfully for campaign:', campaignId);
+                        // Refresh the table to show updated data
+                        window.table.replaceData();
+                    },
+                    error: function(xhr) {
+                        console.error('Error updating bid for campaign:', campaignId, xhr);
+                        alert('Error updating bid for campaign: ' + campaignId);
+                    }
+                });
+            }
 
             window.table.on("cellEdited", function(cell){
                 if(cell.getField() === "crnt_bid"){
@@ -1576,11 +1673,11 @@
 
             // Helper: Get utilization status (red, pink, or green) for a UB value
             function getUtilizationStatus(ubValue) {
-                if (ubValue >= 70 && ubValue <= 90) {
+                if (ubValue >= 66 && ubValue <= 99) {
                     return 'green'; // Correctly utilized
-                } else if (ubValue > 90) {
+                } else if (ubValue > 99) {
                     return 'pink'; // Over utilized
-                } else if (ubValue < 70) {
+                } else if (ubValue < 66) {
                     return 'red'; // Under utilized
                 }
                 return null; // No status if value is invalid
@@ -1632,9 +1729,9 @@
                     if (window.currentUtilizationFilter) {
                         const ub7 = calculate7UB(data);
                         const filter = window.currentUtilizationFilter;
-                        if (filter === 'pink' && ub7 <= 90) return false;
-                        if (filter === 'red' && ub7 >= 70) return false;
-                        if (filter === 'green' && (ub7 < 70 || ub7 > 90)) return false;
+                        if (filter === 'pink' && ub7 <= 99) return false;
+                        if (filter === 'red' && ub7 >= 66) return false;
+                        if (filter === 'green' && (ub7 < 66 || ub7 > 99)) return false;
                     }
 
                     // Search filter
@@ -1811,9 +1908,9 @@
                         
                         // Count utilization types (7UB only)
                         const ub7 = calculate7UB(row);
-                        if (ub7 > 90) counts.pink++;
-                        else if (ub7 < 70) counts.red++;
-                        else if (ub7 >= 70 && ub7 <= 90) counts.green++;
+                        if (ub7 > 99) counts.pink++;
+                        else if (ub7 < 66) counts.red++;
+                        else if (ub7 >= 66 && ub7 <= 99) counts.green++;
                         
                         // Count combined utilization (both 7UB and 1UB must match)
                         const combinedStatus = getCombinedUtilizationStatus(row);
@@ -2187,7 +2284,7 @@
                                 labels: dates,
                                 datasets: [
                                     {
-                                        label: 'Pink (> 90%)',
+                                        label: 'Pink (> 99%)',
                                         data: chartData.map(d => d.pink_count),
                                         borderColor: '#ff01d0',
                                         backgroundColor: 'rgba(255, 1, 208, 0.1)',
@@ -2196,7 +2293,7 @@
                                         borderWidth: 2
                                     },
                                     {
-                                        label: 'Red (< 70%)',
+                                        label: 'Red (< 66%)',
                                         data: chartData.map(d => d.red_count),
                                         borderColor: '#ff2727',
                                         backgroundColor: 'rgba(255, 39, 39, 0.1)',
@@ -2205,7 +2302,7 @@
                                         borderWidth: 2
                                     },
                                     {
-                                        label: 'Green (70-90%)',
+                                        label: 'Green (66-99%)',
                                         data: chartData.map(d => d.green_count),
                                         borderColor: '#05bd30',
                                         backgroundColor: 'rgba(5, 189, 48, 0.1)',
@@ -2284,7 +2381,7 @@
                                 labels: dates,
                                 datasets: [
                                     {
-                                        label: 'Pink (> 90% in both)',
+                                        label: 'Pink (> 99% in both)',
                                         data: chartData.map(d => d.pink_count),
                                         borderColor: '#ff01d0',
                                         backgroundColor: 'rgba(255, 1, 208, 0.1)',
@@ -2293,7 +2390,7 @@
                                         borderWidth: 2
                                     },
                                     {
-                                        label: 'Red (< 70% in both)',
+                                        label: 'Red (< 66% in both)',
                                         data: chartData.map(d => d.red_count),
                                         borderColor: '#ff2727',
                                         backgroundColor: 'rgba(255, 39, 39, 0.1)',
@@ -2302,7 +2399,7 @@
                                         borderWidth: 2
                                     },
                                     {
-                                        label: 'Green (70-90% in both)',
+                                        label: 'Green (66-99% in both)',
                                         data: chartData.map(d => d.green_count),
                                         borderColor: '#05bd30',
                                         backgroundColor: 'rgba(5, 189, 48, 0.1)',
