@@ -7,7 +7,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 use App\Models\EbayMetric;
 use App\Models\EbayTask;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use ZipArchive;
 
 class FetchEbayReports extends Command
@@ -31,19 +31,29 @@ class FetchEbayReports extends Command
      */
     public function handle()
     {
-        $token = $this->getToken();
-        if (! $token) {
-            $this->error('Token error');
-            return;
-        }
+        try {
+            // Check database connection
+            try {
+                DB::connection()->getPdo();
+                $this->info("✓ Database connection OK");
+            } catch (\Exception $e) {
+                $this->error("✗ Database connection failed: " . $e->getMessage());
+                return 1;
+            }
 
-        $taskId = $this->getInventoryTaskId($token);
-        if (! $taskId) {
-            $this->error('Task error');
-            return;
-        }
+            $token = $this->getToken();
+            if (! $token) {
+                $this->error('Token error');
+                return 1;
+            }
 
-        $listingData = $this->processTask($taskId, $token);
+            $taskId = $this->getInventoryTaskId($token);
+            if (! $taskId) {
+                $this->error('Task error');
+                return 1;
+            }
+
+            $listingData = $this->processTask($taskId, $token);
         
         // Delete the task after successful processing to prevent reuse
         $this->deleteTask($taskId);
@@ -121,46 +131,59 @@ class FetchEbayReports extends Command
             $allActiveSkus[] = 'NO-SKU-' . $itemId;
         }
 
-        // Save metrics with SKU as unique identifier
-        $saved = 0;
-        foreach ($skuToItemId as $sku => $itemId) {
-            // Check if this SKU exists with different item_id and clean up
-            $existingRecord = EbayMetric::where('sku', $sku)->first();
-            if ($existingRecord && $existingRecord->item_id !== $itemId) {
-                $this->info("🔄 SKU {$sku}: Item ID changed from {$existingRecord->item_id} to {$itemId}");
+            // Save metrics with SKU as unique identifier in chunks
+            $saved = 0;
+            $skuChunks = array_chunk($skuToItemId, 100, true);
+            foreach ($skuChunks as $chunk) {
+                foreach ($chunk as $sku => $itemId) {
+                    // Check if this SKU exists with different item_id and clean up
+                    $existingRecord = EbayMetric::where('sku', $sku)->first();
+                    if ($existingRecord && $existingRecord->item_id !== $itemId) {
+                        $this->info("🔄 SKU {$sku}: Item ID changed from {$existingRecord->item_id} to {$itemId}");
+                    }
+                    
+                    EbayMetric::updateOrCreate(
+                        ['sku' => $sku],
+                        [
+                            'item_id' => $itemId,
+                            'ebay_price' => $skuPrices[$sku],
+                            'report_date' => now()->toDateString(),
+                        ]
+                    );
+                    $saved++;
+                }
+                DB::disconnect();
             }
-            
-            EbayMetric::updateOrCreate(
-                ['sku' => $sku],
-                [
-                    'item_id' => $itemId,
-                    'ebay_price' => $skuPrices[$sku],
-                    'report_date' => now()->toDateString(),
-                ]
-            );
-            $saved++;
-        }
 
-        // Save items without SKU (use item_id as SKU identifier)
-        foreach ($itemsWithoutSku as $itemId => $price) {
-            EbayMetric::updateOrCreate(
-                ['sku' => 'NO-SKU-' . $itemId],
-                [
-                    'item_id' => $itemId,
-                    'ebay_price' => $price,
-                    'report_date' => now()->toDateString(),
-                ]
-            );
-            $saved++;
-        }
+            // Save items without SKU (use item_id as SKU identifier) in chunks
+            $itemsWithoutSkuChunks = array_chunk($itemsWithoutSku, 100, true);
+            foreach ($itemsWithoutSkuChunks as $chunk) {
+                foreach ($chunk as $itemId => $price) {
+                    EbayMetric::updateOrCreate(
+                        ['sku' => 'NO-SKU-' . $itemId],
+                        [
+                            'item_id' => $itemId,
+                            'ebay_price' => $price,
+                            'report_date' => now()->toDateString(),
+                        ]
+                    );
+                    $saved++;
+                }
+                DB::disconnect();
+            }
 
-        // Clean up SKUs that are no longer active (not in current fetch)
-        $deletedCount = EbayMetric::whereNotIn('sku', $allActiveSkus)->delete();
-        if ($deletedCount > 0) {
-            $this->info("🗑️  Cleaned up {$deletedCount} inactive SKU records");
-        }
+            // Clean up SKUs that are no longer active (not in current fetch)
+            if (!empty($allActiveSkus)) {
+                $deletedCount = EbayMetric::whereNotIn('sku', $allActiveSkus)->delete();
+            } else {
+                $deletedCount = 0;
+            }
+            if ($deletedCount > 0) {
+                $this->info("🗑️  Cleaned up {$deletedCount} inactive SKU records");
+            }
+            DB::disconnect();
 
-        $this->info("💾 Saved/Updated {$saved} records in database");
+            $this->info("💾 Saved/Updated {$saved} records in database");
 
         // Build reverse mapping: itemId => [skus]
         $itemIdToSkus = [];
@@ -195,30 +218,42 @@ class FetchEbayReports extends Command
         // Update L7 views (last 7 days)
         $this->updateL7Views($token, $itemIdToSkus);
 
-        // Update organic clicks for last 30 days
-        $this->updateOrganicClicksFromSheet($itemIdToSkus);
+            // Update organic clicks for last 30 days
+            $this->updateOrganicClicksFromSheet($itemIdToSkus);
 
-        // L7 / L30 / L60
-        $existingItemIds = array_keys($itemIdToSkus);
-        $dateRanges = $this->dateRanges();
+            // L7 / L30 / L60
+            $existingItemIds = array_keys($itemIdToSkus);
+            $dateRanges = $this->dateRanges();
 
-        $l7 = $this->orderQty($token, $dateRanges['l7'], $existingItemIds);
-        $l30 = $this->orderQty($token, $dateRanges['l30'], $existingItemIds);
-        $l60 = $this->orderQty($token, $dateRanges['l60'], $existingItemIds);
+            $l7 = $this->orderQty($token, $dateRanges['l7'], $existingItemIds);
+            $l30 = $this->orderQty($token, $dateRanges['l30'], $existingItemIds);
+            $l60 = $this->orderQty($token, $dateRanges['l60'], $existingItemIds);
 
-        // Save L7/L30/L60 for each SKU
-        foreach ($itemIdToSkus as $itemId => $skus) {
-            foreach ($skus as $sku) {
-                EbayMetric::where('sku', $sku)
-                    ->update([
-                        'ebay_l7' => $l7[$itemId] ?? 0,
-                        'ebay_l30' => $l30[$itemId] ?? 0,
-                        'ebay_l60' => $l60[$itemId] ?? 0,
-                    ]);
+            // Save L7/L30/L60 for each SKU in chunks
+            $chunks = array_chunk($itemIdToSkus, 100, true);
+            foreach ($chunks as $chunk) {
+                foreach ($chunk as $itemId => $skus) {
+                    foreach ($skus as $sku) {
+                        EbayMetric::where('sku', $sku)
+                            ->update([
+                                'ebay_l7' => $l7[$itemId] ?? 0,
+                                'ebay_l30' => $l30[$itemId] ?? 0,
+                                'ebay_l60' => $l60[$itemId] ?? 0,
+                            ]);
+                    }
+                }
+                DB::disconnect();
             }
-        }
 
-        $this->info('✅ eBay Metrics updated');
+            $this->info('✅ eBay Metrics updated');
+            return 0;
+        } catch (\Exception $e) {
+            $this->error("✗ Error occurred: " . $e->getMessage());
+            $this->error("Stack trace: " . $e->getTraceAsString());
+            return 1;
+        } finally {
+            DB::disconnect();
+        }
     }
 
     private function dateRanges()
@@ -279,17 +314,12 @@ class FetchEbayReports extends Command
             } catch (\Throwable $e) {
                 if ($attempt < $maxRetries) {
                     $this->warn("⚠️  Token request exception (attempt {$attempt}/{$maxRetries}): " . $e->getMessage());
-                    Log::channel('daily')->warning('EBAY TOKEN EXCEPTION (retrying)', [
-                        'attempt' => $attempt,
-                        'message' => $e->getMessage(),
-                    ]);
+                    $this->warn('EBAY TOKEN EXCEPTION (retrying) - Attempt: ' . $attempt . ', Message: ' . $e->getMessage());
                     sleep(2);
                     continue;
                 }
                 
-                Log::channel('daily')->error('EBAY TOKEN EXCEPTION', [
-                    'message' => $e->getMessage(),
-                ]);
+                $this->error('EBAY TOKEN EXCEPTION: ' . $e->getMessage());
 
                 return null;
             }
@@ -382,10 +412,7 @@ class FetchEbayReports extends Command
             }
         } catch (\Throwable $e) {
             $this->warn("⚠️  Failed to delete task {$taskId}: " . $e->getMessage());
-            Log::channel('daily')->warning('Failed to delete eBay task', [
-                'task_id' => $taskId,
-                'error' => $e->getMessage(),
-            ]);
+            $this->warn('Failed to delete eBay task - Task ID: ' . $taskId . ', Error: ' . $e->getMessage());
         }
     }
 
@@ -645,17 +672,10 @@ class FetchEbayReports extends Command
             ];
         }
 
-        // Log parsing stats
-        if ($parseSkipped['column_mismatch'] > 0 || $parseSkipped['no_itemid'] > 0 || $parseSkipped['no_sku'] > 0 || $parseSkipped['duplicate_in_feed'] > 0) {
-            Log::channel('daily')->info('eBay Report Parsing', [
-                'total_rows' => $totalRows,
-                'parsed' => count($data),
-                'skipped_column_mismatch' => $parseSkipped['column_mismatch'],
-                'skipped_no_itemid' => $parseSkipped['no_itemid'],
-                'skipped_no_sku' => $parseSkipped['no_sku'],
-                'skipped_duplicate_in_feed' => $parseSkipped['duplicate_in_feed'],
-            ]);
-        }
+            // Log parsing stats
+            if ($parseSkipped['column_mismatch'] > 0 || $parseSkipped['no_itemid'] > 0 || $parseSkipped['no_sku'] > 0 || $parseSkipped['duplicate_in_feed'] > 0) {
+                $this->info('eBay Report Parsing - Total rows: ' . $totalRows . ', Parsed: ' . count($data) . ', Skipped (column_mismatch: ' . $parseSkipped['column_mismatch'] . ', no_itemid: ' . $parseSkipped['no_itemid'] . ', no_sku: ' . $parseSkipped['no_sku'] . ', duplicate_in_feed: ' . $parseSkipped['duplicate_in_feed'] . ')');
+            }
 
         return $data;
     }
@@ -735,17 +755,21 @@ class FetchEbayReports extends Command
                 $this->info("📊 Item {$id}: {$v} views");
 
                 $skus = $map[$id] ?? [];
-                foreach ($skus as $sku) {
-                    $updated = EbayMetric::where('sku', $sku)
-                        ->update(['views' => $v]);
-                    
-                    if ($updated) {
-                        $this->info("✅ Updated views for {$id}/{$sku}: {$v}");
-                    } else {
-                        $this->warn("⚠️  Failed to update views for {$id}/{$sku}");
+                if (!empty($skus)) {
+                    foreach ($skus as $sku) {
+                        $updated = EbayMetric::where('sku', $sku)
+                            ->update(['views' => $v]);
+                        
+                        if ($updated) {
+                            $this->info("✅ Updated views for {$id}/{$sku}: {$v}");
+                        } else {
+                            $this->warn("⚠️  Failed to update views for {$id}/{$sku}");
+                        }
                     }
                 }
             }
+            
+            DB::disconnect();
             
             // Add small delay between API calls
             if ($chunkIndex < count($chunks) - 1) {
@@ -808,13 +832,18 @@ class FetchEbayReports extends Command
             if (! $itemId) continue;
 
             // Update for all matched SKUs in $map
-            foreach ($map[$itemId] ?? [] as $sku) {
-                EbayMetric::where('sku', $sku)
-                    ->update([
-                        'organic_clicks' => $organicClicks
-                    ]);
+            $skus = $map[$itemId] ?? [];
+            if (!empty($skus)) {
+                foreach ($skus as $sku) {
+                    EbayMetric::where('sku', $sku)
+                        ->update([
+                            'organic_clicks' => $organicClicks
+                        ]);
+                }
             }
         }
+        
+        DB::disconnect();
 
         $this->info('✅ Organic clicks updated from Sheet');
     }
@@ -882,11 +911,15 @@ class FetchEbayReports extends Command
                 if (! $id) continue;
 
                 $skus = $map[$id] ?? [];
-                foreach ($skus as $sku) {
-                    EbayMetric::where('sku', $sku)
-                        ->update(['l7_views' => $v]);
+                if (!empty($skus)) {
+                    foreach ($skus as $sku) {
+                        EbayMetric::where('sku', $sku)
+                            ->update(['l7_views' => $v]);
+                    }
                 }
             }
+            
+            DB::disconnect();
             
             // Add small delay between API calls
             if ($chunkIndex < count($chunks) - 1) {

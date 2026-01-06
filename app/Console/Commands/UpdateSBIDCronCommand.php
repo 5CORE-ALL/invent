@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use App\Services\GoogleAdsSbidService;
 use App\Models\ProductMaster;
 use App\Models\GoogleAdsCampaign;
@@ -23,10 +24,20 @@ class UpdateSBIDCronCommand extends Command
 
     public function handle()
     {
-        $this->info('Starting SBID update cron for Google campaigns (L1/L7 with SKU matching)...');
+        try {
+            // Check database connection
+            try {
+                DB::connection()->getPdo();
+                $this->info("✓ Database connection OK");
+            } catch (\Exception $e) {
+                $this->error("✗ Database connection failed: " . $e->getMessage());
+                return 1;
+            }
 
-        $customerId = env('GOOGLE_ADS_LOGIN_CUSTOMER_ID');
-        $this->info("Customer ID: {$customerId}");
+            $this->info('Starting SBID update cron for Google campaigns (L1/L7 with SKU matching)...');
+
+            $customerId = env('GOOGLE_ADS_LOGIN_CUSTOMER_ID');
+            $this->info("Customer ID: {$customerId}");
 
         // Calculate date ranges - same logic as GoogleAdsDateRangeTrait
         // Google Ads data is fetched daily at 12 PM via cron
@@ -52,15 +63,32 @@ class UpdateSBIDCronCommand extends Command
         $this->info("Date ranges - L1: {$dateRanges['L1']['start']} to {$dateRanges['L1']['end']}");
         $this->info("Date ranges - L7: {$dateRanges['L7']['start']} to {$dateRanges['L7']['end']}");
 
-        // Fetch product masters
-        $productMasters = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-            ->orderBy('sku', 'asc')
-            ->get();
+            // Fetch product masters
+            $productMasters = ProductMaster::orderBy('parent', 'asc')
+                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+                ->orderBy('sku', 'asc')
+                ->get();
 
-        // Get all SKUs to fetch Shopify inventory data
-        $skus = $productMasters->pluck('sku')->toArray();
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            if ($productMasters->isEmpty()) {
+                $this->warn("No product masters found!");
+                DB::disconnect();
+                return 0;
+            }
+
+            // Get all SKUs to fetch Shopify inventory data
+            $skus = $productMasters->pluck('sku')->filter()->unique()->values()->toArray();
+
+            if (empty($skus)) {
+                $this->warn("No valid SKUs found!");
+                DB::disconnect();
+                return 0;
+            }
+
+            $shopifyData = [];
+            if (!empty($skus)) {
+                $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            }
+            DB::disconnect();
 
         $this->info("Found " . $productMasters->count() . " product masters");
 
@@ -205,9 +233,16 @@ class UpdateSBIDCronCommand extends Command
             }
         }
 
-        $processedCount = count($campaignUpdates);
-        $this->info("Done. Processed: {$processedCount} unique campaigns.");
+            $processedCount = count($campaignUpdates);
+            $this->info("Done. Processed: {$processedCount} unique campaigns.");
 
-        return 0;
+            return 0;
+        } catch (\Exception $e) {
+            $this->error("✗ Error occurred: " . $e->getMessage());
+            $this->error("Stack trace: " . $e->getTraceAsString());
+            return 1;
+        } finally {
+            DB::disconnect();
+        }
     }
 }

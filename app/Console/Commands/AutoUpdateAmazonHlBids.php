@@ -11,7 +11,6 @@ use App\Models\AmazonSpCampaignReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use GuzzleHttp\Client;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 
 class AutoUpdateAmazonHlBids extends Command
@@ -196,16 +195,7 @@ class AutoUpdateAmazonHlBids extends Command
                 }
             }
             
-            Log::info("Amazon HL Bids Update", [
-                'total_campaigns' => count($campaignIds),
-                'campaigns' => $campaignDetails,
-                'campaign_ids' => $campaignIds,
-                'bids' => $newBids,
-                'result' => $result,
-                'last_error' => $lastError,
-                'attempts' => $attempt
-            ]);
-            $this->info("Detailed HL update log captured. Check laravel.log for payload/context.");
+            $this->info("Amazon HL Bids Update completed. Total campaigns: " . count($campaignIds));
 
             if ($result && is_array($result) && ($result['status'] ?? 0) == 200) {
                 $this->info("✓ Command completed successfully");
@@ -218,13 +208,9 @@ class AutoUpdateAmazonHlBids extends Command
         } catch (\Exception $e) {
             $this->error("✗ Error occurred: " . $e->getMessage());
             $this->error("Stack trace: " . $e->getTraceAsString());
-            $this->error("Amazon HL Bids Update Error", [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine()
-            ]);
             return 1;
+        } finally {
+            DB::disconnect();
         }
     }
 
@@ -249,7 +235,11 @@ class AutoUpdateAmazonHlBids extends Command
                 return [];
             }
 
-            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            $shopifyData = [];
+            
+            if (!empty($skus)) {
+                $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            }
 
         $amazonSpCampaignReportsL7 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
             ->where('report_date_range', 'L7')
@@ -383,15 +373,15 @@ class AutoUpdateAmazonHlBids extends Command
 
         }
 
-        return $result;
+            DB::disconnect();
+            return $result;
         
         } catch (\Exception $e) {
             $this->error("Error in getAutomateAmzUtilizedBgtHl: " . $e->getMessage());
-            $this->error("getAutomateAmzUtilizedBgtHl error", [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
+            $this->error("Stack trace: " . $e->getTraceAsString());
             return [];
+        } finally {
+            DB::disconnect();
         }
     }
 

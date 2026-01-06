@@ -10,7 +10,6 @@ use App\Models\AmazonSpCampaignReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use GuzzleHttp\Client;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 
 class AutoUpdateAmzUnderPtBids extends Command
@@ -27,119 +26,149 @@ class AutoUpdateAmzUnderPtBids extends Command
 
     public function handle()
     {
-        $this->info("Starting Amazon bids auto-update...");
-
-        $updateKwBids = new AmazonSpBudgetController;
-
-        $campaigns = $this->getAutomateAmzUtilizedBgtPt();
-
-        if (empty($campaigns)) {
-            $this->warn("No campaigns matched filter conditions.");
-            return 0;
-        }
-
-        // Filter out campaigns with invalid data
-        $validCampaigns = collect($campaigns)->filter(function ($campaign) {
-            return !empty($campaign->campaign_id) && 
-                   isset($campaign->sbid) && 
-                   is_numeric($campaign->sbid) && 
-                   $campaign->sbid > 0;
-        })->values();
-
-        if ($validCampaigns->isEmpty()) {
-            $this->warn("No valid campaigns found (missing campaign_id or invalid bid).");
-            return 0;
-        }
-
-        $this->info("Found " . $validCampaigns->count() . " valid campaigns to update.");
-        $this->line("");
-
-        // Log campaigns before update
-        $this->info("Campaigns to be updated:");
-        foreach ($validCampaigns as $campaign) {
-            $campaignName = $campaign->campaignName ?? 'N/A';
-            $newBid = $campaign->sbid ?? 0;
-            $this->line("  Campaign: {$campaignName} | New Bid: {$newBid}");
-        }
-        $this->line("");
-
-        $campaignIds = $validCampaigns->pluck('campaign_id')->toArray();
-        $newBids = $validCampaigns->pluck('sbid')->toArray();
-
-        // Validate arrays are aligned
-        if (count($campaignIds) !== count($newBids)) {
-            $this->error("✗ Array mismatch: campaign IDs and bids count don't match!");
-            return 1;
-        }
-
         try {
-            $result = $updateKwBids->updateAutoCampaignTargetsBid($campaignIds, $newBids);
+            $this->info("Starting Amazon bids auto-update...");
 
-            // Handle Response object (when no targets found)
-            if (is_object($result) && method_exists($result, 'getData')) {
-                $result = $result->getData(true);
+            // Check database connection
+            try {
+                DB::connection()->getPdo();
+                $this->info("✓ Database connection OK");
+            } catch (\Exception $e) {
+                $this->error("✗ Database connection failed: " . $e->getMessage());
+                return 1;
             }
 
-            // Check for errors
-            if (is_array($result) && isset($result['status'])) {
-                if ($result['status'] == 200) {
-                    $this->info("✓ Bid update completed successfully!");
-                    $this->line("");
-                    $this->info("Updated campaigns:");
-                    foreach ($validCampaigns as $campaign) {
-                        $campaignName = $campaign->campaignName ?? 'N/A';
-                        $newBid = $campaign->sbid ?? 0;
-                        $this->line("  Campaign: {$campaignName} | New Bid: {$newBid}");
-                    }
-                } else {
-                    $this->error("✗ Bid update failed!");
-                    $this->error("Status: " . $result['status']);
-                    if (isset($result['message'])) {
-                        $this->error("Message: " . $result['message']);
-                    }
-                    if (isset($result['error'])) {
-                        $this->error("Error: " . $result['error']);
-                    }
-                    return 1;
-                }
-            } else {
-                // Handle unexpected response format
-                $this->warn("Unexpected response format from update method.");
-                if (is_array($result) || is_object($result)) {
-                    $this->line("Response: " . json_encode($result));
-                } else {
-                    $this->line("Response type: " . gettype($result));
-                }
+            $updateKwBids = new AmazonSpBudgetController;
+
+            $campaigns = $this->getAutomateAmzUtilizedBgtPt();
+
+            if (empty($campaigns)) {
+                $this->warn("No campaigns matched filter conditions.");
+                return 0;
             }
 
+            // Filter out campaigns with invalid data
+            $validCampaigns = collect($campaigns)->filter(function ($campaign) {
+                return !empty($campaign->campaign_id) && 
+                       isset($campaign->sbid) && 
+                       is_numeric($campaign->sbid) && 
+                       $campaign->sbid > 0;
+            })->values();
+
+            if ($validCampaigns->isEmpty()) {
+                $this->warn("No valid campaigns found (missing campaign_id or invalid bid).");
+                return 0;
+            }
+
+            $this->info("Found " . $validCampaigns->count() . " valid campaigns to update.");
+            $this->line("");
+
+            // Log campaigns before update
+            $this->info("Campaigns to be updated:");
+            foreach ($validCampaigns as $campaign) {
+                $campaignName = $campaign->campaignName ?? 'N/A';
+                $newBid = $campaign->sbid ?? 0;
+                $this->line("  Campaign: {$campaignName} | New Bid: {$newBid}");
+            }
+            $this->line("");
+
+            $campaignIds = $validCampaigns->pluck('campaign_id')->toArray();
+            $newBids = $validCampaigns->pluck('sbid')->toArray();
+
+            // Validate arrays are aligned
+            if (count($campaignIds) !== count($newBids)) {
+                $this->error("✗ Array mismatch: campaign IDs and bids count don't match!");
+                return 1;
+            }
+
+            try {
+                $result = $updateKwBids->updateAutoCampaignTargetsBid($campaignIds, $newBids);
+
+                // Handle Response object (when no targets found)
+                if (is_object($result) && method_exists($result, 'getData')) {
+                    $result = $result->getData(true);
+                }
+
+                // Check for errors
+                if (is_array($result) && isset($result['status'])) {
+                    if ($result['status'] == 200) {
+                        $this->info("✓ Bid update completed successfully!");
+                        $this->line("");
+                        $this->info("Updated campaigns:");
+                        foreach ($validCampaigns as $campaign) {
+                            $campaignName = $campaign->campaignName ?? 'N/A';
+                            $newBid = $campaign->sbid ?? 0;
+                            $this->line("  Campaign: {$campaignName} | New Bid: {$newBid}");
+                        }
+                    } else {
+                        $this->error("✗ Bid update failed!");
+                        $this->error("Status: " . $result['status']);
+                        if (isset($result['message'])) {
+                            $this->error("Message: " . $result['message']);
+                        }
+                        if (isset($result['error'])) {
+                            $this->error("Error: " . $result['error']);
+                        }
+                        return 1;
+                    }
+                } else {
+                    // Handle unexpected response format
+                    $this->warn("Unexpected response format from update method.");
+                    if (is_array($result) || is_object($result)) {
+                        $this->line("Response: " . json_encode($result));
+                    } else {
+                        $this->line("Response type: " . gettype($result));
+                    }
+                }
+
+            } catch (\Exception $e) {
+                $this->error("✗ Exception occurred during bid update:");
+                $this->error($e->getMessage());
+                $this->error("Stack trace: " . $e->getTraceAsString());
+                return 1;
+            }
+
+            return 0;
         } catch (\Exception $e) {
-            $this->error("✗ Exception occurred during bid update:");
-            $this->error($e->getMessage());
-            Log::error("AutoUpdateAmzUnderPtBids Error: " . $e->getMessage(), [
-                'trace' => $e->getTraceAsString()
-            ]);
+            $this->error("✗ Error in handle: " . $e->getMessage());
+            $this->error("Stack trace: " . $e->getTraceAsString());
             return 1;
+        } finally {
+            DB::disconnect();
         }
-
-        return 0;
     }
 
     public function getAutomateAmzUtilizedBgtPt()
     {
-        $productMasters = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-            ->orderBy('sku', 'asc')
-            ->get();
+        try {
+            $productMasters = ProductMaster::orderBy('parent', 'asc')
+                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+                ->orderBy('sku', 'asc')
+                ->get();
 
-        $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+            if ($productMasters->isEmpty()) {
+                $this->warn("No product masters found in database!");
+                return [];
+            }
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
 
-        $amazonDatasheets = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
+            if (empty($skus)) {
+                $this->warn("No valid SKUs found!");
+                return [];
+            }
 
-        $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+            $shopifyData = [];
+            $amazonDatasheets = [];
+            $nrValues = [];
+
+            if (!empty($skus)) {
+                $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+                $amazonDatasheets = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy(function ($item) {
+                    return strtoupper($item->sku);
+                });
+                $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+            }
 
         $amazonSpCampaignReportsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L7')
@@ -280,9 +309,18 @@ class AutoUpdateAmzUnderPtBids extends Command
                 
                 $result[] = (object) $row;
             }
-        }
+            }
 
-        return $result;
+            DB::disconnect();
+            return $result;
+        
+        } catch (\Exception $e) {
+            $this->error("Error in getAutomateAmzUtilizedBgtPt: " . $e->getMessage());
+            $this->error("Stack trace: " . $e->getTraceAsString());
+            return [];
+        } finally {
+            DB::disconnect();
+        }
     }
 
 }

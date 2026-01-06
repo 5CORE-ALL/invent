@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use App\Http\Controllers\MarketPlace\ACOSControl\AmazonACOSController;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\FbaTable;
@@ -23,13 +24,23 @@ class UpdateAmazonFbaKwBudgetCronCommand extends Command
 
     public function handle()
     {
-        $this->info('Starting budget update cron for Amazon FBA keyword campaigns (ACOS-based)...');
+        try {
+            // Check database connection
+            try {
+                DB::connection()->getPdo();
+                $this->info("✓ Database connection OK");
+            } catch (\Exception $e) {
+                $this->error("✗ Database connection failed: " . $e->getMessage());
+                return 1;
+            }
 
-        // Get all FBA records with inventory > 0
-        $fbaData = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
-            ->where('quantity_available', '>', 0)
-            ->orderBy('seller_sku', 'asc')
-            ->get();
+            $this->info('Starting budget update cron for Amazon FBA keyword campaigns (ACOS-based)...');
+
+            // Get all FBA records with inventory > 0
+            $fbaData = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
+                ->where('quantity_available', '>', 0)
+                ->orderBy('seller_sku', 'asc')
+                ->get();
 
         if ($fbaData->isEmpty()) {
             $this->warn("No FBA records found.");
@@ -38,21 +49,31 @@ class UpdateAmazonFbaKwBudgetCronCommand extends Command
 
         $this->info("Found " . $fbaData->count() . " FBA records");
 
-        // Extract seller SKUs for campaigns matching
-        $sellerSkus = $fbaData->pluck('seller_sku')->unique()->toArray();
+            // Extract seller SKUs for campaigns matching
+            $sellerSkus = $fbaData->pluck('seller_sku')->filter()->unique()->values()->toArray();
 
-        // Get base SKUs (without FBA) for Shopify data
-        $baseSkus = $fbaData->map(function ($item) {
-            $sku = $item->seller_sku;
-            $base = preg_replace('/\s*FBA\s*/i', '', $sku);
-            return strtoupper(trim($base));
-        })->unique()->toArray();
+            if (empty($sellerSkus)) {
+                $this->warn("No valid seller SKUs found!");
+                DB::disconnect();
+                return 0;
+            }
 
-        $shopifyData = ShopifySku::whereIn('sku', $baseSkus)
-            ->get()
-            ->keyBy(function ($item) {
-                return trim(strtoupper($item->sku));
-            });
+            // Get base SKUs (without FBA) for Shopify data
+            $baseSkus = $fbaData->map(function ($item) {
+                $sku = $item->seller_sku;
+                $base = preg_replace('/\s*FBA\s*/i', '', $sku);
+                return strtoupper(trim($base));
+            })->filter()->unique()->values()->toArray();
+
+            $shopifyData = [];
+            if (!empty($baseSkus)) {
+                $shopifyData = ShopifySku::whereIn('sku', $baseSkus)
+                    ->get()
+                    ->keyBy(function ($item) {
+                        return trim(strtoupper($item->sku));
+                    });
+            }
+            DB::disconnect();
 
         // Fetch L30 campaign reports for keywords (not ending with PT) - only ENABLED campaigns
         $amazonSpCampaignReportsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
@@ -232,6 +253,13 @@ class UpdateAmazonFbaKwBudgetCronCommand extends Command
             $this->info("No campaigns to update.");
         }
 
-        return 0;
+            return 0;
+        } catch (\Exception $e) {
+            $this->error("✗ Error occurred: " . $e->getMessage());
+            $this->error("Stack trace: " . $e->getTraceAsString());
+            return 1;
+        } finally {
+            DB::disconnect();
+        }
     }
 }

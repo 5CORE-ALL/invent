@@ -10,7 +10,6 @@ use App\Models\AmazonSpCampaignReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use GuzzleHttp\Client;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 
 class AutoUpdateAmazonPtBids extends Command
@@ -195,16 +194,7 @@ class AutoUpdateAmazonPtBids extends Command
                 }
             }
             
-            Log::info("Amazon PT Bids Update", [
-                'total_campaigns' => count($campaignIds),
-                'campaigns' => $campaignDetails,
-                'campaign_ids' => $campaignIds,
-                'bids' => $newBids,
-                'result' => $result,
-                'last_error' => $lastError,
-                'attempts' => $attempt
-            ]);
-            $this->info("Detailed PT update log captured. Check laravel.log for payload/context.");
+            $this->info("Amazon PT Bids Update completed. Total campaigns: " . count($campaignIds));
 
             if ($result && is_array($result) && ($result['status'] ?? 0) == 200) {
                 $this->info("✓ Command completed successfully");
@@ -217,13 +207,9 @@ class AutoUpdateAmazonPtBids extends Command
         } catch (\Exception $e) {
             $this->error("✗ Error occurred: " . $e->getMessage());
             $this->error("Stack trace: " . $e->getTraceAsString());
-            $this->error("Amazon PT Bids Update Error", [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine()
-            ]);
             return 1;
+        } finally {
+            DB::disconnect();
         }
     }
 
@@ -248,11 +234,15 @@ class AutoUpdateAmazonPtBids extends Command
                 return [];
             }
 
-            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
-
-            $amazonDatasheets = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy(function ($item) {
-                return strtoupper($item->sku);
-            });
+            $shopifyData = [];
+            $amazonDatasheets = [];
+            
+            if (!empty($skus)) {
+                $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+                $amazonDatasheets = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy(function ($item) {
+                    return strtoupper($item->sku);
+                });
+            }
 
         $amazonSpCampaignReportsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L7')
@@ -403,15 +393,15 @@ class AutoUpdateAmazonPtBids extends Command
             }
         }
 
-        return $result;
+            DB::disconnect();
+            return $result;
         
         } catch (\Exception $e) {
             $this->error("Error in getAutomateAmzUtilizedBgtPt: " . $e->getMessage());
-            $this->error("getAutomateAmzUtilizedBgtPt error", [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
+            $this->error("Stack trace: " . $e->getTraceAsString());
             return [];
+        } finally {
+            DB::disconnect();
         }
     }
 

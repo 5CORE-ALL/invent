@@ -8,6 +8,7 @@ use Illuminate\Console\Command;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
+use Illuminate\Support\Facades\DB;
 
 class AutoUpdateAmazonPinkDilKwAds extends Command
 {
@@ -21,39 +22,70 @@ class AutoUpdateAmazonPinkDilKwAds extends Command
 
     public function handle()
     {
-        $this->info("Starting Amazon bgts auto-update...");
+        try {
+            $this->info("Starting Amazon bgts auto-update...");
 
-        $updatePinkDilKwAds = new AmazonACOSController;
+            // Check database connection
+            try {
+                DB::connection()->getPdo();
+                $this->info("✓ Database connection OK");
+            } catch (\Exception $e) {
+                $this->error("✗ Database connection failed: " . $e->getMessage());
+                return 1;
+            }
 
-        $campaigns = $this->getAmazonPinkDilKwAdsData();
+            $updatePinkDilKwAds = new AmazonACOSController;
 
-        if (empty($campaigns)) {
-            $this->warn("No campaigns matched filter conditions.");
-            return 0;
+            $campaigns = $this->getAmazonPinkDilKwAdsData();
+
+            if (empty($campaigns)) {
+                $this->warn("No campaigns matched filter conditions.");
+                return 0;
+            }
+
+            $campaignIds = collect($campaigns)->pluck('campaign_id')->toArray();
+            $newBgts = collect($campaigns)->pluck('sbgt')->toArray();
+
+            $result = $updatePinkDilKwAds->updateAutoAmazonCampaignBgt($campaignIds, $newBgts);
+            $this->info("Update Result: " . json_encode($result));
+            
+        } catch (\Exception $e) {
+            $this->error("✗ Error occurred: " . $e->getMessage());
+            $this->error("Stack trace: " . $e->getTraceAsString());
+            return 1;
+        } finally {
+            DB::disconnect();
         }
-
-        $campaignIds = collect($campaigns)->pluck('campaign_id')->toArray();
-        $newBgts = collect($campaigns)->pluck('sbgt')->toArray();
-
-        $result = $updatePinkDilKwAds->updateAutoAmazonCampaignBgt($campaignIds, $newBgts);
-        $this->info("Update Result: " . json_encode($result));
-        
     }
 
     public function getAmazonPinkDilKwAdsData(){
+        try {
+            $productMasters = ProductMaster::orderBy('parent', 'asc')
+                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+                ->orderBy('sku', 'asc')
+                ->get();
 
-        $productMasters = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-            ->orderBy('sku', 'asc')
-            ->get();
+            if ($productMasters->isEmpty()) {
+                $this->warn("No product masters found in database!");
+                return [];
+            }
 
-        $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+            $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
 
-        $amazonDatasheetsBySku = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
+            if (empty($skus)) {
+                $this->warn("No valid SKUs found!");
+                return [];
+            }
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            $amazonDatasheetsBySku = [];
+            $shopifyData = [];
+
+            if (!empty($skus)) {
+                $amazonDatasheetsBySku = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy(function ($item) {
+                    return strtoupper($item->sku);
+                });
+                $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            }
 
         $amazonSpCampaignReportsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L7')
@@ -99,9 +131,18 @@ class AutoUpdateAmazonPinkDilKwAds extends Command
                     $result[] = (object) $row;
                 }
             }
-        }
+            }
 
-        return $result;
+            DB::disconnect();
+            return $result;
+        
+        } catch (\Exception $e) {
+            $this->error("Error in getAmazonPinkDilKwAdsData: " . $e->getMessage());
+            $this->error("Stack trace: " . $e->getTraceAsString());
+            return [];
+        } finally {
+            DB::disconnect();
+        }
     }
 
 }

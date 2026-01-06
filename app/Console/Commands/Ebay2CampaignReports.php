@@ -5,7 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Ebay2GeneralReport;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class Ebay2CampaignReports extends Command
@@ -29,11 +29,21 @@ class Ebay2CampaignReports extends Command
      */
     public function handle()
     {
-        $accessToken = $this->getAccessToken();
-        if (!$accessToken) {
-            $this->error('Failed to retrieve eBay2 access token.');
-            return;
-        }
+        try {
+            // Check database connection
+            try {
+                DB::connection()->getPdo();
+                $this->info("✓ Database connection OK");
+            } catch (\Exception $e) {
+                $this->error("✗ Database connection failed: " . $e->getMessage());
+                return;
+            }
+
+            $accessToken = $this->getAccessToken();
+            if (!$accessToken) {
+                $this->error('Failed to retrieve eBay2 access token.');
+                return;
+            }
 
         // Fetch only yesterday's data for charts
         $yesterday = Carbon::yesterday()->toDateString();
@@ -62,7 +72,13 @@ class Ebay2CampaignReports extends Command
         foreach ($ranges as $rangeKey => [$from, $to]) {
             $this->fetchAndStoreListingReport($accessToken, $from, $to, $rangeKey);
         }
-        $this->info("✅ All campaign data processed.");
+            $this->info("✅ All campaign data processed.");
+        } catch (\Exception $e) {
+            $this->error("✗ Error occurred: " . $e->getMessage());
+            $this->error("Stack trace: " . $e->getTraceAsString());
+        } finally {
+            DB::disconnect();
+        }
     }
 
     private function fetchAndStoreListingReport($accessToken, $from, $to, $rangeKey)
@@ -98,10 +114,19 @@ class Ebay2CampaignReports extends Command
 
         $items = $this->downloadParseAndStoreReport($accessToken, $reportId, $rangeKey);
 
-        foreach($items as $item){
-            if (!$item || empty($item['listing_id'])) continue;
-            
-            Ebay2GeneralReport::updateOrCreate(
+        if (empty($items)) {
+            $this->warn("No items found in report for range: {$rangeKey}");
+            return;
+        }
+
+        // Process in chunks to avoid too many connections
+        $chunks = array_chunk($items, 100);
+        
+        foreach($chunks as $chunkIndex => $chunk) {
+            foreach($chunk as $item){
+                if (!$item || empty($item['listing_id'])) continue;
+                
+                Ebay2GeneralReport::updateOrCreate(
                 ['listing_id' => $item['listing_id'], 'report_range' => $rangeKey],
                 [
                     'campaign_id' => $item['campaign_id'] ?? null,
@@ -114,7 +139,11 @@ class Ebay2CampaignReports extends Command
                     'ctr' => is_numeric($item['ctr'] ?? null) ? (float)$item['ctr'] : 0,
                     'channels' => $item['channels'] ?? null,
                 ]
-            );
+                );
+            }
+            
+            // Disconnect after each chunk
+            DB::disconnect();
         }
         $this->info("✅ CAMPAIGN_PERFORMANCE_REPORT Data stored for range: {$rangeKey}");
     }
@@ -151,7 +180,7 @@ class Ebay2CampaignReports extends Command
                 ->get("https://api.ebay.com/sell/marketing/v1/ad_report_task/{$taskId}");
             
             if ($check->status() === 401 || $check->json('errors.0.message') === 'Invalid access token') {
-                logger()->error("Access token expired, refreshing...");
+                $this->warn("Access token expired, refreshing...");
 
                 $token = $this->getAccessToken();
                 $check = Http::withToken($token)
@@ -160,14 +189,12 @@ class Ebay2CampaignReports extends Command
             
             $status = $check['reportTaskStatus'] ?? 'IN_PROGRESS';
 
-            logger()->info("Polling status for $taskId: $status");
             $this->info("Polling status for $taskId: $status");
         } while (!in_array($status, ['SUCCESS','FAILED']));
 
         if ($status !== 'SUCCESS') {
-            logger()->error("Report task $taskId failed or timed out");
             $this->error("Report task $taskId failed or timed out");
-            return [];
+            return null;
         }
 
         $reportId = $check['reportId'] ?? null;
@@ -179,7 +206,7 @@ class Ebay2CampaignReports extends Command
         $res = Http::withToken($token)->get("https://api.ebay.com/sell/marketing/v1/ad_report/{$reportId}");
         if (!$res->ok()) {
             $this->error("Failed to fetch report metadata.");
-            return;
+            return [];
         }        
 
         $gzPath = storage_path("app/{$rangeKey}_{$reportId}.tsv.gz");
@@ -196,20 +223,27 @@ class Ebay2CampaignReports extends Command
         $handle = fopen($tsvPath, 'rb');
         if (!$handle) {
             $this->error("Unable to open extracted TSV file.");
-            return;
+            @unlink($gzPath);
+            @unlink($tsvPath);
+            return [];
         }
 
         $headers = fgetcsv($handle, 0, "\t");
-        if (!$headers) {
+        if (!$headers || empty($headers)) {
             $this->error("Header row missing or unreadable.");
             fclose($handle);
-            return;
+            @unlink($gzPath);
+            @unlink($tsvPath);
+            return [];
         }
         $allData = [];
         
         while (($line = fgetcsv($handle, 0, "\t")) !== false) {
+            if (count($line) !== count($headers)) continue;
             $item = array_combine($headers, $line);
-            $allData[] = $item;
+            if ($item) {
+                $allData[] = $item;
+            }
         }
         
         fclose($handle);
@@ -248,13 +282,13 @@ class Ebay2CampaignReports extends Command
                 ]);
 
             if ($response->successful()) {
-                Log::info('eBay2 token', ['response' => 'Token generated!']);
+                $this->info('eBay2 token generated successfully');
                 return $response->json()['access_token'];
             }
 
-            Log::error('eBay2 token refresh error', ['response' => $response->json()]);
+            $this->error('eBay2 token refresh error: ' . json_encode($response->json()));
         } catch (\Exception $e) {
-            Log::error('eBay2 token refresh exception: ' . $e->getMessage());
+            $this->error('eBay2 token refresh exception: ' . $e->getMessage());
         }
 
         return null;

@@ -9,6 +9,7 @@ use App\Models\EbayThreeDataView;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 
 class Ebay3UnderUtilzBidsAutoUpdate extends Command
 {
@@ -22,14 +23,24 @@ class Ebay3UnderUtilzBidsAutoUpdate extends Command
 
     public function handle()
     {
-        // Set unlimited execution time for long-running processes
-        set_time_limit(0);
-        ini_set('max_execution_time', 0);
-        ini_set('memory_limit', '1024M');
+        try {
+            // Set unlimited execution time for long-running processes
+            set_time_limit(0);
+            ini_set('max_execution_time', 0);
+            ini_set('memory_limit', '1024M');
 
-        $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        $this->info("🚀 Starting eBay3 Under-Utilized Bids Auto-Update");
-        $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            // Check database connection
+            try {
+                DB::connection()->getPdo();
+                $this->info("✓ Database connection OK");
+            } catch (\Exception $e) {
+                $this->error("✗ Database connection failed: " . $e->getMessage());
+                return 1;
+            }
+
+            $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            $this->info("🚀 Starting eBay3 Under-Utilized Bids Auto-Update");
+            $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
         $updateUnderUtilizedBids = new Ebay3UtilizedAdsController;
 
@@ -188,27 +199,49 @@ class Ebay3UnderUtilzBidsAutoUpdate extends Command
         }
 
         $this->info("");
-        $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        $this->info("📈 Summary: {$totalSuccess} keywords updated successfully, {$totalFailed} failed");
-        $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+            $this->info("📈 Summary: {$totalSuccess} keywords updated successfully, {$totalFailed} failed");
+            $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
-        return 0;
+            return 0;
+        } catch (\Exception $e) {
+            $this->error("✗ Error occurred: " . $e->getMessage());
+            $this->error("Stack trace: " . $e->getTraceAsString());
+            return 1;
+        } finally {
+            DB::disconnect();
+        }
     }
 
     public function getEbay3UnderUtilizCampaign()
     {
-        $productMasters = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-            ->orderBy('sku', 'asc')
-            ->get();
+        try {
+            $productMasters = ProductMaster::orderBy('parent', 'asc')
+                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+                ->orderBy('sku', 'asc')
+                ->get();
 
-        $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+            if ($productMasters->isEmpty()) {
+                $this->warn("No product masters found in database!");
+                return [];
+            }
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
 
-        $nrValues = EbayThreeDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+            if (empty($skus)) {
+                $this->warn("No valid SKUs found!");
+                return [];
+            }
 
-        $ebayMetricData = Ebay3Metric::whereIn('sku', $skus)->get()->keyBy('sku');
+            $shopifyData = [];
+            $nrValues = [];
+            $ebayMetricData = [];
+
+            if (!empty($skus)) {
+                $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+                $nrValues = EbayThreeDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+                $ebayMetricData = Ebay3Metric::whereIn('sku', $skus)->get()->keyBy('sku');
+            }
 
         $reports = Ebay3PriorityReport::whereIn('report_range', ['L7', 'L1', 'L30'])
             ->orderBy('report_range', 'asc')
@@ -346,9 +379,18 @@ class Ebay3UnderUtilzBidsAutoUpdate extends Command
                     $result[] = (object) $row;
                 }
             }
-        }
+            }
 
-        return $result;
+            DB::disconnect();
+            return $result;
+        
+        } catch (\Exception $e) {
+            $this->error("Error in getEbay3UnderUtilizCampaign: " . $e->getMessage());
+            $this->error("Stack trace: " . $e->getTraceAsString());
+            return [];
+        } finally {
+            DB::disconnect();
+        }
     }
 
     private function getDilColor($l30, $inv)

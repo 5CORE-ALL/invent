@@ -8,7 +8,7 @@ use App\Models\FbaTable;
 use GuzzleHttp\Client;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class AutoPauseEnableFbaCampaignsByL30 extends Command
 {
@@ -24,9 +24,19 @@ class AutoPauseEnableFbaCampaignsByL30 extends Command
 
     public function handle()
     {
-        $this->info("Starting FBA campaign auto pause/enable based on L30...");
+        try {
+            // Check database connection
+            try {
+                DB::connection()->getPdo();
+                $this->info("✓ Database connection OK");
+            } catch (\Exception $e) {
+                $this->error("✗ Database connection failed: " . $e->getMessage());
+                return 1;
+            }
 
-        $campaigns = $this->getFbaCampaignsWithL30();
+            $this->info("Starting FBA campaign auto pause/enable based on L30...");
+
+            $campaigns = $this->getFbaCampaignsWithL30();
 
         if (empty($campaigns)) {
             $this->warn("No FBA campaigns found.");
@@ -106,55 +116,75 @@ class AutoPauseEnableFbaCampaignsByL30 extends Command
             }
         }
 
-        $this->line("");
-        $this->info("Summary: Enabled {$enableCount} campaigns, Paused {$pauseCount} campaigns");
+            $this->line("");
+            $this->info("Summary: Enabled {$enableCount} campaigns, Paused {$pauseCount} campaigns");
 
-        return 0;
+            return 0;
+        } catch (\Exception $e) {
+            $this->error("✗ Error occurred: " . $e->getMessage());
+            $this->error("Stack trace: " . $e->getTraceAsString());
+            return 1;
+        } finally {
+            DB::disconnect();
+        }
     }
 
     protected function getFbaCampaignsWithL30()
     {
-        // Get all FBA records
-        $fbaData = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
-            ->orderBy('seller_sku', 'asc')
-            ->get();
+        try {
+            // Get all FBA records
+            $fbaData = FbaTable::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
+                ->orderBy('seller_sku', 'asc')
+                ->get();
 
-        // Extract seller SKUs for campaigns matching
-        $sellerSkus = $fbaData->pluck('seller_sku')->unique()->toArray();
+            if ($fbaData->isEmpty()) {
+                $this->warn("No FBA records found in database!");
+                DB::disconnect();
+                return [];
+            }
 
-        // Get FBA monthly sales data (contains l30_units)
-        $fbaMonthlySales = FbaMonthlySale::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
-            ->get()
-            ->keyBy(function ($item) {
-                return strtoupper(trim($item->seller_sku));
-            });
+            // Extract seller SKUs for campaigns matching
+            $sellerSkus = $fbaData->pluck('seller_sku')->filter()->unique()->values()->toArray();
 
-        // Get FBA KW campaigns (excluding PT)
-        $amazonSpCampaignReportsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
-            ->where('report_date_range', 'L30')
-            ->where(function ($q) use ($sellerSkus) {
-                foreach ($sellerSkus as $sku) {
-                    $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
-                }
-            })
-            ->whereRaw("LOWER(TRIM(TRAILING '.' FROM campaignName)) NOT LIKE '% pt'")
-            ->where('campaignStatus', '!=', 'ARCHIVED')
-            ->get();
+            if (empty($sellerSkus)) {
+                $this->warn("No valid seller SKUs found!");
+                DB::disconnect();
+                return [];
+            }
 
-        // Get FBA PT campaigns
-        $amazonSpCampaignReportsL30Pt = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
-            ->where('report_date_range', 'L30')
-            ->where(function ($q) use ($sellerSkus) {
-                foreach ($sellerSkus as $sku) {
-                    $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
-                }
-            })
-            ->where(function ($q) {
-                $q->where('campaignName', 'LIKE', '%FBA PT%')
-                    ->orWhere('campaignName', 'LIKE', '%FBA PT.%');
-            })
-            ->where('campaignStatus', '!=', 'ARCHIVED')
-            ->get();
+            // Get FBA monthly sales data (contains l30_units)
+            $fbaMonthlySales = FbaMonthlySale::whereRaw("seller_sku LIKE '%FBA%' OR seller_sku LIKE '%fba%'")
+                ->get()
+                ->keyBy(function ($item) {
+                    return strtoupper(trim($item->seller_sku));
+                });
+
+            // Get FBA KW campaigns (excluding PT)
+            $amazonSpCampaignReportsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+                ->where('report_date_range', 'L30')
+                ->where(function ($q) use ($sellerSkus) {
+                    foreach ($sellerSkus as $sku) {
+                        $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
+                    }
+                })
+                ->whereRaw("LOWER(TRIM(TRAILING '.' FROM campaignName)) NOT LIKE '% pt'")
+                ->where('campaignStatus', '!=', 'ARCHIVED')
+                ->get();
+
+            // Get FBA PT campaigns
+            $amazonSpCampaignReportsL30Pt = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+                ->where('report_date_range', 'L30')
+                ->where(function ($q) use ($sellerSkus) {
+                    foreach ($sellerSkus as $sku) {
+                        $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
+                    }
+                })
+                ->where(function ($q) {
+                    $q->where('campaignName', 'LIKE', '%FBA PT%')
+                        ->orWhere('campaignName', 'LIKE', '%FBA PT.%');
+                })
+                ->where('campaignStatus', '!=', 'ARCHIVED')
+                ->get();
 
         $result = [];
 
@@ -222,9 +252,18 @@ class AutoPauseEnableFbaCampaignsByL30 extends Command
                 ];
             }
         }
-
+        
+        DB::disconnect();
         return $result;
+    
+    } catch (\Exception $e) {
+        $this->error("Error in getFbaCampaignsWithL30: " . $e->getMessage());
+        $this->error("Stack trace: " . $e->getTraceAsString());
+        return [];
+    } finally {
+        DB::disconnect();
     }
+}
 
     protected function getAccessToken()
     {
@@ -297,9 +336,8 @@ class AutoPauseEnableFbaCampaignsByL30 extends Command
             ];
 
         } catch (\Exception $e) {
-            Log::error("AutoPauseEnableFbaCampaignsByL30 Error: " . $e->getMessage(), [
-                'trace' => $e->getTraceAsString()
-            ]);
+            $this->error("AutoPauseEnableFbaCampaignsByL30 Error: " . $e->getMessage());
+            $this->error("Stack trace: " . $e->getTraceAsString());
             return [
                 'message' => 'Error updating campaign states',
                 'error' => $e->getMessage(),
