@@ -1638,19 +1638,46 @@
             // Helper: Check if NRL has red dot (value is "NRL")
             function isNrlRed(row) {
                 const nrlValue = row.NRL;
-                return nrlValue && String(nrlValue).trim().toUpperCase() === "NRL";
+                // If NRL is null/undefined/empty, default is "RL" (green), so return false
+                if (!nrlValue || nrlValue === '' || nrlValue === null || nrlValue === undefined) {
+                    return false; // Default to RL (green dot)
+                }
+                // Normalize and check if value is "NRL"
+                return String(nrlValue).trim().toUpperCase() === "NRL";
             }
 
             // Helper: Check if NRA has red dot (value is "NRA")
             function isNraRed(row) {
-                const nraValue = row.NRA;
-                return nraValue && String(nraValue).trim().toUpperCase() === "NRA";
+                let nraValue = row.NRA;
+                
+                // If NRA is null/undefined/empty, check NRL to determine default
+                if (!nraValue || nraValue === '' || nraValue === null || nraValue === undefined) {
+                    const nrlValue = row.NRL;
+                    const isNrlRed = nrlValue && String(nrlValue).trim().toUpperCase() === "NRL";
+                    // If NRL is NRL, default to NRA (red), otherwise default to RA (green)
+                    return isNrlRed; // Return true if NRL is "NRL" (meaning default is NRA)
+                }
+                
+                // Normalize and check if value is "NRA"
+                nraValue = String(nraValue).trim().toUpperCase();
+                return nraValue === "NRA";
             }
 
             // Helper: Check if NRA has green dot (value is "RA")
             function isNraGreen(row) {
-                const nraValue = row.NRA;
-                return nraValue && String(nraValue).trim().toUpperCase() === "RA";
+                let nraValue = row.NRA;
+                
+                // If NRA is null/undefined/empty, check NRL to determine default
+                if (!nraValue || nraValue === '' || nraValue === null || nraValue === undefined) {
+                    const nrlValue = row.NRL;
+                    const isNrlRed = nrlValue && String(nrlValue).trim().toUpperCase() === "NRL";
+                    // If NRL is NRL, default to NRA (red), otherwise default to RA (green)
+                    return !isNrlRed; // Return true if NRL is not "NRL" (meaning default is RA)
+                }
+                
+                // Normalize and check if value is "RA"
+                nraValue = String(nraValue).trim().toUpperCase();
+                return nraValue === "RA";
             }
 
             // Helper: Calculate 7UB percentage
@@ -1707,10 +1734,15 @@
                     // 0 INV filter
                     if (window.showZeroInvOnly && parseFloat(data.INV || 0) !== 0) return false;
                     
-                    // Missing ads filter (red dots only, exclude 0 INV items)
+                    // Missing ads filter (red dots only, exclude 0 INV items and yellow dot cases - NRA selected)
                     if (window.showMissingOnly) {
                         const inv = parseFloat(data.INV || 0);
-                        if (inv === 0 || hasCampaign(data)) return false;
+                        const hasCampaignValue = hasCampaign(data);
+                        // Check if NRA is selected (yellow dot case)
+                        const nraValue = data.NRA;
+                        const isNRA = nraValue && String(nraValue).trim().toUpperCase() === "NRA";
+                        // Show only red dot cases: inv !== 0 AND !hasCampaign AND !isNRA
+                        if (inv === 0 || hasCampaignValue || isNRA) return false;
                     }
                     
                     // Running ads filter (green dots only - campaigns that exist)
@@ -1899,9 +1931,16 @@
                         // Count 0 INV
                         if (parseFloat(row.INV || 0) === 0) counts.zeroInv++;
                         
-                        // Count missing campaigns (exclude 0 INV items)
+                        // Count missing campaigns (exclude 0 INV items and yellow dot cases - NRA selected)
                         const inv = parseFloat(row.INV || 0);
-                        if (inv !== 0 && !hasCampaign(row)) counts.missing++;
+                        const hasCampaignValue = hasCampaign(row);
+                        // Check if NRA is selected (yellow dot case)
+                        const nraValue = row.NRA;
+                        const isNRA = nraValue && String(nraValue).trim().toUpperCase() === "NRA";
+                        // Count only red dot cases: inv !== 0 AND !hasCampaign AND !isNRA
+                        if (inv !== 0 && !hasCampaignValue && !isNRA) {
+                            counts.missing++;
+                        }
                         
                         // Count running campaigns (green dots - campaigns that exist)
                         if (hasCampaign(row)) counts.running++;
@@ -2547,13 +2586,30 @@
                     const field = col.getField();
                     let value = row[field];
                     
-                    // Format values based on column type
-                    if (value === null || value === undefined) {
-                        value = '';
-                    } else if (typeof value === 'number') {
-                        value = value;
+                    // Special handling for MISSING column (hasCampaign field)
+                    if (field === 'hasCampaign') {
+                        const inv = parseFloat(row.INV || 0);
+                        const hasCampaign = row.hasCampaign ?? (row.campaignName?.trim() !== '');
+                        
+                        // Check if NRA is selected - value should be "NRA"
+                        const nraValue = row.NRA;
+                        const isNRA = nraValue && String(nraValue).trim().toUpperCase() === "NRA";
+                        
+                        // Show "MISSING" only for red dot case: inv !== 0 AND !hasCampaign AND !isNRA
+                        if (inv !== 0 && !hasCampaign && !isNRA) {
+                            value = 'MISSING';
+                        } else {
+                            value = ''; // Empty for all other cases (green dot, yellow dot, 0 INV)
+                        }
                     } else {
-                        value = String(value);
+                        // Format values based on column type
+                        if (value === null || value === undefined) {
+                            value = '';
+                        } else if (typeof value === 'number') {
+                            value = value;
+                        } else {
+                            value = String(value);
+                        }
                     }
                     
                     rowData.push(value);
