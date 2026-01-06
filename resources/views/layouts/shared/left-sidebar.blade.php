@@ -1247,18 +1247,18 @@
                                         </a>
                                         <div class="collapse" id="shoppable">
                                             <ul class="side-nav-third-level">
-                                                <li>
+                                                {{-- <li>
                                                     <a href="{{ route('one.ration') }}">1:1 RATIO</a>
                                                 </li>
                                                 <li>
                                                     <a href="{{ route('four.ration') }}">4:5 RATIO</a>
-                                                </li>
+                                                </li> --}}
                                                 <li>
                                                     <a href="{{ route('nine.ration') }}">9:16 RATIO</a>
                                                 </li>
-                                                <li>
+                                                {{-- <li>
                                                     <a href="{{ route('sixteen.ration') }}">16:9 RATIO</a>
-                                                </li>
+                                                </li> --}}
                                             </ul>
                                         </div>
                                     </li>

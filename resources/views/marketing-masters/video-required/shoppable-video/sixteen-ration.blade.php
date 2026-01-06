@@ -101,8 +101,60 @@
                         Show All
                     </button>
 
+                    <!-- Import Button -->
+                    <button id="import-btn" class="btn btn-outline-primary d-flex align-items-center gap-1">
+                        <i class="fas fa-upload"></i>
+                        Import
+                    </button>
+
+                    <!-- Export Button -->
+                    <a href="/sixteen-ration-video/export" class="btn btn-outline-success d-flex align-items-center gap-1">
+                        <i class="fas fa-download"></i>
+                        Export
+                    </a>
+
                 </div>
                 <div id="sixteen-ration-video"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Import Modal -->
+<div class="modal fade" id="importModal" tabindex="-1" aria-labelledby="importModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="importModalLabel">
+                    <i class="fas fa-upload"></i> Import Sixteen Ration Video
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold">Download Sample File</label>
+                    <div>
+                        <a href="{{ asset('sample_excel/sample_sixteen_ration_video.csv') }}" 
+                           download 
+                           class="btn btn-outline-primary btn-sm">
+                            <i class="fas fa-download"></i> Download Sample CSV
+                        </a>
+                    </div>
+                </div>
+                <hr>
+                <div class="mb-3">
+                    <label for="importFile" class="form-label fw-semibold">Select File</label>
+                    <input type="file" class="form-control" id="importFile" accept=".csv,.txt,.xlsx,.xls">
+                    <small class="text-muted d-block mt-1">
+                        Supported formats: CSV, TXT, XLSX, XLS
+                    </small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirmImportBtn">
+                    <i class="fas fa-upload"></i> Import
+                </button>
             </div>
         </div>
     </div>
@@ -490,6 +542,72 @@
         document.getElementById('dil-color-filter').addEventListener('change', function (e) {
             currentDilColorFilter = e.target.value;
             setCombinedFilters();
+        });
+
+        // Import Modal functionality
+        const importModal = new bootstrap.Modal(document.getElementById('importModal'));
+        
+        // Open modal when import button is clicked
+        document.getElementById('import-btn').addEventListener('click', function() {
+            // Reset file input
+            document.getElementById('importFile').value = '';
+            importModal.show();
+        });
+
+        // Handle import confirmation
+        document.getElementById('confirmImportBtn').addEventListener('click', function() {
+            const fileInput = document.getElementById('importFile');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Please select a file to import');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            // Show loading
+            const btn = document.getElementById('confirmImportBtn');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Importing...';
+
+            fetch('/sixteen-ration-video/import', {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                },
+                body: formData
+            })
+            .then(res => {
+                if (!res.ok) {
+                    return res.json().then(err => Promise.reject(err));
+                }
+                return res.json();
+            })
+            .then(data => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                if (data.success) {
+                    importModal.hide();
+                    let message = `Import successful!\nImported: ${data.imported}\nSkipped: ${data.skipped}`;
+                    if (data.message) {
+                        message = data.message;
+                    }
+                    alert(message);
+                    table.replaceData(); // Refresh table data
+                } else {
+                    alert('Import failed: ' + (data.error || data.message || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                const errorMsg = error.error || error.message || error.toString();
+                alert('Import failed: ' + errorMsg);
+                console.error('Import error:', error);
+            });
         });
 
     });

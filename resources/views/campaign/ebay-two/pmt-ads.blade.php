@@ -2670,11 +2670,11 @@
 
                     $row.append($('<td data-field="esbid">').text(item.ESBID));
                     
-                    // Calculate SCVR first (eBay L30 / PmtClkL30 * 100)
+                    // Calculate SCVR first (eBay L30 / views * 100)
                     let ebayL30 = Number(item['eBay L30']) || 0;
                     let pmtClkL30 = Number(item['PmtClkL30']) || 0;
                     let views = Number(item.VIEWS) || 0;
-                    let scvr = pmtClkL30 > 0 ? (ebayL30 / pmtClkL30) * 100 : 0;
+                    let scvr = views > 0 ? (ebayL30 / views) * 100 : 0;
 
                     // Check if DIL is red (ov_dil < 0.1666, which is < 16.66%)
                     let dilPercent = parseFloat(item.ov_dil || 0) * 100;
@@ -2693,13 +2693,13 @@
                     } else if (scvr >= 2.01 && scvr <= 3) {
                         sbidValue = 6; // Flat 6
                     } else if (scvr >= 3.01 && scvr <= 5) {
-                        sbidValue = 5; // Flat 5
+                        sbidValue = 6; // Flat 6
                     } else if (scvr >= 5.01 && scvr <= 7) {
-                        sbidValue = 4; // Flat 4
+                        sbidValue = 5; // Flat 5
                     } else if (scvr >= 7.01 && scvr <= 13) {
-                        sbidValue = 3; // Flat 3
+                        sbidValue = 4; // Flat 4
                     } else if (scvr > 13) {
-                        sbidValue = 2; // Flat 2
+                        sbidValue = 3; // Flat 3
                     } 
                     // Priority 3: If SCVR between 0.01-1% OR views < 100, set to 8%
                     else if ((scvr >= 0.01 && scvr <= 1) || views < 100) {
@@ -4564,8 +4564,8 @@
                     // Function to calculate SCVR (same logic as in renderTable)
                     function calculateSCVR(item) {
                         const ebayL30 = Number(item['eBay L30']) || 0;
-                        const pmtClkL30 = Number(item['PmtClkL30']) || 0;
-                        return pmtClkL30 > 0 ? (ebayL30 / pmtClkL30) * 100 : 0;
+                        const views = Number(item.VIEWS) || 0;
+                        return views > 0 ? (ebayL30 / views) * 100 : 0;
                     }
 
                     // Function to calculate SBID (same logic as in renderTable)
@@ -4583,13 +4583,13 @@
                         } else if (scvr >= 2.01 && scvr <= 3) {
                             sbidValue = 6;
                         } else if (scvr >= 3.01 && scvr <= 5) {
-                            sbidValue = 5;
+                            sbidValue = 6;
                         } else if (scvr >= 5.01 && scvr <= 7) {
-                            sbidValue = 4;
+                            sbidValue = 5;
                         } else if (scvr >= 7.01 && scvr <= 13) {
-                            sbidValue = 3;
+                            sbidValue = 4;
                         } else if (scvr > 13) {
-                            sbidValue = 2;
+                            sbidValue = 3;
                         } else if ((scvr >= 0.01 && scvr <= 1) || isDilRed || views < 100) {
                             sbidValue = 8;
                         } else {
@@ -4954,8 +4954,9 @@
                 // For SCVR, always use the calculated value
                 if (column === 'SCVR') {
                     let scvr = 0;
-                    if (Number(rowData['PmtClkL30']) > 0) {
-                        scvr = Number(rowData['eBay L30']) / Number(rowData['PmtClkL30']);
+                    const views = Number(rowData.VIEWS) || 0;
+                    if (views > 0) {
+                        scvr = Number(rowData['eBay L30']) / views;
                     }
                     const value = scvr * 100;
                     if (value <= 4) return 'red';
@@ -5081,8 +5082,9 @@
                         }
                         metrics.roiSum += parseFloat(item.Roi) || 0;
                         metrics.tacosTotal += parseFloat(item.Tacos30) || 0;
-                        metrics.scvrSum += (Number(item['PmtClkL30']) > 0) ?
-                            (Number(item['eBay L30']) / Number(item['PmtClkL30'])) :
+                        views = Number(item.VIEWS) || 0;
+                        metrics.scvrSum += (views > 0) ?
+                            (Number(item['eBay L30']) / views) :
                             0;
                         metrics.rowCount++;
                     });

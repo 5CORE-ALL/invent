@@ -1,5 +1,4 @@
-sku,nine_ratio_link
-SKU001,https://example.com/video1.mp4
-SKU002,https://example.com/video2.mp4
-SKU003,https://example.com/video3.mp4
-
+sku,nine_ratio_link,remark
+SKU001,https://example.com/video1.mp4,Sample remark 1
+SKU002,https://example.com/video2.mp4,Sample remark 2
+SKU003,https://example.com/video3.mp4,Sample remark 3

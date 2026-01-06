@@ -258,6 +258,7 @@ class ShoppableVideoController extends Controller
 
             // Default social links
             $nine_ratio_link = '';
+            $remark = '';
 
             // Get social links from video_posted_values table if available
             if (isset($videoPostedValues[$sku])) {
@@ -266,6 +267,7 @@ class ShoppableVideoController extends Controller
                     $value = json_decode($value, true);
                 }
                 $nine_ratio_link = $value['nine_ratio_link'] ?? '';
+                $remark = $value['remark'] ?? '';
             }
 
             // Initialize the data structure
@@ -277,6 +279,7 @@ class ShoppableVideoController extends Controller
             ];
 
             $processedItem['nine_ratio_link'] = $nine_ratio_link;
+            $processedItem['remark'] = $remark;
 
 
             // Add data from shopify_skus if available
@@ -411,8 +414,14 @@ class ShoppableVideoController extends Controller
             $headerMap = [];
             foreach ($header as $index => $h) {
                 $normalized = strtolower(trim($h));
-                if (in_array($normalized, ['sku', 'nine_ratio_link'])) {
-                    $headerMap[$normalized] = $index;
+                // Support multiple possible column names
+                if ($normalized === 'sku') {
+                    $headerMap['sku'] = $index;
+                } elseif (in_array($normalized, ['nine_ratio_link', '9:16_video_link', '9:16 video link', '9_16_video_link']) || 
+                         strpos($normalized, '9:16') !== false || strpos($normalized, 'video_link') !== false) {
+                    $headerMap['nine_ratio_link'] = $index;
+                } elseif (in_array($normalized, ['remark', 'remarks', 'note', 'notes'])) {
+                    $headerMap['remark'] = $index;
                 }
             }
 
@@ -438,6 +447,7 @@ class ShoppableVideoController extends Controller
                 // Ensure row has enough columns
                 $sku = '';
                 $nine_ratio_link = '';
+                $remark = '';
                 
                 if (isset($headerMap['sku']) && isset($row[$headerMap['sku']])) {
                     $sku = trim($row[$headerMap['sku']] ?? '');
@@ -445,6 +455,10 @@ class ShoppableVideoController extends Controller
                 
                 if (isset($headerMap['nine_ratio_link']) && isset($row[$headerMap['nine_ratio_link']])) {
                     $nine_ratio_link = trim($row[$headerMap['nine_ratio_link']] ?? '');
+                }
+                
+                if (isset($headerMap['remark']) && isset($row[$headerMap['remark']])) {
+                    $remark = trim($row[$headerMap['remark']] ?? '');
                 }
 
                 if (empty($sku)) {
@@ -469,8 +483,9 @@ class ShoppableVideoController extends Controller
                     $existingValue = $existingValue ?? [];
                 }
 
-                // Update nine_ratio_link (even if empty, we still want to process the row)
+                // Update nine_ratio_link and remark (even if empty, we still want to process the row)
                 $existingValue['nine_ratio_link'] = $nine_ratio_link;
+                $existingValue['remark'] = $remark;
 
                 // Save to NineRationVideo
                 NineRationVideo::updateOrCreate(
@@ -537,7 +552,7 @@ class ShoppableVideoController extends Controller
             'Content-Disposition' => 'attachment; filename="nine_ration_video_' . date('Y-m-d_H-i-s') . '.csv"',
         ];
 
-        $columns = ['sku', 'nine_ratio_link'];
+        $columns = ['sku', 'inv', 'ov_l30', 'dil', '9:16_video_link', 'remark'];
 
         $callback = function () use ($columns) {
             $file = fopen('php://output', 'w');
@@ -545,12 +560,32 @@ class ShoppableVideoController extends Controller
             // Write header row
             fputcsv($file, $columns);
 
-            // Fetch all SKUs from product master
-            $productMasters = ProductMaster::pluck('sku');
+            // Fetch all product masters with their shopify data
+            $productMasters = ProductMaster::all();
+            $skus = $productMasters->pluck('sku')->toArray();
+            
+            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            $videoPostedValues = NineRationVideo::whereIn('sku', $skus)->get()->keyBy('sku');
 
-            foreach ($productMasters as $sku) {
-                $nineRationVideo = NineRationVideo::where('sku', $sku)->first();
+            foreach ($productMasters as $productMaster) {
+                $sku = $productMaster->sku;
                 
+                // Get INV and L30 from shopify data
+                $inv = 0;
+                $l30 = 0;
+                if (isset($shopifyData[$sku])) {
+                    $inv = $shopifyData[$sku]->inv ?? 0;
+                    $l30 = $shopifyData[$sku]->quantity ?? 0;
+                }
+                
+                // Calculate Dil percentage
+                $dil = 0;
+                if ($inv > 0 && $l30 > 0) {
+                    $dil = round(($l30 / $inv) * 100, 2);
+                }
+                
+                // Get video link and remark from nine_ration_video
+                $nineRationVideo = isset($videoPostedValues[$sku]) ? $videoPostedValues[$sku] : null;
                 $value = [];
                 if ($nineRationVideo) {
                     $value = is_array($nineRationVideo->value) 
@@ -561,7 +596,11 @@ class ShoppableVideoController extends Controller
 
                 $row = [
                     'sku' => $sku,
-                    'nine_ratio_link' => $value['nine_ratio_link'] ?? '',
+                    'inv' => $inv,
+                    'ov_l30' => $l30,
+                    'dil' => $dil,
+                    '9:16_video_link' => $value['nine_ratio_link'] ?? '',
+                    'remark' => $value['remark'] ?? '',
                 ];
 
                 fputcsv($file, $row);
@@ -671,5 +710,211 @@ class ShoppableVideoController extends Controller
             'success' => true,
             'data' => $videoPosted
         ]);
+    }
+
+    public function importSixteenRationVideo(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:xlsx,xls,csv,txt',
+        ]);
+
+        try {
+            $file = $request->file('file');
+            $fileExtension = strtolower($file->getClientOriginalExtension());
+            
+            $rows = [];
+            
+            // Handle CSV files
+            if ($fileExtension === 'csv' || $fileExtension === 'txt') {
+                $fileContent = file($file->getRealPath());
+                
+                if (empty($fileContent)) {
+                    return response()->json(['success' => false, 'error' => 'CSV file is empty or invalid'], 400);
+                }
+                
+                // Detect delimiter (comma or tab)
+                $firstLine = $fileContent[0];
+                $delimiter = (strpos($firstLine, "\t") !== false) ? "\t" : ",";
+                
+                // Parse CSV with detected delimiter
+                $rows = array_map(function($line) use ($delimiter) {
+                    return str_getcsv($line, $delimiter);
+                }, $fileContent);
+                
+            } else {
+                // Handle Excel files
+                $spreadsheet = IOFactory::load($file->getPathName());
+                $sheet = $spreadsheet->getActiveSheet();
+                $rows = $sheet->toArray();
+                
+                // Filter out completely empty rows and re-index
+                $rows = array_values(array_filter($rows, function($row) {
+                    return !empty(array_filter($row, function($cell) {
+                        return !empty(trim($cell ?? ''));
+                    }));
+                }));
+            }
+
+            if (empty($rows)) {
+                return response()->json(['success' => false, 'error' => 'File is empty'], 400);
+            }
+
+            // Clean headers (remove BOM if present)
+            $header = array_map(function ($h) {
+                return trim(preg_replace('/^\xEF\xBB\xBF/', '', $h ?? ''));
+            }, $rows[0]);
+
+            unset($rows[0]);
+            $rows = array_values($rows); // Re-index after removing header
+
+            // Normalize header keys to lowercase
+            $headerMap = [];
+            foreach ($header as $index => $h) {
+                $normalized = strtolower(trim($h));
+                if (in_array($normalized, ['sku', 'sixteen_ratio_link'])) {
+                    $headerMap[$normalized] = $index;
+                }
+            }
+
+            if (!isset($headerMap['sku'])) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'SKU column is required. Please ensure your file has a "sku" column header. Found headers: ' . implode(', ', $header)
+                ], 422);
+            }
+
+            $importedCount = 0;
+            $skippedCount = 0;
+            $errors = [];
+
+            foreach ($rows as $rowIndex => $row) {
+                // Skip completely empty rows
+                if (empty(array_filter($row, function($cell) {
+                    return !empty(trim($cell ?? ''));
+                }))) {
+                    continue;
+                }
+
+                // Ensure row has enough columns
+                $sku = '';
+                $sixteen_ratio_link = '';
+                
+                if (isset($headerMap['sku']) && isset($row[$headerMap['sku']])) {
+                    $sku = trim($row[$headerMap['sku']] ?? '');
+                }
+                
+                if (isset($headerMap['sixteen_ratio_link']) && isset($row[$headerMap['sixteen_ratio_link']])) {
+                    $sixteen_ratio_link = trim($row[$headerMap['sixteen_ratio_link']] ?? '');
+                }
+
+                if (empty($sku)) {
+                    $skippedCount++;
+                    continue;
+                }
+
+                // Check if SKU exists in product_masters
+                $productMaster = ProductMaster::where('sku', $sku)->first();
+                if (!$productMaster) {
+                    $skippedCount++;
+                    $errors[] = "Row " . ($rowIndex + 2) . ": SKU '$sku' not found in product master";
+                    continue;
+                }
+
+                // Get existing record
+                $existing = SixteenRationVideo::where('sku', $sku)->first();
+                $existingValue = [];
+                
+                if ($existing) {
+                    $existingValue = is_array($existing->value) ? $existing->value : json_decode($existing->value, true);
+                    $existingValue = $existingValue ?? [];
+                }
+
+                // Update sixteen_ratio_link (even if empty, we still want to process the row)
+                $existingValue['sixteen_ratio_link'] = $sixteen_ratio_link;
+
+                // Save to SixteenRationVideo
+                SixteenRationVideo::updateOrCreate(
+                    ['sku' => $sku],
+                    ['value' => json_encode($existingValue)]
+                );
+
+                // Also save to related models (same as saveSixteenRationVideo)
+                $mergedValue = $existingValue;
+                
+                YoutubeVideoAd::updateOrCreate(
+                    ['sku' => $sku],
+                    ['value' => json_encode($mergedValue)]
+                );
+
+                $importedCount++;
+            }
+
+            $message = "Import completed successfully. Imported: $importedCount, Skipped: $skippedCount";
+            if (!empty($errors) && count($errors) <= 10) {
+                $message .= "\n\nErrors:\n" . implode("\n", array_slice($errors, 0, 10));
+                if (count($errors) > 10) {
+                    $message .= "\n... and " . (count($errors) - 10) . " more errors";
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'imported' => $importedCount,
+                'skipped' => $skippedCount,
+                'errors' => array_slice($errors, 0, 10)
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Import Sixteen Ration Video Error: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => 'Import failed: ' . $e->getMessage() . ' (Line: ' . $e->getLine() . ')'
+            ], 500);
+        }
+    }
+
+    public function exportSixteenRationVideo(Request $request)
+    {
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="sixteen_ration_video_' . date('Y-m-d_H-i-s') . '.csv"',
+        ];
+
+        $columns = ['sku', 'sixteen_ratio_link'];
+
+        $callback = function () use ($columns) {
+            $file = fopen('php://output', 'w');
+
+            // Write header row
+            fputcsv($file, $columns);
+
+            // Fetch all SKUs from product master
+            $productMasters = ProductMaster::pluck('sku');
+
+            foreach ($productMasters as $sku) {
+                $sixteenRationVideo = SixteenRationVideo::where('sku', $sku)->first();
+                
+                $value = [];
+                if ($sixteenRationVideo) {
+                    $value = is_array($sixteenRationVideo->value) 
+                        ? $sixteenRationVideo->value 
+                        : json_decode($sixteenRationVideo->value, true);
+                    $value = $value ?? [];
+                }
+
+                $row = [
+                    'sku' => $sku,
+                    'sixteen_ratio_link' => $value['sixteen_ratio_link'] ?? '',
+                ];
+
+                fputcsv($file, $row);
+            }
+
+            fclose($file);
+        };
+
+        return new StreamedResponse($callback, 200, $headers);
     }
 }
