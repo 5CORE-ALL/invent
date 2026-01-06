@@ -2472,6 +2472,136 @@ class TemuController extends Controller
     }
 
     /**
+     * Save R Price (Recommended Price) Updates in Bulk
+     */
+    public function saveTemuRPriceUpdates(Request $request)
+    {
+        try {
+            $updates = $request->input('updates', []);
+            
+            if (empty($updates)) {
+                return response()->json(['error' => 'No updates provided'], 400);
+            }
+
+            DB::beginTransaction();
+            
+            $updated = 0;
+            $errors = [];
+            
+            foreach ($updates as $update) {
+                $sku = strtoupper(trim($update['sku'] ?? ''));
+                $rPrice = floatval($update['r_price'] ?? 0);
+                
+                if (empty($sku) || $rPrice <= 0) {
+                    $errors[] = "Invalid data for SKU: {$sku}";
+                    continue;
+                }
+                
+                // Find or create temu_data_view record
+                $dataViewRecord = TemuDataView::where('sku', $sku)->first();
+                
+                if ($dataViewRecord) {
+                    $existingValue = $dataViewRecord->value ?? [];
+                    $existingValue['r_price_applied_at'] = now()->toDateTimeString();
+                    $existingValue['sprice'] = $rPrice;
+                    
+                    $dataViewRecord->update([
+                        'value' => $existingValue,
+                        'updated_at' => now()
+                    ]);
+                } else {
+                    TemuDataView::create([
+                        'sku' => $sku,
+                        'value' => [
+                            'r_price_applied_at' => now()->toDateTimeString(),
+                            'sprice' => $rPrice
+                        ]
+                    ]);
+                }
+                $updated++;
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'updated' => $updated,
+                'errors' => $errors
+            ]);
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error saving Temu R price updates: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to save updates'], 500);
+        }
+    }
+
+    /**
+     * Clear All SPRICE Data from Temu
+     */
+    public function clearAllTemuSprice(Request $request)
+    {
+        try {
+            DB::beginTransaction();
+            
+            $cleared = 0;
+            
+            // Get all temu_data_view records that have sprice
+            $dataViewRecords = TemuDataView::all();
+            
+            foreach ($dataViewRecords as $record) {
+                $value = $record->value ?? [];
+                
+                // Remove sprice and related calculated fields from value array
+                $fieldsToRemove = [
+                    'sprice',
+                    'amazon_price_applied_at',
+                    'r_price_applied_at',
+                    'sprice_status'
+                ];
+                
+                $wasModified = false;
+                foreach ($fieldsToRemove as $field) {
+                    if (isset($value[$field])) {
+                        unset($value[$field]);
+                        $wasModified = true;
+                    }
+                }
+                
+                // Update or delete the record
+                if ($wasModified) {
+                    if (empty($value)) {
+                        // If value array is empty, delete the record
+                        $record->delete();
+                    } else {
+                        // Otherwise, update with cleaned value
+                        $record->update([
+                            'value' => $value,
+                            'updated_at' => now()
+                        ]);
+                    }
+                    $cleared++;
+                }
+            }
+
+            DB::commit();
+
+            Log::info("Cleared SPRICE data for {$cleared} SKUs in Temu");
+
+            return response()->json([
+                'success' => true,
+                'cleared' => $cleared,
+                'message' => "Successfully cleared SPRICE for {$cleared} SKU(s)"
+            ]);
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error clearing Temu SPRICE: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to clear SPRICE data'], 500);
+        }
+    }
+
+    /**
      * Get Temu SKU Metrics History for Chart
      */
     public function getTemuMetricsHistory(Request $request)

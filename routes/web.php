@@ -1294,6 +1294,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/temu-metrics-history', [TemuController::class, 'getTemuMetricsHistory'])->name('temu.metrics.history');
     Route::post('/temu-update-cell', [TemuController::class, 'updateTemuCellData'])->name('temu.update.cell');
     Route::post('/temu-save-amazon-prices', [TemuController::class, 'saveTemuAmazonPriceUpdates'])->name('temu.save.amazon.prices');
+    Route::post('/temu-save-r-prices', [TemuController::class, 'saveTemuRPriceUpdates'])->name('temu.save.r.prices');
+    Route::post('/temu-clear-sprice', [TemuController::class, 'clearAllTemuSprice'])->name('temu.clear.sprice');
     Route::post('/temu-save-amazon-prices', [TemuController::class, 'saveTemuAmazonPriceUpdates'])->name('temu.save.amazon.prices');
 
 

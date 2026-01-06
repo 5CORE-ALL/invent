@@ -206,6 +206,10 @@
                         <i class="fa fa-dollar-sign"></i> Upload Pricing
                     </button>
                     
+                    <button type="button" id="clear-sprice-btn" class="btn btn-sm btn-danger">
+                        <i class="fa fa-trash"></i> Clear SPRICE
+                    </button>
+                    
                     <!-- DIL Filter -->
                     <div class="dropdown d-inline-block ms-2">
                         <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="dilFilterDropdown" data-bs-toggle="dropdown" aria-expanded="false">
@@ -277,6 +281,9 @@
                         </button>
                         <button id="sugg-amz-prc-btn" class="btn btn-sm btn-info">
                             <i class="fas fa-amazon"></i> Suggest Amazon Price
+                        </button>
+                        <button id="sugg-r-prc-btn" class="btn btn-sm btn-success">
+                            <i class="fas fa-tag"></i> Suggest R Price
                         </button>
                     </div>
                 </div>
@@ -1028,6 +1035,16 @@
             applySuggestAmazonPrice();
         });
 
+        $('#sugg-r-prc-btn').on('click', function() {
+            applySuggestRPrice();
+        });
+
+        $('#clear-sprice-btn').on('click', function() {
+            if (confirm('Are you sure you want to clear all SPRICE data? This action cannot be undone.')) {
+                clearAllSprice();
+            }
+        });
+
         $('#discount-percentage-input').on('keypress', function(e) {
             if (e.which === 13) {
                 applyDiscount();
@@ -1158,6 +1175,9 @@
                                 sprice: newSPrice,
                                 sprice_status: 'processing'
                             });
+                            
+                            // Force row to recalculate all formatted columns
+                            tableRow.reformat();
                         }
                         
                         saveSpriceWithRetry(sku, newSPrice, tableRow)
@@ -1175,6 +1195,7 @@
                                 errorCount++;
                                 if (tableRow) {
                                     tableRow.update({ sprice: originalSPrice });
+                                    tableRow.reformat();
                                 }
                                 if (updatedCount + errorCount === totalSkus) {
                                     showToast(`${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s), ${errorCount} failed`, 'error');
@@ -1209,6 +1230,9 @@
                         row.update({
                             sprice: amazonPrice
                         });
+                        
+                        // Force row to recalculate all formatted columns
+                        row.reformat();
                         
                         updates.push({
                             sku: sku,
@@ -1251,6 +1275,102 @@
                 },
                 error: function(xhr) {
                     showToast('Failed to save Amazon prices', 'error');
+                }
+            });
+        }
+
+        function applySuggestRPrice() {
+            if (selectedSkus.size === 0) {
+                showToast('Please select SKUs first', 'error');
+                return;
+            }
+
+            let updatedCount = 0;
+            let noRPriceCount = 0;
+            const updates = [];
+
+            selectedSkus.forEach(sku => {
+                const rows = table.searchRows("sku", "=", sku);
+                
+                if (rows.length > 0) {
+                    const row = rows[0];
+                    const rowData = row.getData();
+                    const rPrice = parseFloat(rowData['recommended_base_price']);
+                    
+                    if (rPrice && rPrice > 0) {
+                        row.update({
+                            sprice: rPrice
+                        });
+                        
+                        // Force row to recalculate all formatted columns
+                        row.reformat();
+                        
+                        updates.push({
+                            sku: sku,
+                            r_price: rPrice
+                        });
+                        
+                        updatedCount++;
+                    } else {
+                        noRPriceCount++;
+                    }
+                } else {
+                    noRPriceCount++;
+                }
+            });
+            
+            if (updates.length > 0) {
+                saveTemuRPriceUpdates(updates);
+            }
+            
+            let message = `R price applied to ${updatedCount} SKU(s)`;
+            if (noRPriceCount > 0) {
+                message += ` (${noRPriceCount} SKU(s) had no R price or not found)`;
+            }
+
+            showToast(message, updatedCount > 0 ? 'success' : 'error');
+        }
+
+        function saveTemuRPriceUpdates(updates) {
+            $.ajax({
+                url: '/temu-save-r-prices',
+                method: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}',
+                    updates: updates
+                },
+                success: function(response) {
+                    if (response.success) {
+                        table.redraw();
+                    }
+                },
+                error: function(xhr) {
+                    showToast('Failed to save R prices', 'error');
+                }
+            });
+        }
+
+        function clearAllSprice() {
+            $.ajax({
+                url: '/temu-clear-sprice',
+                method: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}'
+                },
+                beforeSend: function() {
+                    $('#clear-sprice-btn').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Clearing...');
+                },
+                success: function(response) {
+                    if (response.success) {
+                        showToast(`Successfully cleared SPRICE for ${response.cleared} SKU(s)`, 'success');
+                        table.replaceData();
+                    }
+                },
+                error: function(xhr) {
+                    showToast('Failed to clear SPRICE data', 'error');
+                },
+                complete: function() {
+                    $('#clear-sprice-btn').prop('disabled', false).html('<i class="fa fa-trash"></i> Clear SPRICE');
                 }
             });
         }
