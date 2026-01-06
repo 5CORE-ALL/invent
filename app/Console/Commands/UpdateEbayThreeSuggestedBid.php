@@ -186,7 +186,8 @@ class UpdateEbayThreeSuggestedBid extends Command
                         $newBid = min($newBid, 15);
                         
                         $listing->new_bid = $newBid;
-                        $this->info("SKU: {$pm->sku} | SBID: {$newBid}");
+                        $listing->sku = $pm->sku; // Store SKU for logging
+                        $this->info("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | Calculated SBID: {$newBid} | SCVR: " . number_format($cvr, 2) . "%");
                         $updatedListings++;
                     }
                 }
@@ -211,13 +212,23 @@ class UpdateEbayThreeSuggestedBid extends Command
 
         foreach ($groupedByCampaign as $campaignId => $listings) {
             $requests = [];
+            $seenListingIds = []; // Track to avoid duplicates
 
             foreach ($listings as $listing) {
                 if (isset($listing->new_bid) && $listing->new_bid > 0) {
+                    // Avoid duplicate listing_ids in same campaign
+                    if (isset($seenListingIds[$listing->listing_id])) {
+                        $this->warn("Duplicate listing_id {$listing->listing_id} found. SKU: " . ($listing->sku ?? 'unknown') . " | Previous bid: {$seenListingIds[$listing->listing_id]}, New bid: {$listing->new_bid}");
+                        // Use the latest bid value
+                    }
+                    $seenListingIds[$listing->listing_id] = $listing->new_bid;
+                    
                     $requests[] = [
                         'listingId' => $listing->listing_id,
                         'bidPercentage' => (string) $listing->new_bid
                     ];
+                    $sku = $listing->sku ?? 'unknown';
+                    $this->info("Sending to eBay - SKU: {$sku} | Listing ID: {$listing->listing_id} | Bid Percentage: {$listing->new_bid}");
                 }
             }
 
@@ -226,11 +237,21 @@ class UpdateEbayThreeSuggestedBid extends Command
             }
 
             try {
+                $this->info("Campaign {$campaignId}: Sending " . count($requests) . " bid updates to eBay API...");
                 $response = $client->post(
                     "sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_ads_bid_by_listing_id",
                     ['json' => ['requests' => $requests]]
                 );
-                $this->info("Campaign {$campaignId}: Updated " . count($requests) . " listings.");
+                
+                $responseBody = $response->getBody()->getContents();
+                $statusCode = $response->getStatusCode();
+                
+                $this->info("Campaign {$campaignId}: API Response Status: {$statusCode}");
+                if ($statusCode === 200 || $statusCode === 207) {
+                    $this->info("Campaign {$campaignId}: Successfully updated " . count($requests) . " listings.");
+                } else {
+                    $this->warn("Campaign {$campaignId}: Response: " . substr($responseBody, 0, 200));
+                }
             } catch (\Exception $e) {
                 $this->error("Failed to update campaign {$campaignId}: " . $e->getMessage());
             }

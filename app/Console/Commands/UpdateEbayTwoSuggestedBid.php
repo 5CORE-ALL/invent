@@ -114,6 +114,8 @@ class UpdateEbayTwoSuggestedBid extends Command
         // Process ProductMaster data in chunks and update campaign listings
         $this->info('Processing bid updates based on SCVR...');
         $updatedListings = 0;
+        // Track SKU-specific bids to handle multiple SKUs with same listing_id
+        $skuBids = []; // [listing_id => [sku => bid]]
         
         ProductMaster::whereNull('deleted_at')
             ->orderBy("parent", "asc")
@@ -124,72 +126,100 @@ class UpdateEbayTwoSuggestedBid extends Command
                 $ebayMetricsNormalized, 
                 $campaignListings, 
                 $ebayGeneralL30, 
-                &$updatedListings
+                &$updatedListings,
+                &$skuBids
             ) {
                 foreach ($productMasters as $pm) {
                     $shopify = $shopifyData[$pm->sku] ?? null;
                     $ebayMetric = $ebayMetricsNormalized[$pm->sku] ?? null;
 
-                    if ($ebayMetric && $ebayMetric->item_id && $campaignListings->has($ebayMetric->item_id)) {
-                        $listing = $campaignListings[$ebayMetric->item_id];
-                        $l30Data = $ebayGeneralL30->get($ebayMetric->item_id);
-                        
-                        // Calculate SCVR (Sales Conversion Rate) = (eBay L30 Sales / PmtClkL30) * 100
-                        // This matches the frontend calculation: scvr = (ebayL30 / PmtClkL30) * 100
-                        $ebay_l30 = (int) ($ebayMetric->ebay_l30 ?? 0);
-                        $pmtClkL30 = $l30Data ? (int) ($l30Data->clicks ?? 0) : 0; // PmtClkL30 from general report
-                        $views = (int) ($ebayMetric->views ?? 0); // Keep for views < 100 check
-                        $cvr = $pmtClkL30 > 0 ? ($ebay_l30 / $pmtClkL30) * 100 : 0;
-                        
-                        // Get ESBID (suggested bid from bid_percentage in campaign listing)
-                        $esbid = (float) ($listing->suggested_bid ?? 0);
-                        
-                        // Calculate ov_dil (OV DIL%) = L30 / INV (in decimal form)
-                        $inv = $shopify ? (int) ($shopify->inv ?? 0) : 0;
-                        $l30 = $shopify ? (int) ($shopify->quantity ?? 0) : 0;
-                        $ov_dil = $inv > 0 ? ($l30 / $inv) : 0;
-                        
-                        // Check if DIL is red (ov_dil < 0.1666, which is < 16.66%)
-                        $dilPercent = $ov_dil * 100;
-                        $isDilRed = $dilPercent < 16.66;
-                        
-                        // Determine new bid based on SCVR ranges - flat values
-                        $newBid = 2; // Default minimum
-                        
-                        // Priority 1: If SCVR < 0.01% (including 0.00%), use ESBID
-                        if ($cvr < 0.01) {
-                            // For very low SCVR, keep current ESBID (matches frontend logic)
-                            $newBid = $esbid;
-                        } 
-                        // Priority 2: Check SCVR ranges first (higher priority)
-                        elseif ($cvr >= 1.01 && $cvr <= 2) {
-                            $newBid = 7; // Flat 7%
-                        } elseif ($cvr >= 2.01 && $cvr <= 3) {
-                            $newBid = 6; // Flat 6%
-                        } elseif ($cvr >= 3.01 && $cvr <= 5) {
-                            $newBid = 5; // Flat 5%
-                        } elseif ($cvr >= 5.01 && $cvr <= 7) {
-                            $newBid = 4; // Flat 4%
-                        } elseif ($cvr >= 7.01 && $cvr <= 13) {
-                            $newBid = 3; // Flat 3%
-                        } elseif ($cvr > 13) {
-                            $newBid = 2; // Flat 2%
-                        } 
-                        // Priority 3: If SCVR between 0.01-1% OR views < 100 OR DIL red, set to 8%
-                        elseif (($cvr >= 0.01 && $cvr <= 1) || $views < 100 || $isDilRed) {
-                            $newBid = 8; // Flat 8%
-                        } else {
-                            // Fallback: default to 8
-                            $newBid = 8;
-                        }
-
-                        // Cap newBid to maximum of 15
-                        $newBid = min($newBid, 15);
-                        
-                        $listing->new_bid = $newBid;
-                        $this->info("SKU: {$pm->sku} | SBID: {$newBid}");
-                        $updatedListings++;
+                    if (!$ebayMetric) {
+                        continue;
                     }
+                    
+                    if (!$ebayMetric->item_id) {
+                        continue;
+                    }
+                    
+                    if (!$campaignListings->has($ebayMetric->item_id)) {
+                        continue;
+                    }
+
+                    $listing = $campaignListings[$ebayMetric->item_id];
+                    $l30Data = $ebayGeneralL30->get($ebayMetric->item_id);
+                    
+                    // Calculate SCVR (Sales Conversion Rate) = (eBay L30 Sales / PmtClkL30) * 100
+                    // This matches the frontend calculation: scvr = (ebayL30 / PmtClkL30) * 100
+                    $ebay_l30 = (int) ($ebayMetric->ebay_l30 ?? 0);
+                    $pmtClkL30 = $l30Data ? (int) ($l30Data->clicks ?? 0) : 0; // PmtClkL30 from general report
+                    $views = (int) ($ebayMetric->views ?? 0); // Keep for views < 100 check
+                    $cvr = $pmtClkL30 > 0 ? ($ebay_l30 / $pmtClkL30) * 100 : 0;
+                    
+                    // Get ESBID (suggested bid from bid_percentage in campaign listing)
+                    $esbid = (float) ($listing->suggested_bid ?? 0);
+                    
+                    // Calculate ov_dil (OV DIL%) = L30 / INV (in decimal form)
+                    $inv = $shopify ? (int) ($shopify->inv ?? 0) : 0;
+                    $l30 = $shopify ? (int) ($shopify->quantity ?? 0) : 0;
+                    $ov_dil = $inv > 0 ? ($l30 / $inv) : 0;
+                    
+                    // Check if DIL is red (ov_dil < 0.1666, which is < 16.66%)
+                    $dilPercent = $ov_dil * 100;
+                    $isDilRed = $dilPercent < 16.66;
+                    
+                    // Determine new bid based on SCVR ranges - flat values
+                    $newBid = 2; // Default minimum
+                    
+                    // Priority 1: If SCVR < 0.01% (including 0.00%), use ESBID
+                    if ($cvr < 0.01) {
+                        // For very low SCVR, keep current ESBID (matches frontend logic)
+                        $newBid = $esbid;
+                    } 
+                    // Priority 2: Check SCVR ranges first (higher priority)
+                    elseif ($cvr >= 1.01 && $cvr <= 2) {
+                        $newBid = 7; // Flat 7%
+                    } elseif ($cvr >= 2.01 && $cvr <= 3) {
+                        $newBid = 6; // Flat 6%
+                    } elseif ($cvr >= 3.01 && $cvr <= 5) {
+                        $newBid = 5; // Flat 5%
+                    } elseif ($cvr >= 5.01 && $cvr <= 7) {
+                        $newBid = 4; // Flat 4%
+                    } elseif ($cvr >= 7.01 && $cvr <= 13) {
+                        $newBid = 3; // Flat 3%
+                    } elseif ($cvr > 13) {
+                        $newBid = 2; // Flat 2%
+                    } 
+                    // Priority 3: If SCVR between 0.01-1% OR views < 100 OR DIL red, set to 8%
+                    elseif (($cvr >= 0.01 && $cvr <= 1) || $views < 100 || $isDilRed) {
+                        $newBid = 8; // Flat 8%
+                    } else {
+                        // Fallback: default to 8
+                        $newBid = 8;
+                    }
+
+                    // Cap newBid to maximum of 15
+                    $newBid = min($newBid, 15);
+                    
+                    // Store bid per SKU for this listing_id
+                    $listingId = $ebayMetric->item_id;
+                    if (!isset($skuBids[$listingId])) {
+                        $skuBids[$listingId] = [];
+                    }
+                    $skuBids[$listingId][$pm->sku] = $newBid;
+                    
+                    // For listings with multiple SKUs, use the lowest bid (most conservative)
+                    // This ensures we don't overbid when multiple SKUs share the same listing
+                    $listing->new_bid = min($skuBids[$listingId]);
+                    $listing->sku = $pm->sku; // Store last processed SKU for logging
+                    $listing->all_skus = array_keys($skuBids[$listingId]); // Store all SKUs
+                    
+                    $allSkusStr = implode(', ', array_keys($skuBids[$listingId]));
+                    $allBidsStr = implode(', ', array_map(function($sku) use ($skuBids, $listingId) {
+                        return "{$sku}:{$skuBids[$listingId][$sku]}";
+                    }, array_keys($skuBids[$listingId])));
+                    $finalBid = min($skuBids[$listingId]);
+                    $this->info("SKU: {$pm->sku} | Listing ID: {$listingId} | Calculated SBID: {$newBid} | SCVR: " . number_format($cvr, 2) . "% | All SKUs: [{$allSkusStr}] | All Bids: [{$allBidsStr}] | Final Bid (min): {$finalBid}");
+                    $updatedListings++;
                 }
             });
         
@@ -212,13 +242,24 @@ class UpdateEbayTwoSuggestedBid extends Command
 
         foreach ($groupedByCampaign as $campaignId => $listings) {
             $requests = [];
+            $seenListingIds = []; // Track to avoid duplicates
 
             foreach ($listings as $listing) {
                 if (isset($listing->new_bid) && $listing->new_bid > 0) {
+                    // Avoid duplicate listing_ids in same campaign
+                    if (isset($seenListingIds[$listing->listing_id])) {
+                        $this->warn("Duplicate listing_id {$listing->listing_id} found. SKU: " . ($listing->sku ?? 'unknown') . " | Previous bid: {$seenListingIds[$listing->listing_id]}, New bid: {$listing->new_bid}");
+                        // Use the latest bid value
+                    }
+                    $seenListingIds[$listing->listing_id] = $listing->new_bid;
+                    
                     $requests[] = [
                         'listingId' => $listing->listing_id,
                         'bidPercentage' => (string) $listing->new_bid
                     ];
+                    $sku = $listing->sku ?? 'unknown';
+                    $allSkus = isset($listing->all_skus) ? implode(', ', $listing->all_skus) : $sku;
+                    $this->info("Sending to eBay - SKUs: {$allSkus} | Listing ID: {$listing->listing_id} | Bid Percentage: {$listing->new_bid}");
                 }
             }
 
@@ -227,11 +268,21 @@ class UpdateEbayTwoSuggestedBid extends Command
             }
 
             try {
+                $this->info("Campaign {$campaignId}: Sending " . count($requests) . " bid updates to eBay API...");
                 $response = $client->post(
                     "sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_ads_bid_by_listing_id",
                     ['json' => ['requests' => $requests]]
                 );
-                $this->info("Campaign {$campaignId}: Updated " . count($requests) . " listings.");
+                
+                $responseBody = $response->getBody()->getContents();
+                $statusCode = $response->getStatusCode();
+                
+                $this->info("Campaign {$campaignId}: API Response Status: {$statusCode}");
+                if ($statusCode === 200 || $statusCode === 207) {
+                    $this->info("Campaign {$campaignId}: Successfully updated " . count($requests) . " listings.");
+                } else {
+                    $this->warn("Campaign {$campaignId}: Response: " . substr($responseBody, 0, 200));
+                }
             } catch (\GuzzleHttp\Exception\ClientException $e) {
                 $statusCode = $e->getResponse()->getStatusCode();
                 
