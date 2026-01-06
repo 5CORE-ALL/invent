@@ -454,14 +454,17 @@ class WalmartSheetUploadController extends Controller
                     $ship = floatval($pm->ship);
                 }
 
-                // Get price (SPRICE) - check walmart_data_view first, then fallback to price data
+                // Get ORIGINAL Walmart price (w_price) from walmart_price_data
+                $wPrice = floatval($price->price ?? $price->comparison_price ?? 0);
+                
+                // Get SAVED price (sprice) - check walmart_data_view first, then fallback to w_price
                 $sprice = 0;
-                if ($dataView && isset($dataView->value['sprice'])) {
-                    // Use sprice from walmart_data_view if available
+                if ($dataView && isset($dataView->value['sprice']) && $dataView->value['sprice'] > 0) {
+                    // Use saved sprice from walmart_data_view if available
                     $sprice = floatval($dataView->value['sprice']);
                 } else {
-                    // Fallback to original price data
-                    $sprice = floatval($price->price ?? $price->comparison_price ?? 0);
+                    // Fallback to walmart price
+                    $sprice = $wPrice;
                 }
                 
                 // Get quantities (from Walmart orders)
@@ -473,7 +476,7 @@ class WalmartSheetUploadController extends Controller
                 $pageViews = $listing->page_views ?? 0;
                 
                 // Calculate CVR using same formula as blade: (W L30 / Views) * 100
-                $cvrPercent = $pageViews > 0 ? ($totalQty / $pageViews) * 100 : 0;
+                $cvrPercent = $pageViews > 0 ? round(($totalQty / $pageViews) * 100, 2) : 0;
                 
                 // Calculate W L30 (Walmart L30 Sales) = SPRICE × Total Qty
                 $wL30 = $sprice * $totalQty;
@@ -541,14 +544,14 @@ class WalmartSheetUploadController extends Controller
                     'product_name' => $price->product_name ?? $listing->product_name ?? null,
                     'lp' => $lp,
                     'ship' => $ship,
-                    'w_price' => $sprice,
-                    'sprice' => $sprice,
+                    'w_price' => $wPrice, // Original Walmart price from walmart_price_data
+                    'sprice' => $sprice,  // Saved/editable price from walmart_data_view or fallback to w_price
                     'a_price' => $amazon ? floatval($amazon->price ?? 0) : null,
                     
                     // Listing metrics
                     'page_views' => $pageViews,
                     'conversion_rate' => $listing->conversion_rate ?? 0, // Original conversion rate from listing data
-                    'cvr_percent' => $cvrPercent, // Calculated CVR using W L30 / Views (matches blade formula)
+                    'cvr_percent' => floatval($cvrPercent), // Calculated CVR using W L30 / Views (matches blade formula) - ensure numeric
                     'listing_quality' => $listing->listing_quality ?? null,
                     'competitive_price_score' => $listing->competitive_price_score ?? null,
                     
@@ -817,6 +820,51 @@ class WalmartSheetUploadController extends Controller
         } catch (\Exception $e) {
             Log::error('Error fetching Walmart metrics history: ' . $e->getMessage());
             return response()->json(['error' => 'Error fetching metrics data'], 500);
+        }
+    }
+    
+    /**
+     * Save/update cell data (like sprice) to walmart_data_view
+     */
+    public function updateCellData(Request $request)
+    {
+        try {
+            $sku = $request->input('sku');
+            $field = $request->input('field');
+            $value = $request->input('value');
+            
+            if (!$sku || !$field) {
+                return response()->json(['error' => 'SKU and field are required'], 400);
+            }
+            
+            // Allowed fields to update
+            $allowedFields = ['sprice'];
+            
+            if (!in_array($field, $allowedFields)) {
+                return response()->json(['error' => 'Field not allowed for update'], 400);
+            }
+            
+            // Find or create walmart_data_view record
+            $dataView = WalmartDataView::firstOrNew(['sku' => $sku]);
+            
+            // Get existing value array or create new one
+            $valueArray = is_array($dataView->value) ? $dataView->value : [];
+            
+            // Update the specific field
+            $valueArray[$field] = floatval($value);
+            
+            // Save
+            $dataView->value = $valueArray;
+            $dataView->save();
+            
+            return response()->json([
+                'success' => true,
+                'message' => ucfirst($field) . ' updated successfully'
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error updating cell data: ' . $e->getMessage());
+            return response()->json(['error' => 'Error saving data'], 500);
         }
     }
 }

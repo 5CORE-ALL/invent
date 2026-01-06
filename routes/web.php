@@ -1078,6 +1078,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/walmart-sheet-upload-data-json', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'getCombinedDataJson'])->name('walmart-sheet-upload-data-json');
     Route::get('/walmart-sheet-upload-summary', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'getSummaryStats'])->name('walmart-sheet-upload-summary');
     Route::post('/walmart-sheet-save-amazon-prices', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'saveAmazonPriceUpdates'])->name('walmart-sheet-save-amazon-prices');
+    Route::post('/walmart-sheet-update-cell', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'updateCellData'])->name('walmart-sheet-update-cell');
     Route::get('/walmart-metrics-history', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'getMetricsHistory'])->name('walmart-metrics-history');
 
 
@@ -1288,6 +1289,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu-pricing/save-sprice', [TemuController::class, 'saveTemuSprice']);
     Route::post('/temu-decrease-column-visibility', [TemuController::class, 'saveTemuDecreaseColumnVisibility']);
     Route::get('/temu-decrease-column-visibility', [TemuController::class, 'getTemuDecreaseColumnVisibility']);
+    
+    // Temu Metrics and Cell Update
+    Route::get('/temu-metrics-history', [TemuController::class, 'getTemuMetricsHistory'])->name('temu.metrics.history');
+    Route::post('/temu-update-cell', [TemuController::class, 'updateTemuCellData'])->name('temu.update.cell');
+    Route::post('/temu-save-amazon-prices', [TemuController::class, 'saveTemuAmazonPriceUpdates'])->name('temu.save.amazon.prices');
+    Route::post('/temu-save-r-prices', [TemuController::class, 'saveTemuRPriceUpdates'])->name('temu.save.r.prices');
+    Route::post('/temu-clear-sprice', [TemuController::class, 'clearAllTemuSprice'])->name('temu.clear.sprice');
+    Route::post('/temu-save-amazon-prices', [TemuController::class, 'saveTemuAmazonPriceUpdates'])->name('temu.save.amazon.prices');
 
 
     // Advertisement Master view routes

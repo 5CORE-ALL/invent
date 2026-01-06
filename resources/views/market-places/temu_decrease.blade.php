@@ -66,12 +66,43 @@
             color: #e83e8c !important;
             background: none !important;
         }
+
+        .status-circle {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            border: 1px solid #ddd;
+        }
+
+        .status-circle.default {
+            background-color: #6c757d;
+        }
+
+        .status-circle.red {
+            background-color: #dc3545;
+        }
+
+        .status-circle.yellow {
+            background-color: #ffc107;
+        }
+
+        .status-circle.green {
+            background-color: #28a745;
+        }
+
+        .status-circle.pink {
+            background-color: #e83e8c;
+        }
     </style>
 @endsection
 
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 @endsection
 
 @section('content')
@@ -125,6 +156,25 @@
                         </select>
                     </div>
 
+                    <!-- DIL Filter -->
+                    <div class="dropdown d-inline-block">
+                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="dilFilterDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <span class="status-circle default"></span> DIL%
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="dilFilterDropdown">
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="all">
+                                    <span class="status-circle default"></span> All DIL</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="red">
+                                    <span class="status-circle red"></span> Red (&lt;16.7%)</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="yellow">
+                                    <span class="status-circle yellow"></span> Yellow (16.7-25%)</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="green">
+                                    <span class="status-circle green"></span> Green (25-50%)</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="pink">
+                                    <span class="status-circle pink"></span> Pink (50%+)</a></li>
+                        </ul>
+                    </div>
+
                     <!-- ADS Filter -->
                     <div>
                         <select id="ads-filter" class="form-select form-select-sm" style="width: 120px;">
@@ -173,6 +223,10 @@
                     </button>
                     <button type="button" class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#uploadPricingModal">
                         <i class="fa fa-dollar-sign"></i> Upload Pricing
+                    </button>
+                    
+                    <button type="button" id="clear-sprice-btn" class="btn btn-sm btn-danger">
+                        <i class="fa fa-trash"></i> Clear SPRICE
                     </button>
                 </div>
 
@@ -223,7 +277,13 @@
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
                                placeholder="Enter %" style="width: 150px;" step="0.01" min="0">
                         <button id="apply-discount-btn" class="btn btn-sm btn-warning">
-                            <i class="fas fa-check"></i> Apply Discount
+                            <i class="fas fa-check"></i> Apply 
+                        </button>
+                        <button id="sugg-amz-prc-btn" class="btn btn-sm btn-info">
+                            <i class="fas fa-amazon"></i> Suggest Amazon Price
+                        </button>
+                        <button id="sugg-r-prc-btn" class="btn btn-sm btn-success">
+                            <i class="fas fa-tag"></i> Suggest R Price
                         </button>
                     </div>
                 </div>
@@ -459,6 +519,41 @@
             </div>
         </div>
     </div>
+
+    <!-- SKU Metrics Chart Modal -->
+    <div class="modal fade" id="skuMetricsModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="fa fa-chart-line me-2"></i>Metrics Chart for <span id="modalSkuName" class="fw-bold"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3 d-flex justify-content-between align-items-center">
+                        <div>
+                            <label class="form-label fw-bold mb-0 me-2">Date Range:</label>
+                            <select id="sku-chart-days-filter" class="form-select form-select-sm d-inline-block" style="width: auto;">
+                                <option value="7" selected>Last 7 Days</option>
+                                <option value="14">Last 14 Days</option>
+                                <option value="30">Last 30 Days</option>
+                                <option value="60">Last 60 Days</option>
+                            </select>
+                        </div>
+                        <div class="text-muted">
+                            <small><i class="fa fa-info-circle"></i> Hover over data points for detailed information</small>
+                        </div>
+                    </div>
+                    <div id="chart-no-data-message" class="alert alert-warning" style="display: none;">
+                        <i class="fa fa-exclamation-triangle me-2"></i>
+                        <strong>No Data Available:</strong> No historical data available for this SKU. Data will appear after running the metrics collection command.
+                    </div>
+                    <div style="height: 500px; position: relative;">
+                        <canvas id="skuMetricsChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -468,6 +563,332 @@
     let decreaseModeActive = false;
     let increaseModeActive = false;
     let selectedSkus = new Set();
+    
+    // SKU-specific chart
+    let skuMetricsChart = null;
+    let currentSku = null;
+
+    function initSkuMetricsChart() {
+        const ctx = document.getElementById('skuMetricsChart').getContext('2d');
+        
+        // Register datalabels plugin
+        Chart.register(ChartDataLabels);
+        
+        skuMetricsChart = new Chart(ctx, {
+            type: 'line',
+            plugins: [ChartDataLabels],
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Price (USD)',
+                        data: [],
+                        borderColor: '#FF0000',
+                        backgroundColor: 'rgba(255, 0, 0, 0.2)',
+                        borderWidth: 3,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: '#FF0000',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        yAxisID: 'y',
+                        tension: 0.1,
+                        fill: false,
+                        spanGaps: true,
+                        datalabels: {
+                            display: true,
+                            align: function(context) {
+                                const index = context.dataIndex;
+                                return index % 2 === 0 ? 'top' : 'bottom';
+                            },
+                            anchor: 'center',
+                            offset: 10,
+                            clamp: true,
+                            color: '#FFFFFF',
+                            backgroundColor: '#FF0000',
+                            borderRadius: 3,
+                            padding: { top: 1, bottom: 1, left: 3, right: 3 },
+                            font: {
+                                weight: 'bold',
+                                size: 8
+                            },
+                            formatter: function(value) {
+                                return value ? '$' + value.toFixed(2) : '';
+                            }
+                        }
+                    },
+                    {
+                        label: 'Views',
+                        data: [],
+                        borderColor: '#0000FF',
+                        backgroundColor: 'rgba(0, 0, 255, 0.2)',
+                        borderWidth: 3,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: '#0000FF',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        yAxisID: 'y2',
+                        tension: 0.1,
+                        fill: false,
+                        spanGaps: true,
+                        datalabels: {
+                            display: true,
+                            align: function(context) {
+                                const index = context.dataIndex;
+                                return index % 2 === 0 ? 'left' : 'right';
+                            },
+                            anchor: 'center',
+                            offset: 10,
+                            clamp: true,
+                            color: '#FFFFFF',
+                            backgroundColor: '#0000FF',
+                            borderRadius: 3,
+                            padding: { top: 1, bottom: 1, left: 3, right: 3 },
+                            font: {
+                                weight: 'bold',
+                                size: 8
+                            },
+                            formatter: function(value) {
+                                return value ? value.toFixed(0) : '';
+                            }
+                        }
+                    },
+                    {
+                        label: 'CVR%',
+                        data: [],
+                        borderColor: '#00FF00',
+                        backgroundColor: 'rgba(0, 255, 0, 0.2)',
+                        borderWidth: 3,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: '#00FF00',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        yAxisID: 'y1',
+                        tension: 0.1,
+                        fill: false,
+                        spanGaps: true,
+                        datalabels: {
+                            display: true,
+                            align: function(context) {
+                                const index = context.dataIndex;
+                                const total = context.dataset.data.length;
+                                if (index === total - 1) return 'left';
+                                return index % 2 === 0 ? 'bottom' : 'top';
+                            },
+                            anchor: 'center',
+                            offset: 10,
+                            clamp: true,
+                            color: '#FFFFFF',
+                            backgroundColor: '#00FF00',
+                            borderRadius: 3,
+                            padding: { top: 1, bottom: 1, left: 3, right: 3 },
+                            font: {
+                                weight: 'bold',
+                                size: 8
+                            },
+                            formatter: function(value) {
+                                return value ? value.toFixed(1) + '%' : '';
+                            }
+                        }
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: {
+                    padding: {
+                        left: 20,
+                        right: 40,
+                        top: 30,
+                        bottom: 20
+                    }
+                },
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Temu SKU Metrics',
+                        font: {
+                            size: 16,
+                            weight: 'bold'
+                        }
+                    },
+                    subtitle: {
+                        display: true,
+                        text: 'Price (Left) | CVR% (Right) | Views (Labels Only)',
+                        font: {
+                            size: 12
+                        },
+                        color: '#666'
+                    },
+                    legend: {
+                        display: true,
+                        position: 'bottom'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                if (context.parsed.y !== null) {
+                                    if (context.dataset.label === 'Price (USD)') {
+                                        label += '$' + context.parsed.y.toFixed(2);
+                                    } else if (context.dataset.label === 'CVR%') {
+                                        label += context.parsed.y.toFixed(1) + '%';
+                                    } else {
+                                        label += context.parsed.y.toFixed(0);
+                                    }
+                                }
+                                return label;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        beginAtZero: false,
+                        title: {
+                            display: true,
+                            text: 'Price (USD)',
+                            font: {
+                                size: 12,
+                                weight: 'bold'
+                            },
+                            color: '#FF0000'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                return '$' + value.toFixed(2);
+                            },
+                            color: '#FF0000',
+                            font: {
+                                size: 10,
+                                weight: 'bold'
+                            }
+                        },
+                        grid: {
+                            color: 'rgba(255, 0, 0, 0.1)'
+                        }
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        beginAtZero: false,
+                        title: {
+                            display: true,
+                            text: 'CVR %',
+                            font: {
+                                size: 12,
+                                weight: 'bold'
+                            },
+                            color: '#00FF00'
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                return value.toFixed(1) + '%';
+                            },
+                            color: '#00FF00',
+                            font: {
+                                size: 10,
+                                weight: 'bold'
+                            }
+                        },
+                        grid: {
+                            drawOnChartArea: false
+                        }
+                    },
+                    y2: {
+                        type: 'linear',
+                        display: false,
+                        position: 'right',
+                        beginAtZero: false,
+                        grid: {
+                            drawOnChartArea: false
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function loadSkuMetricsData(sku, days = 7) {
+        fetch(`/temu-metrics-history?days=${days}&sku=${encodeURIComponent(sku)}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (skuMetricsChart) {
+                    if (!data || data.length === 0) {
+                        $('#chart-no-data-message').show();
+                        skuMetricsChart.data.labels = [];
+                        skuMetricsChart.data.datasets.forEach(dataset => {
+                            dataset.data = [];
+                        });
+                        skuMetricsChart.options.plugins.title.text = 'Temu SKU Metrics';
+                        skuMetricsChart.update();
+                        return;
+                    }
+                    
+                    $('#chart-no-data-message').hide();
+                    
+                    skuMetricsChart.options.plugins.title.text = `Temu Metrics (${days} Days)`;
+                    
+                    skuMetricsChart.data.labels = data.map(d => d.date_formatted || d.date || '');
+                    
+                    const priceData = data.map(d => d.price || null);
+                    const viewsData = data.map(d => d.views || null);
+                    const cvrData = data.map(d => {
+                        const cvr = d.cvr_percent;
+                        return (cvr && cvr > 0) ? cvr : null;
+                    });
+                    
+                    skuMetricsChart.data.datasets[0].data = priceData;
+                    skuMetricsChart.data.datasets[1].data = viewsData;
+                    skuMetricsChart.data.datasets[2].data = cvrData;
+                    
+                    const priceMin = Math.min(...priceData.filter(p => p != null && p > 0));
+                    const priceMax = Math.max(...priceData.filter(p => p != null));
+                    const viewsMin = Math.min(...viewsData.filter(v => v != null && v > 0));
+                    const viewsMax = Math.max(...viewsData.filter(v => v != null));
+                    const cvrMin = Math.min(...cvrData.filter(c => c != null && c > 0));
+                    const cvrMax = Math.max(...cvrData.filter(c => c != null && c > 0));
+                    
+                    const yMin = priceMin * 0.97;
+                    const yMax = priceMax * 1.03;
+                    const y2Min = viewsMin * 0.97;
+                    const y2Max = viewsMax * 1.03;
+                    const y1Min = cvrMin > 0 ? cvrMin * 0.95 : 0;
+                    const y1Max = cvrMax * 1.05;
+                    
+                    skuMetricsChart.options.scales.y.min = yMin;
+                    skuMetricsChart.options.scales.y.max = yMax;
+                    skuMetricsChart.options.scales.y2.min = y2Min;
+                    skuMetricsChart.options.scales.y2.max = y2Max;
+                    skuMetricsChart.options.scales.y1.min = y1Min;
+                    skuMetricsChart.options.scales.y1.max = y1Max;
+                    
+                    skuMetricsChart.update('active');
+                }
+            })
+            .catch(error => {
+                alert('Error loading metrics data. Please check console for details.');
+            });
+    }
     
     function showToast(message, type = 'info') {
         const toastContainer = document.querySelector('.toast-container');
@@ -491,6 +912,34 @@
     }
 
     $(document).ready(function() {
+        // Initialize SKU-specific chart
+        initSkuMetricsChart();
+
+        // SKU chart days filter
+        $('#sku-chart-days-filter').on('change', function() {
+            const days = $(this).val();
+            if (currentSku) {
+                if (skuMetricsChart) {
+                    skuMetricsChart.options.plugins.title.text = `Temu Metrics (${days} Days)`;
+                    skuMetricsChart.update();
+                }
+                loadSkuMetricsData(currentSku, days);
+            }
+        });
+
+        // Event delegation for chart button clicks
+        $(document).on('click', '.view-sku-chart', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const sku = $(this).data('sku');
+            currentSku = sku;
+            $('#modalSkuName').text(sku);
+            $('#sku-chart-days-filter').val('7');
+            $('#chart-no-data-message').hide();
+            loadSkuMetricsData(sku, 7);
+            $('#skuMetricsModal').modal('show');
+        });
+
         // Discount type dropdown change handler
         $('#discount-type-select').on('change', function() {
             const discountType = $(this).val();
@@ -582,6 +1031,20 @@
             applyDiscount();
         });
 
+        $('#sugg-amz-prc-btn').on('click', function() {
+            applySuggestAmazonPrice();
+        });
+
+        $('#sugg-r-prc-btn').on('click', function() {
+            applySuggestRPrice();
+        });
+
+        $('#clear-sprice-btn').on('click', function() {
+            if (confirm('Are you sure you want to clear all SPRICE data? This action cannot be undone.')) {
+                clearAllSprice();
+            }
+        });
+
         $('#discount-percentage-input').on('keypress', function(e) {
             if (e.which === 13) {
                 applyDiscount();
@@ -640,17 +1103,14 @@
                     },
                     error: function(xhr) {
                         const errorMsg = xhr.responseJSON?.error || xhr.responseText || 'Failed to save SPRICE';
-                        console.error(`Attempt ${retryCount + 1} for SKU ${sku} failed:`, errorMsg);
                         
                         if (retryCount < 1) {
-                            console.log(`Retrying SKU ${sku} in 2 seconds...`);
                             setTimeout(() => {
                                 saveSpriceWithRetry(sku, sprice, row, retryCount + 1)
                                     .then(resolve)
                                     .catch(reject);
                             }, 2000);
                         } else {
-                            console.error(`Max retries reached for SKU ${sku}`);
                             if (row) {
                                 row.update({ sprice_status: 'error' });
                             }
@@ -715,6 +1175,9 @@
                                 sprice: newSPrice,
                                 sprice_status: 'processing'
                             });
+                            
+                            // Force row to recalculate all formatted columns
+                            tableRow.reformat();
                         }
                         
                         saveSpriceWithRetry(sku, newSPrice, tableRow)
@@ -732,6 +1195,7 @@
                                 errorCount++;
                                 if (tableRow) {
                                     tableRow.update({ sprice: originalSPrice });
+                                    tableRow.reformat();
                                 }
                                 if (updatedCount + errorCount === totalSkus) {
                                     showToast(`${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s), ${errorCount} failed`, 'error');
@@ -744,12 +1208,175 @@
             $('#discount-percentage-input').val('');
         }
 
+        function applySuggestAmazonPrice() {
+            if (selectedSkus.size === 0) {
+                showToast('Please select SKUs first', 'error');
+                return;
+            }
+
+            let updatedCount = 0;
+            let noAmazonPriceCount = 0;
+            const updates = [];
+
+            selectedSkus.forEach(sku => {
+                const rows = table.searchRows("sku", "=", sku);
+                
+                if (rows.length > 0) {
+                    const row = rows[0];
+                    const rowData = row.getData();
+                    const amazonPrice = parseFloat(rowData['a_price']);
+                    
+                    if (amazonPrice && amazonPrice > 0) {
+                        row.update({
+                            sprice: amazonPrice
+                        });
+                        
+                        // Force row to recalculate all formatted columns
+                        row.reformat();
+                        
+                        updates.push({
+                            sku: sku,
+                            amazon_price: amazonPrice
+                        });
+                        
+                        updatedCount++;
+                    } else {
+                        noAmazonPriceCount++;
+                    }
+                } else {
+                    noAmazonPriceCount++;
+                }
+            });
+            
+            if (updates.length > 0) {
+                saveTemuAmazonPriceUpdates(updates);
+            }
+            
+            let message = `Amazon price applied to ${updatedCount} SKU(s)`;
+            if (noAmazonPriceCount > 0) {
+                message += ` (${noAmazonPriceCount} SKU(s) had no Amazon price or not found)`;
+            }
+
+            showToast(message, updatedCount > 0 ? 'success' : 'error');
+        }
+
+        function saveTemuAmazonPriceUpdates(updates) {
+            $.ajax({
+                url: '/temu-save-amazon-prices',
+                method: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}',
+                    updates: updates
+                },
+                success: function(response) {
+                    if (response.success) {
+                        table.redraw();
+                    }
+                },
+                error: function(xhr) {
+                    showToast('Failed to save Amazon prices', 'error');
+                }
+            });
+        }
+
+        function applySuggestRPrice() {
+            if (selectedSkus.size === 0) {
+                showToast('Please select SKUs first', 'error');
+                return;
+            }
+
+            let updatedCount = 0;
+            let noRPriceCount = 0;
+            const updates = [];
+
+            selectedSkus.forEach(sku => {
+                const rows = table.searchRows("sku", "=", sku);
+                
+                if (rows.length > 0) {
+                    const row = rows[0];
+                    const rowData = row.getData();
+                    const rPrice = parseFloat(rowData['recommended_base_price']);
+                    
+                    if (rPrice && rPrice > 0) {
+                        row.update({
+                            sprice: rPrice
+                        });
+                        
+                        // Force row to recalculate all formatted columns
+                        row.reformat();
+                        
+                        updates.push({
+                            sku: sku,
+                            r_price: rPrice
+                        });
+                        
+                        updatedCount++;
+                    } else {
+                        noRPriceCount++;
+                    }
+                } else {
+                    noRPriceCount++;
+                }
+            });
+            
+            if (updates.length > 0) {
+                saveTemuRPriceUpdates(updates);
+            }
+            
+            let message = `R price applied to ${updatedCount} SKU(s)`;
+            if (noRPriceCount > 0) {
+                message += ` (${noRPriceCount} SKU(s) had no R price or not found)`;
+            }
+
+            showToast(message, updatedCount > 0 ? 'success' : 'error');
+        }
+
+        function saveTemuRPriceUpdates(updates) {
+            $.ajax({
+                url: '/temu-save-r-prices',
+                method: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}',
+                    updates: updates
+                },
+                success: function(response) {
+                    if (response.success) {
+                        table.redraw();
+                    }
+                },
+                error: function(xhr) {
+                    showToast('Failed to save R prices', 'error');
+                }
+            });
+        }
+
+        function clearAllSprice() {
+            $.ajax({
+                url: '/temu-clear-sprice',
+                method: 'POST',
+                data: {
+                    _token: '{{ csrf_token() }}'
+                },
+                beforeSend: function() {
+                    $('#clear-sprice-btn').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Clearing...');
+                },
+                success: function(response) {
+                    if (response.success) {
+                        showToast(`Successfully cleared SPRICE for ${response.cleared} SKU(s)`, 'success');
+                        table.replaceData();
+                    }
+                },
+                error: function(xhr) {
+                    showToast('Failed to clear SPRICE data', 'error');
+                },
+                complete: function() {
+                    $('#clear-sprice-btn').prop('disabled', false).html('<i class="fa fa-trash"></i> Clear SPRICE');
+                }
+            });
+        }
+
         function updateSummary() {
             const data = table.getData("active");
-            console.log('updateSummary called, data length:', data.length);
-            if (data.length > 0) {
-                console.log('Sample row:', data[0]);
-            }
             
             let totalProducts = data.length;
             let totalQuantity = 0;
@@ -885,6 +1512,9 @@
             paginationSize: 100,
             paginationSizeSelector: [10, 25, 50, 100, 200],
             paginationCounter: "rows",
+            initialSort: [
+                {column: "cvr_percent", dir: "asc"}
+            ],
             columns: [
                 {
                     title: "Image",
@@ -896,29 +1526,31 @@
                         }
                         return '';
                     },
-                    headerSort: false,
-                    width: 80
+                    headerSort: false
                 },
                 {
                     title: "SKU",
                     field: "sku",
                     headerFilter: "input",
                     frozen: true,
-                    width: 150
+                    formatter: function(cell) {
+                        const sku = cell.getValue();
+                        if (!sku) return '';
+                        
+                        return `${sku} <button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>`;
+                    }
                 },
                 {
                     title: "INV",
                     field: "inventory",
                     hozAlign: "center",
-                    sorter: "number",
-                    width: 80
+                    sorter: "number"
                 },
                 {
                     title: "OVL30",
                     field: "ovl30",
                     hozAlign: "center",
-                    sorter: "number",
-                    width: 80
+                    sorter: "number"
                 },
                     {
                     title: "Dil%",
@@ -935,15 +1567,13 @@
                         else color = '#e83e8c'; // pink (50 and above)
                         
                         return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
-                    },
-                    width: 80
+                    }
                 },
                 {
                     title: "Temu L30",
                     field: "temu_l30",
                     hozAlign: "center",
-                    sorter: "number",
-                    width: 80
+                    sorter: "number"
                 },
             
                 {
@@ -962,8 +1592,7 @@
                         else color = '#ff1493'; // pink for > 10
                         
                         return `<span style="color: ${color}; font-weight: 600;">${value.toFixed(1)}%</span>`;
-                    },
-                    width: 90
+                    }
                 },
                  {
                     title: "Views",
@@ -973,8 +1602,7 @@
                     formatter: function(cell) {
                         const value = parseInt(cell.getValue()) || 0;
                         return value.toLocaleString();
-                    },
-                    width: 110
+                    }
                 },
                
                 //  {
@@ -1000,7 +1628,6 @@
                         symbol: "$",
                         precision: 2
                     },
-                    width: 120,
                     editorParams: {
                         min: 0,
                         step: 0.01
@@ -1019,8 +1646,20 @@
                         }
                         const temuPrice = basePrice <= 26.99 ? basePrice + 2.99 : basePrice;
                         return '$' + temuPrice.toFixed(2);
-                    },
-                    width: 120
+                    }
+                },
+                {
+                    title: "A Price",
+                    field: "a_price",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue());
+                        if (value === null || value === 0 || isNaN(value)) {
+                            return '<span style="color: #6c757d;">-</span>';
+                        }
+                        return `$${value.toFixed(2)}`;
+                    }
                 },
                 {
                     title: "PRFT AMT",
@@ -1032,7 +1671,6 @@
                         const color = value < 0 ? '#dc3545' : (value > 0 ? '#28a745' : '#6c757d');
                         return `<span style="color: ${color}; font-weight: 600;">$${value.toFixed(2)}</span>`;
                     },
-                    width: 100,
                     visible: false
                 },
                 {
@@ -1044,8 +1682,7 @@
                         const value = parseFloat(cell.getValue()) || 0;
                         const colorClass = getPftColor(value);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span>`;
-                    },
-                    width: 100
+                    }
                 },
                 {
                     title: "ADS%",
@@ -1090,8 +1727,7 @@
                         else if (value > 21) color = '#a00211'; // red
                         
                         return `<span style="color: ${color}; font-weight: 600;">${value.toFixed(1)}%</span>`;
-                    },
-                    width: 90
+                    }
                 },
                 {
                     title: "GROI %",
@@ -1102,12 +1738,11 @@
                         const value = parseFloat(cell.getValue()) || 0;
                         const colorClass = getRoiColor(value);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span>`;
-                    },
-                    width: 100
+                    }
                 },
 
-                
-                
+
+
                 {
                     title: "NPFT %",
                     field: "npft_percent",
@@ -1117,8 +1752,7 @@
                         const value = parseFloat(cell.getValue()) || 0;
                         const colorClass = getPftColor(value);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span>`;
-                    },
-                    width: 100
+                    }
                 },
                 {
                     title: "NROI %",
@@ -1129,14 +1763,12 @@
                         const value = parseFloat(cell.getValue()) || 0;
                         const colorClass = getRoiColor(value);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span>`;
-                    },
-                    width: 100
+                    }
                 },
                      {
                     title: '<input type="checkbox" id="select-all-checkbox">',
                     field: "_select",
                     headerSort: false,
-                    width: 50,
                     visible: false,
                     formatter: function(cell) {
                         const sku = cell.getRow().getData()['sku'];
@@ -1156,8 +1788,7 @@
                         const value = cell.getValue();
                         if (!value || value === 0) return '';
                         return `$${parseFloat(value).toFixed(2)}`;
-                    },
-                    width: 80
+                    }
                 },
                 {
                     title: "S PRC",
@@ -1178,8 +1809,7 @@
                         }
                         
                         return `$${parseFloat(value).toFixed(2)}`;
-                    },
-                    width: 80
+                    }
                 },
            
                 {
@@ -1196,8 +1826,7 @@
                         // Calculate Suggested Temu Price (SPRICE + 2.99 if <= 26.99)
                         const stemuPrice = sprice <= 26.99 ? sprice + 2.99 : sprice;
                         return `$${stemuPrice.toFixed(2)}`;
-                    },
-                    width: 90
+                    }
                 },
                 {
                     title: "SGPRFT%",
@@ -1221,8 +1850,7 @@
                         
                         const colorClass = getPftColor(sgprft);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(sgprft)}%</span>`;
-                    },
-                    width: 80
+                    }
                 },
                 {
                     title: "SROI%",
@@ -1246,8 +1874,7 @@
                         
                         const colorClass = getRoiColor(sroi);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(sroi)}%</span>`;
-                    },
-                    width: 80
+                    }
                 },
                 {
                     title: "SPFT%",
@@ -1275,8 +1902,7 @@
                         
                         const colorClass = getPftColor(spft);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(spft)}%</span>`;
-                    },
-                    width: 80
+                    }
                 },
                 {
                     title: "SNROI%",
@@ -1304,8 +1930,7 @@
                         
                         const colorClass = getRoiColor(snroi);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(snroi)}%</span>`;
-                    },
-                    width: 80
+                    }
                 },
                  {
                     title: "Spend",
@@ -1315,8 +1940,7 @@
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue()) || 0;
                         return '$' + value.toFixed(2);
-                    },
-                    width: 100
+                    }
                 },
                 {
                     title: "LP",
@@ -1330,7 +1954,6 @@
                         symbol: "$",
                         precision: 2
                     },
-                    width: 100,
                     visible: false
                 },
                 {
@@ -1345,7 +1968,6 @@
                         symbol: "$",
                         precision: 2
                     },
-                    width: 100,
                     visible: false
                 }
             ]
@@ -1363,6 +1985,7 @@
             const gpftFilter = $('#gpft-filter').val();
             const cvrFilter = $('#cvr-filter').val();
             const adsFilter = $('#ads-filter').val();
+            const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
             const skuSearch = $('#sku-search').val();
 
             // Clear all filters first
@@ -1433,11 +2056,44 @@
                 });
             }
 
+            // DIL filter
+            if (dilFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const dil = parseFloat(data['dil_percent']) || 0;
+                    
+                    if (dilFilter === 'red') return dil < 16.66;
+                    if (dilFilter === 'yellow') return dil >= 16.66 && dil < 25;
+                    if (dilFilter === 'green') return dil >= 25 && dil < 50;
+                    if (dilFilter === 'pink') return dil >= 50;
+                    return true;
+                });
+            }
+
             updateSummary();
             updateSelectAllCheckbox();
         }
 
         $('#inventory-filter, #gpft-filter, #cvr-filter, #ads-filter').on('change', function() {
+            applyFilters();
+        });
+
+        $(document).on('click', '.column-filter', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const $item = $(this);
+            const column = $item.data('column');
+            const color = $item.data('color');
+            const dropdown = $item.closest('.dropdown');
+            const button = dropdown.find('.dropdown-toggle');
+            
+            dropdown.find('.column-filter').removeClass('active');
+            $item.addClass('active');
+            
+            const statusCircle = $item.find('.status-circle').clone();
+            const text = $item.text().trim();
+            button.html('').append(statusCircle).append(' DIL%');
+            
             applyFilters();
         });
 
@@ -1482,13 +2138,9 @@
                     return;
                 }
                 
-                // Update the row data to trigger recalculation of SGPRFT%, SROI%, SPFT%, SNROI%
                 row.update({ sprice: newSprice });
-                
-                // Force reformat of the entire row to update calculated columns instantly
                 row.reformat();
                 
-                // Save to server
                 $.ajax({
                     url: '/temu-pricing/save-sprice',
                     method: 'POST',
