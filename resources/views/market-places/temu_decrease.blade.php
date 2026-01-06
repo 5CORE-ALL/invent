@@ -1392,6 +1392,9 @@
             paginationSize: 100,
             paginationSizeSelector: [10, 25, 50, 100, 200],
             paginationCounter: "rows",
+            initialSort: [
+                {column: "cvr_percent", dir: "asc"}
+            ],
             columns: [
                 {
                     title: "Image",
@@ -1403,15 +1406,13 @@
                         }
                         return '';
                     },
-                    headerSort: false,
-                    width: 80
+                    headerSort: false
                 },
                 {
                     title: "SKU",
                     field: "sku",
                     headerFilter: "input",
                     frozen: true,
-                    width: 180,
                     formatter: function(cell) {
                         const sku = cell.getValue();
                         if (!sku) return '';
@@ -1423,15 +1424,13 @@
                     title: "INV",
                     field: "inventory",
                     hozAlign: "center",
-                    sorter: "number",
-                    width: 80
+                    sorter: "number"
                 },
                 {
                     title: "OVL30",
                     field: "ovl30",
                     hozAlign: "center",
-                    sorter: "number",
-                    width: 80
+                    sorter: "number"
                 },
                     {
                     title: "Dil%",
@@ -1448,15 +1447,13 @@
                         else color = '#e83e8c'; // pink (50 and above)
                         
                         return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
-                    },
-                    width: 80
+                    }
                 },
                 {
                     title: "Temu L30",
                     field: "temu_l30",
                     hozAlign: "center",
-                    sorter: "number",
-                    width: 80
+                    sorter: "number"
                 },
             
                 {
@@ -1475,8 +1472,7 @@
                         else color = '#ff1493'; // pink for > 10
                         
                         return `<span style="color: ${color}; font-weight: 600;">${value.toFixed(1)}%</span>`;
-                    },
-                    width: 90
+                    }
                 },
                  {
                     title: "Views",
@@ -1486,8 +1482,7 @@
                     formatter: function(cell) {
                         const value = parseInt(cell.getValue()) || 0;
                         return value.toLocaleString();
-                    },
-                    width: 110
+                    }
                 },
                
                 //  {
@@ -1513,7 +1508,6 @@
                         symbol: "$",
                         precision: 2
                     },
-                    width: 120,
                     editorParams: {
                         min: 0,
                         step: 0.01
@@ -1532,8 +1526,7 @@
                         }
                         const temuPrice = basePrice <= 26.99 ? basePrice + 2.99 : basePrice;
                         return '$' + temuPrice.toFixed(2);
-                    },
-                    width: 120
+                    }
                 },
                 {
                     title: "A Price",
@@ -1546,8 +1539,7 @@
                             return '<span style="color: #6c757d;">-</span>';
                         }
                         return `$${value.toFixed(2)}`;
-                    },
-                    width: 90
+                    }
                 },
                 {
                     title: "PRFT AMT",
@@ -1559,7 +1551,6 @@
                         const color = value < 0 ? '#dc3545' : (value > 0 ? '#28a745' : '#6c757d');
                         return `<span style="color: ${color}; font-weight: 600;">$${value.toFixed(2)}</span>`;
                     },
-                    width: 100,
                     visible: false
                 },
                 {
@@ -1571,8 +1562,7 @@
                         const value = parseFloat(cell.getValue()) || 0;
                         const colorClass = getPftColor(value);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span>`;
-                    },
-                    width: 100
+                    }
                 },
                 {
                     title: "ADS%",
@@ -1617,8 +1607,7 @@
                         else if (value > 21) color = '#a00211'; // red
                         
                         return `<span style="color: ${color}; font-weight: 600;">${value.toFixed(1)}%</span>`;
-                    },
-                    width: 90
+                    }
                 },
                 {
                     title: "GROI %",
@@ -1629,12 +1618,11 @@
                         const value = parseFloat(cell.getValue()) || 0;
                         const colorClass = getRoiColor(value);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span>`;
-                    },
-                    width: 100
+                    }
                 },
 
-                
-                
+
+
                 {
                     title: "NPFT %",
                     field: "npft_percent",
@@ -1644,8 +1632,7 @@
                         const value = parseFloat(cell.getValue()) || 0;
                         const colorClass = getPftColor(value);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span>`;
-                    },
-                    width: 100
+                    }
                 },
                 {
                     title: "NROI %",
@@ -1656,14 +1643,12 @@
                         const value = parseFloat(cell.getValue()) || 0;
                         const colorClass = getRoiColor(value);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(value)}%</span>`;
-                    },
-                    width: 100
+                    }
                 },
                      {
                     title: '<input type="checkbox" id="select-all-checkbox">',
                     field: "_select",
                     headerSort: false,
-                    width: 50,
                     visible: false,
                     formatter: function(cell) {
                         const sku = cell.getRow().getData()['sku'];
@@ -1683,8 +1668,7 @@
                         const value = cell.getValue();
                         if (!value || value === 0) return '';
                         return `$${parseFloat(value).toFixed(2)}`;
-                    },
-                    width: 80
+                    }
                 },
                 {
                     title: "S PRC",
@@ -1705,8 +1689,7 @@
                         }
                         
                         return `$${parseFloat(value).toFixed(2)}`;
-                    },
-                    width: 80
+                    }
                 },
            
                 {
@@ -1723,8 +1706,7 @@
                         // Calculate Suggested Temu Price (SPRICE + 2.99 if <= 26.99)
                         const stemuPrice = sprice <= 26.99 ? sprice + 2.99 : sprice;
                         return `$${stemuPrice.toFixed(2)}`;
-                    },
-                    width: 90
+                    }
                 },
                 {
                     title: "SGPRFT%",
@@ -1748,8 +1730,7 @@
                         
                         const colorClass = getPftColor(sgprft);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(sgprft)}%</span>`;
-                    },
-                    width: 80
+                    }
                 },
                 {
                     title: "SROI%",
@@ -1773,8 +1754,7 @@
                         
                         const colorClass = getRoiColor(sroi);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(sroi)}%</span>`;
-                    },
-                    width: 80
+                    }
                 },
                 {
                     title: "SPFT%",
@@ -1802,8 +1782,7 @@
                         
                         const colorClass = getPftColor(spft);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(spft)}%</span>`;
-                    },
-                    width: 80
+                    }
                 },
                 {
                     title: "SNROI%",
@@ -1831,8 +1810,7 @@
                         
                         const colorClass = getRoiColor(snroi);
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(snroi)}%</span>`;
-                    },
-                    width: 80
+                    }
                 },
                  {
                     title: "Spend",
@@ -1842,8 +1820,7 @@
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue()) || 0;
                         return '$' + value.toFixed(2);
-                    },
-                    width: 100
+                    }
                 },
                 {
                     title: "LP",
@@ -1857,7 +1834,6 @@
                         symbol: "$",
                         precision: 2
                     },
-                    width: 100,
                     visible: false
                 },
                 {
@@ -1872,7 +1848,6 @@
                         symbol: "$",
                         precision: 2
                     },
-                    width: 100,
                     visible: false
                 }
             ]
