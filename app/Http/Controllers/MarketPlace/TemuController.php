@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\MarketPlace;
 
 use App\Http\Controllers\Controller;
+use App\Models\AmazonDatasheet;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\TemuDataView;
@@ -107,6 +108,9 @@ class TemuController extends Controller
 
             // Fetch NR values from temu_data_view
             $temuDataViews = TemuDataView::whereIn('sku', $skus)->get()->keyBy('sku');
+            
+            // Get Amazon pricing data
+            $amazonData = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
 
             // Get marketplace percentage
             $marketplaceData = ChannelMaster::where('channel', 'Temu')->first();
@@ -1490,9 +1494,12 @@ class TemuController extends Controller
                 ->whereNotNull('goods_id')
                 ->get()
                 ->keyBy('goods_id');
+            
+            // Fetch Amazon pricing data
+            $amazonData = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
 
             // 4. Process data - iterate through ALL product masters
-            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $viewData, $adData, $temuDataViewData, $rPricingData, $percentage) {
+            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $viewData, $adData, $temuDataViewData, $amazonData, $rPricingData, $percentage) {
                 $sku = $productMaster->sku;
                 
                 // Get related data (may be null if not in Temu)
@@ -1605,6 +1612,10 @@ class TemuController extends Controller
                 }
                 $sprice = $temuDataViewValue['sprice'] ?? null;
                 
+                // Get Amazon price from AmazonDatasheet
+                $amazon = $amazonData->get($sku);
+                $amazonPrice = $amazon ? floatval($amazon->price ?? 0) : 0;
+                
                 // Get recommended_base_price from R Pricing by goods_id
                 $rPricingItem = $goodsId ? $rPricingData->get($goodsId) : null;
                 $recommendedBasePrice = $rPricingItem ? $rPricingItem->recommended_base_price : null;
@@ -1630,6 +1641,7 @@ class TemuController extends Controller
                     'dil_percent' => $dilPercent,
                     'temu_ship' => $temuShip,
                     'temu_price' => round($temuPrice, 2),
+                    'a_price' => $amazonPrice,
                     'profit' => round($profit, 2),
                     'profit_percent' => round($profitPercent, 2),
                     'roi_percent' => round($roiPercent, 2),
@@ -2347,6 +2359,168 @@ class TemuController extends Controller
         $writer = new Xlsx($spreadsheet);
         $writer->save('php://output');
         exit;
+    }
+
+    /**
+     * Update Temu Cell Data (like APRICE - Amazon Price)
+     */
+    public function updateTemuCellData(Request $request)
+    {
+        try {
+            $sku = $request->input('sku');
+            $field = $request->input('field');
+            $value = $request->input('value');
+            
+            if (!$sku || !$field) {
+                return response()->json(['error' => 'SKU and field are required'], 400);
+            }
+            
+            // Allowed fields to update
+            $allowedFields = ['aprice']; // Amazon Price
+            
+            if (!in_array($field, $allowedFields)) {
+                return response()->json(['error' => 'Field not allowed for update'], 400);
+            }
+            
+            // Find or create temu_data_view record
+            $dataView = TemuDataView::firstOrNew(['sku' => $sku]);
+            
+            // Get existing value array or create new one
+            $valueArray = is_array($dataView->value) ? $dataView->value : [];
+            
+            // Update the specific field
+            $valueArray[$field] = floatval($value);
+            
+            // Save
+            $dataView->value = $valueArray;
+            $dataView->save();
+            
+            return response()->json([
+                'success' => true,
+                'message' => ucfirst($field) . ' updated successfully'
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error updating Temu cell data: ' . $e->getMessage());
+            return response()->json(['error' => 'Error saving data'], 500);
+        }
+    }
+
+    /**
+     * Save Amazon Price Updates in Bulk (from Suggest Amazon Price button)
+     */
+    public function saveTemuAmazonPriceUpdates(Request $request)
+    {
+        try {
+            $updates = $request->input('updates', []);
+            
+            if (empty($updates)) {
+                return response()->json(['error' => 'No updates provided'], 400);
+            }
+
+            DB::beginTransaction();
+            
+            $updated = 0;
+            $errors = [];
+            
+            foreach ($updates as $update) {
+                $sku = strtoupper(trim($update['sku'] ?? ''));
+                $amazonPrice = floatval($update['amazon_price'] ?? 0);
+                
+                if (empty($sku) || $amazonPrice <= 0) {
+                    $errors[] = "Invalid data for SKU: {$sku}";
+                    continue;
+                }
+                
+                // Find or create temu_data_view record
+                $dataViewRecord = TemuDataView::where('sku', $sku)->first();
+                
+                if ($dataViewRecord) {
+                    $existingValue = $dataViewRecord->value ?? [];
+                    $existingValue['amazon_price_applied_at'] = now()->toDateTimeString();
+                    $existingValue['sprice'] = $amazonPrice;
+                    
+                    $dataViewRecord->update([
+                        'value' => $existingValue,
+                        'updated_at' => now()
+                    ]);
+                } else {
+                    TemuDataView::create([
+                        'sku' => $sku,
+                        'value' => [
+                            'amazon_price_applied_at' => now()->toDateTimeString(),
+                            'sprice' => $amazonPrice
+                        ]
+                    ]);
+                }
+                $updated++;
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'updated' => $updated,
+                'errors' => $errors
+            ]);
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error saving Temu Amazon price updates: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to save updates'], 500);
+        }
+    }
+
+    /**
+     * Get Temu SKU Metrics History for Chart
+     */
+    public function getTemuMetricsHistory(Request $request)
+    {
+        try {
+            $sku = $request->input('sku');
+            $days = $request->input('days', 7);
+
+            if (!$sku) {
+                return response()->json(['error' => 'SKU is required'], 400);
+            }
+
+            // Check if table exists
+            if (!DB::getSchemaBuilder()->hasTable('temu_sku_daily_data')) {
+                Log::warning('temu_sku_daily_data table does not exist. Please run migration.');
+                return response()->json([]); // Return empty array to show "No data" message
+            }
+
+            // Use Pacific Time (California timezone)
+            $endDate = Carbon::today('America/Los_Angeles');
+            $startDate = $endDate->copy()->subDays($days);
+
+            // Fetch historical data from temu_sku_daily_data
+            $metricsData = DB::table('temu_sku_daily_data')
+                ->where('sku', $sku)
+                ->where('record_date', '>=', $startDate)
+                ->where('record_date', '<=', $endDate)
+                ->orderBy('record_date', 'asc')
+                ->get();
+
+            // Format data for chart
+            $chartData = $metricsData->map(function($record) {
+                return [
+                    'date' => $record->record_date,
+                    'date_formatted' => Carbon::parse($record->record_date)->format('M d'),
+                    'price' => floatval($record->base_price ?? 0),
+                    'views' => intval($record->product_clicks ?? 0),
+                    'cvr_percent' => floatval($record->cvr_percent ?? 0),
+                    'temu_l30' => intval($record->temu_l30 ?? 0),
+                    'spend' => floatval($record->spend ?? 0)
+                ];
+            });
+
+            return response()->json($chartData);
+        } catch (\Exception $e) {
+            Log::error('Error fetching Temu metrics history: ' . $e->getMessage());
+            // Return empty array instead of 500 error to show "No data" message
+            return response()->json([]);
+        }
     }
 }
 
