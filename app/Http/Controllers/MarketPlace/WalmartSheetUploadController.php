@@ -377,6 +377,7 @@ class WalmartSheetUploadController extends Controller
             $listingData = WalmartListingViewsData::whereIn('sku', $skus)->get()->keyBy('sku');
             
             // Aggregate orders by SKU (sum quantities and count orders)
+            // Note: walmart_order_data table is already truncated to only contain L30 data
             $orderData = WalmartOrderData::selectRaw('
                 sku,
                 COUNT(*) as total_orders,
@@ -386,7 +387,7 @@ class WalmartSheetUploadController extends Controller
                 SUM(shipping_cost) as total_shipping,
                 SUM(tax) as total_tax
             ')
-            ->where('status', '!=', 'Canceled')
+            ->where('status', '!=', 'Canceled') // Exclude canceled orders only
             ->whereIn('sku', $skus)
             ->groupBy('sku')
             ->get()
@@ -468,6 +469,12 @@ class WalmartSheetUploadController extends Controller
                 $totalOrders = $orders ? intval($orders->total_orders) : 0;
                 $totalRevenue = $orders ? floatval($orders->total_revenue) : 0;
                 
+                // Get page views for CVR calculation
+                $pageViews = $listing->page_views ?? 0;
+                
+                // Calculate CVR using same formula as blade: (W L30 / Views) * 100
+                $cvrPercent = $pageViews > 0 ? ($totalQty / $pageViews) * 100 : 0;
+                
                 // Calculate W L30 (Walmart L30 Sales) = SPRICE × Total Qty
                 $wL30 = $sprice * $totalQty;
                 
@@ -539,8 +546,9 @@ class WalmartSheetUploadController extends Controller
                     'a_price' => $amazon ? floatval($amazon->price ?? 0) : null,
                     
                     // Listing metrics
-                    'page_views' => $listing->page_views ?? 0,
-                    'conversion_rate' => $listing->conversion_rate ?? 0,
+                    'page_views' => $pageViews,
+                    'conversion_rate' => $listing->conversion_rate ?? 0, // Original conversion rate from listing data
+                    'cvr_percent' => $cvrPercent, // Calculated CVR using W L30 / Views (matches blade formula)
                     'listing_quality' => $listing->listing_quality ?? null,
                     'competitive_price_score' => $listing->competitive_price_score ?? null,
                     
@@ -708,6 +716,107 @@ class WalmartSheetUploadController extends Controller
             DB::rollBack();
             Log::error('Error saving Amazon price updates: ' . $e->getMessage());
             return response()->json(['error' => 'Error saving updates: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Get historical metrics data for chart display
+     */
+    public function getMetricsHistory(Request $request)
+    {
+        try {
+            $days = $request->input('days', 7);
+            $sku = $request->input('sku', null);
+            
+            // Use California timezone (Pacific Time) to match data collection
+            $startDate = \Carbon\Carbon::today('America/Los_Angeles')->subDays($days - 1);
+            $endDate = \Carbon\Carbon::today('America/Los_Angeles');
+            
+            $query = DB::table('walmart_sku_daily_data')
+                ->where('record_date', '>=', $startDate)
+                ->where('record_date', '<=', $endDate)
+                ->orderBy('record_date', 'asc');
+            
+            if ($sku) {
+                // For SKU-specific chart
+                $query->where('sku', strtoupper(trim($sku)));
+                
+                $metricsData = $query->get();
+                
+                $data = $metricsData->map(function ($row) {
+                    $dailyData = json_decode($row->daily_data, true);
+                    
+                    return [
+                        'date' => $row->record_date,
+                        'date_formatted' => date('M d', strtotime($row->record_date)),
+                        'price' => round((float) ($dailyData['price'] ?? 0), 2),
+                        'views' => (int) ($dailyData['views'] ?? 0),
+                        'cvr_percent' => round((float) ($dailyData['cvr_percent'] ?? 0), 2),
+                        'ads_percent' => round((float) ($dailyData['ad_percent'] ?? 0), 2)
+                    ];
+                });
+            } else {
+                // For overall metrics chart - aggregate all SKUs by date
+                $metricsData = $query->get();
+                
+                // Group by date and calculate averages
+                $dataByDate = [];
+                foreach ($metricsData as $row) {
+                    $dailyData = json_decode($row->daily_data, true);
+                    $dateKey = $row->record_date;
+                    
+                    if (!isset($dataByDate[$dateKey])) {
+                        $dataByDate[$dateKey] = [
+                            'date' => $dateKey,
+                            'prices' => [],
+                            'views' => 0,
+                            'gpft_values' => [],
+                            'groi_values' => [],
+                            'cvr_values' => []
+                        ];
+                    }
+                    
+                    $price = (float) ($dailyData['price'] ?? 0);
+                    $views = (int) ($dailyData['views'] ?? 0);
+                    $cvr = (float) ($dailyData['cvr_percent'] ?? 0);
+                    $gpft = (float) ($dailyData['gpft_percent'] ?? 0);
+                    $groi = (float) ($dailyData['groi_percent'] ?? 0);
+                    
+                    if ($price > 0) {
+                        $dataByDate[$dateKey]['prices'][] = $price;
+                        if ($gpft != 0) {
+                            $dataByDate[$dateKey]['gpft_values'][] = $gpft;
+                        }
+                        if ($groi != 0) {
+                            $dataByDate[$dateKey]['groi_values'][] = $groi;
+                        }
+                    }
+                    
+                    $dataByDate[$dateKey]['views'] += $views;
+                    if ($cvr > 0) {
+                        $dataByDate[$dateKey]['cvr_values'][] = $cvr;
+                    }
+                }
+                
+                // Calculate final averages
+                $data = collect($dataByDate)->map(function ($item, $dateKey) {
+                    return [
+                        'date' => $dateKey,
+                        'date_formatted' => date('M d', strtotime($dateKey)),
+                        'avg_price' => count($item['prices']) > 0 ? round(array_sum($item['prices']) / count($item['prices']), 2) : 0,
+                        'total_views' => $item['views'],
+                        'avg_gpft' => count($item['gpft_values']) > 0 ? round(array_sum($item['gpft_values']) / count($item['gpft_values']), 2) : 0,
+                        'avg_groi' => count($item['groi_values']) > 0 ? round(array_sum($item['groi_values']) / count($item['groi_values']), 2) : 0,
+                        'avg_cvr' => count($item['cvr_values']) > 0 ? round(array_sum($item['cvr_values']) / count($item['cvr_values']), 2) : 0
+                    ];
+                })->values();
+            }
+            
+            return response()->json($data);
+            
+        } catch (\Exception $e) {
+            Log::error('Error fetching Walmart metrics history: ' . $e->getMessage());
+            return response()->json(['error' => 'Error fetching metrics data'], 500);
         }
     }
 }
