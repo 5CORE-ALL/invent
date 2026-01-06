@@ -293,6 +293,16 @@
                     },
                     hozAlign: "center",
                 },
+                {
+                    title: "Remark",
+                    field: "remark",
+                    editor: "input",
+                    formatter: "plaintext",
+                    cellDblClick: function(e, cell) {
+                        cell.edit();        
+                    },
+                    minWidth: 150,
+                },
             ],
             ajaxResponse: function (url, params, response) {
                 const rows = response.data;
@@ -327,6 +337,7 @@
                 sku: rowData.Sku,
                 value: {
                     nine_ratio_link: rowData.nine_ratio_link || '',
+                    remark: rowData.remark || '',
                 }
             };
 

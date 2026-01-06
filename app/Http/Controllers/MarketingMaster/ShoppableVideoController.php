@@ -258,6 +258,7 @@ class ShoppableVideoController extends Controller
 
             // Default social links
             $nine_ratio_link = '';
+            $remark = '';
 
             // Get social links from video_posted_values table if available
             if (isset($videoPostedValues[$sku])) {
@@ -266,6 +267,7 @@ class ShoppableVideoController extends Controller
                     $value = json_decode($value, true);
                 }
                 $nine_ratio_link = $value['nine_ratio_link'] ?? '';
+                $remark = $value['remark'] ?? '';
             }
 
             // Initialize the data structure
@@ -277,6 +279,7 @@ class ShoppableVideoController extends Controller
             ];
 
             $processedItem['nine_ratio_link'] = $nine_ratio_link;
+            $processedItem['remark'] = $remark;
 
 
             // Add data from shopify_skus if available
@@ -411,8 +414,14 @@ class ShoppableVideoController extends Controller
             $headerMap = [];
             foreach ($header as $index => $h) {
                 $normalized = strtolower(trim($h));
-                if (in_array($normalized, ['sku', 'nine_ratio_link'])) {
-                    $headerMap[$normalized] = $index;
+                // Support multiple possible column names
+                if ($normalized === 'sku') {
+                    $headerMap['sku'] = $index;
+                } elseif (in_array($normalized, ['nine_ratio_link', '9:16_video_link', '9:16 video link', '9_16_video_link']) || 
+                         strpos($normalized, '9:16') !== false || strpos($normalized, 'video_link') !== false) {
+                    $headerMap['nine_ratio_link'] = $index;
+                } elseif (in_array($normalized, ['remark', 'remarks', 'note', 'notes'])) {
+                    $headerMap['remark'] = $index;
                 }
             }
 
@@ -438,6 +447,7 @@ class ShoppableVideoController extends Controller
                 // Ensure row has enough columns
                 $sku = '';
                 $nine_ratio_link = '';
+                $remark = '';
                 
                 if (isset($headerMap['sku']) && isset($row[$headerMap['sku']])) {
                     $sku = trim($row[$headerMap['sku']] ?? '');
@@ -445,6 +455,10 @@ class ShoppableVideoController extends Controller
                 
                 if (isset($headerMap['nine_ratio_link']) && isset($row[$headerMap['nine_ratio_link']])) {
                     $nine_ratio_link = trim($row[$headerMap['nine_ratio_link']] ?? '');
+                }
+                
+                if (isset($headerMap['remark']) && isset($row[$headerMap['remark']])) {
+                    $remark = trim($row[$headerMap['remark']] ?? '');
                 }
 
                 if (empty($sku)) {
@@ -469,8 +483,9 @@ class ShoppableVideoController extends Controller
                     $existingValue = $existingValue ?? [];
                 }
 
-                // Update nine_ratio_link (even if empty, we still want to process the row)
+                // Update nine_ratio_link and remark (even if empty, we still want to process the row)
                 $existingValue['nine_ratio_link'] = $nine_ratio_link;
+                $existingValue['remark'] = $remark;
 
                 // Save to NineRationVideo
                 NineRationVideo::updateOrCreate(
@@ -537,7 +552,7 @@ class ShoppableVideoController extends Controller
             'Content-Disposition' => 'attachment; filename="nine_ration_video_' . date('Y-m-d_H-i-s') . '.csv"',
         ];
 
-        $columns = ['sku', 'nine_ratio_link'];
+        $columns = ['sku', 'inv', 'ov_l30', 'dil', '9:16_video_link', 'remark'];
 
         $callback = function () use ($columns) {
             $file = fopen('php://output', 'w');
@@ -545,12 +560,32 @@ class ShoppableVideoController extends Controller
             // Write header row
             fputcsv($file, $columns);
 
-            // Fetch all SKUs from product master
-            $productMasters = ProductMaster::pluck('sku');
+            // Fetch all product masters with their shopify data
+            $productMasters = ProductMaster::all();
+            $skus = $productMasters->pluck('sku')->toArray();
+            
+            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            $videoPostedValues = NineRationVideo::whereIn('sku', $skus)->get()->keyBy('sku');
 
-            foreach ($productMasters as $sku) {
-                $nineRationVideo = NineRationVideo::where('sku', $sku)->first();
+            foreach ($productMasters as $productMaster) {
+                $sku = $productMaster->sku;
                 
+                // Get INV and L30 from shopify data
+                $inv = 0;
+                $l30 = 0;
+                if (isset($shopifyData[$sku])) {
+                    $inv = $shopifyData[$sku]->inv ?? 0;
+                    $l30 = $shopifyData[$sku]->quantity ?? 0;
+                }
+                
+                // Calculate Dil percentage
+                $dil = 0;
+                if ($inv > 0 && $l30 > 0) {
+                    $dil = round(($l30 / $inv) * 100, 2);
+                }
+                
+                // Get video link and remark from nine_ration_video
+                $nineRationVideo = isset($videoPostedValues[$sku]) ? $videoPostedValues[$sku] : null;
                 $value = [];
                 if ($nineRationVideo) {
                     $value = is_array($nineRationVideo->value) 
@@ -561,7 +596,11 @@ class ShoppableVideoController extends Controller
 
                 $row = [
                     'sku' => $sku,
-                    'nine_ratio_link' => $value['nine_ratio_link'] ?? '',
+                    'inv' => $inv,
+                    'ov_l30' => $l30,
+                    'dil' => $dil,
+                    '9:16_video_link' => $value['nine_ratio_link'] ?? '',
+                    'remark' => $value['remark'] ?? '',
                 ];
 
                 fputcsv($file, $row);
