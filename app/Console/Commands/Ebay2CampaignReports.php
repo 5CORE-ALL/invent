@@ -404,36 +404,24 @@ class Ebay2CampaignReports extends Command
         $clientId = env('EBAY2_APP_ID');
         $clientSecret = env('EBAY2_CERT_ID');
 
-        $scope = implode(' ', [
-            'https://api.ebay.com/oauth/api_scope',
-            'https://api.ebay.com/oauth/api_scope/sell.account',
-            'https://api.ebay.com/oauth/api_scope/sell.inventory',
-            'https://api.ebay.com/oauth/api_scope/sell.account',
-            'https://api.ebay.com/oauth/api_scope/sell.fulfillment',
-            'https://api.ebay.com/oauth/api_scope/sell.analytics.readonly',
-            'https://api.ebay.com/oauth/api_scope/sell.stores',
-            'https://api.ebay.com/oauth/api_scope/sell.finances',
-            'https://api.ebay.com/oauth/api_scope/sell.marketing',
-            'https://api.ebay.com/oauth/api_scope/sell.marketing.readonly'
-        ]);
-
         try {
+            // Note: Don't send scope parameter when refreshing token
+            // Scope is only used during initial authorization
             $response = Http::asForm()
                 ->withBasicAuth($clientId, $clientSecret)
                 ->post('https://api.ebay.com/identity/v1/oauth2/token', [
                     'grant_type' => 'refresh_token',
                     'refresh_token' => env('EBAY2_REFRESH_TOKEN'),
-                    'scope' => $scope,
                 ]);
 
             if ($response->successful()) {
-                $this->info('eBay2 token generated successfully');
+                $this->info('✅ eBay2 token generated successfully');
                 return $response->json()['access_token'];
             }
 
-            $this->error('eBay2 token refresh error: ' . json_encode($response->json()));
+            $this->error('❌ eBay2 token refresh error: ' . json_encode($response->json()));
         } catch (\Exception $e) {
-            $this->error('eBay2 token refresh exception: ' . $e->getMessage());
+            $this->error('❌ eBay2 token refresh exception: ' . $e->getMessage());
         }
 
         return null;
