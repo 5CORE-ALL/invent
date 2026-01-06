@@ -843,8 +843,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon/debug-data', [AmazonSalesController::class, 'debugData'])->name('amazon.debug.data');
     
     // TikTok Sales Routes
-    Route::get('/tiktok/daily-sales-data', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'getData'])->name('tiktok.daily.sales.data');
     Route::get('/tiktok/daily-sales', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'index'])->name('tiktok.daily.sales');
+    Route::get('/tiktok/daily-sales-data', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'getData'])->name('tiktok.daily.sales.data');
+    Route::get('/tiktok-column-visibility', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'getColumnVisibility']);
+    Route::post('/tiktok-column-visibility', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'saveColumnVisibility']);
     
     // Doba Sales Routes
     Route::get('/doba/daily-sales-data', [DobaSalesController::class, 'getData'])->name('doba.daily.sales.data');
@@ -879,14 +881,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/shopify-b2b-column-visibility', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'getColumnVisibility']);
     Route::post('/shopify-b2b-column-visibility', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'saveColumnVisibility']);
     
-    // TikTok Shop Sales Routes
-    Route::get('/tiktok/daily-sales', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'index'])->name('tiktok.sales');
-    Route::get('/tiktok/daily-sales-data', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'getData'])->name('tiktok.daily.sales.data');
-    Route::get('/tiktok/summary', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'getSummary'])->name('tiktok.summary');
-    Route::get('/tiktok/status', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'status'])->name('tiktok.status');
-    Route::get('/tiktok/authorize', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'startAuthorization'])->name('tiktok.authorize');
-    Route::get('/tiktok/callback', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'callback'])->name('tiktok.callback');
-    Route::post('/tiktok/sync', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'syncOrders'])->name('tiktok.sync');
+    // Walmart Sales Routes
+    Route::get('/walmart/daily-sales', [\App\Http\Controllers\Sales\WalmartSalesController::class, 'index'])->name('walmart.daily.sales');
+    Route::get('/walmart/daily-sales-data', [\App\Http\Controllers\Sales\WalmartSalesController::class, 'getData'])->name('walmart.daily.sales.data');
+    Route::get('/walmart-column-visibility', [\App\Http\Controllers\Sales\WalmartSalesController::class, 'getColumnVisibility']);
+    Route::post('/walmart-column-visibility', [\App\Http\Controllers\Sales\WalmartSalesController::class, 'saveColumnVisibility']);
     
     Route::get('/amazonfba/view-data', [OverallAmazonFbaController::class, 'getViewAmazonFbaData'])->name('amazonfba.viewData');
     Route::get('/fbainv/view-data', [AmazonFbaInvController::class, 'getViewAmazonfbaInvData'])->name('fbainv.viewData');
@@ -1078,6 +1077,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/walmart-sheet-upload-order', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'uploadOrderData'])->name('walmart-sheet-upload-order');
     Route::get('/walmart-sheet-upload-data-json', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'getCombinedDataJson'])->name('walmart-sheet-upload-data-json');
     Route::get('/walmart-sheet-upload-summary', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'getSummaryStats'])->name('walmart-sheet-upload-summary');
+    Route::post('/walmart-sheet-save-amazon-prices', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'saveAmazonPriceUpdates'])->name('walmart-sheet-save-amazon-prices');
 
 
     //Listing Audit amazon

@@ -936,6 +936,10 @@
                         <li><a href="{{ route('macys.daily.sales') }}">Macy's Sales Data</a></li>
 
                         <li><a href="{{ route('tiendamia.daily.sales') }}">Tiendamia Sales Data</a></li>
+
+                        <li><a href="{{ route('tiktok.daily.sales') }}">TikTok Sales Data</a></li>
+
+                        <li><a href="{{ route('walmart.daily.sales') }}">Walmart Sales Data</a></li>
                     </ul>
                 </div>
             </li>

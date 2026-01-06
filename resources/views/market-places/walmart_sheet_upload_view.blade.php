@@ -299,6 +299,9 @@
                         <button id="apply-discount-btn" class="btn btn-sm btn-warning">
                             <i class="fas fa-check"></i> Apply Discount
                         </button>
+                        <button id="sugg-amz-prc-btn" class="btn btn-sm btn-info">
+                            <i class="fas fa-copy"></i> Sugg Amz Prc
+                        </button>
                     </div>
                 </div>
                 <div id="walmart-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
@@ -515,6 +518,10 @@
             applyDiscount();
         });
 
+        $('#sugg-amz-prc-btn').on('click', function() {
+            applySuggestAmazonPrice();
+        });
+
         $('#discount-percentage-input').on('keypress', function(e) {
             if (e.which === 13) {
                 applyDiscount();
@@ -596,6 +603,100 @@
             
             showToast(`${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s)`, 'success');
             $('#discount-percentage-input').val('');
+        }
+
+        function applySuggestAmazonPrice() {
+            if (selectedSkus.size === 0) {
+                showToast('Please select SKUs first', 'error');
+                return;
+            }
+
+            let updatedCount = 0;
+            let noAmazonPriceCount = 0;
+            const updates = []; // Store updates for backend saving
+
+            console.log('Starting Amazon price application for', selectedSkus.size, 'selected SKUs');
+
+            // Loop through selected SKUs
+            selectedSkus.forEach(sku => {
+                // Find the row using Tabulator's searchRows method
+                const rows = table.searchRows("sku", "=", sku);
+                
+                if (rows.length > 0) {
+                    const row = rows[0]; // Get the first matching row
+                    const rowData = row.getData();
+                    const amazonPrice = parseFloat(rowData['a_price']);
+                    
+                    console.log(`Processing SKU ${sku}: Amazon price = ${amazonPrice}`);
+                    
+                    if (amazonPrice && amazonPrice > 0) {
+                        // Update the row using the row object's update method
+                        row.update({
+                            sprice: amazonPrice,
+                            w_price: amazonPrice
+                        });
+                        
+                        // Store update for backend saving
+                        updates.push({
+                            sku: sku,
+                            amazon_price: amazonPrice
+                        });
+                        
+                        console.log(`Updated SKU ${sku}: sprice set to ${amazonPrice}`);
+                        updatedCount++;
+                    } else {
+                        console.log(`SKU ${sku}: No valid Amazon price (${amazonPrice})`);
+                        noAmazonPriceCount++;
+                    }
+                } else {
+                    console.log(`SKU ${sku}: Row not found in table`);
+                    noAmazonPriceCount++;
+                }
+            });
+            
+            console.log(`Update complete: ${updatedCount} updated, ${noAmazonPriceCount} skipped`);
+            
+            // Save to backend if there are updates
+            if (updates.length > 0) {
+                saveAmazonPriceUpdates(updates);
+            }
+            
+            let message = `Amazon price applied to ${updatedCount} SKU(s)`;
+            if (noAmazonPriceCount > 0) {
+                message += ` (${noAmazonPriceCount} SKU(s) had no Amazon price or not found)`;
+            }
+            
+            showToast(message, updatedCount > 0 ? 'success' : 'warning');
+        }
+
+        function saveAmazonPriceUpdates(updates) {
+            $.ajax({
+                url: '/walmart-sheet-save-amazon-prices',
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                data: {
+                    updates: updates
+                },
+                success: function(response) {
+                    console.log('Price updates saved successfully:', response);
+                    if (response.success) {
+                        showToast(`Price updates saved (expires in 12 hours): ${response.updated} record(s)`, 'success');
+                        if (response.errors && response.errors.length > 0) {
+                            console.warn('Some updates had errors:', response.errors);
+                        }
+                    }
+                },
+                error: function(xhr) {
+                    console.error('Error saving price updates:', xhr);
+                    let errorMessage = 'Error saving price updates';
+                    if (xhr.responseJSON && xhr.responseJSON.error) {
+                        errorMessage += ': ' + xhr.responseJSON.error;
+                    }
+                    showToast(errorMessage, 'error');
+                }
+            });
         }
 
         function updateSummary() {
@@ -893,9 +994,23 @@
                     },
                     width: 110
                 },
+                 {
+                    title: "A Price",
+                    field: "a_price",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue());
+                        if (value === null || value === 0 || isNaN(value)) {
+                            return '<span style="color: #6c757d;">-</span>';
+                        }
+                        return `$${value.toFixed(2)}`;
+                    },
+                    width: 120
+                },
                 {
-                    title: "Price",
-                    field: "price",
+                    title: "W Price",
+                    field: "w_price",
                     hozAlign: "center",
                     sorter: "number",
                     editor: "input",
@@ -908,6 +1023,7 @@
                     },
                     width: 120
                 },
+               
                 {
                     title: "GPRFT %",
                     field: "gpft", // Show GPFT% (Gross Profit % - BEFORE ads)

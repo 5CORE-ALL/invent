@@ -10,6 +10,8 @@ use App\Models\WalmartOrderData;
 use App\Models\ProductMaster;
 use App\Models\WalmartCampaignReport;
 use App\Models\ShopifySku;
+use App\Models\AmazonDatasheet;
+use App\Models\WalmartDataView;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -392,6 +394,12 @@ class WalmartSheetUploadController extends Controller
             
             $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
             
+            // Fetch Amazon pricing data
+            $amazonData = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
+            
+            // Fetch Walmart data view for sprice and other saved data
+            $walmartDataView = WalmartDataView::whereIn('sku', $skus)->get()->keyBy('sku');
+            
             // Fetch spend data from WalmartCampaignReport (L30) - campaign name matches SKU
             $normalizeSku = fn($sku) => strtoupper(trim(preg_replace('/\s+/', ' ', str_replace("\xc2\xa0", ' ', $sku))));
             $normalizedSkus = collect($skus)->map($normalizeSku)->values()->all();
@@ -412,6 +420,8 @@ class WalmartSheetUploadController extends Controller
                 $listing = $listingData->get($sku);
                 $orders = $orderData->get($sku);
                 $shopify = $shopifyData->get($sku);
+                $amazon = $amazonData->get($sku);
+                $dataView = $walmartDataView->get($sku);
                 
                 // Get campaign data
                 $normalizedSku = $normalizeSku($sku);
@@ -443,8 +453,15 @@ class WalmartSheetUploadController extends Controller
                     $ship = floatval($pm->ship);
                 }
 
-                // Get price (SPRICE)
-                $sprice = floatval($price->price ?? $price->comparison_price ?? 0);
+                // Get price (SPRICE) - check walmart_data_view first, then fallback to price data
+                $sprice = 0;
+                if ($dataView && isset($dataView->value['sprice'])) {
+                    // Use sprice from walmart_data_view if available
+                    $sprice = floatval($dataView->value['sprice']);
+                } else {
+                    // Fallback to original price data
+                    $sprice = floatval($price->price ?? $price->comparison_price ?? 0);
+                }
                 
                 // Get quantities (from Walmart orders)
                 $totalQty = $orders ? intval($orders->total_qty) : 0;
@@ -517,8 +534,9 @@ class WalmartSheetUploadController extends Controller
                     'product_name' => $price->product_name ?? $listing->product_name ?? null,
                     'lp' => $lp,
                     'ship' => $ship,
-                    'price' => $sprice,
+                    'w_price' => $sprice,
                     'sprice' => $sprice,
+                    'a_price' => $amazon ? floatval($amazon->price ?? 0) : null,
                     
                     // Listing metrics
                     'page_views' => $listing->page_views ?? 0,
@@ -604,6 +622,92 @@ class WalmartSheetUploadController extends Controller
         } catch (\Exception $e) {
             Log::error('Error getting summary stats: ' . $e->getMessage());
             return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Save Amazon price updates to Walmart pricing data (with 12-hour expiration)
+     */
+    public function saveAmazonPriceUpdates(Request $request)
+    {
+        try {
+            $updates = $request->input('updates', []);
+            
+            if (empty($updates)) {
+                return response()->json(['error' => 'No updates provided'], 400);
+            }
+
+            $updated = 0;
+            $errors = [];
+
+            DB::beginTransaction();
+            
+            foreach ($updates as $update) {
+                $sku = strtoupper(trim($update['sku'] ?? ''));
+                $amazonPrice = floatval($update['amazon_price'] ?? 0);
+                
+                if (empty($sku) || $amazonPrice <= 0) {
+                    $errors[] = "Invalid data for SKU: {$sku}";
+                    continue;
+                }
+
+                // Update or create record in WalmartDataView table
+                $dataViewRecord = WalmartDataView::where('sku', $sku)->first();
+                
+                if ($dataViewRecord) {
+                    // Get existing value array and update it
+                    $existingValue = $dataViewRecord->value ?? [];
+                    $existingValue['amazon_suggested_price'] = $amazonPrice;
+                    $existingValue['amazon_price_applied_at'] = now()->toDateTimeString();
+                    $existingValue['sprice'] = $amazonPrice; // Store the suggested price
+                    
+                    $dataViewRecord->update([
+                        'value' => $existingValue,
+                        'updated_at' => now()
+                    ]);
+                } else {
+                    // Create new record
+                    WalmartDataView::create([
+                        'sku' => $sku,
+                        'value' => [
+                            'amazon_suggested_price' => $amazonPrice,
+                            'amazon_price_applied_at' => now()->toDateTimeString(),
+                            'sprice' => $amazonPrice
+                        ]
+                    ]);
+                }
+                $updated++;
+            }
+
+            DB::commit();
+
+            // Store in session/cache for 12 hours as backup
+            $sessionKey = 'walmart_amazon_price_updates_' . session()->getId();
+            session()->put($sessionKey, [
+                'updates' => $updates,
+                'applied_at' => now(),
+                'expires_at' => now()->addHours(12)
+            ]);
+
+            $response = [
+                'success' => true,
+                'updated' => $updated,
+                'message' => "Successfully saved {$updated} price update(s)"
+            ];
+
+            if (!empty($errors)) {
+                $response['errors'] = $errors;
+                $response['message'] .= ' with ' . count($errors) . ' error(s)';
+            }
+
+            Log::info("Walmart Amazon price updates saved to walmart_data_view: {$updated} records updated");
+
+            return response()->json($response);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error saving Amazon price updates: ' . $e->getMessage());
+            return response()->json(['error' => 'Error saving updates: ' . $e->getMessage()], 500);
         }
     }
 }
