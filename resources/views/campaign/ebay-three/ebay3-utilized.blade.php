@@ -2373,86 +2373,21 @@
                         } else {
                             // Continue with utilization type checks only if global checks didn't match
                             if (currentUtilizationType === 'over') {
-                            // If L1 CPC > 1.25, use L1 CPC * 0.80, otherwise use L1 CPC * 0.90
-                            if (l1_cpc > 1.25) {
-                                sbid = Math.floor(l1_cpc * 0.80 * 100) / 100;
-                            } else {
-                            sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
-                            }
-                        } else if (currentUtilizationType === 'under') {
-                            // Under-utilized SBID calculation rules (from ebay-utilized, without price logic)
-                            // If UB7 = 0% AND UB1 = 0%, SBID = 0.50
-                            if (ub7 === 0 && ub1 === 0) {
-                                sbid = 0.50;
-                            } else {
-                                // Use L1CPC if available (not 0, not NaN), otherwise use L7CPC
-                                var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : (
-                                    (l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
-                                if (cpcToUse > 0) {
-                                    if (cpcToUse < 0.10) {
-                                        sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
-                                    } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
-                                        sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
-                                    } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
-                                        sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
-                                    } else {
-                                        sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
-                            }
-                        } else {
-                                    sbid = 0.50; // Fallback when both CPCs are 0
-                                }
-                            }
-                        } else if (currentUtilizationType === 'correctly') {
-                            // Correctly-utilized: SBID = L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
-                            var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : ((
-                                l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
-                            if (cpcToUse > 0) {
-                                sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
-                            } else {
-                                sbid = 0.50; // Fallback when both CPCs are 0
-                            }
-                        } else {
-                            // For 'all' type, determine utilization status and apply appropriate rule
-                            var rowAcos = parseFloat(rowData.acos) || 0;
-                            if (isNaN(rowAcos) || rowAcos === 0) {
-                                rowAcos = 100;
-                            }
-
-                            // Determine utilization status
-                            var isOverUtilized = false;
-                            var isUnderUtilized = false;
-
-                            // Check over-utilized first (priority 1) - Double condition: both UB7 AND UB1 must be > 99
-                            if (ub7 > 99 && ub1 > 99) {
-                                isOverUtilized = true;
-                            }
-
-                            // Check under-utilized (priority 2: only if not over-utilized) - Double condition: both UB7 AND UB1 must be < 66
-                            if (!isOverUtilized && ub7 < 66 && ub1 < 66) {
-                                isUnderUtilized = true;
-                            }
-
-                            // Apply SBID logic based on determined status
-                            if (isOverUtilized) {
-                                // Over-utilized: If L1 CPC > 1.25, use L1 CPC * 0.80, otherwise use L1 CPC * 0.90
-                                var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : (
-                                    (l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
-                                if (cpcToUse > 1.25) {
-                                    sbid = Math.floor(cpcToUse * 0.80 * 100) / 100;
-                                } else if (cpcToUse > 0) {
-                                    sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
+                                // If L1 CPC > 1.25, use L1 CPC * 0.80, otherwise use L1 CPC * 0.90
+                                if (l1_cpc > 1.25) {
+                                    sbid = Math.floor(l1_cpc * 0.80 * 100) / 100;
                                 } else {
-                                    sbid = 0.50; // Fallback when both CPCs are 0
+                                    sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
                                 }
-                            } else if (isUnderUtilized) {
-                                // Under-utilized: Use the under-utilized rule
+                            } else if (currentUtilizationType === 'under') {
+                                // Under-utilized SBID calculation rules (from ebay-utilized, without price logic)
+                                // If UB7 = 0% AND UB1 = 0%, SBID = 0.50
                                 if (ub7 === 0 && ub1 === 0) {
                                     sbid = 0.50;
                                 } else {
                                     // Use L1CPC if available (not 0, not NaN), otherwise use L7CPC
-                                    var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ?
-                                        l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ?
-                                            l7_cpc : 0);
+                                    var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : (
+                                        (l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
                                     if (cpcToUse > 0) {
                                         if (cpcToUse < 0.10) {
                                             sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
@@ -2467,14 +2402,80 @@
                                         sbid = 0.50; // Fallback when both CPCs are 0
                                     }
                                 }
-                            } else {
-                                // Correctly-utilized or other: SBID = L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
-                                var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : (
-                                    (l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
+                            } else if (currentUtilizationType === 'correctly') {
+                                // Correctly-utilized: SBID = L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
+                                var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : ((
+                                    l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
                                 if (cpcToUse > 0) {
                                     sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
                                 } else {
                                     sbid = 0.50; // Fallback when both CPCs are 0
+                                }
+                            } else {
+                                // For 'all' type, determine utilization status and apply appropriate rule
+                                var rowAcos = parseFloat(rowData.acos) || 0;
+                                if (isNaN(rowAcos) || rowAcos === 0) {
+                                    rowAcos = 100;
+                                }
+
+                                // Determine utilization status
+                                var isOverUtilized = false;
+                                var isUnderUtilized = false;
+
+                                // Check over-utilized first (priority 1) - Double condition: both UB7 AND UB1 must be > 99
+                                if (ub7 > 99 && ub1 > 99) {
+                                    isOverUtilized = true;
+                                }
+
+                                // Check under-utilized (priority 2: only if not over-utilized) - Double condition: both UB7 AND UB1 must be < 66
+                                if (!isOverUtilized && ub7 < 66 && ub1 < 66) {
+                                    isUnderUtilized = true;
+                                }
+
+                                // Apply SBID logic based on determined status
+                                if (isOverUtilized) {
+                                    // Over-utilized: If L1 CPC > 1.25, use L1 CPC * 0.80, otherwise use L1 CPC * 0.90
+                                    var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : (
+                                        (l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
+                                    if (cpcToUse > 1.25) {
+                                        sbid = Math.floor(cpcToUse * 0.80 * 100) / 100;
+                                    } else if (cpcToUse > 0) {
+                                        sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
+                                    } else {
+                                        sbid = 0.50; // Fallback when both CPCs are 0
+                                    }
+                                } else if (isUnderUtilized) {
+                                    // Under-utilized: Use the under-utilized rule
+                                    if (ub7 === 0 && ub1 === 0) {
+                                        sbid = 0.50;
+                                    } else {
+                                        // Use L1CPC if available (not 0, not NaN), otherwise use L7CPC
+                                        var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ?
+                                            l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ?
+                                                l7_cpc : 0);
+                                        if (cpcToUse > 0) {
+                                            if (cpcToUse < 0.10) {
+                                                sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
+                                            } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
+                                                sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
+                                            } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
+                                                sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
+                                            } else {
+                                                sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
+                                            }
+                                        } else {
+                                            sbid = 0.50; // Fallback when both CPCs are 0
+                                        }
+                                    }
+                                } else {
+                                    // Correctly-utilized or other: SBID = L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
+                                    var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : (
+                                        (l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
+                                    if (cpcToUse > 0) {
+                                        sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
+                                    } else {
+                                        sbid = 0.50; // Fallback when both CPCs are 0
+                                    }
                                 }
                             }
                         }

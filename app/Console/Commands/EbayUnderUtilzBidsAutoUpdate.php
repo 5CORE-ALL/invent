@@ -135,11 +135,11 @@ class EbayUnderUtilzBidsAutoUpdate extends Command
             
             try {
                 $result = $updateOverUtilizedBids->updateAutoKeywordsBidDynamic($campaignIds, $newBids);
-                
-                // Parse the result
-                $resultData = $result->getData(true);
-                $status = $resultData['status'] ?? 'unknown';
-                $data = $resultData['data'] ?? [];
+        
+        // Parse the result
+        $resultData = $result->getData(true);
+        $status = $resultData['status'] ?? 'unknown';
+        $data = $resultData['data'] ?? [];
                 
                 if ($status != 200) {
                     $hasError = true;
