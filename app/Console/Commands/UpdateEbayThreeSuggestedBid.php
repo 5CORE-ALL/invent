@@ -181,13 +181,13 @@ class UpdateEbayThreeSuggestedBid extends Command
                         } elseif ($cvr >= 2.01 && $cvr <= 3) {
                             $newBid = 6; // Flat 6%
                         } elseif ($cvr >= 3.01 && $cvr <= 5) {
-                            $newBid = 5; // Flat 5%
+                            $newBid = 6; // Flat 6%
                         } elseif ($cvr >= 5.01 && $cvr <= 7) {
-                            $newBid = 4; // Flat 4%
+                            $newBid = 5; // Flat 5%
                         } elseif ($cvr >= 7.01 && $cvr <= 13) {
-                            $newBid = 3; // Flat 3%
+                            $newBid = 4; // Flat 4%
                         } elseif ($cvr > 13) {
-                            $newBid = 2; // Flat 2%
+                            $newBid = 3; // Flat 3%
                         } 
                         // Priority 3: If SCVR between 0.01-1% OR views < 100 OR DIL red, set to 8%
                         elseif (($cvr >= 0.01 && $cvr <= 1) || $views < 100 || $isDilRed) {
