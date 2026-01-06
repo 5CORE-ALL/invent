@@ -355,7 +355,7 @@
                                     <select id="inv-filter" class="form-select form-select-md">
                                         <option value="ALL">ALL</option>
                                         <option value="INV_0">0 INV</option>
-                                        <option value="OTHERS">OTHERS</option>
+                                        <option value="OTHERS" selected>OTHERS</option>
                                     </select>
 
                                     <select id="nrl-filter" class="form-select form-select-md">
@@ -959,13 +959,13 @@
                             
                             var value = Math.round(ub7) + "%";
                             
-                            if (ub7 >= 70 && ub7 <= 90) {
+                            if (ub7 >= 66 && ub7 <= 99) {
                                 td.classList.add('green-bg');
                                 return value;
-                            } else if (ub7 > 90) {
+                            } else if (ub7 > 99) {
                                 // Pink badge - background on text
                                 return '<span style="background-color: #ff01d0; color: white; padding: 4px 8px; border-radius: 4px; display: inline-block;">' + value + '</span>';
-                            } else if (ub7 < 70) {
+                            } else if (ub7 < 66) {
                                 td.classList.add('red-bg');
                                 return value;
                             }
@@ -993,13 +993,13 @@
                             
                             var value = Math.round(ub1) + "%";
                             
-                            if (ub1 >= 70 && ub1 <= 90) {
+                            if (ub1 >= 66 && ub1 <= 99) {
                                 td.classList.add('green-bg');
                                 return value;
-                            } else if (ub1 > 90) {
+                            } else if (ub1 > 99) {
                                 // Pink badge - background on text
                                 return '<span style="background-color: #ff01d0; color: white; padding: 4px 8px; border-radius: 4px; display: inline-block;">' + value + '</span>';
-                            } else if (ub1 < 70) {
+                            } else if (ub1 < 66) {
                                 td.classList.add('red-bg');
                                 return value;
                             }
@@ -1041,6 +1041,7 @@
                                 return ''; // Return blank for missing ads
                             }
                             
+                            var cpc_l1 = parseFloat(row.cpc_l1) || 0;
                             var cpc_l7 = parseFloat(row.cpc_l7) || 0;
                             var spend_l7 = parseFloat(row.spend_l7) || 0;
                             var acos = parseFloat(row.acos_l30) || 0;
@@ -1051,22 +1052,21 @@
                             
                             var sbid;
                             
-                            // If 7UB is pink (> 90%): SBID = L7cpc * 0.90 (minimum 0.31)
-                            if (ub7 > 90) {
-                                sbid = cpc_l7 * 0.90;
-                                sbid = Math.max(sbid, 0.31); // Minimum value is 0.31
+                            // If both l1_cpc and l7_cpc are 0, then sbid = 0.50
+                            if (cpc_l1 === 0 && cpc_l7 === 0) {
+                                sbid = 0.50;
                             }
-                            // If 7UB is between 30-70%: SBID = L7cpc + 0.5
-                            else if (ub7 >= 30 && ub7 <= 70) {
-                                sbid = cpc_l7 + 0.5;
+                            // If ub7 > 99 then sbid = l1_cpc * 0.90
+                            else if (ub7 > 99) {
+                                sbid = cpc_l1 * 0.90;
                             }
-                            // If 7UB is below 30%: SBID = L7cpc + 0.10
-                            else if (ub7 < 30) {
-                                sbid = cpc_l7 + 0.10;
+                            // If ub7 < 66 then sbid = l7_cpc * 1.1
+                            else if (ub7 < 66) {
+                                sbid = cpc_l7 * 1.1;
                             }
-                            // For 70-90% range (green), use same logic as 30-70%
+                            // For ub7 between 66-99, use default (l7_cpc * 1.0 or keep current)
                             else {
-                                sbid = cpc_l7 + 0.5;
+                                sbid = cpc_l7;
                             }
                             
                             return sbid.toFixed(2);
@@ -1090,13 +1090,33 @@
                                 var row = cell.getRow().getData();
                                 var cpc_l1 = parseFloat(row.cpc_l1) || 0;
                                 var cpc_l7 = parseFloat(row.cpc_l7) || 0;
+                                var spend_l7 = parseFloat(row.spend_l7) || 0;
+                                var acos = parseFloat(row.acos_l30) || 0;
+                                var aldBgt = calculateAldBgt(acos);
+                                
+                                // Calculate 7UB = (L7 ad spend/(ald bgt*7))*100
+                                var ub7 = (aldBgt > 0 && aldBgt * 7 > 0) ? (spend_l7 / (aldBgt * 7)) * 100 : 0;
+                                
                                 var sbid;
-                                if(cpc_l1 > cpc_l7) {
-                                    sbid = (cpc_l1 * 0.9).toFixed(2);
-                                }else{
-                                    sbid = (cpc_l7 * 0.9).toFixed(2);
+                                
+                                // If both l1_cpc and l7_cpc are 0, then sbid = 0.50
+                                if (cpc_l1 === 0 && cpc_l7 === 0) {
+                                    sbid = 0.50;
                                 }
-                                updateBid(sbid, rowData.campaign_id);
+                                // If ub7 > 99 then sbid = l1_cpc * 0.90
+                                else if (ub7 > 99) {
+                                    sbid = cpc_l1 * 0.90;
+                                }
+                                // If ub7 < 66 then sbid = l7_cpc * 1.1
+                                else if (ub7 < 66) {
+                                    sbid = cpc_l7 * 1.1;
+                                }
+                                // For ub7 between 66-99, use default (l7_cpc * 1.0)
+                                else {
+                                    sbid = cpc_l7;
+                                }
+                                
+                                updateBid(sbid.toFixed(2), row.campaign_id);
                             }
                         },
                         visible: false
@@ -1272,6 +1292,83 @@
                         console.error('Error saving bulk NRA:', error);
                     });
             });
+
+            // APR ALL SBID Button Handler
+            document.getElementById("apr-all-sbid-btn").addEventListener("click", function() {
+                const selectedRows = window.table.getSelectedRows();
+                if (selectedRows.length === 0) {
+                    alert("Please select at least one row");
+                    return;
+                }
+
+                selectedRows.forEach(function(row) {
+                    var rowData = row.getData();
+                    
+                    // Check if campaign exists
+                    const hasCampaign = rowData.hasCampaign ?? (rowData.campaignName?.trim() !== '');
+                    if (!hasCampaign) {
+                        return; // Skip rows without campaigns
+                    }
+
+                    var cpc_l1 = parseFloat(rowData.cpc_l1) || 0;
+                    var cpc_l7 = parseFloat(rowData.cpc_l7) || 0;
+                    var spend_l7 = parseFloat(rowData.spend_l7) || 0;
+                    var acos = parseFloat(rowData.acos_l30) || 0;
+                    var aldBgt = calculateAldBgt(acos);
+                    
+                    // Calculate 7UB = (L7 ad spend/(ald bgt*7))*100
+                    var ub7 = (aldBgt > 0 && aldBgt * 7 > 0) ? (spend_l7 / (aldBgt * 7)) * 100 : 0;
+                    
+                    var sbid;
+                    
+                    // If both l1_cpc and l7_cpc are 0, then sbid = 0.50
+                    if (cpc_l1 === 0 && cpc_l7 === 0) {
+                        sbid = 0.50;
+                    }
+                    // If ub7 > 99 then sbid = l1_cpc * 0.90
+                    else if (ub7 > 99) {
+                        sbid = cpc_l1 * 0.90;
+                    }
+                    // If ub7 < 66 then sbid = l7_cpc * 1.1
+                    else if (ub7 < 66) {
+                        sbid = cpc_l7 * 1.1;
+                    }
+                    // For ub7 between 66-99, use default (l7_cpc * 1.0)
+                    else {
+                        sbid = cpc_l7;
+                    }
+                    
+                    // Update the bid
+                    updateBid(sbid.toFixed(2), rowData.campaign_id);
+                });
+            });
+
+            // Update Bid Function
+            function updateBid(aprBid, campaignId) {
+                if (!campaignId) {
+                    console.warn('No campaign ID provided for updateBid');
+                    return;
+                }
+
+                $.ajax({
+                    url: '/update-amazon-sp-bid-price',
+                    method: 'POST',
+                    data: {
+                        id: campaignId,
+                        crnt_bid: parseFloat(aprBid),
+                        _token: '{{ csrf_token() }}'
+                    },
+                    success: function(response) {
+                        console.log('Bid updated successfully for campaign:', campaignId);
+                        // Refresh the table to show updated data
+                        window.table.replaceData();
+                    },
+                    error: function(xhr) {
+                        console.error('Error updating bid for campaign:', campaignId, xhr);
+                        alert('Error updating bid for campaign: ' + campaignId);
+                    }
+                });
+            }
 
             window.table.on("cellEdited", function(cell){
                 if(cell.getField() === "crnt_bid"){
@@ -1541,19 +1638,46 @@
             // Helper: Check if NRL has red dot (value is "NRL")
             function isNrlRed(row) {
                 const nrlValue = row.NRL;
-                return nrlValue && String(nrlValue).trim().toUpperCase() === "NRL";
+                // If NRL is null/undefined/empty, default is "RL" (green), so return false
+                if (!nrlValue || nrlValue === '' || nrlValue === null || nrlValue === undefined) {
+                    return false; // Default to RL (green dot)
+                }
+                // Normalize and check if value is "NRL"
+                return String(nrlValue).trim().toUpperCase() === "NRL";
             }
 
             // Helper: Check if NRA has red dot (value is "NRA")
             function isNraRed(row) {
-                const nraValue = row.NRA;
-                return nraValue && String(nraValue).trim().toUpperCase() === "NRA";
+                let nraValue = row.NRA;
+                
+                // If NRA is null/undefined/empty, check NRL to determine default
+                if (!nraValue || nraValue === '' || nraValue === null || nraValue === undefined) {
+                    const nrlValue = row.NRL;
+                    const isNrlRed = nrlValue && String(nrlValue).trim().toUpperCase() === "NRL";
+                    // If NRL is NRL, default to NRA (red), otherwise default to RA (green)
+                    return isNrlRed; // Return true if NRL is "NRL" (meaning default is NRA)
+                }
+                
+                // Normalize and check if value is "NRA"
+                nraValue = String(nraValue).trim().toUpperCase();
+                return nraValue === "NRA";
             }
 
             // Helper: Check if NRA has green dot (value is "RA")
             function isNraGreen(row) {
-                const nraValue = row.NRA;
-                return nraValue && String(nraValue).trim().toUpperCase() === "RA";
+                let nraValue = row.NRA;
+                
+                // If NRA is null/undefined/empty, check NRL to determine default
+                if (!nraValue || nraValue === '' || nraValue === null || nraValue === undefined) {
+                    const nrlValue = row.NRL;
+                    const isNrlRed = nrlValue && String(nrlValue).trim().toUpperCase() === "NRL";
+                    // If NRL is NRL, default to NRA (red), otherwise default to RA (green)
+                    return !isNrlRed; // Return true if NRL is not "NRL" (meaning default is RA)
+                }
+                
+                // Normalize and check if value is "RA"
+                nraValue = String(nraValue).trim().toUpperCase();
+                return nraValue === "RA";
             }
 
             // Helper: Calculate 7UB percentage
@@ -1576,11 +1700,11 @@
 
             // Helper: Get utilization status (red, pink, or green) for a UB value
             function getUtilizationStatus(ubValue) {
-                if (ubValue >= 70 && ubValue <= 90) {
+                if (ubValue >= 66 && ubValue <= 99) {
                     return 'green'; // Correctly utilized
-                } else if (ubValue > 90) {
+                } else if (ubValue > 99) {
                     return 'pink'; // Over utilized
-                } else if (ubValue < 70) {
+                } else if (ubValue < 66) {
                     return 'red'; // Under utilized
                 }
                 return null; // No status if value is invalid
@@ -1610,10 +1734,15 @@
                     // 0 INV filter
                     if (window.showZeroInvOnly && parseFloat(data.INV || 0) !== 0) return false;
                     
-                    // Missing ads filter (red dots only, exclude 0 INV items)
+                    // Missing ads filter (red dots only, exclude 0 INV items and yellow dot cases - NRA selected)
                     if (window.showMissingOnly) {
                         const inv = parseFloat(data.INV || 0);
-                        if (inv === 0 || hasCampaign(data)) return false;
+                        const hasCampaignValue = hasCampaign(data);
+                        // Check if NRA is selected (yellow dot case)
+                        const nraValue = data.NRA;
+                        const isNRA = nraValue && String(nraValue).trim().toUpperCase() === "NRA";
+                        // Show only red dot cases: inv !== 0 AND !hasCampaign AND !isNRA
+                        if (inv === 0 || hasCampaignValue || isNRA) return false;
                     }
                     
                     // Running ads filter (green dots only - campaigns that exist)
@@ -1632,9 +1761,9 @@
                     if (window.currentUtilizationFilter) {
                         const ub7 = calculate7UB(data);
                         const filter = window.currentUtilizationFilter;
-                        if (filter === 'pink' && ub7 <= 90) return false;
-                        if (filter === 'red' && ub7 >= 70) return false;
-                        if (filter === 'green' && (ub7 < 70 || ub7 > 90)) return false;
+                        if (filter === 'pink' && ub7 <= 99) return false;
+                        if (filter === 'red' && ub7 >= 66) return false;
+                        if (filter === 'green' && (ub7 < 66 || ub7 > 99)) return false;
                     }
 
                     // Search filter
@@ -1802,18 +1931,25 @@
                         // Count 0 INV
                         if (parseFloat(row.INV || 0) === 0) counts.zeroInv++;
                         
-                        // Count missing campaigns (exclude 0 INV items)
+                        // Count missing campaigns (exclude 0 INV items and yellow dot cases - NRA selected)
                         const inv = parseFloat(row.INV || 0);
-                        if (inv !== 0 && !hasCampaign(row)) counts.missing++;
+                        const hasCampaignValue = hasCampaign(row);
+                        // Check if NRA is selected (yellow dot case)
+                        const nraValue = row.NRA;
+                        const isNRA = nraValue && String(nraValue).trim().toUpperCase() === "NRA";
+                        // Count only red dot cases: inv !== 0 AND !hasCampaign AND !isNRA
+                        if (inv !== 0 && !hasCampaignValue && !isNRA) {
+                            counts.missing++;
+                        }
                         
                         // Count running campaigns (green dots - campaigns that exist)
                         if (hasCampaign(row)) counts.running++;
                         
                         // Count utilization types (7UB only)
                         const ub7 = calculate7UB(row);
-                        if (ub7 > 90) counts.pink++;
-                        else if (ub7 < 70) counts.red++;
-                        else if (ub7 >= 70 && ub7 <= 90) counts.green++;
+                        if (ub7 > 99) counts.pink++;
+                        else if (ub7 < 66) counts.red++;
+                        else if (ub7 >= 66 && ub7 <= 99) counts.green++;
                         
                         // Count combined utilization (both 7UB and 1UB must match)
                         const combinedStatus = getCombinedUtilizationStatus(row);
@@ -2187,7 +2323,7 @@
                                 labels: dates,
                                 datasets: [
                                     {
-                                        label: 'Pink (> 90%)',
+                                        label: 'Pink (> 99%)',
                                         data: chartData.map(d => d.pink_count),
                                         borderColor: '#ff01d0',
                                         backgroundColor: 'rgba(255, 1, 208, 0.1)',
@@ -2196,7 +2332,7 @@
                                         borderWidth: 2
                                     },
                                     {
-                                        label: 'Red (< 70%)',
+                                        label: 'Red (< 66%)',
                                         data: chartData.map(d => d.red_count),
                                         borderColor: '#ff2727',
                                         backgroundColor: 'rgba(255, 39, 39, 0.1)',
@@ -2205,7 +2341,7 @@
                                         borderWidth: 2
                                     },
                                     {
-                                        label: 'Green (70-90%)',
+                                        label: 'Green (66-99%)',
                                         data: chartData.map(d => d.green_count),
                                         borderColor: '#05bd30',
                                         backgroundColor: 'rgba(5, 189, 48, 0.1)',
@@ -2284,7 +2420,7 @@
                                 labels: dates,
                                 datasets: [
                                     {
-                                        label: 'Pink (> 90% in both)',
+                                        label: 'Pink (> 99% in both)',
                                         data: chartData.map(d => d.pink_count),
                                         borderColor: '#ff01d0',
                                         backgroundColor: 'rgba(255, 1, 208, 0.1)',
@@ -2293,7 +2429,7 @@
                                         borderWidth: 2
                                     },
                                     {
-                                        label: 'Red (< 70% in both)',
+                                        label: 'Red (< 66% in both)',
                                         data: chartData.map(d => d.red_count),
                                         borderColor: '#ff2727',
                                         backgroundColor: 'rgba(255, 39, 39, 0.1)',
@@ -2302,7 +2438,7 @@
                                         borderWidth: 2
                                     },
                                     {
-                                        label: 'Green (70-90% in both)',
+                                        label: 'Green (66-99% in both)',
                                         data: chartData.map(d => d.green_count),
                                         borderColor: '#05bd30',
                                         backgroundColor: 'rgba(5, 189, 48, 0.1)',
@@ -2450,13 +2586,30 @@
                     const field = col.getField();
                     let value = row[field];
                     
-                    // Format values based on column type
-                    if (value === null || value === undefined) {
-                        value = '';
-                    } else if (typeof value === 'number') {
-                        value = value;
+                    // Special handling for MISSING column (hasCampaign field)
+                    if (field === 'hasCampaign') {
+                        const inv = parseFloat(row.INV || 0);
+                        const hasCampaign = row.hasCampaign ?? (row.campaignName?.trim() !== '');
+                        
+                        // Check if NRA is selected - value should be "NRA"
+                        const nraValue = row.NRA;
+                        const isNRA = nraValue && String(nraValue).trim().toUpperCase() === "NRA";
+                        
+                        // Show "MISSING" only for red dot case: inv !== 0 AND !hasCampaign AND !isNRA
+                        if (inv !== 0 && !hasCampaign && !isNRA) {
+                            value = 'MISSING';
+                        } else {
+                            value = ''; // Empty for all other cases (green dot, yellow dot, 0 INV)
+                        }
                     } else {
-                        value = String(value);
+                        // Format values based on column type
+                        if (value === null || value === undefined) {
+                            value = '';
+                        } else if (typeof value === 'number') {
+                            value = value;
+                        } else {
+                            value = String(value);
+                        }
                     }
                     
                     rowData.push(value);

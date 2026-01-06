@@ -4,7 +4,6 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use GuzzleHttp\Client;
 use Illuminate\Support\Facades\Cache;
 use App\Models\EbayGeneralReport;
@@ -134,11 +133,12 @@ class UpdateEbaySuggestedBid extends Command
                         $listing = $campaignListings[$ebayMetric->item_id];
                         $l30Data = $ebayGeneralL30->get($ebayMetric->item_id);
                         
-                        // Calculate CVR (Conversion Rate) = (eBay L30 Sales / Views) * 100
-                        // This matches the frontend calculation: scvr = (ebayL30 / views) * 100
+                        // Calculate SCVR (Sales Conversion Rate) = (eBay L30 Sales / PmtClkL30) * 100
+                        // This matches the frontend calculation: scvr = (ebayL30 / PmtClkL30) * 100
                         $ebay_l30 = (int) ($ebayMetric->ebay_l30 ?? 0);
-                        $views = (int) ($ebayMetric->views ?? 0);
-                        $cvr = $views > 0 ? ($ebay_l30 / $views) * 100 : 0;
+                        $pmtClkL30 = $l30Data ? (int) ($l30Data->clicks ?? 0) : 0; // PmtClkL30 from general report
+                        $views = (int) ($ebayMetric->views ?? 0); // Keep for views < 100 check
+                        $cvr = $pmtClkL30 > 0 ? ($ebay_l30 / $pmtClkL30) * 100 : 0;
                         
                         // Get ESBID (suggested bid from bid_percentage in campaign listing)
                         $esbid = (float) ($listing->suggested_bid ?? 0);
@@ -152,16 +152,16 @@ class UpdateEbaySuggestedBid extends Command
                         $dilPercent = $ov_dil * 100;
                         $isDilRed = $dilPercent < 16.66;
                         
-                        // Determine new bid based on CVR ranges - flat values
+                        // Determine new bid based on SCVR ranges - flat values
                         $newBid = 2; // Default minimum
                         
-                        // Priority 1: If CVR < 0.01% (including 0.00%), use ESBID
+                        // Priority 1: If SCVR < 0.01% (including 0.00%), use ESBID
                         if ($cvr < 0.01) {
-                            // For very low CVR, keep current ESBID (matches frontend logic)
+                            // For very low SCVR, keep current ESBID (matches frontend logic)
                             $newBid = $esbid;
-                        } elseif (($cvr >= 0.01 && $cvr <= 1) || $views < 100) {
-                            $newBid = 8; // Flat 8%
-                        } elseif ($cvr >= 1.01 && $cvr <= 2) {
+                        } 
+                        // Priority 2: Check SCVR ranges first (higher priority)
+                        elseif ($cvr >= 1.01 && $cvr <= 2) {
                             $newBid = 7; // Flat 7%
                         } elseif ($cvr >= 2.01 && $cvr <= 3) {
                             $newBid = 6; // Flat 6%
@@ -173,12 +173,20 @@ class UpdateEbaySuggestedBid extends Command
                             $newBid = 3; // Flat 3%
                         } elseif ($cvr > 13) {
                             $newBid = 2; // Flat 2%
+                        } 
+                        // Priority 3: If SCVR between 0.01-1% OR views < 100 OR DIL red, set to 8%
+                        elseif (($cvr >= 0.01 && $cvr <= 1) || $views < 100 || $isDilRed) {
+                            $newBid = 8; // Flat 8%
+                        } else {
+                            // Fallback: default to 8
+                            $newBid = 8;
                         }
                         
                         // Cap newBid to maximum of 15
                         $newBid = min($newBid, 15);
                         
                         $listing->new_bid = $newBid;
+                        $this->info("SKU: {$pm->sku} | SBID: {$newBid}");
                         $updatedListings++;
                     }
                 }
@@ -217,42 +225,30 @@ class UpdateEbaySuggestedBid extends Command
                 continue;
             }
 
-            Log::info("eBay campaign {$campaignId} - Preparing to update " . json_encode($requests, JSON_PRETTY_PRINT) . " listings.");
-
             try {
                 $response = $client->post(
                     "sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_ads_bid_by_listing_id",
                     ['json' => ['requests' => $requests]]
                 );
                 
-                $responseBody = $response->getBody()->getContents();
                 $statusCode = $response->getStatusCode();
                 
                 if ($statusCode === 200 || $statusCode === 207) {
                     $this->info("Campaign {$campaignId}: Successfully updated " . count($requests) . " listings.");
-                    Log::info("eBay campaign {$campaignId} bulk update SUCCESS - Status: {$statusCode} - Response: " . $responseBody);
                 } else {
                     $this->warn("Campaign {$campaignId}: Unexpected status code {$statusCode}");
-                    Log::warning("eBay campaign {$campaignId} unexpected status {$statusCode}: " . $responseBody);
                 }
                 
             } catch (\GuzzleHttp\Exception\ClientException $e) {
                 $statusCode = $e->getResponse() ? $e->getResponse()->getStatusCode() : 'unknown';
-                $responseBody = $e->getResponse() ? $e->getResponse()->getBody()->getContents() : 'no response';
-                
-                Log::error("eBay campaign {$campaignId} CLIENT ERROR - Status: {$statusCode} - Response: {$responseBody} - Exception: " . $e->getMessage());
-                $this->error("Campaign {$campaignId}: Client error (Status: {$statusCode}). Check logs for details.");
+                $this->error("Campaign {$campaignId}: Client error (Status: {$statusCode}).");
                 
             } catch (\GuzzleHttp\Exception\ServerException $e) {
                 $statusCode = $e->getResponse() ? $e->getResponse()->getStatusCode() : 'unknown';
-                $responseBody = $e->getResponse() ? $e->getResponse()->getBody()->getContents() : 'no response';
-                
-                Log::error("eBay campaign {$campaignId} SERVER ERROR - Status: {$statusCode} - Response: {$responseBody} - Exception: " . $e->getMessage());
-                $this->error("Campaign {$campaignId}: Server error (Status: {$statusCode}). Check logs for details.");
+                $this->error("Campaign {$campaignId}: Server error (Status: {$statusCode}).");
                 
             } catch (\Exception $e) {
-                Log::error("eBay campaign {$campaignId} GENERAL ERROR: " . $e->getMessage() . " - Trace: " . $e->getTraceAsString());
-                $this->error("Campaign {$campaignId}: General error. Check logs for details.");
+                $this->error("Campaign {$campaignId}: General error - " . $e->getMessage());
             }
         }
 
@@ -260,11 +256,9 @@ class UpdateEbaySuggestedBid extends Command
             return 0;
             
         } catch (Exception $e) {
-            Log::error('eBay bid update command failed: ' . $e->getMessage());
             $this->error('Command failed: ' . $e->getMessage());
             return 1;
         } catch (\Throwable $e) {
-            Log::error('eBay bid update command failed with throwable: ' . $e->getMessage());
             $this->error('Command failed with error: ' . $e->getMessage());
             return 1;
         }
@@ -336,7 +330,6 @@ class UpdateEbaySuggestedBid extends Command
             throw new Exception("Failed to refresh token: " . json_encode($data));
             
         } catch (Exception $e) {
-            Log::error('Failed to get eBay access token: ' . $e->getMessage());
             throw $e;
         }
     }
