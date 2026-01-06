@@ -205,6 +205,16 @@
                         </select>
                     </div>
 
+                    <!-- BB Issue Filter -->
+                    <div>
+                        <select id="bb-issue-filter" class="form-select form-select-sm" style="width: 120px; color: red; font-weight: bold;">
+                            <option value="all">All Prices</option>
+                            <option value="bb-issue" style="color: red; font-weight: bold;">BB Issue</option>
+                        </select>
+                    </div>
+
+                    <!-- BB Issue Filter -->
+                 
                     <!-- DIL Filter -->
                     <div class="dropdown manual-dropdown-container">
                         <button class="btn btn-light dropdown-toggle" type="button" id="dilFilterDropdown">
@@ -276,6 +286,7 @@
                         <span class="badge bg-primary fs-6 p-2" id="total-products-badge" style="color: black; font-weight: bold;">Total Products: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: black; font-weight: bold;">Total Quantity: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: black; font-weight: bold;">0 Sold Count: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="bb-issue-count-badge" style="color: black; font-weight: bold;">BB Issue: 0</span>
                         
                         <!-- Financial Metrics -->
                         <span class="badge bg-warning fs-6 p-2" id="total-spend-badge" style="color: black; font-weight: bold;">Total SPEND L30: $0.00</span>
@@ -297,7 +308,7 @@
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
                                placeholder="Enter %" style="width: 150px;" step="0.01" min="0">
                         <button id="apply-discount-btn" class="btn btn-sm btn-warning">
-                            <i class="fas fa-check"></i> Apply Discount
+                            <i class="fas fa-check"></i> Apply
                         </button>
                         <button id="sugg-amz-prc-btn" class="btn btn-sm btn-info">
                             <i class="fas fa-copy"></i> Sugg Amz Prc
@@ -551,6 +562,13 @@
             $('#select-all-checkbox').prop('checked', allFilteredSelected);
         }
 
+        // Custom price rounding function to round to .99 endings
+        function roundToRetailPrice(price) {
+            // Round to the nearest dollar and subtract 0.01 to make it .99
+            const roundedDollar = Math.ceil(price);
+            return roundedDollar - 0.01;
+        }
+
         function applyDiscount() {
             const discountValue = parseFloat($('#discount-percentage-input').val());
             const discountType = $('#discount-type-select').val();
@@ -565,14 +583,23 @@
                 return;
             }
 
-            const allData = table.getData('all');
             let updatedCount = 0;
-            const totalSkus = selectedSkus.size;
+            
+            console.log(`Starting ${increaseModeActive ? 'increase' : 'decrease'} mode for`, selectedSkus.size, 'selected SKUs');
 
-            allData.forEach(row => {
-                const sku = row['sku'];
-                if (selectedSkus.has(sku)) {
-                    const currentPrice = parseFloat(row['price']) || 0;
+            // Loop through selected SKUs using the same approach as applySuggestAmazonPrice
+            selectedSkus.forEach(sku => {
+                // Find the row using Tabulator's searchRows method
+                const rows = table.searchRows("sku", "=", sku);
+                
+                if (rows.length > 0) {
+                    const row = rows[0]; // Get the first matching row
+                    const rowData = row.getData();
+                    // Use only W Price for increase/decrease mode (not Amazon price)
+                    const currentPrice = parseFloat(rowData['w_price']) || 0;
+                    
+                    console.log(`Processing SKU ${sku}: W Price = ${currentPrice}`);
+                    
                     if (currentPrice > 0) {
                         let newSPrice;
                         
@@ -590,18 +617,29 @@
                             }
                         }
                         
-                        newSPrice = Math.max(0.01, newSPrice);
+                        // Apply retail price rounding (round to .99 endings)
+                        newSPrice = roundToRetailPrice(newSPrice);
                         
-                        const tableRow = table.getRows().find(r => r.getData()['sku'] === sku);
-                        if (tableRow) {
-                            tableRow.update({ sprice: newSPrice });
-                            updatedCount++;
-                        }
+                        // Ensure minimum price
+                        newSPrice = Math.max(0.99, newSPrice);
+                        
+                        // Update only sprice (don't change w_price)
+                        row.update({
+                            sprice: newSPrice
+                        });
+                        
+                        console.log(`Updated SKU ${sku}: sprice set to ${newSPrice}`);
+                        updatedCount++;
+                    } else {
+                        console.log(`SKU ${sku}: No valid W Price found (${currentPrice}) - skipping`);
                     }
+                } else {
+                    console.log(`SKU ${sku}: Row not found in table`);
                 }
             });
             
-            showToast(`${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s)`, 'success');
+            console.log(`${increaseModeActive ? 'Increase' : 'Decrease'} complete: ${updatedCount} updated`);
+            showToast(`${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s) based on W Price`, 'success');
             $('#discount-percentage-input').val('');
         }
 
@@ -724,6 +762,7 @@
             let totalViews = 0;
             let totalDilPercent = 0;
             let dilCount = 0;
+            let bbIssueCount = 0; // Count of items where W Price < A Price
             
             data.forEach(row => {
                 const qty = parseInt(row['total_qty']) || 0;
@@ -771,6 +810,13 @@
                 
                 // Walmart L30 (total sales value from actual orders)
                 totalWalmartL30 += salesAmt;
+                
+                // Count if W Price < A Price (BB Issue)
+                const wPrice = parseFloat(row['w_price']) || 0;
+                const aPrice = parseFloat(row['a_price']) || 0;
+                if (wPrice > 0 && aPrice > 0 && wPrice < aPrice) {
+                    bbIssueCount++;
+                }
                 
                 // Count SKUs with 0 sold
                 if (qty === 0) {
@@ -822,6 +868,15 @@
             $('#total-products-badge').text('Total Products: ' + totalProducts.toLocaleString());
             $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
             $('#zero-sold-count-badge').text('0 Sold Count: ' + zeroSoldCount.toLocaleString());
+            
+            // Update BB Issue badge with green color when count is 0
+            const bbIssueBadge = $('#bb-issue-count-badge');
+            bbIssueBadge.text('BB Issue: ' + bbIssueCount.toLocaleString());
+            if (bbIssueCount === 0) {
+                bbIssueBadge.removeClass('bg-danger').addClass('bg-success');
+            } else {
+                bbIssueBadge.removeClass('bg-success').addClass('bg-danger');
+            }
             
             // Financial metrics
             $('#total-tcos-badge').text('Total TCOS: Calculating...');
@@ -891,22 +946,19 @@
                     title: "SKU",
                     field: "sku",
                     headerFilter: "input",
-                    frozen: true,
-                    width: 150
+                    frozen: true
                 },
                 {
                     title: "INV",
                     field: "INV",
                     hozAlign: "center",
-                    sorter: "number",
-                    width: 50
+                    sorter: "number"
                 },
                 {
                     title: "OV L30",
                     field: "L30",
                     hozAlign: "center",
-                    sorter: "number",
-                    width: 50
+                    sorter: "number"
                 },
                 {
                     title: "Dil",
@@ -941,16 +993,14 @@
                         else color = '#e83e8c'; // pink (50 and above)
 
                         return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
-                    },
-                    width: 50
+                    }
                 },
                 {
                     title: "W L30",
                     field: "total_qty",
                     hozAlign: "center",
                     sorter: "number",
-                    sorterParams: {dir: "asc"},
-                    width: 80
+                    sorterParams: {dir: "asc"}
                 },
                 {
                     title: "CVR %",
@@ -980,8 +1030,7 @@
                         else color = '#ff1493'; // pink (>10)
                         
                         return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
-                    },
-                    width: 90
+                    }
                 },
                 {
                     title: "Views",
@@ -991,8 +1040,7 @@
                     formatter: function(cell) {
                         const value = parseInt(cell.getValue()) || 0;
                         return value.toLocaleString();
-                    },
-                    width: 110
+                    }
                 },
                  {
                     title: "A Price",
@@ -1005,8 +1053,7 @@
                             return '<span style="color: #6c757d;">-</span>';
                         }
                         return `$${value.toFixed(2)}`;
-                    },
-                    width: 120
+                    }
                 },
                 {
                     title: "W Price",
@@ -1014,14 +1061,18 @@
                     hozAlign: "center",
                     sorter: "number",
                     editor: "input",
-                    formatter: "money",
-                    formatterParams: {
-                        decimal: ".",
-                        thousand: ",",
-                        symbol: "$",
-                        precision: 2
-                    },
-                    width: 120
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const wPrice = parseFloat(cell.getValue()) || 0;
+                        const aPrice = parseFloat(rowData['a_price']) || 0;
+                        
+                        // If W Price < A Price, show in red (BB Issue)
+                        const isRedFlag = wPrice > 0 && aPrice > 0 && wPrice < aPrice;
+                        const color = isRedFlag ? '#a00211' : '#000';
+                        const fontWeight = isRedFlag ? 'bold' : 'normal';
+                        
+                        return `<span style="color: ${color}; font-weight: ${fontWeight};">$${wPrice.toFixed(2)}</span>`;
+                    }
                 },
                
                 {
@@ -1032,6 +1083,18 @@
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue()) || 0;
                         const colorClass = getPftColor(value);
+                        return `<span class="walmart-percent-value ${colorClass}">${Math.round(value)}%</span>`;
+                    },
+                    width: 100
+                },
+                {
+                    title: "GROI %",
+                    field: "groi", // Show GROI% (Gross ROI % - BEFORE ads)
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        const colorClass = getRoiColor(value);
                         return `<span class="walmart-percent-value ${colorClass}">${Math.round(value)}%</span>`;
                     },
                     width: 100
@@ -1052,20 +1115,7 @@
                         else if (value > 21) color = '#a00211';
                         
                         return `<span style="color: ${color}; font-weight: 600;">${value.toFixed(1)}%</span>`;
-                    },
-                    width: 90
-                },
-                {
-                    title: "GROI %",
-                    field: "groi", // Show GROI% (Gross ROI % - BEFORE ads)
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue()) || 0;
-                        const colorClass = getRoiColor(value);
-                        return `<span class="walmart-percent-value ${colorClass}">${Math.round(value)}%</span>`;
-                    },
-                    width: 100
+                    }
                 },
                 {
                     title: "NPFT %",
@@ -1076,8 +1126,7 @@
                         const value = parseFloat(cell.getValue()) || 0;
                         const colorClass = getPftColor(value);
                         return `<span class="walmart-percent-value ${colorClass}">${Math.round(value)}%</span>`;
-                    },
-                    width: 100
+                    }
                 },
                 {
                     title: "NROI %",
@@ -1088,14 +1137,12 @@
                         const value = parseFloat(cell.getValue()) || 0;
                         const colorClass = getRoiColor(value);
                         return `<span class="walmart-percent-value ${colorClass}">${Math.round(value)}%</span>`;
-                    },
-                    width: 100
+                    }
                 },
                 {
                     title: '<input type="checkbox" id="select-all-checkbox">',
                     field: "_select",
                     headerSort: false,
-                    width: 50,
                     visible: false,
                     formatter: function(cell) {
                         const sku = cell.getRow().getData()['sku'];
@@ -1124,8 +1171,7 @@
                         }
                         
                         return `$${parseFloat(value).toFixed(2)}`;
-                    },
-                    width: 80
+                    }
                 },
                 {
                     title: "SGPRFT%",
@@ -1146,8 +1192,7 @@
                         
                         const colorClass = getPftColor(sgprft);
                         return `<span class="walmart-percent-value ${colorClass}">${Math.round(sgprft)}%</span>`;
-                    },
-                    width: 80
+                    }
                 },
                 {
                     title: "SROI%",
@@ -1168,8 +1213,7 @@
                         
                         const colorClass = getRoiColor(sroi);
                         return `<span class="walmart-percent-value ${colorClass}">${Math.round(sroi)}%</span>`;
-                    },
-                    width: 80
+                    }
                 },
                 {
                     title: "SPFT%",
@@ -1194,8 +1238,7 @@
                         
                         const colorClass = getPftColor(spft);
                         return `<span class="walmart-percent-value ${colorClass}">${Math.round(spft)}%</span>`;
-                    },
-                    width: 80
+                    }
                 },
                 {
                     title: "SNROI%",
@@ -1220,8 +1263,7 @@
                         
                         const colorClass = getRoiColor(snroi);
                         return `<span class="walmart-percent-value ${colorClass}">${Math.round(snroi)}%</span>`;
-                    },
-                    width: 80
+                    }
                 },
                 {
                     title: "Spend",
@@ -1231,8 +1273,7 @@
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue()) || 0;
                         return '$' + value.toFixed(2);
-                    },
-                    width: 100
+                    }
                 },
                 {
                     title: "LP",
@@ -1246,7 +1287,6 @@
                         }
                         return '<span style="color: #28a745; font-weight: 600;">$' + value.toFixed(2) + '</span>';
                     },
-                    width: 100,
                     visible: true
                 },
                 {
@@ -1261,7 +1301,6 @@
                         }
                         return '<span style="color: #28a745; font-weight: 600;">$' + value.toFixed(2) + '</span>';
                     },
-                    width: 100,
                     visible: true
                 }
             ]
@@ -1278,6 +1317,7 @@
             const inventoryFilter = $('#inventory-filter').val();
             const gpftFilter = $('#gpft-filter').val();
             const cvrFilter = $('#cvr-filter').val();
+            const bbIssueFilter = $('#bb-issue-filter').val();
             const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
             const skuSearch = $('#sku-search').val();
 
@@ -1298,7 +1338,7 @@
 
             if (gpftFilter !== 'all') {
                 table.addFilter(function(data) {
-                    const gpft = parseFloat(data.profit_percent) || 0;
+                    const gpft = parseFloat(data.gpft) || 0;
                     
                     if (gpftFilter === 'negative') return gpft < 0;
                     if (gpftFilter === '0-10') return gpft >= 0 && gpft < 10;
@@ -1331,6 +1371,18 @@
                 });
             }
 
+            if (bbIssueFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const wPrice = parseFloat(data.w_price) || 0;
+                    const aPrice = parseFloat(data.a_price) || 0;
+                    
+                    if (bbIssueFilter === 'bb-issue') {
+                        return wPrice > 0 && aPrice > 0 && wPrice < aPrice;
+                    }
+                    return true;
+                });
+            }
+
             if (dilFilter !== 'all') {
                 table.addFilter(function(data) {
                     const inv = parseFloat(data['INV']) || 0;
@@ -1350,7 +1402,7 @@
             updateSelectAllCheckbox();
         }
 
-        $('#inventory-filter, #gpft-filter, #cvr-filter').on('change', function() {
+        $('#inventory-filter, #gpft-filter, #cvr-filter, #bb-issue-filter').on('change', function() {
             applyFilters();
         });
 
