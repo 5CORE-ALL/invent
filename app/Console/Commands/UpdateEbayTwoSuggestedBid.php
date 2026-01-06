@@ -163,12 +163,12 @@ class UpdateEbayTwoSuggestedBid extends Command
                     $listing = $campaignListings[$ebayMetric->item_id];
                     $l30Data = $ebayGeneralL30->get($ebayMetric->item_id);
                     
-                    // Calculate SCVR (Sales Conversion Rate) = (eBay L30 Sales / PmtClkL30) * 100
-                    // This matches the frontend calculation: scvr = (ebayL30 / PmtClkL30) * 100
+                    // Calculate SCVR (Sales Conversion Rate) = (eBay L30 Sales / views) * 100
+                    // This matches the frontend calculation: scvr = (ebayL30 / views) * 100
                     $ebay_l30 = (int) ($ebayMetric->ebay_l30 ?? 0);
-                    $pmtClkL30 = $l30Data ? (int) ($l30Data->clicks ?? 0) : 0; // PmtClkL30 from general report
-                    $views = (int) ($ebayMetric->views ?? 0); // Keep for views < 100 check
-                    $cvr = $pmtClkL30 > 0 ? ($ebay_l30 / $pmtClkL30) * 100 : 0;
+                    $pmtClkL30 = $l30Data ? (int) ($l30Data->clicks ?? 0) : 0; // PmtClkL30 from general report (kept for reference)
+                    $views = (int) ($ebayMetric->views ?? 0); // Used for SCVR calculation
+                    $cvr = $views > 0 ? ($ebay_l30 / $views) * 100 : 0;
                     
                     // Get ESBID (suggested bid from bid_percentage in campaign listing)
                     $esbid = (float) ($listing->suggested_bid ?? 0);
