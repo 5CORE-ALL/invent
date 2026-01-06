@@ -38,13 +38,13 @@ class EbayCampaignReports extends Command
                 $this->info("✓ Database connection OK");
             } catch (\Exception $e) {
                 $this->error("✗ Database connection failed: " . $e->getMessage());
-                return;
+                return 1;
             }
 
             $accessToken = $this->getAccessToken();
             if (!$accessToken) {
                 $this->error('Failed to retrieve eBay access token.');
-                return;
+                return 1;
             }
 
         // Step 1: Fetch all campaigns once (campaigns don't change across date ranges)
@@ -52,7 +52,7 @@ class EbayCampaignReports extends Command
         $campaignsMap = $this->getAllCampaigns($accessToken);
         if (empty($campaignsMap)) {
             $this->error("No campaigns fetched from eBay!");
-            return;
+            return 1;
         }
         $this->info("✅ Successfully fetched " . count($campaignsMap) . " campaigns. Will use for all date ranges.");
         
@@ -87,9 +87,11 @@ class EbayCampaignReports extends Command
         }
 
             $this->info("✅ All campaign data processed.");
+            return 0;
         } catch (\Exception $e) {
             $this->error("✗ Error occurred: " . $e->getMessage());
             $this->error("Stack trace: " . $e->getTraceAsString());
+            return 1;
         } finally {
             DB::disconnect();
         }
@@ -286,10 +288,50 @@ class EbayCampaignReports extends Command
 
     private function submitReportTask($token, $body)
     {
-        $res = Http::withToken($token)->post('https://api.ebay.com/sell/marketing/v1/ad_report_task', $body);
+        $maxRetries = 3;
+        $retryAttempt = 0;
+        $res = null;
+        
+        while ($retryAttempt < $maxRetries) {
+            $retryAttempt++;
+            
+            try {
+                $res = Http::withToken($token)
+                    ->timeout(120) // 2 minutes timeout
+                    ->connectTimeout(30) // 30 seconds connection timeout
+                    ->retry(2, 5000) // Retry 2 times with 5 second delay
+                    ->post('https://api.ebay.com/sell/marketing/v1/ad_report_task', $body);
+                
+                if ($res->successful()) {
+                    break;
+                }
+                
+                if ($retryAttempt < $maxRetries) {
+                    $this->warn("Task creation failed (attempt {$retryAttempt}/{$maxRetries}), retrying in 5 seconds...");
+                    sleep(5);
+                    continue;
+                }
+            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                if ($retryAttempt < $maxRetries) {
+                    $this->warn("Connection timeout (attempt {$retryAttempt}/{$maxRetries}), retrying in 10 seconds...");
+                    sleep(10);
+                    continue;
+                }
+                $this->error("Connection timeout after {$maxRetries} attempts: " . $e->getMessage());
+                return null;
+            } catch (\Exception $e) {
+                if ($retryAttempt < $maxRetries) {
+                    $this->warn("Request failed (attempt {$retryAttempt}/{$maxRetries}): " . $e->getMessage() . ", retrying...");
+                    sleep(5);
+                    continue;
+                }
+                $this->error("Request failed after {$maxRetries} attempts: " . $e->getMessage());
+                return null;
+            }
+        }
 
-        if ($res->failed()) {
-            $this->error("Task creation failed: " . $res->body());
+        if (!$res || $res->failed()) {
+            $this->error("Task creation failed: " . ($res ? $res->body() : 'No response'));
             return null;
         }
     
@@ -310,22 +352,84 @@ class EbayCampaignReports extends Command
 
     private function pollReportStatus($token, $taskId)
     {
+        $maxAttempts = 60; // Maximum polling attempts (60 minutes)
+        $attempt = 0;
+        
         do {
             sleep(60);
-            $check = Http::withToken($token)
-                ->get("https://api.ebay.com/sell/marketing/v1/ad_report_task/{$taskId}");
+            $attempt++;
+            
+            $maxRetries = 3;
+            $retryAttempt = 0;
+            $check = null;
+            
+            while ($retryAttempt < $maxRetries) {
+                $retryAttempt++;
+                
+                try {
+                    $check = Http::withToken($token)
+                        ->timeout(120) // 2 minutes timeout
+                        ->connectTimeout(30) // 30 seconds connection timeout
+                        ->retry(2, 5000) // Retry 2 times with 5 second delay
+                        ->get("https://api.ebay.com/sell/marketing/v1/ad_report_task/{$taskId}");
+                    
+                    if ($check->successful() || $check->status() === 401) {
+                        break;
+                    }
+                } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                    if ($retryAttempt < $maxRetries) {
+                        $this->warn("Connection timeout (attempt {$retryAttempt}/{$maxRetries}), retrying in 10 seconds...");
+                        sleep(10);
+                        continue;
+                    }
+                    $this->error("Connection timeout after {$maxRetries} attempts: " . $e->getMessage());
+                    return null;
+                } catch (\Exception $e) {
+                    if ($retryAttempt < $maxRetries) {
+                        $this->warn("Request failed (attempt {$retryAttempt}/{$maxRetries}): " . $e->getMessage() . ", retrying...");
+                        sleep(5);
+                        continue;
+                    }
+                    $this->error("Request failed after {$maxRetries} attempts: " . $e->getMessage());
+                    return null;
+                }
+            }
+            
+            if (!$check) {
+                $this->error("Failed to check report status after retries");
+                return null;
+            }
             
             if ($check->status() === 401 || $check->json('errors.0.message') === 'Invalid access token') {
                 $this->warn("Access token expired, refreshing...");
 
                 $token = $this->getAccessToken();
-                $check = Http::withToken($token)
-                    ->get("https://api.ebay.com/sell/marketing/v1/ad_report_task/{$taskId}");
+                if (!$token) {
+                    $this->error("Failed to refresh access token");
+                    return null;
+                }
+                
+                // Retry with new token
+                try {
+                    $check = Http::withToken($token)
+                        ->timeout(120)
+                        ->connectTimeout(30)
+                        ->retry(2, 5000)
+                        ->get("https://api.ebay.com/sell/marketing/v1/ad_report_task/{$taskId}");
+                } catch (\Exception $e) {
+                    $this->error("Failed to check status with new token: " . $e->getMessage());
+                    return null;
+                }
             }
             
             $status = $check['reportTaskStatus'] ?? 'IN_PROGRESS';
 
-            $this->info("Polling status for $taskId: $status");
+            $this->info("Polling status for $taskId: $status (Attempt: {$attempt}/{$maxAttempts})");
+            
+            if ($attempt >= $maxAttempts) {
+                $this->error("Report task $taskId polling timeout after {$maxAttempts} attempts");
+                return null;
+            }
         } while (!in_array($status, ['SUCCESS','FAILED']));
 
         if ($status !== 'SUCCESS') {
@@ -339,9 +443,50 @@ class EbayCampaignReports extends Command
 
     private function downloadParseAndStoreReport($token, $reportId, $rangeKey)
     {
-        $res = Http::withToken($token)->get("https://api.ebay.com/sell/marketing/v1/ad_report/{$reportId}");
-        if (!$res->ok()) {
-            $this->error("Failed to fetch report metadata.");
+        $maxRetries = 3;
+        $retryAttempt = 0;
+        $res = null;
+        
+        while ($retryAttempt < $maxRetries) {
+            $retryAttempt++;
+            
+            try {
+                $res = Http::withToken($token)
+                    ->timeout(300) // 5 minutes timeout for large file downloads
+                    ->connectTimeout(60) // 60 seconds connection timeout
+                    ->retry(2, 10000) // Retry 2 times with 10 second delay
+                    ->get("https://api.ebay.com/sell/marketing/v1/ad_report/{$reportId}");
+                
+                if ($res->ok()) {
+                    break;
+                }
+                
+                if ($retryAttempt < $maxRetries) {
+                    $this->warn("Failed to fetch report (attempt {$retryAttempt}/{$maxRetries}), retrying in 10 seconds...");
+                    sleep(10);
+                    continue;
+                }
+            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                if ($retryAttempt < $maxRetries) {
+                    $this->warn("Connection timeout (attempt {$retryAttempt}/{$maxRetries}), retrying in 15 seconds...");
+                    sleep(15);
+                    continue;
+                }
+                $this->error("Connection timeout after {$maxRetries} attempts: " . $e->getMessage());
+                return [];
+            } catch (\Exception $e) {
+                if ($retryAttempt < $maxRetries) {
+                    $this->warn("Request failed (attempt {$retryAttempt}/{$maxRetries}): " . $e->getMessage() . ", retrying...");
+                    sleep(10);
+                    continue;
+                }
+                $this->error("Request failed after {$maxRetries} attempts: " . $e->getMessage());
+                return [];
+            }
+        }
+        
+        if (!$res || !$res->ok()) {
+            $this->error("Failed to fetch report metadata after retries.");
             return [];
         }        
 
@@ -453,13 +598,55 @@ class EbayCampaignReports extends Command
         $offset = 0;
 
         while (true) {
-            $res = Http::withToken($token)
-                ->timeout(120)
-                ->retry(3, 5000)
-                ->get('https://api.ebay.com/sell/marketing/v1/ad_campaign', [
-                    'limit' => $limit,
-                    'offset' => $offset,
-                ]);
+            $maxRetries = 3;
+            $retryAttempt = 0;
+            $res = null;
+            
+            while ($retryAttempt < $maxRetries) {
+                $retryAttempt++;
+                
+                try {
+                    $res = Http::withToken($token)
+                        ->timeout(120)
+                        ->connectTimeout(30)
+                        ->retry(2, 5000)
+                        ->get('https://api.ebay.com/sell/marketing/v1/ad_campaign', [
+                            'limit' => $limit,
+                            'offset' => $offset,
+                        ]);
+                    
+                    if ($res->ok() || $res->status() === 401) {
+                        break;
+                    }
+                    
+                    if ($retryAttempt < $maxRetries) {
+                        $this->warn("Failed to fetch campaigns (attempt {$retryAttempt}/{$maxRetries}), retrying in 5 seconds...");
+                        sleep(5);
+                        continue;
+                    }
+                } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                    if ($retryAttempt < $maxRetries) {
+                        $this->warn("Connection timeout (attempt {$retryAttempt}/{$maxRetries}), retrying in 10 seconds...");
+                        sleep(10);
+                        continue;
+                    }
+                    $this->error("Connection timeout after {$maxRetries} attempts: " . $e->getMessage());
+                    break 2; // Break out of both loops
+                } catch (\Exception $e) {
+                    if ($retryAttempt < $maxRetries) {
+                        $this->warn("Request failed (attempt {$retryAttempt}/{$maxRetries}): " . $e->getMessage() . ", retrying...");
+                        sleep(5);
+                        continue;
+                    }
+                    $this->error("Request failed after {$maxRetries} attempts: " . $e->getMessage());
+                    break 2; // Break out of both loops
+                }
+            }
+            
+            if (!$res) {
+                $this->error("Failed to fetch campaigns after retries at offset {$offset}");
+                break;
+            }
 
             if (!$res->ok()) {
                 $statusCode = $res->status();
