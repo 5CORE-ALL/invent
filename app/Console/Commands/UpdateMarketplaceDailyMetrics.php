@@ -53,6 +53,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             'Macys' => fn() => $this->calculateMacysMetrics($date),
             'Tiendamia' => fn() => $this->calculateTiendamiaMetrics($date),
             'Doba' => fn() => $this->calculateDobaMetrics($date),
+            'Walmart' => fn() => $this->calculateWalmartMetrics($date),
         ];
 
         foreach ($channels as $channel => $calculator) {
@@ -2365,6 +2366,164 @@ class UpdateMarketplaceDailyMetrics extends Command
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
         // Doba has no ads, so N ROI = G ROI and N PFT = G PFT
+        return [
+            'total_orders' => $totalOrders,
+            'total_quantity' => $totalQuantity,
+            'total_revenue' => $totalRevenue,
+            'total_sales' => $totalRevenue,
+            'total_cogs' => $totalCogs,
+            'total_pft' => $totalPft,
+            'pft_percentage' => round($pftPercentage, 1),
+            'roi_percentage' => round($roiPercentage, 1),
+            'avg_price' => $avgPrice,
+            'l30_sales' => $totalRevenue,
+            'kw_spent' => 0,
+            'pmt_spent' => 0,
+            'n_pft' => $totalPft,
+            'n_roi' => round($roiPercentage, 1),
+        ];
+    }
+
+    private function calculateWalmartMetrics($date)
+    {
+        // 33 days: Get latest Walmart order date from ShipHub and calculate 33-day range
+        $latestDate = DB::connection('shiphub')
+            ->table('orders')
+            ->where('marketplace', '=', 'walmart')
+            ->max('order_date');
+
+        if (!$latestDate) {
+            return null;
+        }
+
+        $latestDateCarbon = Carbon::parse($latestDate);
+        $startDate = $latestDateCarbon->copy()->subDays(32); // 33 days total (matches Amazon)
+
+        // Get Walmart orders from ShipHub (orders table contains item details directly)
+        $orders = DB::connection('shiphub')
+            ->table('orders')
+            ->whereBetween('order_date', [$startDate, $latestDateCarbon->endOfDay()])
+            ->where('marketplace', '=', 'walmart')
+            ->where(function($query) {
+                $query->where('order_status', '!=', 'Canceled')
+                      ->where('order_status', '!=', 'Cancelled')
+                      ->orWhereNull('order_status');
+            })
+            ->select([
+                'marketplace_order_id as order_id',
+                'order_number',
+                'order_date',
+                'item_sku as sku',
+                'quantity',
+                'order_total',
+            ])
+            ->get();
+
+        if ($orders->isEmpty()) {
+            return null;
+        }
+
+        $productMasters = ProductMaster::all()->keyBy(function ($item) {
+            return strtoupper($item->sku);
+        });
+
+        $totalOrders = 0;
+        $totalQuantity = 0;
+        $totalRevenue = 0;
+        $totalCogs = 0;
+        $totalPft = 0;
+        $totalWeightedPrice = 0;
+        $totalQuantityForPrice = 0;
+        $uniqueOrders = [];
+
+        // Get Walmart percentage from database (default 80%)
+        $marketplaceData = \App\Models\MarketplacePercentage::where('marketplace', 'Walmart')->first();
+        $percentage = $marketplaceData ? $marketplaceData->percentage : 80;
+        $margin = $percentage / 100; // Convert to decimal
+
+        // Process order items from ShipHub
+        foreach ($orders as $order) {
+            $sku = strtoupper(trim($order->sku ?? ''));
+            $quantity = (int) ($order->quantity ?? 1);
+            $orderTotal = (float) ($order->order_total ?? 0);
+            
+            // For Walmart, order_total is the price for this item line
+            $saleAmount = $orderTotal;
+            $unitPrice = $quantity > 0 ? $saleAmount / $quantity : 0;
+            
+            $uniqueOrders[$order->order_id] = true;
+            $totalQuantity += $quantity;
+            $totalRevenue += $saleAmount;
+
+            if ($quantity > 0 && $unitPrice > 0) {
+                $totalWeightedPrice += $unitPrice * $quantity;
+                $totalQuantityForPrice += $quantity;
+            }
+
+            // Get LP, Ship and wt_act from ProductMaster
+            $lp = 0;
+            $ship = 0;
+            $weightAct = 0;
+
+            if ($sku && isset($productMasters[$sku])) {
+                $pm = $productMasters[$sku];
+                $values = is_array($pm->Values) ? $pm->Values :
+                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                
+                // Get LP
+                foreach ($values as $k => $v) {
+                    if (strtolower($k) === "lp") {
+                        $lp = floatval($v);
+                        break;
+                    }
+                }
+                if ($lp === 0 && isset($pm->lp)) {
+                    $lp = floatval($pm->lp);
+                }
+                
+                // Get Ship
+                if (isset($values['ship'])) {
+                    $ship = floatval($values['ship']);
+                } elseif (isset($pm->ship)) {
+                    $ship = floatval($pm->ship);
+                }
+                
+                // Get Weight Act
+                if (isset($values['wt_act']) || isset($values['weight_act'])) {
+                    $weightAct = floatval($values['wt_act'] ?? $values['weight_act']);
+                }
+            }
+
+            // T Weight = Weight Act * Quantity
+            $tWeight = $weightAct * $quantity;
+
+            // Ship Cost calculation (same as Amazon/TikTok):
+            if ($quantity == 1) {
+                $shipCost = $ship;
+            } elseif ($quantity > 1 && $tWeight < 20) {
+                $shipCost = $ship / $quantity;
+            } else {
+                $shipCost = $ship;
+            }
+
+            // COGS = LP * quantity (only LP, not Ship)
+            $cogs = $lp * $quantity;
+            $totalCogs += $cogs;
+
+            // PFT Each = (unit_price * margin) - lp - ship_cost
+            $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
+
+            // T PFT = pft_each * quantity
+            $pft = $pftEach * $quantity;
+            $totalPft += $pft;
+        }
+
+        $totalOrders = count($uniqueOrders);
+        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
+        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
+        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
+
+        // Walmart may have ads in the future, but for now set to 0
         return [
             'total_orders' => $totalOrders,
             'total_quantity' => $totalQuantity,

@@ -1502,93 +1502,198 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        $query = WalmartMetrics::where('sku', 'not like', '%Parent%');
+        // Get latest order date from ShipHub
+        $latestDate = DB::connection('shiphub')
+            ->table('orders')
+            ->where('marketplace', '=', 'walmart')
+            ->max('order_date');
 
-        $l30Orders = $query->sum('l30');
-        $l60Orders = $query->sum('l60');
+        if (!$latestDate) {
+            return response()->json([
+                'status' => 200,
+                'message' => 'No Walmart data found in ShipHub',
+                'data' => [[
+                    'Channel ' => 'Walmart',
+                    'L-60 Sales' => 0,
+                    'L30 Sales' => 0,
+                    'Growth' => '0%',
+                    'L60 Orders' => 0,
+                    'L30 Orders' => 0,
+                    'Gprofit%' => '0%',
+                    'gprofitL60' => '0%',
+                    'G Roi' => 0,
+                    'G RoiL60' => 0,
+                    'N PFT' => '0%',
+                ]]
+            ]);
+        }
 
-        $l30Sales  = (clone $query)->selectRaw('SUM(l30 * price) as total')->value('total') ?? 0;
-        $l60Sales  = (clone $query)->selectRaw('SUM(l60 * price) as total')->value('total') ?? 0;
+        $latestDateCarbon = \Carbon\Carbon::parse($latestDate);
+        $l30StartDate = $latestDateCarbon->copy()->subDays(32); // 33 days total
+        $l30EndDate = $latestDateCarbon->endOfDay();
+        $l60StartDate = $latestDateCarbon->copy()->subDays(65); // 66 days total
+        $l60EndDate = $latestDateCarbon->endOfDay();
 
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        // Get Walmart marketing percentage (default 80%)
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'Walmart')->first();
+        $percentage = $marketplaceData ? $marketplaceData->percentage : 80;
+        $margin = $percentage / 100; // convert % to fraction
 
-        // Get Walmart marketing percentage
-        $percentage = ChannelMaster::where('channel', 'Walmart')->value('channel_percentage') ?? 100;
-        $percentage = $percentage / 100; // convert % to fraction
+        // Get L30 order items from ShipHub (orders table contains item details directly)
+        $l30Orders = DB::connection('shiphub')
+            ->table('orders')
+            ->whereBetween('order_date', [$l30StartDate, $l30EndDate])
+            ->where('marketplace', '=', 'walmart')
+            ->where(function($query) {
+                $query->where('order_status', '!=', 'Canceled')
+                      ->where('order_status', '!=', 'Cancelled')
+                      ->orWhereNull('order_status');
+            })
+            ->select([
+                'marketplace_order_id as order_id',
+                'item_sku as sku',
+                'quantity',
+                'order_total',
+            ])
+            ->get();
 
-        // Load product masters (lp, ship) keyed by SKU
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
-            return strtoupper($item->sku);
-        });
+        // Get L60 order items from ShipHub
+        $l60Orders = DB::connection('shiphub')
+            ->table('orders')
+            ->whereBetween('order_date', [$l60StartDate, $l60EndDate])
+            ->where('marketplace', '=', 'walmart')
+            ->where(function($query) {
+                $query->where('order_status', '!=', 'Canceled')
+                      ->where('order_status', '!=', 'Cancelled')
+                      ->orWhereNull('order_status');
+            })
+            ->select([
+                'marketplace_order_id as order_id',
+                'item_sku as sku',
+                'quantity',
+                'order_total',
+            ])
+            ->get();
 
-        // Calculate total profit
-        $ebayRows     = $query->get(['sku', 'price', 'l30','l60']);
-        $totalProfit  = 0;
-        $totalProfitL60  = 0;
-        $totalCogs       = 0;
-        $totalCogsL60    = 0;
+        // Get unique SKUs
+        $skus = $l30Orders->pluck('sku')->merge($l60Orders->pluck('sku'))->filter()->unique()->values()->toArray();
 
-        foreach ($ebayRows as $row) {
-            $sku       = strtoupper($row->sku);
-            $price     = (float) $row->price;
-            $unitsL30  = (int) $row->l30;
-            $unitsL60  = (int) $row->l60;
+        // Load product masters (lp, ship) keyed by SKU (UPPERCASE)
+        $productMasters = ProductMaster::whereIn('sku', $skus)
+            ->get()
+            ->keyBy(function ($item) {
+                return strtoupper($item->sku);
+            });
 
-            $soldAmount = $unitsL30 * $price;
-            if ($soldAmount <= 0) {
-                continue;
-            }
+        // Process L30 data
+        $l30Sales = 0;
+        $l30OrderCount = 0;
+        $totalProfit = 0;
+        $totalCogs = 0;
+        $l30OrderIds = [];
 
-            $lp   = 0;
+        foreach ($l30Orders as $order) {
+            $sku = strtoupper(trim($order->sku ?? ''));
+            $quantity = floatval($order->quantity ?? 1);
+            $orderTotal = floatval($order->order_total ?? 0);
+            
+            $saleAmount = $orderTotal;
+            $unitPrice = $quantity > 0 ? $saleAmount / $quantity : 0;
+
+            // Get ProductMaster data
+            $pm = $productMasters->get($sku);
+            $lp = 0;
             $ship = 0;
-
-            if (isset($productMasters[$sku])) {
-                $pm = $productMasters[$sku];
-
-                $values = is_array($pm->Values) ? $pm->Values :
-                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-                $lp   = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-                $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
+            $weightAct = 0;
+            
+            if ($pm) {
+                $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                if (is_array($values)) {
+                    foreach ($values as $key => $value) {
+                        if (strtolower($key) === 'lp') $lp = floatval($value);
+                        elseif (strtolower($key) === 'ship') $ship = floatval($value);
+                        elseif (strtolower($key) === 'weight_act') $weightAct = floatval($value);
+                    }
+                }
+                
+                if ($lp === 0 && isset($pm->lp)) $lp = floatval($pm->lp);
+                if ($ship === 0 && isset($pm->ship)) $ship = floatval($pm->ship);
             }
 
-            // Profit per unit
-            $profitPerUnit = ($price * $percentage) - $lp - $ship;
-            $profitTotal   = $profitPerUnit * $unitsL30;
-            $profitTotalL60   = $profitPerUnit * $unitsL60;
+            // Calculate ship cost
+            $tWeight = $weightAct * $quantity;
+            $shipCost = ($quantity == 1) ? $ship : (($quantity > 1 && $tWeight < 20) ? ($ship / $quantity) : $ship);
 
-            $totalProfit += $profitTotal;
-            $totalProfitL60 += $profitTotalL60;
+            // Calculate profit
+            $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
+            $profit = $pftEach * $quantity;
+            $cogs = $lp * $quantity;
 
-            $totalCogs    += ($unitsL30 * $lp);
-            $totalCogsL60 += ($unitsL60 * $lp);
+            $l30Sales += $saleAmount;
+            $totalProfit += $profit;
+            $totalCogs += $cogs;
+            $l30OrderIds[$order->order_id] = true;
         }
+        $l30OrderCount = count($l30OrderIds);
 
-        // --- FIX: Calculate total LP only for SKUs in eBayMetrics ---
-        $ebaySkus   = $ebayRows->pluck('sku')->map(fn($s) => strtoupper($s))->toArray();
-        $ebayPMs    = ProductMaster::whereIn('sku', $ebaySkus)->get();
+        // Process L60 data
+        $l60Sales = 0;
+        $l60OrderCount = 0;
+        $totalProfitL60 = 0;
+        $totalCogsL60 = 0;
+        $l60OrderIds = [];
 
-        $totalLpValue = 0;
-        foreach ($ebayPMs as $pm) {
-            $values = is_array($pm->Values) ? $pm->Values :
-                    (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+        foreach ($l60Orders as $order) {
+            $sku = strtoupper(trim($order->sku ?? ''));
+            $quantity = floatval($order->quantity ?? 1);
+            $orderTotal = floatval($order->order_total ?? 0);
+            
+            $saleAmount = $orderTotal;
+            $unitPrice = $quantity > 0 ? $saleAmount / $quantity : 0;
 
-            $lp = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-            $totalLpValue += $lp;
+            // Get ProductMaster data
+            $pm = $productMasters->get($sku);
+            $lp = 0;
+            $ship = 0;
+            $weightAct = 0;
+            
+            if ($pm) {
+                $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                if (is_array($values)) {
+                    foreach ($values as $key => $value) {
+                        if (strtolower($key) === 'lp') $lp = floatval($value);
+                        elseif (strtolower($key) === 'ship') $ship = floatval($value);
+                        elseif (strtolower($key) === 'weight_act') $weightAct = floatval($value);
+                    }
+                }
+                
+                if ($lp === 0 && isset($pm->lp)) $lp = floatval($pm->lp);
+                if ($ship === 0 && isset($pm->ship)) $ship = floatval($pm->ship);
+            }
+
+            // Calculate ship cost
+            $tWeight = $weightAct * $quantity;
+            $shipCost = ($quantity == 1) ? $ship : (($quantity > 1 && $tWeight < 20) ? ($ship / $quantity) : $ship);
+
+            // Calculate profit
+            $pftEach = ($unitPrice * $margin) - $lp - $shipCost;
+            $profit = $pftEach * $quantity;
+            $cogs = $lp * $quantity;
+
+            $l60Sales += $saleAmount;
+            $totalProfitL60 += $profit;
+            $totalCogsL60 += $cogs;
+            $l60OrderIds[$order->order_id] = true;
         }
+        $l60OrderCount = count($l60OrderIds);
 
-        // Use L30 Sales for denominator
+        // Calculate percentages
+        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
         $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
         $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
-
-        // $gRoi       = $totalLpValue > 0 ? ($totalProfit / $totalLpValue) : 0;
-        // $gRoiL60    = $totalLpValue > 0 ? ($totalProfitL60 / $totalLpValue) : 0;
-
-        $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
+        $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
-
-        // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
-        $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+        $nPft = $gProfitPct; // Walmart has no ads for now
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Walmart')->first();
@@ -1605,13 +1710,15 @@ class ChannelMasterController extends Controller
             'L-60 Sales' => intval($l60Sales),
             'L30 Sales'  => intval($l30Sales),
             'Growth'     => round($growth, 2) . '%',
-            'L60 Orders' => $l60Orders,
-            'L30 Orders' => $l30Orders,
+            'L60 Orders' => $l60OrderCount,
+            'L30 Orders' => $l30OrderCount,
             'Gprofit%'   => round($gProfitPct, 2) . '%',
             'gprofitL60'   => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'      => round($gRoiL60, 2),
+            'Total PFT'  => round($totalProfit, 2),
             'N PFT'      => round($nPft, 2) . '%',
+            'N ROI'      => round($gRoi, 2),
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
