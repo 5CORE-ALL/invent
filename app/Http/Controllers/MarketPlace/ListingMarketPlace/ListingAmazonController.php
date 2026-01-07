@@ -10,9 +10,11 @@ use App\Models\ShopifySku;
 use App\Models\ProductStockMapping;
 use Illuminate\Http\Request;
 use App\Models\AmazonDatasheet;
+use App\Models\AmazonListingDailyMetric;
 use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class ListingAmazonController extends Controller
 {
@@ -185,6 +187,7 @@ class ListingAmazonController extends Controller
             'listed' => 'nullable|string',
             'buyer_link' => 'nullable|url',
             'seller_link' => 'nullable|url',
+            'status' => 'nullable|string|in:Active,DC,2BDC,Sourcing,In Transit,To Order,MFRG,',
         ]);
 
         $sku = $validated['sku'];
@@ -218,6 +221,31 @@ class ListingAmazonController extends Controller
             ['sku' => $validated['sku']],
             ['value' => $existing]
         );
+
+        // Handle status - save to ProductMaster Values field
+        if ($request->has('status')) {
+            $product = ProductMaster::where('sku', $sku)->first();
+            if ($product) {
+                $values = is_array($product->Values) ? $product->Values : 
+                         (is_string($product->Values) ? json_decode($product->Values, true) : []);
+                
+                if (!is_array($values)) {
+                    $values = [];
+                }
+                
+                // Update status in Values field
+                $statusValue = $validated['status'];
+                if ($statusValue === '') {
+                    // Remove status if empty string
+                    unset($values['status']);
+                } else {
+                    $values['status'] = $statusValue;
+                }
+                
+                $product->Values = $values;
+                $product->save();
+            }
+        }
 
         return response()->json(['status' => 'success']);
     }
@@ -504,9 +532,14 @@ class ListingAmazonController extends Controller
             // Try to find the correct SKU format in Amazon
             $amazonSku = $this->findAmazonSkuFormat($sku, $accessToken, $sellerId, $endpoint, $marketplaceId);
             if (!$amazonSku) {
+                // SKU not found in Amazon - clear existing links
+                $this->clearLinksForSku($sku);
+                // Also clear listing status from amazon_datsheets
+                AmazonDatasheet::where('sku', $sku)->update(['listing_status' => null]);
+                
                 return [
                     'success' => false,
-                    'message' => 'SKU not found in Amazon listings'
+                    'message' => 'SKU not found in Amazon listings - Links cleared'
                 ];
             }
 
@@ -522,6 +555,16 @@ class ListingAmazonController extends Controller
                 ->get($url);
 
             if (!$response->successful()) {
+                // If 404, SKU doesn't exist - clear links
+                if ($response->status() === 404) {
+                    $this->clearLinksForSku($sku);
+                    AmazonDatasheet::where('sku', $sku)->update(['listing_status' => null]);
+                    return [
+                        'success' => false,
+                        'message' => 'SKU not found in Amazon (404) - Links cleared'
+                    ];
+                }
+                
                 return [
                     'success' => false,
                     'message' => 'Failed to fetch listing data from Amazon API'
@@ -559,10 +602,13 @@ class ListingAmazonController extends Controller
                 $sellerLink = "https://sellercentral.amazon.com/inventory/ref=xx_invmgr_dnav_xx?asin={$asin}";
             }
 
-            // Update links in amazon_data_view
+            // Update links in amazon_data_view and listing status
             if ($buyerLink || $sellerLink) {
                 $status = AmazonDataView::where('sku', $sku)->first();
                 $existing = $status ? $status->value : [];
+                if (!is_array($existing)) {
+                    $existing = json_decode($existing, true) ?? [];
+                }
 
                 if ($buyerLink) {
                     $existing['buyer_link'] = $buyerLink;
@@ -575,6 +621,15 @@ class ListingAmazonController extends Controller
                     ['sku' => $sku],
                     ['value' => $existing]
                 );
+                
+                // Update listing status in amazon_datsheets - check if listing is ACTIVE
+                $listingStatus = $this->determineListingStatusFromResponse($data);
+                if ($listingStatus) {
+                    AmazonDatasheet::updateOrCreate(
+                        ['sku' => $sku],
+                        ['listing_status' => $listingStatus]
+                    );
+                }
 
                 return [
                     'success' => true,
@@ -583,7 +638,8 @@ class ListingAmazonController extends Controller
                         'sku' => $sku,
                         'asin' => $asin,
                         'buyer_link' => $buyerLink,
-                        'seller_link' => $sellerLink
+                        'seller_link' => $sellerLink,
+                        'listing_status' => $listingStatus
                     ]
                 ];
             }
@@ -604,6 +660,94 @@ class ListingAmazonController extends Controller
                 'message' => 'Error: ' . $e->getMessage()
             ];
         }
+    }
+
+    /**
+     * Determine listing status from Amazon API response
+     */
+    private function determineListingStatusFromResponse($data)
+    {
+        if (!is_array($data)) {
+            return null;
+        }
+
+        // Method 1: Check summaries array (most common location)
+        if (isset($data['summaries']) && is_array($data['summaries']) && !empty($data['summaries'])) {
+            foreach ($data['summaries'] as $summary) {
+                // Check if status is an array
+                if (isset($summary['status']) && is_array($summary['status']) && !empty($summary['status'])) {
+                    foreach ($summary['status'] as $statusItem) {
+                        // Prioritize BUYABLE status
+                        if (strtoupper($statusItem) === 'BUYABLE' || strtoupper($statusItem) === 'BUYABLE_BY_QUANTITY') {
+                            return 'ACTIVE';
+                        }
+                    }
+                    // If no BUYABLE found, use first status
+                    $statusValue = $summary['status'][0];
+                    return $this->mapStatusValue($statusValue);
+                }
+                // Check if status is a string
+                elseif (isset($summary['status']) && is_string($summary['status'])) {
+                    return $this->mapStatusValue($summary['status']);
+                }
+            }
+        }
+        
+        // Method 2: Check for buyBoxEligible or other indicators of active status
+        if (isset($data['buyBoxEligible']) && $data['buyBoxEligible'] === true) {
+            return 'ACTIVE';
+        }
+        
+        if (isset($data['summaries']) && is_array($data['summaries'])) {
+            foreach ($data['summaries'] as $summary) {
+                if (isset($summary['buyBoxEligible']) && $summary['buyBoxEligible'] === true) {
+                    return 'ACTIVE';
+                }
+                // Check for availability
+                if (isset($summary['availability']) && 
+                    (stripos($summary['availability'], 'in stock') !== false || 
+                     stripos($summary['availability'], 'available') !== false)) {
+                    return 'ACTIVE';
+                }
+            }
+        }
+        
+        // If we found summaries data but no clear status, assume ACTIVE if we have ASIN
+        if (isset($data['summaries'][0]['asin'])) {
+            return 'ACTIVE';
+        }
+        
+        return null;
+    }
+
+    /**
+     * Map Amazon status value to our status format
+     */
+    private function mapStatusValue($statusValue)
+    {
+        if (!$statusValue) {
+            return null;
+        }
+        
+        $statusValue = strtoupper(trim($statusValue));
+        
+        // Active statuses
+        if (in_array($statusValue, ['BUYABLE', 'BUYABLE_BY_QUANTITY', 'ACTIVE', 'LIVE', 'PUBLISHED'])) {
+            return 'ACTIVE';
+        }
+        
+        // Inactive statuses
+        if (in_array($statusValue, ['DISCOVERABLE', 'INELIGIBLE', 'INVALID', 'OUT_OF_STOCK', 'UNBUYABLE', 'INACTIVE', 'SUPPRESSED', 'STOPPED'])) {
+            return 'INACTIVE';
+        }
+        
+        // Incomplete statuses
+        if (in_array($statusValue, ['INCOMPLETE', 'DRAFT', 'PENDING'])) {
+            return 'INCOMPLETE';
+        }
+        
+        // Default to ACTIVE if we have a status value
+        return 'ACTIVE';
     }
 
     /**
@@ -679,6 +823,47 @@ class ListingAmazonController extends Controller
                 'error' => $e->getMessage()
             ]);
             return null;
+        }
+    }
+
+    /**
+     * Get daily metrics data for chart (Missing & INV>0 count)
+     */
+    public function getDailyMetrics(Request $request)
+    {
+        try {
+            $days = $request->input('days', 30); // Default to last 30 days
+            
+            // Get metrics for the specified number of days
+            $endDate = Carbon::today();
+            $startDate = $endDate->copy()->subDays($days - 1);
+            
+            $metrics = AmazonListingDailyMetric::whereBetween('date', [$startDate, $endDate])
+                ->orderBy('date', 'asc')
+                ->get();
+            
+            // Format data for chart
+            $chartData = [];
+            foreach ($metrics as $metric) {
+                $chartData[] = [
+                    'date' => $metric->date->format('Y-m-d'),
+                    'count' => $metric->missing_status_inv_count
+                ];
+            }
+            
+            return response()->json([
+                'status' => 'success',
+                'data' => $chartData
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching Amazon listing daily metrics', [
+                'error' => $e->getMessage()
+            ]);
+            
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to fetch metrics data'
+            ], 500);
         }
     }
 

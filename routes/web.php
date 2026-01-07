@@ -1086,6 +1086,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/listing-audit-amazon', action: [ListingAuditAmazonController::class, 'listingAuditAmazon'])->name('listing.audit.amazon');
     Route::get('/listing-amazon', [ListingAmazonController::class, 'listingAmazon'])->name('listing.amazon');
     Route::get('/listing_amazon/view-data', [ListingAmazonController::class, 'getViewListingAmazonData']);
+    Route::get('/listing_amazon/daily-metrics', [ListingAmazonController::class, 'getDailyMetrics'])->name('listing.amazon.daily.metrics');
     Route::post('/listing_amazon/save-status', [ListingAmazonController::class, 'saveStatus']);
     Route::post('/listing_amazon/fetch-links', [ListingAmazonController::class, 'fetchAndUpdateLinks'])->name('listing.amazon.fetch.links');
     Route::post('/listing_amazon/import', [ListingAmazonController::class, 'import'])->name('listing_amazon.import');
