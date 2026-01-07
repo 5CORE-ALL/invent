@@ -25,10 +25,12 @@ class UpdateAmazonFbaPtBudgetCronCommand extends Command
     public function handle()
     {
         try {
-            // Check database connection
+            // Check database connection (without creating persistent connection)
             try {
                 DB::connection()->getPdo();
                 $this->info("✓ Database connection OK");
+                // Immediately disconnect after check to prevent connection buildup
+                DB::connection()->disconnect();
             } catch (\Exception $e) {
                 $this->error("✗ Database connection failed: " . $e->getMessage());
                 return 1;
@@ -54,7 +56,7 @@ class UpdateAmazonFbaPtBudgetCronCommand extends Command
 
             if (empty($sellerSkus)) {
                 $this->warn("No valid seller SKUs found!");
-                DB::disconnect();
+                DB::connection()->disconnect();
                 return 0;
             }
 
@@ -73,7 +75,7 @@ class UpdateAmazonFbaPtBudgetCronCommand extends Command
                         return trim(strtoupper($item->sku));
                     });
             }
-            DB::disconnect();
+            DB::connection()->disconnect();
 
         // Fetch L30 campaign reports for product targets (ending with PT) - only ENABLED campaigns
         $amazonSpCampaignReportsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
@@ -259,7 +261,7 @@ class UpdateAmazonFbaPtBudgetCronCommand extends Command
             $this->error("Stack trace: " . $e->getTraceAsString());
             return 1;
         } finally {
-            DB::disconnect();
+            DB::connection()->disconnect();
         }
     }
 }

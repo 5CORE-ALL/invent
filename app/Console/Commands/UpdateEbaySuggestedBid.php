@@ -74,26 +74,42 @@ class UpdateEbaySuggestedBid extends Command
                 return 1;
             }
 
+            // SKU normalization function
+            $normalizeSku = function ($sku) {
+                $sku = trim($sku);
+                $sku = preg_replace('/\s+/u', ' ', $sku);
+                $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
+                return strtoupper($sku);
+            };
+
             $this->info('Loading Shopify and eBay metrics data...');
             $shopifyData = [];
             $ebayMetrics = collect();
             
             if (!empty($skus)) {
-                $shopifyData = ShopifySku::whereIn("sku", $skus)->get()->keyBy("sku");
+                // Normalize ShopifySku data keys
+                $shopifyRaw = ShopifySku::whereIn("sku", $skus)->get();
+                $shopifyData = collect();
+                foreach ($shopifyRaw as $item) {
+                    $normalizedKey = $normalizeSku($item->sku);
+                    $shopifyData[$normalizedKey] = $item;
+                }
+                
                 $ebayMetrics = EbayMetric::whereIn("sku", $skus)->get();
             }
-            DB::disconnect();
+            DB::connection()->disconnect();
             
             if ($ebayMetrics->isEmpty()) {
                 $this->info('No eBay metrics found for the SKUs.');
                 return 0;
             }
         
-        // Normalize SKUs by replacing non-breaking spaces with regular spaces for matching
-        $ebayMetricsNormalized = $ebayMetrics->mapWithKeys(function($item) {
-            $normalizedSku = str_replace(["\xC2\xA0", "\u{00A0}"], ' ', $item->sku);
-            return [$normalizedSku => $item];
-        });
+        // Normalize eBay metrics data keys
+        $ebayMetricsNormalized = collect();
+        foreach ($ebayMetrics as $item) {
+            $normalizedKey = $normalizeSku($item->sku);
+            $ebayMetricsNormalized[$normalizedKey] = $item;
+        }
 
         // Load campaign listings efficiently
         $this->info('Loading campaign listings...');
@@ -138,11 +154,13 @@ class UpdateEbaySuggestedBid extends Command
                 $ebayMetricsNormalized, 
                 $campaignListings, 
                 $ebayGeneralL30, 
-                &$updatedListings
+                &$updatedListings,
+                $normalizeSku
             ) {
                 foreach ($productMasters as $pm) {
-                    $shopify = $shopifyData[$pm->sku] ?? null;
-                    $ebayMetric = $ebayMetricsNormalized[$pm->sku] ?? null;
+                    $normalizedSku = $normalizeSku($pm->sku);
+                    $shopify = $shopifyData[$normalizedSku] ?? null;
+                    $ebayMetric = $ebayMetricsNormalized[$normalizedSku] ?? null;
 
                     if ($ebayMetric && $ebayMetric->item_id && $campaignListings->has($ebayMetric->item_id)) {
                         $listing = $campaignListings[$ebayMetric->item_id];
@@ -291,7 +309,7 @@ class UpdateEbaySuggestedBid extends Command
             $this->error('Command failed with error: ' . $e->getMessage());
             return 1;
         } finally {
-            DB::disconnect();
+            DB::connection()->disconnect();
         }
     }
 

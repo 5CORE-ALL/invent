@@ -26,10 +26,12 @@ class EbayOverUtilzBidsAutoUpdate extends Command
     public function handle()
     {
         try {
-            // Check database connection
+            // Check database connection (without creating persistent connection)
             try {
                 DB::connection()->getPdo();
                 $this->info("✓ Database connection OK");
+                // Immediately disconnect after check to prevent connection buildup
+                DB::connection()->disconnect();
             } catch (\Exception $e) {
                 $this->error("✗ Database connection failed: " . $e->getMessage());
                 return 1;
@@ -157,7 +159,7 @@ class EbayOverUtilzBidsAutoUpdate extends Command
             $this->error("Stack trace: " . $e->getTraceAsString());
             return 1;
         } finally {
-            DB::disconnect();
+            DB::connection()->disconnect();
         }
     }
 
@@ -180,14 +182,36 @@ class EbayOverUtilzBidsAutoUpdate extends Command
                 return [];
             }
 
+            // SKU normalization function
+            $normalizeSku = function ($sku) {
+                $sku = trim($sku);
+                $sku = preg_replace('/\s+/u', ' ', $sku);
+                $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
+                return strtoupper($sku);
+            };
+
             $shopifyData = [];
             $nrValues = [];
             $ebayMetricData = [];
 
             if (!empty($skus)) {
-                $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+                // Normalize ShopifySku data keys
+                $shopifyRaw = ShopifySku::whereIn('sku', $skus)->get();
+                $shopifyData = collect();
+                foreach ($shopifyRaw as $item) {
+                    $normalizedKey = $normalizeSku($item->sku);
+                    $shopifyData[$normalizedKey] = $item;
+                }
+                
                 $nrValues = EbayDataView::whereIn('sku', $skus)->pluck('value', 'sku');
-                $ebayMetricData = EbayMetric::whereIn('sku', $skus)->get()->keyBy('sku');
+                
+                // Normalize EbayMetric data keys
+                $ebayMetricRaw = EbayMetric::whereIn('sku', $skus)->get();
+                $ebayMetricData = collect();
+                foreach ($ebayMetricRaw as $item) {
+                    $normalizedKey = $normalizeSku($item->sku);
+                    $ebayMetricData[$normalizedKey] = $item;
+                }
             }
 
         $ebayCampaignReportsL7 = EbayPriorityReport::where('report_range', 'L7')
@@ -249,28 +273,25 @@ class EbayOverUtilzBidsAutoUpdate extends Command
         $result = [];
 
         foreach ($productMasters as $pm) {
-            $sku = strtoupper($pm->sku);
+            $normalizedSku = $normalizeSku($pm->sku);
 
-            $shopify = $shopifyData[$pm->sku] ?? null;
+            $shopify = $shopifyData[$normalizedSku] ?? null;
 
-            $ebay = $ebayMetricData[$pm->sku] ?? null;
+            $ebay = $ebayMetricData[$normalizedSku] ?? null;
 
-            $matchedCampaignL7 = $ebayCampaignReportsL7->first(function ($item) use ($sku) {
-                $campaignName = strtoupper(trim(rtrim($item->campaign_name, '.')));
-                $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                return $campaignName === $cleanSku;
+            $matchedCampaignL7 = $ebayCampaignReportsL7->first(function ($item) use ($normalizedSku, $normalizeSku) {
+                $campaignName = $normalizeSku(rtrim($item->campaign_name, '.'));
+                return $campaignName === $normalizedSku;
             });
 
-            $matchedCampaignL1 = $ebayCampaignReportsL1->first(function ($item) use ($sku) {
-                $campaignName = strtoupper(trim(rtrim($item->campaign_name, '.')));
-                $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                return $campaignName === $cleanSku;
+            $matchedCampaignL1 = $ebayCampaignReportsL1->first(function ($item) use ($normalizedSku, $normalizeSku) {
+                $campaignName = $normalizeSku(rtrim($item->campaign_name, '.'));
+                return $campaignName === $normalizedSku;
             });
 
-            $matchedCampaignL30 = $ebayCampaignReportsL30->first(function ($item) use ($sku) {
-                $campaignName = strtoupper(trim(rtrim($item->campaign_name, '.')));
-                $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                return $campaignName === $cleanSku;
+            $matchedCampaignL30 = $ebayCampaignReportsL30->first(function ($item) use ($normalizedSku, $normalizeSku) {
+                $campaignName = $normalizeSku(rtrim($item->campaign_name, '.'));
+                return $campaignName === $normalizedSku;
             });
 
             if (!$matchedCampaignL7 && !$matchedCampaignL1 && !$matchedCampaignL30) {
@@ -348,7 +369,7 @@ class EbayOverUtilzBidsAutoUpdate extends Command
 
             }
 
-            DB::disconnect();
+            DB::connection()->disconnect();
             return $result;
         
         } catch (\Exception $e) {
@@ -356,7 +377,7 @@ class EbayOverUtilzBidsAutoUpdate extends Command
             $this->error("Stack trace: " . $e->getTraceAsString());
             return [];
         } finally {
-            DB::disconnect();
+            DB::connection()->disconnect();
         }
     }
 

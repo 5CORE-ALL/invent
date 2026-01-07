@@ -29,13 +29,14 @@ class AutoUpdateAmazonKwBids extends Command
         try {
             $this->info("Starting Amazon bids auto-update...");
 
-            // Check database connection after server restart
+            // Check database connection (without creating persistent connection)
             try {
                 DB::connection()->getPdo();
                 $this->info("✓ Database connection OK");
+                // Immediately disconnect after check to prevent connection buildup
+                DB::connection()->disconnect();
             } catch (\Exception $e) {
                 $this->error("✗ Database connection failed: " . $e->getMessage());
-                $this->error("Database connection error after server restart", ['error' => $e->getMessage()]);
                 return 1;
             }
 
@@ -209,7 +210,7 @@ class AutoUpdateAmazonKwBids extends Command
             $this->error("Stack trace: " . $e->getTraceAsString());
             return 1;
         } finally {
-            DB::disconnect();
+            DB::connection()->disconnect();
         }
     }
 
@@ -389,7 +390,7 @@ class AutoUpdateAmazonKwBids extends Command
             }
         }
 
-            DB::disconnect();
+            DB::connection()->disconnect();
             return $result;
         
         } catch (\Exception $e) {
@@ -397,7 +398,7 @@ class AutoUpdateAmazonKwBids extends Command
             $this->error("Stack trace: " . $e->getTraceAsString());
             return [];
         } finally {
-            DB::disconnect();
+            DB::connection()->disconnect();
         }
     }
 

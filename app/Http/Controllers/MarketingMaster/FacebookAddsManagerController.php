@@ -806,6 +806,75 @@ class FacebookAddsManagerController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * FB GRP CAROUSAL NEW Page
+     */
+    public function metaFacebookCarousalNew()
+    {
+        return view('marketing-masters.meta_ads_manager.facebook.carousal_new');
+    }
+
+    /**
+     * Get FB GRP CAROUSAL NEW Data
+     */
+    public function metaFacebookCarousalNewData()
+    {
+        try {
+            $productMasters = ProductMaster::with('productGroup')
+                ->orderBy('parent', 'asc')
+                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+                ->orderBy('sku', 'asc')
+                ->get();
+
+            $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+
+            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+
+            $data = [];
+            foreach ($productMasters as $pm) {
+                $sku = $pm->sku;
+                $shopify = $shopifyData[$sku] ?? null;
+
+                // Get ov_l30 from shopify_skus quantity column
+                $ovL30 = $shopify ? (float) ($shopify->quantity ?? 0) : 0;
+                
+                // Get inventory
+                $inv = $shopify ? (int) ($shopify->inv ?? 0) : 0;
+
+                // Get group name from relationship
+                $groupName = $pm->productGroup ? $pm->productGroup->group_name : '';
+
+                // Calculate dil_percent = (l30 / inv) * 100
+                $dilPercent = 0;
+                if ($inv > 0) {
+                    $dilPercent = (int) round(($ovL30 / $inv) * 100);
+                }
+
+                $data[] = [
+                    'group' => $groupName,
+                    'parent' => $pm->parent ?? '',
+                    'sku' => $sku ?? '',
+                    'inv' => $inv,
+                    'ov_l30' => $ovL30,
+                    'dil_percent' => $dilPercent
+                ];
+            }
+
+            return response()->json([
+                'message' => 'Product SKU data fetched successfully',
+                'data' => $data,
+                'status' => 200,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Product SKU Data Error', ['error' => $e->getMessage()]);
+            return response()->json([
+                'message' => 'Error fetching data: ' . $e->getMessage(),
+                'data' => [],
+                'status' => 500,
+            ], 500);
+        }
+    }
 }
 
 

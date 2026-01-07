@@ -25,10 +25,12 @@ class AutoPauseEnableFbaCampaignsByL30 extends Command
     public function handle()
     {
         try {
-            // Check database connection
+            // Check database connection (without creating persistent connection)
             try {
                 DB::connection()->getPdo();
                 $this->info("✓ Database connection OK");
+                // Immediately disconnect after check to prevent connection buildup
+                DB::connection()->disconnect();
             } catch (\Exception $e) {
                 $this->error("✗ Database connection failed: " . $e->getMessage());
                 return 1;
@@ -125,7 +127,7 @@ class AutoPauseEnableFbaCampaignsByL30 extends Command
             $this->error("Stack trace: " . $e->getTraceAsString());
             return 1;
         } finally {
-            DB::disconnect();
+            DB::connection()->disconnect();
         }
     }
 
@@ -139,7 +141,7 @@ class AutoPauseEnableFbaCampaignsByL30 extends Command
 
             if ($fbaData->isEmpty()) {
                 $this->warn("No FBA records found in database!");
-                DB::disconnect();
+                DB::connection()->disconnect();
                 return [];
             }
 
@@ -148,7 +150,7 @@ class AutoPauseEnableFbaCampaignsByL30 extends Command
 
             if (empty($sellerSkus)) {
                 $this->warn("No valid seller SKUs found!");
-                DB::disconnect();
+                DB::connection()->disconnect();
                 return [];
             }
 
@@ -253,7 +255,7 @@ class AutoPauseEnableFbaCampaignsByL30 extends Command
             }
         }
         
-        DB::disconnect();
+        DB::connection()->disconnect();
         return $result;
     
     } catch (\Exception $e) {
@@ -261,7 +263,7 @@ class AutoPauseEnableFbaCampaignsByL30 extends Command
         $this->error("Stack trace: " . $e->getTraceAsString());
         return [];
     } finally {
-        DB::disconnect();
+        DB::connection()->disconnect();
     }
 }
 

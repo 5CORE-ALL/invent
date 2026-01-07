@@ -31,10 +31,12 @@ class Ebay3CampaignReports extends Command
     public function handle()
     {
         try {
-            // Check database connection
+            // Check database connection (without creating persistent connection)
             try {
                 DB::connection()->getPdo();
                 $this->info("✓ Database connection OK");
+                // Immediately disconnect after check to prevent connection buildup
+                DB::connection()->disconnect();
             } catch (\Exception $e) {
                 $this->error("✗ Database connection failed: " . $e->getMessage());
                 return 1;
@@ -91,7 +93,7 @@ class Ebay3CampaignReports extends Command
             $this->error("Stack trace: " . $e->getTraceAsString());
             return 1;
         } finally {
-            DB::disconnect();
+            DB::connection()->disconnect();
         }
     }
 
@@ -207,7 +209,7 @@ class Ebay3CampaignReports extends Command
             }
             
             // Disconnect after each chunk
-            DB::disconnect();
+            DB::connection()->disconnect();
         }
         
         $this->info("✅ ALL_CAMPAIGN_PERFORMANCE_SUMMARY_REPORT Data stored for range: {$rangeKey}");
@@ -285,7 +287,7 @@ class Ebay3CampaignReports extends Command
             }
             
             // Disconnect after each chunk
-            DB::disconnect();
+            DB::connection()->disconnect();
         }
         $this->info("✅ CAMPAIGN_PERFORMANCE_REPORT Data stored for range: {$rangeKey}");
     }

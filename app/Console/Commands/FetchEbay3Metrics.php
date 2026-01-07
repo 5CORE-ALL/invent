@@ -19,10 +19,12 @@ class FetchEbay3Metrics extends Command
     public function handle()
     {
         try {
-            // Check database connection
+            // Check database connection (without creating persistent connection)
             try {
                 DB::connection()->getPdo();
                 $this->info("✓ Database connection OK");
+                // Immediately disconnect after check to prevent connection buildup
+                DB::connection()->disconnect();
             } catch (\Exception $e) {
                 $this->error("✗ Database connection failed: " . $e->getMessage());
                 return 1;
@@ -95,7 +97,7 @@ class FetchEbay3Metrics extends Command
             );
         }
         
-        DB::disconnect();
+        DB::connection()->disconnect();
 
         // Clean up SKUs that are no longer active (not in current fetch)
         $uniqueActiveSkus = array_unique($activeSkus);
@@ -107,7 +109,7 @@ class FetchEbay3Metrics extends Command
         if ($deletedCount > 0) {
             $this->info("🗑️  Cleaned up {$deletedCount} inactive SKU records");
         }
-        DB::disconnect();
+        DB::connection()->disconnect();
 
         // Update views per itemId -> sku list
         $this->updateViews($token, $itemIdToSku);
@@ -140,7 +142,7 @@ class FetchEbay3Metrics extends Command
                         }
                     }
                 }
-                DB::disconnect();
+                DB::connection()->disconnect();
             }
 
             // Fetch competitor prices (LMP) using Browse API
@@ -153,7 +155,7 @@ class FetchEbay3Metrics extends Command
             $this->error("Stack trace: " . $e->getTraceAsString());
             return 1;
         } finally {
-            DB::disconnect();
+            DB::connection()->disconnect();
         }
     }
 
@@ -777,7 +779,7 @@ class FetchEbay3Metrics extends Command
                 }
             }
             
-            DB::disconnect();
+            DB::connection()->disconnect();
             
             // Add small delay between API calls
             if ($chunkIndex < count($chunks) - 1) {
@@ -858,7 +860,7 @@ class FetchEbay3Metrics extends Command
                 }
             }
             
-            DB::disconnect();
+            DB::connection()->disconnect();
             
             // Add small delay between API calls
             if ($chunkIndex < count($chunks) - 1) {

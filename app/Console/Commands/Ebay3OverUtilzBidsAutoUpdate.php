@@ -29,10 +29,12 @@ class Ebay3OverUtilzBidsAutoUpdate extends Command
             ini_set('max_execution_time', 0);
             ini_set('memory_limit', '1024M');
 
-            // Check database connection
+            // Check database connection (without creating persistent connection)
             try {
                 DB::connection()->getPdo();
                 $this->info("✓ Database connection OK");
+                // Immediately disconnect after check to prevent connection buildup
+                DB::connection()->disconnect();
             } catch (\Exception $e) {
                 $this->error("✗ Database connection failed: " . $e->getMessage());
                 return 1;
@@ -209,7 +211,7 @@ class Ebay3OverUtilzBidsAutoUpdate extends Command
             $this->error("Stack trace: " . $e->getTraceAsString());
             return 1;
         } finally {
-            DB::disconnect();
+            DB::connection()->disconnect();
         }
     }
 
@@ -402,7 +404,7 @@ class Ebay3OverUtilzBidsAutoUpdate extends Command
             }
             }
 
-            DB::disconnect();
+            DB::connection()->disconnect();
             return $result;
         
         } catch (\Exception $e) {
@@ -410,7 +412,7 @@ class Ebay3OverUtilzBidsAutoUpdate extends Command
             $this->error("Stack trace: " . $e->getTraceAsString());
             return [];
         } finally {
-            DB::disconnect();
+            DB::connection()->disconnect();
         }
     }
 
