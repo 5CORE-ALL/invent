@@ -45,8 +45,8 @@ class FetchEbay3DailyData extends Command
 
         $this->info('Access token received. Fetching orders...');
 
-        // Calculate date boundaries
-        $now = Carbon::now();
+        // Calculate date boundaries using California timezone (America/Los_Angeles) to match eBay order times
+        $now = Carbon::now('America/Los_Angeles')->startOfDay();
         $cutoffDate = $now->copy()->subDays($days);
         $l30Start = $now->copy()->subDays(30);
 
@@ -103,8 +103,8 @@ class FetchEbay3DailyData extends Command
         $offset = 0;
         $limit = 50;
 
-        // eBay uses ISO 8601 format for dates (without timezone offset in filter)
-        $startDate = $cutoffDate->format('Y-m-d\TH:i:s.000\Z');
+        // eBay API expects UTC time - convert California time to UTC for the API call
+        $startDate = $cutoffDate->copy()->setTimezone('UTC')->format('Y-m-d\TH:i:s.000\Z');
 
         do {
             $this->info("  Fetching orders (offset: {$offset})...");
@@ -175,10 +175,11 @@ class FetchEbay3DailyData extends Command
 
         $orderId = $order['orderId'] ?? null;
         $legacyOrderId = $order['legacyOrderId'] ?? null;
-        $creationDate = isset($order['creationDate']) ? Carbon::parse($order['creationDate']) : null;
-        $lastModifiedDate = isset($order['lastModifiedDate']) ? Carbon::parse($order['lastModifiedDate']) : null;
+        // Parse dates and convert to California timezone for consistent period determination
+        $creationDate = isset($order['creationDate']) ? Carbon::parse($order['creationDate'])->setTimezone('America/Los_Angeles') : null;
+        $lastModifiedDate = isset($order['lastModifiedDate']) ? Carbon::parse($order['lastModifiedDate'])->setTimezone('America/Los_Angeles') : null;
 
-        // Determine period based on creation date
+        // Determine period based on creation date in California timezone
         $period = 'l60';
         if ($creationDate && $creationDate->gte($l30Start)) {
             $period = 'l30';

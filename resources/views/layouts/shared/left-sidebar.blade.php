@@ -2387,41 +2387,9 @@
                             <div class="collapse" id="sidebarTemu">
                                 <ul class="side-nav-third-level">
 
-                                    <li>
-                                        <a data-bs-toggle="collapse" href="#temuSubmenu" aria-expanded="false"
-                                            aria-controls="temuSubmenu">
-                                            <span>Temu View</span>
-                                            <span class="menu-arrow"></span>
-                                        </a>
-                                        <div class="collapse" id="temuSubmenu">
-                                            <ul class="side-nav-fourth-level">
-                                                <li>
-                                                    <a href="{{ route('temu') }}">Temu</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('temu.zero.view') }}">Temu 0
-                                                        view</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('temu.low.visibility.view') }}">Temu
-                                                        Low Visibility</a>
-                                                </li>
+                                  
 
-                                                <li>
-                                                    <a href="{{ url('temu-pricing-cvr') }}">Temu Pricing
-                                                        CVR</a>
-                                                </li>
-
-
-                                            </ul>
-                                        </div>
-                                    </li>
-
-                                    <li>
-                                        <a href="{{ route('temu.pricing.inc') }}"> Temu Pricing Increase CVR</a>
-                                    </li>
-                                    <li><a href="{{ url('temu-tabulator') }}">Temu Decrease CVR</a></li>
-
+                                   
                                     <li>
                                         <a href="{{ route('listing.temu') }}">Listing Temu</a>
                                     </li>

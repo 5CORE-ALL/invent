@@ -187,6 +187,16 @@
                         </select>
                     </div>
 
+                    <!-- SPRICE Filter -->
+                    <div>
+                        <select id="sprice-filter" class="form-select form-select-sm" style="width: 130px;">
+                            <option value="all">All SPRICE</option>
+                            <option value="27-35">$27-$35</option>
+                            <option value="lt27">&lt; $27</option>
+                            <option value="gt35">&gt; $35</option>
+                        </select>
+                    </div>
+
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
                             id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
@@ -1985,6 +1995,7 @@
             const gpftFilter = $('#gpft-filter').val();
             const cvrFilter = $('#cvr-filter').val();
             const adsFilter = $('#ads-filter').val();
+            const spriceFilter = $('#sprice-filter').val();
             const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
             const skuSearch = $('#sku-search').val();
 
@@ -2069,11 +2080,23 @@
                 });
             }
 
+            // SPRICE filter
+            if (spriceFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const sprice = parseFloat(data.sprice) || 0;
+                    
+                    if (spriceFilter === '27-35') return sprice >= 27 && sprice <= 35;
+                    if (spriceFilter === 'lt27') return sprice > 0 && sprice < 27;
+                    if (spriceFilter === 'gt35') return sprice > 35;
+                    return true;
+                });
+            }
+
             updateSummary();
             updateSelectAllCheckbox();
         }
 
-        $('#inventory-filter, #gpft-filter, #cvr-filter, #ads-filter').on('change', function() {
+        $('#inventory-filter, #gpft-filter, #cvr-filter, #ads-filter, #sprice-filter').on('change', function() {
             applyFilters();
         });
 

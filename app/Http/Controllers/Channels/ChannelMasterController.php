@@ -902,7 +902,7 @@ class ChannelMasterController extends Controller
 
         // Use pre-calculated metrics from MarketplaceDailyMetric (same as Amazon/eBay 2)
         $l30Sales = $metrics->total_sales ?? 0;
-        $l30Orders = $metrics->total_orders ?? 0;
+        $l30Orders = $metrics->total_quantity ?? 0; // Changed from total_orders to total_quantity (shows units sold)
         $totalProfit = $metrics->total_pft ?? 0;
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;

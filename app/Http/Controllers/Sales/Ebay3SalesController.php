@@ -16,8 +16,8 @@ class Ebay3SalesController extends Controller
 {
     public function index()
     {
-        // Use the latest report data (from last 30 days) to match UpdateMarketplaceDailyMetrics
-        $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30);
+        // Use California timezone for consistent 30-day calculation (matching FetchEbay3DailyData)
+        $thirtyDaysAgo = \Carbon\Carbon::now('America/Los_Angeles')->subDays(30);
         
         // Calculate KW Spent (from ebay_3_priority_reports - parent-wise)
         $kwSpent = DB::table('ebay_3_priority_reports')
@@ -181,7 +181,7 @@ class Ebay3SalesController extends Controller
                 'quantity' => $order->quantity,
                 'sale_amount' => round($saleAmount, 2), // Total for line item
                 'price' => round($perUnitPrice, 2), // Per unit price
-                'order_date' => $order->creation_date,
+                'order_date' => $order->creation_date ? \Carbon\Carbon::parse($order->creation_date)->setTimezone('America/Los_Angeles')->toIso8601String() : null,
                 'status' => $order->order_fulfillment_status,
                 'period' => $order->period,
                 'lp' => round($lp, 2),
