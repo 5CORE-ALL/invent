@@ -1089,84 +1089,44 @@
             <div class="card">
                 <div class="card-body">
                     <!-- Controls row -->
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <!-- Left side controls -->
-                        <div class="form-row">
-                            <div class="form-group col-md-6">
-                                <label for="row-data-type" class="mr-2">Data Type:</label>
-                                <select id="row-data-type" class="form-control form-control-sm">
+                    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                        <!-- Left side controls - Compact dropdown filters -->
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <div class="d-flex align-items-center gap-1">
+                                <label for="row-data-type" class="mb-0" style="font-size: 13px;">Data Type:</label>
+                                <select id="row-data-type" class="form-control form-control-sm" style="width: 120px;">
                                     <option value="all">All</option>
                                     <option value="sku" selected>SKU (Child)</option>
                                     <option value="parent">Parent</option>
                                 </select>
                             </div>
-                            <div class="form-group col-md-4">
-                                <label for="combined-filter" class="mr-2">Show:</label>
-                                <select id="combined-filter" class="form-control form-control-sm">
+                            <div class="d-flex align-items-center gap-1">
+                                <label for="combined-filter" class="mb-0" style="font-size: 13px;">Show:</label>
+                                <select id="combined-filter" class="form-control form-control-sm" style="width: 180px;">
                                     <option value="all">All SKUs</option>
                                     <option value="inv">INV (All SKUs with Inventory)</option>
                                     <option value="req-nrl">RL-NRL (RL without Links)</option>
                                     <option value="pending" selected>Pending (Listed=Pending)</option>
                                 </select>
                             </div>
-                            <div class="form-group col-md-4">
-                                <label for="inv-filter" class="mr-2">INV:</label>
-                                <select id="inv-filter" class="form-control form-control-sm">
+                            <div class="d-flex align-items-center gap-1">
+                                <label for="inv-filter" class="mb-0" style="font-size: 13px;">INV:</label>
+                                <select id="inv-filter" class="form-control form-control-sm" style="width: 100px;">
                                     <option value="all">All</option>
                                     <option value="inv-only">INV Only</option>
                                 </select>
                             </div>
-                            <div class="form-group col-md-4">
-                                <label for="nr-req-filter" class="mr-2">NRL/RL:</label>
-                                <select id="nr-req-filter" class="form-control form-control-sm">
-                                    <option value="all">All</option>
-                                    <option value="REQ">RL</option>
-                                    <option value="NR">NRL</option>
-                                </select>
-                            </div>
-                            <div class="form-group col-md-4">
-                                <label for="status-filter" class="mr-2">Status:</label>
-                                <select id="status-filter" class="form-control form-control-sm">
-                                    <option value="all" data-count="0">All (0)</option>
-                                    <option value="active" data-count="0">Active (0)</option>
-                                    <option value="inactive" data-count="0">Inactive (0)</option>
-                                    <option value="DC" data-count="0">DC (0)</option>
-                                    <option value="upcoming" data-count="0">Upcoming (0)</option>
-                                    <option value="2BDC" data-count="0">2BDC (0)</option>
-                                    <option value="missing" data-count="0">Missing (0)</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group col-md-4">
-                                <label for="link-filter" class="mr-2">LINK:</label>
-                                <select id="link-filter" class="form-control form-control-sm">
-                                    <option value="all">All</option>
-                                    <option value="with-link">With Link</option>
-                                    <option value="without-link">Without Link</option>
-                                </select>
-                            </div>
-                            <div class="form-group col-md-4">
-                                <label for="listed-filter" class="mr-2">Listed:</label>
-                                <select id="listed-filter" class="form-control form-control-sm">
-                                    <option value="all">All</option>
-                                    <option value="Listed">Listed</option>
-                                    <option value="Pending">Pending</option>
-                                </select>
-                            </div>
                         </div>
 
-                        <div class="d-flex align-items-center mb-3 gap-2">
-
+                        <div class="d-flex align-items-center gap-2">
                             <!-- Import/Export buttons -->
-                            <button type="button" class="btn btn-sm btn-primary mr-2" id="import-btn">Import</button>
-                            <!-- <button type="button" class="btn btn-sm btn-success mr-3" id="export-btn">Export</button> -->
-                            <a href="{{ route('listing_amazon.export') }}" class="btn btn-sm btn-success mr-3">Export</a>
+                            <button type="button" class="btn btn-sm btn-primary" id="import-btn">Import</button>
+                            <a href="{{ route('listing_amazon.export') }}" class="btn btn-sm btn-success">Export</a>
 
                             <!-- Search on right -->
-                            <div class="form-group mb-0 d-flex align-items-center ml-3">
-                                <label for="search-input" class="mr-2 mb-0">Search:</label>
-                                <input type="text" id="search-input" class="form-control form-control-sm"
+                            <div class="d-flex align-items-center gap-1">
+                                <label for="search-input" class="mb-0" style="font-size: 13px;">Search:</label>
+                                <input type="text" id="search-input" class="form-control form-control-sm" style="width: 200px;"
                                     placeholder="Search all columns...">
                             </div>
                         </div>
@@ -1197,49 +1157,96 @@
                     </div>
 
                     <!-- Filter Badges Section -->
-                    <div class="d-flex flex-wrap align-items-center gap-2 mb-3 p-3" style="background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6;">
-                        <div class="d-flex align-items-center gap-2">
-                            <span class="font-weight-bold">Filters:</span>
-                            <span class="badge badge-light filter-badge" data-filter="sku" id="badge-total-sku" style="cursor: pointer; padding: 8px 12px; font-size: 14px;">
+                    <div class="mb-3 p-4" style="background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6; min-height: 100px;">
+                        <div class="mb-2">
+                            <span class="font-weight-bold" style="font-size: 16px;">Filters:</span>
+                        </div>
+                        <div class="d-flex flex-wrap align-items-center gap-2" style="flex-wrap: wrap;">
+                            <!-- Main Metrics Row -->
+                            <span class="badge badge-light filter-badge" data-filter="sku" id="badge-total-sku" style="cursor: pointer; padding: 10px 14px; font-size: 14px;">
                                 SKU: <span id="badge-total-sku-count">0</span>
                             </span>
-                            <span class="badge badge-light filter-badge" data-filter="batch" id="badge-batch-total" style="cursor: pointer; padding: 8px 12px; font-size: 14px;">
+                            <span class="badge badge-light filter-badge" data-filter="batch" id="badge-batch-total" style="cursor: pointer; padding: 10px 14px; font-size: 14px;">
                                 Batch: <span id="badge-batch-total-count">0</span>
                             </span>
-                            <span class="badge badge-light filter-badge" data-filter="inv" id="badge-inv-total" style="cursor: pointer; padding: 8px 12px; font-size: 14px; background: #17a2b8; color: white;">
+                            <span class="badge filter-badge" data-filter="inv" id="badge-inv-total" style="cursor: pointer; padding: 10px 14px; font-size: 14px; background: #17a2b8; color: white;">
                                 INV: <span id="badge-inv-total-count">0</span>
                             </span>
-                            <span class="badge filter-badge" data-filter="nr" id="badge-nr-total" style="cursor: pointer; padding: 8px 12px; font-size: 14px; background: #dc3545; color: white;">
+                            <span class="badge filter-badge" data-filter="nr" id="badge-nr-total" style="cursor: pointer; padding: 10px 14px; font-size: 14px; background: #dc3545; color: white;">
                                 NR: <span id="badge-nr-total-count">0</span>
                             </span>
-                            <span class="badge filter-badge" data-filter="rl" id="badge-rl-total" style="cursor: pointer; padding: 8px 12px; font-size: 14px; background: #28a745; color: white;">
+                            <span class="badge filter-badge" data-filter="rl" id="badge-rl-total" style="cursor: pointer; padding: 10px 14px; font-size: 14px; background: #28a745; color: white;">
                                 RL: <span id="badge-rl-total-count">0</span>
                             </span>
-                            <span class="badge filter-badge" data-filter="without-link" id="badge-without-link-total" style="cursor: pointer; padding: 8px 12px; font-size: 14px; background: #dc3545; color: white;">
+                            <span class="badge filter-badge" data-filter="without-link" id="badge-without-link-total" style="cursor: pointer; padding: 10px 14px; font-size: 14px; background: #dc3545; color: white;">
                                 Without Link: <span id="badge-without-link-total-count">0</span>
                             </span>
-                            <span class="badge filter-badge" data-filter="listed" id="badge-listed-total" style="cursor: pointer; padding: 8px 12px; font-size: 14px; background: #28a745; color: white;">
+                            <span class="badge filter-badge" data-filter="listed" id="badge-listed-total" style="cursor: pointer; padding: 10px 14px; font-size: 14px; background: #28a745; color: white;">
                                 Listed: <span id="badge-listed-total-count">0</span>
                             </span>
-                            <span class="badge filter-badge" data-filter="pending" id="badge-pending-total" style="cursor: pointer; padding: 8px 12px; font-size: 14px; background: #dc3545; color: white;">
+                            <span class="badge filter-badge" data-filter="pending" id="badge-pending-total" style="cursor: pointer; padding: 10px 14px; font-size: 14px; background: #dc3545; color: white;">
                                 Pending: <span id="badge-pending-total-count">0</span>
                             </span>
-                            <span class="badge filter-badge" data-filter="active-status" id="badge-active-status-total" style="cursor: pointer; padding: 8px 12px; font-size: 14px; background: #28a745; color: white;">
+                            
+                            <!-- Status Filters Row -->
+                            <span class="badge filter-badge" data-filter="active-status" id="badge-active-status-total" style="cursor: pointer; padding: 10px 14px; font-size: 14px; background: #28a745; color: white;">
                                 Active: <span id="badge-active-status-total-count">0</span>
                             </span>
-                            <span class="badge filter-badge" data-filter="inactive-status" id="badge-inactive-status-total" style="cursor: pointer; padding: 8px 12px; font-size: 14px; background: #dc3545; color: white;">
+                            <span class="badge filter-badge" data-filter="inactive-status" id="badge-inactive-status-total" style="cursor: pointer; padding: 10px 14px; font-size: 14px; background: #dc3545; color: white;">
                                 Inactive: <span id="badge-inactive-status-total-count">0</span>
                             </span>
-                            <span class="badge filter-badge" data-filter="missing-status" id="badge-missing-status-total" style="cursor: pointer; padding: 8px 12px; font-size: 14px; background: #ffc107; color: #000;">
+                            <span class="badge filter-badge" data-filter="missing-status" id="badge-missing-status-total" style="cursor: pointer; padding: 10px 14px; font-size: 14px; background: #ffc107; color: #000;">
                                 Missing: <span id="badge-missing-status-total-count">0</span>
                             </span>
-                            <span class="badge filter-badge" data-filter="nr-status" id="badge-nr-status-total" style="cursor: pointer; padding: 8px 12px; font-size: 14px; background: #dc3545; color: white;">
+                            <span class="badge filter-badge" data-filter="dc-status" id="badge-dc-status-total" style="cursor: pointer; padding: 10px 14px; font-size: 14px; background: #6c757d; color: white;">
+                                DC: <span id="badge-dc-status-total-count">0</span>
+                            </span>
+                            <span class="badge filter-badge" data-filter="upcoming-status" id="badge-upcoming-status-total" style="cursor: pointer; padding: 10px 14px; font-size: 14px; background: #17a2b8; color: white;">
+                                Upcoming: <span id="badge-upcoming-status-total-count">0</span>
+                            </span>
+                            <span class="badge filter-badge" data-filter="2bdc-status" id="badge-2bdc-status-total" style="cursor: pointer; padding: 10px 14px; font-size: 14px; background: #fd7e14; color: white;">
+                                2BDC: <span id="badge-2bdc-status-total-count">0</span>
+                            </span>
+                            <span class="badge filter-badge" data-filter="nr-status" id="badge-nr-status-total" style="cursor: pointer; padding: 10px 14px; font-size: 14px; background: #dc3545; color: white;">
                                 NR Status: <span id="badge-nr-status-total-count">0</span>
                             </span>
+                            
+                            <!-- Clear Filters Button - In same line -->
+                            <button type="button" class="btn btn-sm btn-secondary" id="clear-filters-btn" style="padding: 10px 16px; margin-left: auto;">
+                                <i class="fas fa-times"></i> Clear Filters
+                            </button>
                         </div>
-                        <button type="button" class="btn btn-sm btn-secondary ml-auto" id="clear-filters-btn" style="padding: 8px 16px;">
-                            <i class="fas fa-times"></i> Clear Filters
-                        </button>
+                        
+                        <!-- Separated Combined Filter Button -->
+                        <div class="mt-3 pt-3" style="border-top: 2px solid #dee2e6;">
+                            <span class="badge filter-badge" data-filter="missing-inv-combined" id="badge-missing-inv-combined-total" style="cursor: pointer; padding: 16px 22px; font-size: 18px; font-weight: bold; background: #ff9800; color: #000; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+                                Missing & INV>0: <span id="badge-missing-inv-combined-total-count">0</span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Daily Metrics Chart Section -->
+                    <div class="mb-3 p-4" style="background: #ffffff; border-radius: 8px; border: 1px solid #dee2e6;">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h5 style="font-size: 16px; font-weight: bold; margin-bottom: 0;">Missing & INV>0 Trend (Last 30 Days)</h5>
+                            <button id="toggle-chart-btn" class="btn btn-sm btn-secondary">
+                                <i class="fas fa-chevron-down" id="chart-toggle-icon"></i>
+                            </button>
+                        </div>
+                        <div id="chart-controls-container" style="display: none;">
+                            <div class="d-flex align-items-center gap-2 mb-3">
+                                <select id="chart-days-select" class="form-control form-control-sm" style="width: 150px;">
+                                    <option value="7">Last 7 Days</option>
+                                    <option value="30" selected>Last 30 Days</option>
+                                    <option value="60">Last 60 Days</option>
+                                    <option value="90">Last 90 Days</option>
+                                </select>
+                                <button id="refresh-chart-btn" class="btn btn-sm btn-primary">Refresh</button>
+                            </div>
+                        </div>
+                        <div id="chart-container" style="position: relative; height: 350px; display: none;">
+                            <canvas id="dailyMetricsChart"></canvas>
+                        </div>
                     </div>
 
                     <div class="table-container">
@@ -1340,16 +1347,25 @@
                     </div>
 
                     <!-- Pagination controls -->
-                    <div class="pagination-controls mt-2">
-                        <div class="form-group">
-                            <span id="visible-rows" class="badge badge-light" style="color: #dc3545;">Showing 1-25 of
-                                150</span>
+                    <div class="pagination-controls mt-2 d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center gap-2">
+                            <span id="visible-rows" class="badge badge-light" style="color: #dc3545;">Showing 0-0 of 0</span>
+                            <label for="rows-per-page" class="mb-0">Rows per page:</label>
+                            <select id="rows-per-page" class="form-control form-control-sm" style="width: 80px;">
+                                <option value="25">25</option>
+                                <option value="50" selected>50</option>
+                                <option value="100">100</option>
+                                <option value="200">200</option>
+                                <option value="500">500</option>
+                            </select>
                         </div>
-                        <button id="first-page" class="btn btn-sm btn-outline-secondary mr-1">First</button>
-                        <button id="prev-page" class="btn btn-sm btn-outline-secondary mr-1">Previous</button>
-                        <span id="page-info" class="mx-2">Page 1 of 6</span>
-                        <button id="next-page" class="btn btn-sm btn-outline-secondary ml-1">Next</button>
-                        <button id="last-page" class="btn btn-sm btn-outline-secondary ml-1">Last</button>
+                        <div class="d-flex align-items-center gap-2">
+                            <button id="first-page" class="btn btn-sm btn-outline-secondary">First</button>
+                            <button id="prev-page" class="btn btn-sm btn-outline-secondary">Previous</button>
+                            <span id="page-info" class="mx-2">Page 1 of 1</span>
+                            <button id="next-page" class="btn btn-sm btn-outline-secondary">Next</button>
+                            <button id="last-page" class="btn btn-sm btn-outline-secondary">Last</button>
+                        </div>
                     </div>
 
                     <div id="data-loader" class="card-loader-overlay" style="display: none;">
@@ -1398,6 +1414,7 @@
 
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script>
         document.body.style.zoom = "80%";
         $(document).ready(function() {
@@ -1431,7 +1448,7 @@
 
             // Current state
             let currentPage = 1;
-            let rowsPerPage = Infinity;
+            let rowsPerPage = 50;
             let currentSort = {
                 field: null,
                 direction: 1
@@ -1444,10 +1461,6 @@
             let currentEditingElement = null;
             let currentDataTypeFilter = 'sku'; // Track data type filter (all, sku, parent)
             let currentInvFilter = 'all'; // Track INV filter (all, inv-only)
-            let currentNrReqFilter = 'all'; // Track NR/REQ filter
-            let currentLinkFilter = 'all'; // Track LINK filter
-            let currentListedFilter = 'all'; // Track Listed filter
-            let currentStatusFilter = 'all'; // Track Status filter
             let currentCombinedFilter = 'pending'; // Track combined filter
 
             // --- Dropdown Click Handler ---
@@ -1566,52 +1579,51 @@
                 // Sort parents alphabetically
                 const sortedParents = Object.keys(groupedData).sort();
 
-                let rowIndex = 1;
-
-                // Iterate through each parent group
+                // Flatten grouped data into a single array for pagination
+                // We need to keep parent groups together
+                const flattenedRows = [];
                 sortedParents.forEach(parent => {
                     const items = groupedData[parent];
-
                     // Sort items within the group so that the PARENT row appears last
                     const sortedItems = items.sort((a, b) => {
                         if (a.sku.includes('PARENT')) return 1; // Move PARENT to the end
                         if (b.sku.includes('PARENT')) return -1; // Move PARENT to the end
                         return 0; // Keep other rows in their original order
                     });
-
-                    // Add all rows to the table
                     sortedItems.forEach(item => {
-                        const $row = createTableRow(item, rowIndex++);
-                        $tbody.append($row);
+                        flattenedRows.push(item);
                     });
+                });
+
+                // Calculate pagination
+                const totalRows = flattenedRows.length;
+                const totalPages = Math.ceil(totalRows / rowsPerPage);
+                
+                // Ensure currentPage is valid
+                if (currentPage > totalPages && totalPages > 0) {
+                    currentPage = totalPages;
+                }
+                if (currentPage < 1) {
+                    currentPage = 1;
+                }
+
+                // Get the slice of data for current page
+                const startIndex = (currentPage - 1) * rowsPerPage;
+                const endIndex = startIndex + rowsPerPage;
+                const paginatedRows = flattenedRows.slice(startIndex, endIndex);
+
+                // Render paginated rows
+                let rowIndex = startIndex + 1;
+                paginatedRows.forEach(item => {
+                    const $row = createTableRow(item, rowIndex++);
+                    $tbody.append($row);
                 });
 
                 if ($tbody.children().length === 0) {
                     $tbody.append('<tr><td colspan="5" class="text-center">No matching records found</td></tr>');
                 }
 
-                updatePaginationInfo();
-                
-                // Show filter description with row count
-                const filterValue = $('#combined-filter').val();
-                let filterDesc = '';
-                switch(filterValue) {
-                    case 'all':
-                        filterDesc = 'All SKUs';
-                        break;
-                    case 'inv':
-                        filterDesc = 'INV (All SKUs with Inventory)';
-                        break;
-                    case 'req-nrl':
-                        filterDesc = 'REQ-NRL (REQ without Links)';
-                        break;
-                    case 'pending':
-                        filterDesc = 'Pending (Listed=Pending)';
-                        break;
-                    default:
-                        filterDesc = 'Filtered';
-                }
-                $('#visible-rows').text(`${filterDesc}: ${$tbody.children().length} rows`);
+                updatePaginationInfo(totalRows, totalPages);
             }
 
              //open modal on click import button
@@ -1668,10 +1680,36 @@
                 }
                 $row.append($imageCell);
 
-                // Status column (from ProductMaster)
-                const $statusCell = $('<td>');
-                if (item.status) {
-                    $statusCell.text(item.status);
+                // Status column (from ProductMaster) - Editable dropdown
+                const $statusCell = $('<td>').css('text-align', 'center');
+                if (!item.sku.includes('PARENT')) {
+                    const statusValue = item.status || '';
+                    const statusOptions = ['', 'Active', 'DC', '2BDC', 'Sourcing', 'In Transit', 'To Order', 'MFRG'];
+                    
+                    const $statusDropdown = $('<select>')
+                        .addClass('form-select form-select-sm status-select')
+                        .attr('data-sku', item.sku)
+                        .css({
+                            'border': '1px solid #ddd',
+                            'text-align': 'center',
+                            'cursor': 'pointer',
+                            'padding': '2px 4px',
+                            'font-size': '14px',
+                            'width': '120px',
+                            'height': '28px'
+                        });
+                    
+                    statusOptions.forEach(option => {
+                        const $option = $('<option>')
+                            .val(option)
+                            .text(option || '-');
+                        if (option === statusValue) {
+                            $option.prop('selected', true);
+                        }
+                        $statusDropdown.append($option);
+                    });
+                    
+                    $statusCell.append($statusDropdown);
                 } else {
                     $statusCell.text('-');
                 }
@@ -1913,26 +1951,63 @@
 
             // Initialize pagination
             function initPagination() {
-                // Remove rows-per-page related code
+                // Set initial value for rows-per-page selector
+                $('#rows-per-page').val(rowsPerPage);
+                
+                // Rows per page selector
+                $('#rows-per-page').on('change', function() {
+                    rowsPerPage = parseInt($(this).val());
+                    currentPage = 1; // Reset to first page when changing rows per page
+                    renderTable();
+                });
 
-                // Keep these but modify to work with all rows
+                // Pagination buttons
                 $('#first-page').on('click', function() {
                     currentPage = 1;
                     renderTable();
                 });
 
-                // Similar modifications for other pagination buttons...
-                // But since we're showing all rows, you might want to disable pagination completely
+                $('#prev-page').on('click', function() {
+                    if (currentPage > 1) {
+                        currentPage--;
+                        renderTable();
+                    }
+                });
+
+                $('#next-page').on('click', function() {
+                    const totalRows = filteredData.length;
+                    const totalPages = Math.ceil(totalRows / rowsPerPage);
+                    if (currentPage < totalPages) {
+                        currentPage++;
+                        renderTable();
+                    }
+                });
+
+                $('#last-page').on('click', function() {
+                    const totalRows = filteredData.length;
+                    const totalPages = Math.ceil(totalRows / rowsPerPage);
+                    currentPage = totalPages > 0 ? totalPages : 1;
+                    renderTable();
+                });
             }
 
-            function updatePaginationInfo() {
-                // Since we're showing all rows, you can either:
-                // Option 1: Hide pagination completely
-                $('.pagination-controls').hide();
+            function updatePaginationInfo(totalRows = 0, totalPages = 1) {
+                // Show pagination controls
+                $('.pagination-controls').show();
 
-                // Option 2: Show "Showing all rows" message
-                $('#page-info').text('Showing all rows');
-                $('#first-page, #prev-page, #next-page, #last-page').prop('disabled', true);
+                // Calculate display range
+                const startRow = totalRows === 0 ? 0 : (currentPage - 1) * rowsPerPage + 1;
+                const endRow = Math.min(currentPage * rowsPerPage, totalRows);
+
+                // Update visible rows info
+                $('#visible-rows').text(`Showing ${startRow}-${endRow} of ${totalRows}`);
+
+                // Update page info
+                $('#page-info').text(`Page ${currentPage} of ${totalPages}`);
+
+                // Enable/disable pagination buttons
+                $('#first-page, #prev-page').prop('disabled', currentPage === 1);
+                $('#next-page, #last-page').prop('disabled', currentPage === totalPages || totalPages === 0);
             }
 
             // Initialize search functionality
@@ -1982,6 +2057,7 @@
                         activeStatusTotal: 0,
                         inactiveStatusTotal: 0,
                         missingStatusTotal: 0,
+                        missingInvCombinedTotal: 0, // Count for Missing & INV>0 combined filter
                         nrStatusTotal: 0, // Count for NR from listing status
                         rowCount: 0,
                         // Status counts (from ProductMaster)
@@ -2052,6 +2128,12 @@
                                 metrics.missingStatusTotal++;
                             }
                             
+                            // Count Missing & INV>0 combined filter
+                            // Items with INV > 0 AND missing status (!listing_status && NR !== 'NR')
+                            if (parseFloat(item.INV) > 0 && !item.listing_status && item.NR !== 'NR') {
+                                metrics.missingInvCombinedTotal++;
+                            }
+                            
                             // Count Status column values (from ProductMaster)
                             metrics.statusAll++;
                             if (item.status) {
@@ -2088,16 +2170,11 @@
                     $('#badge-active-status-total-count').text(metrics.activeStatusTotal); // Green
                     $('#badge-inactive-status-total-count').text(metrics.inactiveStatusTotal); // Red
                     $('#badge-missing-status-total-count').text(metrics.missingStatusTotal); // Yellow
+                    $('#badge-missing-inv-combined-total-count').text(metrics.missingInvCombinedTotal); // Orange - Combined filter
+                    $('#badge-dc-status-total-count').text(metrics.statusDC); // DC status
+                    $('#badge-upcoming-status-total-count').text(metrics.statusUpcoming); // Upcoming status
+                    $('#badge-2bdc-status-total-count').text(metrics.status2BDC); // 2BDC status
                     $('#badge-nr-status-total-count').text(metrics.nrStatusTotal); // NR from listing status
-                    
-                    // Update Status filter dropdown counts
-                    $('#status-filter option[value="all"]').text('All (' + metrics.statusAll + ')').attr('data-count', metrics.statusAll);
-                    $('#status-filter option[value="active"]').text('Active (' + metrics.statusActive + ')').attr('data-count', metrics.statusActive);
-                    $('#status-filter option[value="inactive"]').text('Inactive (' + metrics.statusInactive + ')').attr('data-count', metrics.statusInactive);
-                    $('#status-filter option[value="DC"]').text('DC (' + metrics.statusDC + ')').attr('data-count', metrics.statusDC);
-                    $('#status-filter option[value="upcoming"]').text('Upcoming (' + metrics.statusUpcoming + ')').attr('data-count', metrics.statusUpcoming);
-                    $('#status-filter option[value="2BDC"]').text('2BDC (' + metrics.status2BDC + ')').attr('data-count', metrics.status2BDC);
-                    $('#status-filter option[value="missing"]').text('Missing (' + metrics.statusMissing + ')').attr('data-count', metrics.statusMissing);
                 } catch (error) {
                     console.error('Error in calculateTotals:', error);
                     resetMetricsToZero();
@@ -2116,15 +2193,11 @@
                 $('#badge-active-status-total-count').text('0');
                 $('#badge-inactive-status-total-count').text('0');
                 $('#badge-missing-status-total-count').text('0');
+                $('#badge-missing-inv-combined-total-count').text('0');
+                $('#badge-dc-status-total-count').text('0');
+                $('#badge-upcoming-status-total-count').text('0');
+                $('#badge-2bdc-status-total-count').text('0');
                 $('#badge-nr-status-total-count').text('0');
-                // Reset Status filter counts
-                $('#status-filter option[value="all"]').text('All (0)').attr('data-count', '0');
-                $('#status-filter option[value="active"]').text('Active (0)').attr('data-count', '0');
-                $('#status-filter option[value="inactive"]').text('Inactive (0)').attr('data-count', '0');
-                $('#status-filter option[value="DC"]').text('DC (0)').attr('data-count', '0');
-                $('#status-filter option[value="upcoming"]').text('Upcoming (0)').attr('data-count', '0');
-                $('#status-filter option[value="2BDC"]').text('2BDC (0)').attr('data-count', '0');
-                $('#status-filter option[value="missing"]').text('Missing (0)').attr('data-count', '0');
             }
             
             // Track active filters
@@ -2171,64 +2244,72 @@
                         case 'missing-status':
                             filteredData = filteredData.filter(item => !item.listing_status && item.NR !== 'NR');
                             break;
+                        case 'missing-inv-combined':
+                            // Combined filter: Missing status AND INV > 0 (excluding parent SKUs)
+                            filteredData = filteredData.filter(item => 
+                                !item.sku.includes('PARENT') &&
+                                parseFloat(item.INV) > 0 && 
+                                !item.listing_status && 
+                                item.NR !== 'NR'
+                            );
+                            break;
+                        case 'dc-status':
+                            filteredData = filteredData.filter(item => {
+                                if (!item.status) return false;
+                                return item.status.toLowerCase() === 'dc';
+                            });
+                            break;
+                        case 'upcoming-status':
+                            filteredData = filteredData.filter(item => {
+                                if (!item.status) return false;
+                                return item.status.toLowerCase() === 'upcoming';
+                            });
+                            break;
+                        case '2bdc-status':
+                            filteredData = filteredData.filter(item => {
+                                if (!item.status) return false;
+                                return item.status.toLowerCase() === '2bdc';
+                            });
+                            break;
                         case 'nr-status':
                             filteredData = filteredData.filter(item => item.NR === 'NR');
                             break;
                     }
                 });
                 
-                // Apply dropdown filters on top of badge filters
-                // Combined filter
-                if (currentCombinedFilter === 'inv') {
-                    filteredData = filteredData.filter(item => parseFloat(item.INV) > 0);
-                } else if (currentCombinedFilter === 'req-nrl') {
-                    filteredData = filteredData.filter(item => 
-                        item.nr_req === 'REQ' && !item.buyer_link && !item.seller_link
-                    );
-                } else if (currentCombinedFilter === 'pending') {
-                    filteredData = filteredData.filter(item => item.listed === 'Pending');
-                }
+                // Skip dropdown filters if missing-inv-combined filter is active (to match count)
+                const hasCombinedFilter = activeFilters.has('missing-inv-combined');
                 
-                // Data Type filter
-                if (currentDataTypeFilter === 'parent') {
-                    filteredData = filteredData.filter(item => item.is_parent);
-                } else if (currentDataTypeFilter === 'sku') {
-                    filteredData = filteredData.filter(item => 
-                        !item.is_parent && 
-                        (item.listing_status === 'INACTIVE' || !item.listing_status)
-                    );
-                }
-                
-                // INV filter
-                if (currentInvFilter === 'inv-only') {
-                    filteredData = filteredData.filter(item => parseFloat(item.INV) > 0);
-                }
-                
-                // NR/REQ filter
-                if (currentNrReqFilter !== 'all') {
-                    filteredData = filteredData.filter(item => item.nr_req === currentNrReqFilter);
-                }
-                
-                // LINK filter
-                if (currentLinkFilter === 'with-link') {
-                    filteredData = filteredData.filter(item => item.buyer_link || item.seller_link);
-                } else if (currentLinkFilter === 'without-link') {
-                    filteredData = filteredData.filter(item => !item.buyer_link && !item.seller_link);
-                }
-                
-                // Listed filter
-                if (currentListedFilter !== 'all') {
-                    filteredData = filteredData.filter(item => item.listed === currentListedFilter);
-                }
-                
-                // Status filter
-                if (currentStatusFilter === 'missing') {
-                    filteredData = filteredData.filter(item => !item.status || item.status === '');
-                } else if (currentStatusFilter !== 'all') {
-                    filteredData = filteredData.filter(item => {
-                        if (!item.status) return false;
-                        return item.status.toLowerCase() === currentStatusFilter.toLowerCase();
-                    });
+                if (!hasCombinedFilter) {
+                    // Apply dropdown filters on top of badge filters
+                    // Combined filter
+                    if (currentCombinedFilter === 'inv') {
+                        filteredData = filteredData.filter(item => parseFloat(item.INV) > 0);
+                    } else if (currentCombinedFilter === 'req-nrl') {
+                        filteredData = filteredData.filter(item => 
+                            item.nr_req === 'REQ' && !item.buyer_link && !item.seller_link
+                        );
+                    } else if (currentCombinedFilter === 'pending') {
+                        filteredData = filteredData.filter(item => item.listed === 'Pending');
+                    }
+                    
+                    // Data Type filter
+                    if (currentDataTypeFilter === 'parent') {
+                        filteredData = filteredData.filter(item => item.is_parent);
+                    } else if (currentDataTypeFilter === 'sku') {
+                        filteredData = filteredData.filter(item => 
+                            !item.is_parent && 
+                            (item.listing_status === 'INACTIVE' || !item.listing_status)
+                        );
+                    }
+                    
+                    // INV filter
+                    if (currentInvFilter === 'inv-only') {
+                        filteredData = filteredData.filter(item => parseFloat(item.INV) > 0);
+                    }
+                } else {
+                    // When combined filter is active, only apply Data Type filter to exclude parents (already done in badge filter)
+                    // Skip other dropdown filters to match the count exactly
                 }
                 
                 currentPage = 1;
@@ -2251,6 +2332,10 @@
                     'active-status': 'badge-active-status-total',
                     'inactive-status': 'badge-inactive-status-total',
                     'missing-status': 'badge-missing-status-total',
+                    'missing-inv-combined': 'badge-missing-inv-combined-total',
+                    'dc-status': 'badge-dc-status-total',
+                    'upcoming-status': 'badge-upcoming-status-total',
+                    '2bdc-status': 'badge-2bdc-status-total',
                     'nr-status': 'badge-nr-status-total'
                 };
                 
@@ -2278,18 +2363,10 @@
                 $('#row-data-type').val('sku');
                 $('#combined-filter').val('pending');
                 $('#inv-filter').val('all');
-                $('#nr-req-filter').val('all');
-                $('#link-filter').val('all');
-                $('#listed-filter').val('all');
-                $('#status-filter').val('all');
                 $('#search-input').val('');
                 // Reset filter state variables
                 currentDataTypeFilter = 'sku';
                 currentInvFilter = 'all';
-                currentNrReqFilter = 'all';
-                currentLinkFilter = 'all';
-                currentListedFilter = 'all';
-                currentStatusFilter = 'all';
                 currentCombinedFilter = 'pending';
                 // Apply all filters (which will show all data since all filters are reset)
                 applyAllFiltersUnified();
@@ -2729,9 +2806,45 @@
                 saveStatusToDB(sku, saveData);
             });
 
-            $('#nr-req-filter').on('change', function() {
-                currentNrReqFilter = $(this).val();
-                applyAllFiltersUnified();
+            // Handle Status dropdown change
+            $(document).on('change', '.status-select', function() {
+                const $select = $(this);
+                const sku = $select.data('sku');
+                const statusValue = $select.val();
+                
+                // Store original value for error revert
+                const item = tableData.find(row => row.sku === sku);
+                const originalStatus = item ? (item.status || '') : '';
+                
+                // Update the local tableData
+                if (item) {
+                    item.status = statusValue || null;
+                }
+                
+                // Save to ProductMaster Values field
+                $.ajax({
+                    url: '/listing_amazon/save-status',
+                    type: 'POST',
+                    data: {
+                        sku: sku,
+                        status: statusValue || '',
+                        _token: $('meta[name="csrf-token"]').attr('content')
+                    },
+                    success: function(response) {
+                        showNotification('success', 'Status saved!');
+                        // Recalculate totals and re-render if needed
+                        calculateTotals();
+                    },
+                    error: function(xhr) {
+                        showNotification('danger', 'Save failed!');
+                        // Revert the dropdown value on error
+                        $select.val(originalStatus);
+                        // Revert tableData
+                        if (item) {
+                            item.status = originalStatus || null;
+                        }
+                    }
+                });
             });
 
             $(document).on('click', '.link-edit-icon', function() {
@@ -2746,22 +2859,6 @@
                 $('#sellerLink').val(item && item.seller_link ? item.seller_link : '');
 
                 $('#linkModal').modal('show'); // Open the modal
-            });
-
-            $('#link-filter').on('change', function() {
-                currentLinkFilter = $(this).val();
-                applyAllFiltersUnified();
-            });
-
-            $('#listed-filter').on('change', function() {
-                currentListedFilter = $(this).val();
-                applyAllFiltersUnified();
-            });
-
-            // Handle Status filter change
-            $('#status-filter').on('change', function() {
-                currentStatusFilter = $(this).val();
-                applyAllFiltersUnified();
             });
 
             // Refresh Links Button Handler
@@ -2830,6 +2927,165 @@
                     complete: function() {
                         // Re-enable button
                         $btn.prop('disabled', false).html(originalHtml);
+                    }
+                });
+            });
+
+            // Daily Metrics Chart
+            let dailyMetricsChartInstance = null;
+
+            function initDailyMetricsChart(days = 30) {
+                fetch(`/listing_amazon/daily-metrics?days=${days}`)
+                    .then(response => response.json())
+                    .then(result => {
+                        if (result.status === 'success' && result.data && result.data.length > 0) {
+                            const dates = result.data.map(item => {
+                                const date = new Date(item.date);
+                                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                            });
+                            const counts = result.data.map(item => item.count);
+
+                            // Destroy existing chart if it exists
+                            if (dailyMetricsChartInstance) {
+                                dailyMetricsChartInstance.destroy();
+                            }
+
+                            // Create line chart
+                            const ctx = document.getElementById('dailyMetricsChart');
+                            if (!ctx) {
+                                console.warn('Chart canvas not found');
+                                return;
+                            }
+
+                            dailyMetricsChartInstance = new Chart(ctx, {
+                                type: 'line',
+                                data: {
+                                    labels: dates,
+                                    datasets: [{
+                                        label: 'Missing & INV>0 Count',
+                                        data: counts,
+                                        borderColor: 'rgba(255, 152, 0, 1)',
+                                        backgroundColor: 'rgba(255, 152, 0, 0.1)',
+                                        borderWidth: 3,
+                                        pointRadius: 4,
+                                        pointBackgroundColor: 'rgba(255, 152, 0, 1)',
+                                        pointBorderColor: '#fff',
+                                        pointBorderWidth: 2,
+                                        tension: 0.4,
+                                        fill: true
+                                    }]
+                                },
+                                options: {
+                                    responsive: true,
+                                    maintainAspectRatio: false,
+                                    plugins: {
+                                        legend: {
+                                            display: true,
+                                            position: 'top'
+                                        },
+                                        tooltip: {
+                                            mode: 'index',
+                                            intersect: false
+                                        }
+                                    },
+                                    scales: {
+                                        y: {
+                                            beginAtZero: true,
+                                            ticks: {
+                                                precision: 0,
+                                                stepSize: 1
+                                            },
+                                            title: {
+                                                display: true,
+                                                text: 'Count'
+                                            }
+                                        },
+                                        x: {
+                                            title: {
+                                                display: true,
+                                                text: 'Date'
+                                            }
+                                        }
+                                    },
+                                    interaction: {
+                                        mode: 'nearest',
+                                        axis: 'x',
+                                        intersect: false
+                                    }
+                                }
+                            });
+                        } else {
+                            console.warn('No chart data available');
+                            // Show message if no data
+                            const ctx = document.getElementById('dailyMetricsChart');
+                            if (ctx) {
+                                const ctx2d = ctx.getContext('2d');
+                                ctx2d.clearRect(0, 0, ctx.width, ctx.height);
+                                ctx2d.font = '16px Arial';
+                                ctx2d.fillStyle = '#666';
+                                ctx2d.textAlign = 'center';
+                                ctx2d.fillText('No data available', ctx.width / 2, ctx.height / 2);
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error loading chart data:', error);
+                    });
+            }
+
+            // Toggle chart visibility
+            function toggleChart() {
+                const chartContainer = $('#chart-container');
+                const chartControls = $('#chart-controls-container');
+                const toggleIcon = $('#chart-toggle-icon');
+                
+                if (chartContainer.is(':visible')) {
+                    // Minimize
+                    chartContainer.slideUp(300);
+                    chartControls.slideUp(300);
+                    toggleIcon.removeClass('fa-chevron-up').addClass('fa-chevron-down');
+                } else {
+                    // Maximize
+                    chartControls.slideDown(300);
+                    chartContainer.slideDown(300, function() {
+                        // Initialize chart if not already initialized
+                        if (!dailyMetricsChartInstance) {
+                            const days = parseInt($('#chart-days-select').val());
+                            initDailyMetricsChart(days);
+                        }
+                    });
+                    toggleIcon.removeClass('fa-chevron-down').addClass('fa-chevron-up');
+                }
+            }
+
+            // Initialize chart on page load
+            $(document).ready(function() {
+                // Chart is minimized by default, so don't initialize it automatically
+                // Only initialize when user expands it
+
+                // Handle toggle button click
+                $('#toggle-chart-btn').on('click', function() {
+                    toggleChart();
+                });
+
+                // Handle chart days select change
+                $('#chart-days-select').on('change', function() {
+                    const days = parseInt($(this).val());
+                    if (dailyMetricsChartInstance) {
+                        initDailyMetricsChart(days);
+                    }
+                });
+
+                // Handle refresh button click
+                $('#refresh-chart-btn').on('click', function() {
+                    const days = parseInt($('#chart-days-select').val());
+                    if (dailyMetricsChartInstance) {
+                        initDailyMetricsChart(days);
+                    } else {
+                        // If chart is visible but not initialized, initialize it
+                        if ($('#chart-container').is(':visible')) {
+                            initDailyMetricsChart(days);
+                        }
                     }
                 });
             });

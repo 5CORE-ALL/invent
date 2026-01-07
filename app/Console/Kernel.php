@@ -409,6 +409,11 @@ class Kernel extends ConsoleKernel
             ->dailyAt('00:10')
             ->timezone('Asia/Kolkata');
 
+        // Store Amazon Listing Daily Metrics (Missing & INV>0 count) - Daily
+        $schedule->command('amazon:store-listing-daily-metrics')
+            ->dailyAt('00:20')
+            ->timezone('Asia/Kolkata');
+
         // Amazon FBA Keyword Budget Update - based on ACOS (L30 data)
         $schedule->command('budget:update-amazon-fba-kw')
             ->dailyAt('00:05')

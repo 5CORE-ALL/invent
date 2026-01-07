@@ -10,9 +10,11 @@ use App\Models\ShopifySku;
 use App\Models\ProductStockMapping;
 use Illuminate\Http\Request;
 use App\Models\AmazonDatasheet;
+use App\Models\AmazonListingDailyMetric;
 use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class ListingAmazonController extends Controller
 {
@@ -185,6 +187,7 @@ class ListingAmazonController extends Controller
             'listed' => 'nullable|string',
             'buyer_link' => 'nullable|url',
             'seller_link' => 'nullable|url',
+            'status' => 'nullable|string|in:Active,DC,2BDC,Sourcing,In Transit,To Order,MFRG,',
         ]);
 
         $sku = $validated['sku'];
@@ -218,6 +221,31 @@ class ListingAmazonController extends Controller
             ['sku' => $validated['sku']],
             ['value' => $existing]
         );
+
+        // Handle status - save to ProductMaster Values field
+        if ($request->has('status')) {
+            $product = ProductMaster::where('sku', $sku)->first();
+            if ($product) {
+                $values = is_array($product->Values) ? $product->Values : 
+                         (is_string($product->Values) ? json_decode($product->Values, true) : []);
+                
+                if (!is_array($values)) {
+                    $values = [];
+                }
+                
+                // Update status in Values field
+                $statusValue = $validated['status'];
+                if ($statusValue === '') {
+                    // Remove status if empty string
+                    unset($values['status']);
+                } else {
+                    $values['status'] = $statusValue;
+                }
+                
+                $product->Values = $values;
+                $product->save();
+            }
+        }
 
         return response()->json(['status' => 'success']);
     }
@@ -679,6 +707,47 @@ class ListingAmazonController extends Controller
                 'error' => $e->getMessage()
             ]);
             return null;
+        }
+    }
+
+    /**
+     * Get daily metrics data for chart (Missing & INV>0 count)
+     */
+    public function getDailyMetrics(Request $request)
+    {
+        try {
+            $days = $request->input('days', 30); // Default to last 30 days
+            
+            // Get metrics for the specified number of days
+            $endDate = Carbon::today();
+            $startDate = $endDate->copy()->subDays($days - 1);
+            
+            $metrics = AmazonListingDailyMetric::whereBetween('date', [$startDate, $endDate])
+                ->orderBy('date', 'asc')
+                ->get();
+            
+            // Format data for chart
+            $chartData = [];
+            foreach ($metrics as $metric) {
+                $chartData[] = [
+                    'date' => $metric->date->format('Y-m-d'),
+                    'count' => $metric->missing_status_inv_count
+                ];
+            }
+            
+            return response()->json([
+                'status' => 'success',
+                'data' => $chartData
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching Amazon listing daily metrics', [
+                'error' => $e->getMessage()
+            ]);
+            
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to fetch metrics data'
+            ], 500);
         }
     }
 
