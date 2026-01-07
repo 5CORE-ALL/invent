@@ -857,7 +857,17 @@ class FacebookAddsManagerController extends Controller
                     'sku' => $sku ?? '',
                     'inv' => $inv,
                     'ov_l30' => $ovL30,
-                    'dil_percent' => $dilPercent
+                    'dil_percent' => $dilPercent,
+                    'campaign' => '',
+                    'bgt' => 0,
+                    'imp_l30' => 0,
+                    'spend_l30' => 0,
+                    'clks_l30' => 0,
+                    'ad_sls_l30' => 0,
+                    'ad_sld_l30' => 0,
+                    'acos_l30' => 0,
+                    'cvr_l30' => 0,
+                    'status' => ''
                 ];
             }
 

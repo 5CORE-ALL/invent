@@ -76,6 +76,146 @@
                             `;
                         }
                     }
+                },
+                {
+                    title: "CAMPAIGN",
+                    field: "campaign",
+                    minWidth: 200,
+                    headerSort: true,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        return value || '';
+                    }
+                },
+                {
+                    title: "BGT",
+                    field: "bgt",
+                    minWidth: 100,
+                    headerSort: true,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        return value ? parseFloat(value).toFixed(2) : '0.00';
+                    }
+                },
+                {
+                    title: "IMP L30",
+                    field: "imp_l30",
+                    minWidth: 135,
+                    headerSort: true,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        return value ? parseInt(value).toLocaleString() : '0';
+                    }
+                },
+                {
+                    title: "SPEND L30",
+                    field: "spend_l30",
+                    width: 155,
+                    headerSort: true,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        return value ? parseFloat(value).toFixed(2) : '0.00';
+                    }
+                },
+                {
+                    title: "CLKS L30",
+                    field: "clks_l30",
+                    width: 150,
+                    headerSort: true,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        return value ? parseInt(value).toLocaleString() : '0';
+                    }
+                },
+                {
+                    title: "AD SLS L30",
+                    field: "ad_sls_l30",
+                    width: 160,
+                    headerSort: true,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        return value ? parseFloat(value).toFixed(2) : '0.00';
+                    }
+                },
+                {
+                    title: "AD SLD L30",
+                    field: "ad_sld_l30",
+                    width: 160,
+                    headerSort: true,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        return value ? parseFloat(value).toFixed(2) : '0.00';
+                    }
+                },
+                {
+                    title: "ACOS L30",
+                    field: "acos_l30",
+                    width: 150,
+                    headerSort: true,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        return value ? parseFloat(value).toFixed(2) + '%' : '0.00%';
+                    }
+                },
+                {
+                    title: "CVR L30",
+                    field: "cvr_l30",
+                    width: 145,
+                    headerSort: true,
+                    formatter: function(cell) {
+                        let value = parseFloat(cell.getValue()) || 0;
+                        let cvr = Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1);
+                        let color = "";
+
+                        if (value < 5) {
+                            color = "red";
+                        } else if (value >= 5 && value <= 10) {
+                            color = "green";
+                        } else if (value > 10) {
+                            color = "pink";
+                        }
+
+                        if (color == "pink") {
+                            return `
+                                <span class="dil-percent-value ${color}">
+                                    ${cvr}%
+                                </span>
+                            `;
+                        } else {
+                            return `
+                                <span style="font-weight:600; color:${color};">
+                                    ${cvr}%
+                                </span>
+                            `;
+                        }
+                    }
+                },
+                {
+                    title: "STATUS",
+                    field: "status",
+                    width: 150,
+                    headerSort: true,
+                    formatter: function(cell) {
+                        const value = cell.getValue() || '';
+                        let bgColor = '#6c757d';
+                        let displayText = value || '';
+
+                        if (value === 'ACTIVE' || value === 'active') {
+                            bgColor = '#28a745';
+                            displayText = 'Active';
+                        } else if (value === 'INACTIVE' || value === 'inactive') {
+                            bgColor = '#dc3545';
+                            displayText = 'Inactive';
+                        } else if (value === 'NOT_DELIVERING' || value === 'not_delivering') {
+                            bgColor = '#ffc107';
+                            displayText = 'Not Delivering';
+                        }
+                        
+                        if (displayText) {
+                            return `<span class="badge" style="background-color: ${bgColor}; color: white; font-size: 0.85rem; padding: 6px 12px;">${displayText}</span>`;
+                        }
+                        return '';
+                    }
                 }
             ],
             ajaxResponse: function(url, params, response) {
