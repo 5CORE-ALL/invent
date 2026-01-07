@@ -1064,8 +1064,11 @@ class EbayTwoController extends Controller
     public function getEbay2AdsSpend()
     {
         try {
-            // Get ad spend from ebay2_general_reports for L30
-            $generalReports = Ebay2GeneralReport::where('report_range', 'L30')->get();
+            // Get ad spend from ebay2_general_reports for L30 (last 30 days only)
+            $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30);
+            $generalReports = Ebay2GeneralReport::where('report_range', 'L30')
+                ->whereDate('updated_at', '>=', $thirtyDaysAgo)
+                ->get();
             
             $adsSpend = 0;
             foreach ($generalReports as $report) {

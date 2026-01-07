@@ -200,10 +200,11 @@
                         <!-- Top Metrics -->
                         <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold;">Total PFT AMT: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total SALES AMT: $0.00</span>
-                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">AVG GPFT: 0%</span>
-                        <span class="badge bg-success fs-6 p-2" id="avg-pft-badge" style="color: black; font-weight: bold;">AVG PFT: 0%</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
-                        <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">Avg CVR: 0.00%</span>
+                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">GPFT: 0%</span>
+
+                                                <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">GROI %: 0%</span>
+                        <span class="badge bg-primary fs-6 p-2" id="net-roi-percent-badge" style="color: black; font-weight: bold;">NROI %: 0%</span>
+                        <span class="badge bg-success fs-6 p-2" id="avg-pft-badge" style="color: black; font-weight: bold;">N PFT: 0%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
                         
                         <!-- eBay Metrics -->
@@ -214,7 +215,7 @@
                         <span class="badge bg-danger fs-6 p-2" id="total-tcos-badge" style="color: black; font-weight: bold;">Total TCOS: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="total-spend-l30-badge" style="color: black; font-weight: bold;">PMT Ads Spend L30: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="total-cogs-amt-badge" style="color: black; font-weight: bold;">COGS AMT: $0.00</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI %: 0%</span>
+
                     </div>
                 </div>
             </div>
@@ -765,7 +766,7 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        // KW and PMT spend badges removed for eBay2
+                        $('#total-spend-l30-badge').text('PMT Ads Spend L30: $' + data.ads_spend.toFixed(2));
                     }
                 })
                 .catch(error => {
@@ -2068,7 +2069,7 @@
                         width: 50
                     },
                     {
-                        title: "ROI%",
+                        title: "GROI%",
                         field: "ROI%",
                         hozAlign: "center",
                         sorter: "number",
@@ -2085,6 +2086,35 @@
                             else color = '#e83e8c'; // pink
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        bottomCalc: "avg",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>${parseFloat(value).toFixed(2)}%</strong>`;
+                        },
+                        width: 65
+                    },
+                    {
+                        title: "NROI%",
+                        field: "NROI%",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const roi = parseFloat(rowData['ROI%'] || 0);
+                            const adPercent = parseFloat(rowData['AD%'] || 0);
+                            
+                            // NROI = ROI - AD%
+                            const nroi = roi - adPercent;
+                            
+                            let color = '';
+                            // Same color logic as ROI
+                            if (nroi < 50) color = '#a00211'; // red
+                            else if (nroi >= 50 && nroi < 75) color = '#ffc107'; // yellow
+                            else if (nroi >= 75 && nroi <= 125) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${nroi.toFixed(0)}%</span>`;
                         },
                         bottomCalc: "avg",
                         bottomCalcFormatter: function(cell) {
@@ -2492,7 +2522,22 @@
                         field: "ebay2_ship",
                         hozAlign: "center",
                         sorter: "number",
-                        visible: false,
+                        visible: true,
+                        formatter: "money",
+                        formatterParams: {
+                            decimal: ".",
+                            thousand: ",",
+                            symbol: "$",
+                            precision: 2
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "LP",
+                        field: "LP_productmaster",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: true,
                         formatter: "money",
                         formatterParams: {
                             decimal: ".",
@@ -2805,8 +2850,7 @@
             // Update summary badges for INV > 0
             function updateSummary() {
                 const data = table.getData("active");
-                let totalTcos = 0;
-                let totalSpendL30 = 0;
+                let totalPmtSpendL30 = 0;
                 let totalPftAmt = 0;
                 let totalSalesAmt = 0;
                 let totalLpAmt = 0;
@@ -2816,19 +2860,27 @@
                 let dilCount = 0;
                 let zeroSoldCount = 0;
 
-                // Calculate total PMT ads spend from ALL data (unfiltered)
-                allTableData.forEach(row => {
-                    totalSpendL30 += parseFloat(row['pmt_spend_L30'] || 0);
-                });
+                // Fetch real-time PMT ads spend from database instead of calculating from SKUs
+                loadEbayAdsSpend();
+
+                // PMT spend is per listing (item_id)
+                const countedItemsPmt = new Set();
 
                 data.forEach(row => {
                     if (parseFloat(row.INV) > 0) {
-                        totalTcos += parseFloat(row['AD%'] || 0);
                         totalPftAmt += parseFloat(row['Total_pft'] || 0);
                         totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
                         totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * parseFloat(row['eBay L30'] || 0);
                         totalFbaInv += parseFloat(row.INV || 0);
                         totalFbaL30 += parseFloat(row['eBay L30'] || 0);
+                        
+                        // PMT Spend - count once per item_id (listing-wise ads)
+                        const itemId = row['eBay_item_id'] || '';
+                        const pmtSpend = parseFloat(row['pmt_spend_L30'] || 0);
+                        if (itemId && pmtSpend > 0 && !countedItemsPmt.has(itemId)) {
+                            countedItemsPmt.add(itemId);
+                            totalPmtSpendL30 += pmtSpend;
+                        }
                         
                         // Count SKUs with 0 sold (L30 = 0)
                         const l30 = parseFloat(row['eBay L30'] || 0);
@@ -2844,18 +2896,8 @@
                     }
                 });
 
-                let totalWeightedPrice = 0;
-                let totalL30 = 0;
-                data.forEach(row => {
-                    if (parseFloat(row.INV) > 0) {
-                        const price = parseFloat(row['eBay Price'] || 0);
-                        const l30 = parseFloat(row['eBay L30'] || 0);
-                        totalWeightedPrice += price * l30;
-                        totalL30 += l30;
-                    }
-                });
-                const avgPrice = totalL30 > 0 ? totalWeightedPrice / totalL30 : 0;
-                $('#avg-price-badge').text('Avg Price: $' + Math.round(avgPrice));
+                // eBay2 only has PMT ads
+                const totalSpendL30 = totalPmtSpendL30;
 
                 let totalViews = 0;
                 data.forEach(row => {
@@ -2863,16 +2905,20 @@
                         totalViews += parseFloat(row.views || 0);
                     }
                 });
-                const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
-                $('#avg-cvr-badge').text('Avg CVR: ' + avgCVR.toFixed(1) + '%');
                 $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
                 
+                // Calculate TCOS = (Total Ad Spend / Total Sales) * 100
+                const tcosPercent = totalSalesAmt > 0 ? ((totalSpendL30 / totalSalesAmt) * 100).toFixed(2) : '0.00';
 
-                $('#total-tcos-badge').text('Total TCOS: ' + Math.round(totalTcos));
-                $('#total-spend-l30-badge').text('PMT Ads Spend L30: $' + Math.round(totalSpendL30));
+                $('#total-tcos-badge').text('Total TCOS: ' + tcosPercent + '%');
                 $('#total-cogs-amt-badge').text('COGS AMT: $' + Math.round(totalLpAmt));
                 const roiPercent = totalLpAmt > 0 ? Math.round((totalPftAmt / totalLpAmt) * 100) : 0;
-                $('#roi-percent-badge').text('ROI %: ' + roiPercent + '%');
+                $('#roi-percent-badge').text('GROI %: ' + roiPercent + '%');
+                
+                // Calculate Net ROI = ROI - TCOS
+                const netRoiPercent = roiPercent - parseFloat(tcosPercent);
+                $('#net-roi-percent-badge').text('NROI %: ' + netRoiPercent.toFixed(2) + '%');
+                
                 $('#total-fba-l30-badge').text('Total eBay L30: ' + Math.round(totalFbaL30).toLocaleString());
                 $('#zero-sold-count-badge').text('0 Sold Count: ' + zeroSoldCount.toLocaleString());
                 $('#total-pft-amt').text('$' + Math.round(totalPftAmt));
@@ -2880,13 +2926,12 @@
                 $('#total-sales-amt').text('$' + Math.round(totalSalesAmt));
                 $('#total-sales-amt-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
                 const avgGpft = totalSalesAmt > 0 ? ((totalPftAmt / totalSalesAmt) * 100).toFixed(1) : '0.0';
-                $('#avg-gpft-badge').text('AVG GPFT: ' + avgGpft + '%');
+                $('#avg-gpft-badge').text('GPFT: ' + avgGpft + '%');
                 $('#avg-gpft-summary').text(avgGpft + '%');
                 
-                // Calculate Avg PFT (GPFT - AD%)
-                const avgAdPercent = totalTcos / data.filter(row => parseFloat(row.INV) > 0).length;
-                const avgPft = avgGpft - avgAdPercent;
-                $('#avg-pft-badge').text('AVG PFT: ' + avgPft.toFixed(1) + '%');
+                // Calculate N PFT = GPFT - TCOS
+                const avgPft = parseFloat(avgGpft) - parseFloat(tcosPercent);
+                $('#avg-pft-badge').text('N PFT: ' + avgPft.toFixed(1) + '%');
             }
 
             // Build Column Visibility Dropdown
@@ -3120,7 +3165,8 @@
                 'SCVR': 'SCVR',
                 'kw_spend_L30': 'KW Spend L30',
                 'pmt_spend_L30': 'PMT Spend L30',
-                'ebay2_ship': 'eBay2 Ship'
+                'ebay2_ship': 'eBay2 Ship',
+                'LP_productmaster': 'LP'
             };
 
             // Build export columns list
