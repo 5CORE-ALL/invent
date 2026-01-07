@@ -532,9 +532,14 @@ class ListingAmazonController extends Controller
             // Try to find the correct SKU format in Amazon
             $amazonSku = $this->findAmazonSkuFormat($sku, $accessToken, $sellerId, $endpoint, $marketplaceId);
             if (!$amazonSku) {
+                // SKU not found in Amazon - clear existing links
+                $this->clearLinksForSku($sku);
+                // Also clear listing status from amazon_datsheets
+                AmazonDatasheet::where('sku', $sku)->update(['listing_status' => null]);
+                
                 return [
                     'success' => false,
-                    'message' => 'SKU not found in Amazon listings'
+                    'message' => 'SKU not found in Amazon listings - Links cleared'
                 ];
             }
 
@@ -550,6 +555,16 @@ class ListingAmazonController extends Controller
                 ->get($url);
 
             if (!$response->successful()) {
+                // If 404, SKU doesn't exist - clear links
+                if ($response->status() === 404) {
+                    $this->clearLinksForSku($sku);
+                    AmazonDatasheet::where('sku', $sku)->update(['listing_status' => null]);
+                    return [
+                        'success' => false,
+                        'message' => 'SKU not found in Amazon (404) - Links cleared'
+                    ];
+                }
+                
                 return [
                     'success' => false,
                     'message' => 'Failed to fetch listing data from Amazon API'
@@ -587,10 +602,13 @@ class ListingAmazonController extends Controller
                 $sellerLink = "https://sellercentral.amazon.com/inventory/ref=xx_invmgr_dnav_xx?asin={$asin}";
             }
 
-            // Update links in amazon_data_view
+            // Update links in amazon_data_view and listing status
             if ($buyerLink || $sellerLink) {
                 $status = AmazonDataView::where('sku', $sku)->first();
                 $existing = $status ? $status->value : [];
+                if (!is_array($existing)) {
+                    $existing = json_decode($existing, true) ?? [];
+                }
 
                 if ($buyerLink) {
                     $existing['buyer_link'] = $buyerLink;
@@ -603,6 +621,15 @@ class ListingAmazonController extends Controller
                     ['sku' => $sku],
                     ['value' => $existing]
                 );
+                
+                // Update listing status in amazon_datsheets - check if listing is ACTIVE
+                $listingStatus = $this->determineListingStatusFromResponse($data);
+                if ($listingStatus) {
+                    AmazonDatasheet::updateOrCreate(
+                        ['sku' => $sku],
+                        ['listing_status' => $listingStatus]
+                    );
+                }
 
                 return [
                     'success' => true,
@@ -611,7 +638,8 @@ class ListingAmazonController extends Controller
                         'sku' => $sku,
                         'asin' => $asin,
                         'buyer_link' => $buyerLink,
-                        'seller_link' => $sellerLink
+                        'seller_link' => $sellerLink,
+                        'listing_status' => $listingStatus
                     ]
                 ];
             }
@@ -632,6 +660,94 @@ class ListingAmazonController extends Controller
                 'message' => 'Error: ' . $e->getMessage()
             ];
         }
+    }
+
+    /**
+     * Determine listing status from Amazon API response
+     */
+    private function determineListingStatusFromResponse($data)
+    {
+        if (!is_array($data)) {
+            return null;
+        }
+
+        // Method 1: Check summaries array (most common location)
+        if (isset($data['summaries']) && is_array($data['summaries']) && !empty($data['summaries'])) {
+            foreach ($data['summaries'] as $summary) {
+                // Check if status is an array
+                if (isset($summary['status']) && is_array($summary['status']) && !empty($summary['status'])) {
+                    foreach ($summary['status'] as $statusItem) {
+                        // Prioritize BUYABLE status
+                        if (strtoupper($statusItem) === 'BUYABLE' || strtoupper($statusItem) === 'BUYABLE_BY_QUANTITY') {
+                            return 'ACTIVE';
+                        }
+                    }
+                    // If no BUYABLE found, use first status
+                    $statusValue = $summary['status'][0];
+                    return $this->mapStatusValue($statusValue);
+                }
+                // Check if status is a string
+                elseif (isset($summary['status']) && is_string($summary['status'])) {
+                    return $this->mapStatusValue($summary['status']);
+                }
+            }
+        }
+        
+        // Method 2: Check for buyBoxEligible or other indicators of active status
+        if (isset($data['buyBoxEligible']) && $data['buyBoxEligible'] === true) {
+            return 'ACTIVE';
+        }
+        
+        if (isset($data['summaries']) && is_array($data['summaries'])) {
+            foreach ($data['summaries'] as $summary) {
+                if (isset($summary['buyBoxEligible']) && $summary['buyBoxEligible'] === true) {
+                    return 'ACTIVE';
+                }
+                // Check for availability
+                if (isset($summary['availability']) && 
+                    (stripos($summary['availability'], 'in stock') !== false || 
+                     stripos($summary['availability'], 'available') !== false)) {
+                    return 'ACTIVE';
+                }
+            }
+        }
+        
+        // If we found summaries data but no clear status, assume ACTIVE if we have ASIN
+        if (isset($data['summaries'][0]['asin'])) {
+            return 'ACTIVE';
+        }
+        
+        return null;
+    }
+
+    /**
+     * Map Amazon status value to our status format
+     */
+    private function mapStatusValue($statusValue)
+    {
+        if (!$statusValue) {
+            return null;
+        }
+        
+        $statusValue = strtoupper(trim($statusValue));
+        
+        // Active statuses
+        if (in_array($statusValue, ['BUYABLE', 'BUYABLE_BY_QUANTITY', 'ACTIVE', 'LIVE', 'PUBLISHED'])) {
+            return 'ACTIVE';
+        }
+        
+        // Inactive statuses
+        if (in_array($statusValue, ['DISCOVERABLE', 'INELIGIBLE', 'INVALID', 'OUT_OF_STOCK', 'UNBUYABLE', 'INACTIVE', 'SUPPRESSED', 'STOPPED'])) {
+            return 'INACTIVE';
+        }
+        
+        // Incomplete statuses
+        if (in_array($statusValue, ['INCOMPLETE', 'DRAFT', 'PENDING'])) {
+            return 'INCOMPLETE';
+        }
+        
+        // Default to ACTIVE if we have a status value
+        return 'ACTIVE';
     }
 
     /**
