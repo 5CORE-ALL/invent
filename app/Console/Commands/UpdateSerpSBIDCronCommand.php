@@ -25,10 +25,12 @@ class UpdateSerpSBIDCronCommand extends Command
     public function handle()
     {
         try {
-            // Check database connection
+            // Check database connection (without creating persistent connection)
             try {
                 DB::connection()->getPdo();
                 $this->info("✓ Database connection OK");
+                // Immediately disconnect after check to prevent connection buildup
+                DB::connection()->disconnect();
             } catch (\Exception $e) {
                 $this->error("✗ Database connection failed: " . $e->getMessage());
                 return 1;
@@ -71,7 +73,7 @@ class UpdateSerpSBIDCronCommand extends Command
 
             if ($productMasters->isEmpty()) {
                 $this->warn("No product masters found!");
-                DB::disconnect();
+                DB::connection()->disconnect();
                 return 0;
             }
 
@@ -80,7 +82,7 @@ class UpdateSerpSBIDCronCommand extends Command
 
             if (empty($skus)) {
                 $this->warn("No valid SKUs found!");
-                DB::disconnect();
+                DB::connection()->disconnect();
                 return 0;
             }
 
@@ -88,7 +90,7 @@ class UpdateSerpSBIDCronCommand extends Command
             if (!empty($skus)) {
                 $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
             }
-            DB::disconnect();
+            DB::connection()->disconnect();
 
         $this->info("Found " . $productMasters->count() . " product masters");
 
@@ -253,7 +255,7 @@ class UpdateSerpSBIDCronCommand extends Command
             $this->error("Stack trace: " . $e->getTraceAsString());
             return 1;
         } finally {
-            DB::disconnect();
+            DB::connection()->disconnect();
         }
     }
 }

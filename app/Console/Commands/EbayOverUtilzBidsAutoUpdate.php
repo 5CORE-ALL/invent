@@ -26,10 +26,12 @@ class EbayOverUtilzBidsAutoUpdate extends Command
     public function handle()
     {
         try {
-            // Check database connection
+            // Check database connection (without creating persistent connection)
             try {
                 DB::connection()->getPdo();
                 $this->info("✓ Database connection OK");
+                // Immediately disconnect after check to prevent connection buildup
+                DB::connection()->disconnect();
             } catch (\Exception $e) {
                 $this->error("✗ Database connection failed: " . $e->getMessage());
                 return 1;
@@ -157,7 +159,7 @@ class EbayOverUtilzBidsAutoUpdate extends Command
             $this->error("Stack trace: " . $e->getTraceAsString());
             return 1;
         } finally {
-            DB::disconnect();
+            DB::connection()->disconnect();
         }
     }
 
@@ -367,7 +369,7 @@ class EbayOverUtilzBidsAutoUpdate extends Command
 
             }
 
-            DB::disconnect();
+            DB::connection()->disconnect();
             return $result;
         
         } catch (\Exception $e) {
@@ -375,7 +377,7 @@ class EbayOverUtilzBidsAutoUpdate extends Command
             $this->error("Stack trace: " . $e->getTraceAsString());
             return [];
         } finally {
-            DB::disconnect();
+            DB::connection()->disconnect();
         }
     }
 

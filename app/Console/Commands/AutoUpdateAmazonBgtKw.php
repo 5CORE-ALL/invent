@@ -29,10 +29,12 @@ class AutoUpdateAmazonBgtKw extends Command
         try {
             $this->info("Starting Amazon bgts auto-update...");
 
-            // Check database connection
+            // Check database connection (without creating persistent connection)
             try {
                 DB::connection()->getPdo();
                 $this->info("✓ Database connection OK");
+                // Immediately disconnect after check to prevent connection buildup
+                DB::connection()->disconnect();
             } catch (\Exception $e) {
                 $this->error("✗ Database connection failed: " . $e->getMessage());
                 return 1;
@@ -43,7 +45,7 @@ class AutoUpdateAmazonBgtKw extends Command
             $campaigns = $this->amazonAcosKwControlData();
 
             // Close connection after data fetching
-            DB::disconnect();
+            DB::connection()->disconnect();
 
             if (empty($campaigns)) {
                 $this->warn("No campaigns matched filter conditions.");
@@ -96,7 +98,11 @@ class AutoUpdateAmazonBgtKw extends Command
 
         } finally {
             // Ensure connection is closed
-            DB::disconnect();
+            try {
+                DB::connection()->disconnect();
+            } catch (\Exception $e) {
+                // Ignore disconnect errors
+            }
         }
 
         return 0;
@@ -114,6 +120,7 @@ class AutoUpdateAmazonBgtKw extends Command
 
             // Return empty array if no SKUs found
             if (empty($skus)) {
+                DB::connection()->disconnect();
                 return [];
             }
 
@@ -136,6 +143,9 @@ class AutoUpdateAmazonBgtKw extends Command
                 ->where('campaignName', 'NOT LIKE', '%PT.')
                 ->where('campaignStatus', '!=', 'ARCHIVED')
                 ->get();
+
+            // Disconnect after query
+            DB::connection()->disconnect();
 
             $result = [];
             $totalSpend = 0;
@@ -254,11 +264,16 @@ class AutoUpdateAmazonBgtKw extends Command
                 $result[] = (object) $row;
             }
 
+            DB::connection()->disconnect();
             return $result;
         } catch (\Exception $e) {
-            Log::error("Error in amazonAcosKwControlData: " . $e->getMessage(), [
-                'trace' => $e->getTraceAsString()
-            ]);
+            $this->error("Error in amazonAcosKwControlData: " . $e->getMessage());
+            $this->info("Error trace: " . $e->getTraceAsString());
+            try {
+                DB::connection()->disconnect();
+            } catch (\Exception $ex) {
+                // Ignore disconnect errors
+            }
             return [];
         }
     }

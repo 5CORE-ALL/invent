@@ -29,10 +29,12 @@ class AutoUpdateAmzUnderPtBids extends Command
         try {
             $this->info("Starting Amazon bids auto-update...");
 
-            // Check database connection
+            // Check database connection (without creating persistent connection)
             try {
                 DB::connection()->getPdo();
                 $this->info("✓ Database connection OK");
+                // Immediately disconnect after check to prevent connection buildup
+                DB::connection()->disconnect();
             } catch (\Exception $e) {
                 $this->error("✗ Database connection failed: " . $e->getMessage());
                 return 1;
@@ -134,7 +136,7 @@ class AutoUpdateAmzUnderPtBids extends Command
             $this->error("Stack trace: " . $e->getTraceAsString());
             return 1;
         } finally {
-            DB::disconnect();
+            DB::connection()->disconnect();
         }
     }
 
@@ -311,7 +313,7 @@ class AutoUpdateAmzUnderPtBids extends Command
             }
             }
 
-            DB::disconnect();
+            DB::connection()->disconnect();
             return $result;
         
         } catch (\Exception $e) {
@@ -319,7 +321,7 @@ class AutoUpdateAmzUnderPtBids extends Command
             $this->error("Stack trace: " . $e->getTraceAsString());
             return [];
         } finally {
-            DB::disconnect();
+            DB::connection()->disconnect();
         }
     }
 

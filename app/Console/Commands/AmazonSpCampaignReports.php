@@ -15,10 +15,12 @@ class AmazonSpCampaignReports extends Command
     public function handle()
     {
         try {
-            // Check database connection
+            // Check database connection (without creating persistent connection)
             try {
                 DB::connection()->getPdo();
                 $this->info("✓ Database connection OK");
+                // Immediately disconnect after check to prevent connection buildup
+                DB::connection()->disconnect();
             } catch (\Exception $e) {
                 $this->error("✗ Database connection failed: " . $e->getMessage());
                 return 1;
@@ -56,7 +58,7 @@ class AmazonSpCampaignReports extends Command
             foreach ($dateRanges as $rangeLabel => [$startDate, $endDate]) {
                 $this->fetchReport($profileId, $adType, $reportTypeId, $startDate, $endDate, $rangeLabel, false);
                 // Close connection between reports to prevent buildup
-                DB::disconnect();
+                DB::connection()->disconnect();
             }
 
             $this->info("✅ All Sponsored Products reports processed successfully.");
@@ -66,7 +68,7 @@ class AmazonSpCampaignReports extends Command
             return 1;
         } finally {
             // Ensure connection is closed
-            DB::disconnect();
+            DB::connection()->disconnect();
         }
 
         return 0;
@@ -285,7 +287,7 @@ class AmazonSpCampaignReports extends Command
                 }
 
                 // Close connection after each chunk to prevent buildup
-                DB::disconnect();
+                DB::connection()->disconnect();
             }
 
             $this->info("[SPONSORED_PRODUCTS - $finalRangeKey] Stored " . $totalStored . " rows to DB.");
@@ -294,7 +296,7 @@ class AmazonSpCampaignReports extends Command
             $this->error("[$reportName] Error in downloadAndParseReport: " . $e->getMessage());
             $this->info("Error trace: " . $e->getTraceAsString());
         } finally {
-            DB::disconnect();
+            DB::connection()->disconnect();
         }
     }
 

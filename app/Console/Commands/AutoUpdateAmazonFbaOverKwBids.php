@@ -26,10 +26,12 @@ class AutoUpdateAmazonFbaOverKwBids extends Command
         try {
             $this->info("Starting Amazon bids auto-update...");
 
-            // Check database connection
+            // Check database connection (without creating persistent connection)
             try {
                 DB::connection()->getPdo();
                 $this->info("✓ Database connection OK");
+                // Immediately disconnect after check to prevent connection buildup
+                DB::connection()->disconnect();
             } catch (\Exception $e) {
                 $this->error("✗ Database connection failed: " . $e->getMessage());
                 return 1;
@@ -40,7 +42,7 @@ class AutoUpdateAmazonFbaOverKwBids extends Command
             $campaigns = $this->getAutomateAmzUtilizedBgtKw();
 
             // Close connection after data fetching
-            DB::disconnect();
+            DB::connection()->disconnect();
 
             if (empty($campaigns)) {
                 $this->warn("No campaigns matched filter conditions.");
@@ -76,7 +78,7 @@ class AutoUpdateAmazonFbaOverKwBids extends Command
 
         } finally {
             // Ensure connection is closed
-            DB::disconnect();
+            DB::connection()->disconnect();
         }
 
         return 0;

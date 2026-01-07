@@ -1338,6 +1338,9 @@
                                                         Carousal</a>
                                                 </li>
                                                 <li>
+                                                    <a href="{{ route('meta.ads.facebook.carousal.new') }}">FB GRP CAROUSAL NEW</a>
+                                                </li>
+                                                <li>
                                                     <a href="{{ route('meta.ads.facebook.existing.post') }}">FB
                                                         Existing Post</a>
                                                 </li>

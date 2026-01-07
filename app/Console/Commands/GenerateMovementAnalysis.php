@@ -15,11 +15,14 @@ class GenerateMovementAnalysis extends Command
     public function handle()
     {
         try {
-            // Check database connection
+            // Check database connection (without creating persistent connection)
             try {
                 DB::connection()->getPdo();
                 DB::connection('apicentral')->getPdo();
                 $this->info("✓ Database connections OK");
+                // Immediately disconnect after check to prevent connection buildup
+                DB::connection()->disconnect();
+                DB::connection('apicentral')->disconnect();
             } catch (\Exception $e) {
                 $this->error("✗ Database connection failed: " . $e->getMessage());
                 return 1;
@@ -54,7 +57,7 @@ class GenerateMovementAnalysis extends Command
 
             if ($orderData->isEmpty()) {
                 $this->warn('⚠️ No data found in shopify_order_items for the given range.');
-                DB::disconnect();
+                DB::connection()->disconnect();
                 return 0;
             }
 
@@ -81,7 +84,7 @@ class GenerateMovementAnalysis extends Command
 
             if (empty($grouped)) {
                 $this->warn('⚠️ No valid SKU data to process.');
-                DB::disconnect();
+                DB::connection()->disconnect();
                 return 0;
             }
 
@@ -98,7 +101,7 @@ class GenerateMovementAnalysis extends Command
                         ]
                     );
                 }
-                DB::disconnect();
+                DB::connection()->disconnect();
             }
 
             $this->info('✅ movement_analysis data generated successfully for ' . count($grouped) . ' SKUs.');
@@ -108,7 +111,7 @@ class GenerateMovementAnalysis extends Command
             $this->error("Stack trace: " . $e->getTraceAsString());
             return 1;
         } finally {
-            DB::disconnect();
+            DB::connection()->disconnect();
             try {
                 DB::connection('apicentral')->disconnect();
             } catch (\Exception $e) {

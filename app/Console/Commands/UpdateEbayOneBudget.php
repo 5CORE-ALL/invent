@@ -22,10 +22,12 @@ class UpdateEbayOneBudget extends Command
     public function handle()
     {
         try {
-            // Check database connection
+            // Check database connection (without creating persistent connection)
             try {
                 DB::connection()->getPdo();
                 $this->info("✓ Database connection OK");
+                // Immediately disconnect after check to prevent connection buildup
+                DB::connection()->disconnect();
             } catch (\Exception $e) {
                 $this->error("✗ Database connection failed: " . $e->getMessage());
                 return 1;
@@ -46,7 +48,7 @@ class UpdateEbayOneBudget extends Command
                 ->where('campaignStatus', 'RUNNING')
                 ->get();
             
-            DB::disconnect();
+            DB::connection()->disconnect();
 
             if ($campaignReports->isEmpty()) {
                 $this->info('No running campaigns found.');
@@ -160,7 +162,7 @@ class UpdateEbayOneBudget extends Command
             $this->error('Command failed with error: ' . $e->getMessage());
             return 1;
         } finally {
-            DB::disconnect();
+            DB::connection()->disconnect();
         }
     }
 

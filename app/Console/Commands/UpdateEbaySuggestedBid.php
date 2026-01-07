@@ -97,7 +97,7 @@ class UpdateEbaySuggestedBid extends Command
                 
                 $ebayMetrics = EbayMetric::whereIn("sku", $skus)->get();
             }
-            DB::disconnect();
+            DB::connection()->disconnect();
             
             if ($ebayMetrics->isEmpty()) {
                 $this->info('No eBay metrics found for the SKUs.');
@@ -309,7 +309,7 @@ class UpdateEbaySuggestedBid extends Command
             $this->error('Command failed with error: ' . $e->getMessage());
             return 1;
         } finally {
-            DB::disconnect();
+            DB::connection()->disconnect();
         }
     }
 
