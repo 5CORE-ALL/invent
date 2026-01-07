@@ -250,10 +250,8 @@ class UpdateMarketplaceDailyMetrics extends Command
         $tacosPercentage = $totalRevenue > 0 ? (($kwSpent + $ptSpent + $hlSpent) / $totalRevenue) * 100 : 0;
         $nPft = $pftPercentage - $tacosPercentage;
         
-        // Net Profit Amount = Total PFT - (KW Spent + PT Spent + HL Spent)
-        $netProfitAmount = $totalPft - ($kwSpent + $ptSpent + $hlSpent);
-        // N ROI = (Net Profit / COGS) * 100
-        $nRoi = $totalCogs > 0 ? ($netProfitAmount / $totalCogs) * 100 : 0;
+        // N ROI = ROI % - TACOS % (same as N PFT formula)
+        $nRoi = $roiPercentage - $tacosPercentage;
 
         return [
             'total_orders' => $totalOrders,
@@ -408,10 +406,8 @@ class UpdateMarketplaceDailyMetrics extends Command
         $tacosPercentage = $totalRevenue > 0 ? (($kwSpent + $pmtSpent) / $totalRevenue) * 100 : 0;
         $nPft = $pftPercentage - $tacosPercentage;
         
-        // Net Profit Amount = Total PFT - (KW Spent + PMT Spent)
-        $netProfitAmount = $totalPft - ($kwSpent + $pmtSpent);
-        // N ROI = (Net Profit / COGS) * 100
-        $nRoi = $totalCogs > 0 ? ($netProfitAmount / $totalCogs) * 100 : 0;
+        // N ROI = ROI % - TACOS % (same as N PFT formula)
+        $nRoi = $roiPercentage - $tacosPercentage;
 
         return [
             'total_orders' => $totalOrders,
@@ -444,10 +440,17 @@ class UpdateMarketplaceDailyMetrics extends Command
         }
 
         // Get unique SKUs from orders (same as Ebay2SalesController)
+        // For OPEN BOX or USED items, extract the base SKU
         $skus = [];
         foreach ($orders as $order) {
             foreach ($order->items as $item) {
-                $skus[] = $item->sku;
+                $baseSku = $item->sku;
+                if (stripos($item->sku, 'OPEN BOX') !== false) {
+                    $baseSku = trim(str_ireplace('OPEN BOX', '', $item->sku));
+                } elseif (stripos($item->sku, 'USED') !== false) {
+                    $baseSku = trim(str_ireplace('USED', '', $item->sku));
+                }
+                $skus[] = $baseSku;
             }
         }
         $skus = array_unique($skus);
@@ -485,12 +488,6 @@ class UpdateMarketplaceDailyMetrics extends Command
             foreach ($order->items as $item) {
                 if (!$item->sku || $item->sku === '') continue;
 
-                // Skip OPEN BOX and USED items - they don't have ProductMaster entries
-                $skuUpper = strtoupper($item->sku);
-                if (strpos($skuUpper, 'OPEN BOX') !== false || strpos($skuUpper, 'USED') !== false) {
-                    continue;
-                }
-
                 $totalOrders++;
                 $quantity = (int) ($item->quantity ?? 1);
                 $price = (float) ($item->price ?? 0); // This is TOTAL price for all quantity
@@ -506,9 +503,16 @@ class UpdateMarketplaceDailyMetrics extends Command
                     $totalQuantityForPrice += $quantity;
                 }
 
-                // Get LP, Ship, and Weight Act from ProductMaster (using exact SKU match like Ebay2SalesController)
-                $sku = $item->sku;
-                $pm = $productMasters[$sku] ?? null;
+                // For OPEN BOX or USED items, use the base SKU to get ProductMaster data
+                $lookupSku = $item->sku;
+                if (stripos($item->sku, 'OPEN BOX') !== false) {
+                    $lookupSku = trim(str_ireplace('OPEN BOX', '', $item->sku));
+                } elseif (stripos($item->sku, 'USED') !== false) {
+                    $lookupSku = trim(str_ireplace('USED', '', $item->sku));
+                }
+
+                // Get LP, Ship, and Weight Act from ProductMaster (using lookup SKU)
+                $pm = $productMasters[$lookupSku] ?? null;
                 $lp = 0;
                 $ship = 0;
 
@@ -569,10 +573,8 @@ class UpdateMarketplaceDailyMetrics extends Command
         $tacosPercentage = $totalRevenue > 0 ? (($kwSpent + $pmtSpent) / $totalRevenue) * 100 : 0;
         $nPft = $pftPercentage - $tacosPercentage;
         
-        // Net Profit Amount = Total PFT - (KW Spent + PMT Spent)
-        $netProfitAmount = $totalPft - ($kwSpent + $pmtSpent);
-        // N ROI = (Net Profit / COGS) * 100
-        $nRoi = $totalCogs > 0 ? ($netProfitAmount / $totalCogs) * 100 : 0;
+        // N ROI = ROI % - TACOS % (same as N PFT formula)
+        $nRoi = $roiPercentage - $tacosPercentage;
 
         return [
             'total_orders' => $totalOrders,
@@ -722,10 +724,8 @@ class UpdateMarketplaceDailyMetrics extends Command
         $tacosPercentage = $totalRevenue > 0 ? (($kwSpent + $pmtSpent) / $totalRevenue) * 100 : 0;
         $nPft = $pftPercentage - $tacosPercentage;
         
-        // Net Profit Amount = Total PFT - (KW Spent + PMT Spent)
-        $netProfitAmount = $totalPft - ($kwSpent + $pmtSpent);
-        // N ROI = (Net Profit / COGS) * 100
-        $nRoi = $totalCogs > 0 ? ($netProfitAmount / $totalCogs) * 100 : 0;
+        // N ROI = ROI % - TACOS % (same as N PFT formula)
+        $nRoi = $roiPercentage - $tacosPercentage;
 
         return [
             'total_orders' => $totalOrders,

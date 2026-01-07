@@ -60,15 +60,16 @@ class FetchEbay2Orders extends Command
 
     private function dateRanges()
     {
-        $today = Carbon::today();
+        // Use California timezone (America/Los_Angeles) to match eBay order times
+        $today = Carbon::now('America/Los_Angeles')->startOfDay();
 
         return [
             'l30' => [
-                'start' => $today->copy()->subDays(29),
-                'end' => $today->copy()->subDay(),
+                'start' => $today->copy()->subDays(30),
+                'end' => $today->copy(),
             ],
             'l60' => [
-                'start' => $today->copy()->subDays(59),
+                'start' => $today->copy()->subDays(60),
                 'end' => $today->copy()->subDays(30),
             ],
         ];

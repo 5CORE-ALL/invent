@@ -36,6 +36,55 @@
             margin-right: 5px;
         }
 
+        /* Status circle indicators */
+        .status-circle {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            border: 1px solid #ddd;
+        }
+
+        .status-circle.default {
+            background-color: #6c757d;
+        }
+
+        .status-circle.red {
+            background-color: #dc3545;
+        }
+
+        .status-circle.yellow {
+            background-color: #ffc107;
+        }
+
+        .status-circle.green {
+            background-color: #28a745;
+        }
+
+        .status-circle.pink {
+            background-color: #e83e8c;
+        }
+
+        /* Manual dropdown styling */
+        .manual-dropdown-container {
+            position: relative;
+            display: inline-block;
+        }
+
+        .manual-dropdown-container .dropdown-menu {
+            display: none;
+        }
+
+        .manual-dropdown-container.show .dropdown-menu {
+            display: block;
+        }
+
+        .manual-dropdown-container .dropdown-item.active {
+            background-color: #e9ecef;
+            font-weight: 600;
+        }
+
         /* Link tooltip styling */
         .link-tooltip {
             position: absolute;
@@ -81,7 +130,7 @@
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="all">All Inventory</option>
+                        <option value="all" >All Inventory</option>
                         <option value="zero">0 Inventory</option>
                         <option value="more" selected>More than 0</option>
                     </select>
@@ -136,6 +185,25 @@
                         <option value="30-100">30-100%</option>
                         <option value="100plus">100%+</option>
                     </select>
+
+                    <!-- DIL Filter -->
+                    <div class="manual-dropdown-container">
+                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="dilFilterDropdown">
+                            <span class="status-circle default"></span> DIL%
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="dilFilterDropdown">
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="all">
+                                    <span class="status-circle default"></span> All DIL</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="red">
+                                    <span class="status-circle red"></span> Red (&lt;16.66%)</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="yellow">
+                                    <span class="status-circle yellow"></span> Yellow (16.66-25%)</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="green">
+                                    <span class="status-circle green"></span> Green (25-50%)</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="pink">
+                                    <span class="status-circle pink"></span> Pink (50%+)</a></li>
+                        </ul>
+                    </div>
 
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
@@ -350,6 +418,7 @@
 
     @section('script-bottom')
     <script>
+        // Cache bust: v2.1 - OPEN BOX items now included with base SKU lookup
         const COLUMN_VIS_KEY = "ebay2_tabulator_column_visibility";
         let metricsChart = null;
         let skuMetricsChart = null;
@@ -1662,6 +1731,21 @@
                 ajaxResponse: function(url, params, response) {
                     // Extract the data array from the response object
                     allTableData = response.data || []; // Store unfiltered data
+                    console.log('API Response - Total rows:', allTableData.length);
+                    
+                    // Calculate total L30 for verification
+                    let totalL30 = 0;
+                    let parentCount = 0;
+                    allTableData.forEach(row => {
+                        const sku = row['(Child) sku'] || '';
+                        if (sku.toUpperCase().includes('PARENT')) {
+                            parentCount++;
+                        } else {
+                            totalL30 += parseFloat(row['eBay L30'] || 0);
+                        }
+                    });
+                    console.log('Total eBay L30 from API:', totalL30, '(excluding', parentCount, 'PARENT rows)');
+                    
                     return response.data || [];
                 },
                 ajaxSorting: false,
@@ -1822,7 +1906,7 @@
                             const INV = parseFloat(rowData.INV) || 0;
                             const OVL30 = parseFloat(rowData['L30']) || 0;
                             
-                            if (INV === 0) return '<span style="color: #6c757d;">0%</span>';
+                            if (INV === 0) return '<span style="color: #a00211; font-weight: 600;">0%</span>'; // red for 0%
                             
                             const dil = (OVL30 / INV) * 100;
                             let color = '';
@@ -2705,6 +2789,7 @@
                 const cvrFilter = $('#cvr-filter').val();
                 const statusFilter = $('#status-filter').val();
                 const adsFilter = $('#ads-filter').val();
+                const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
 
                 table.clearFilter(true);
 
@@ -2811,6 +2896,24 @@
                         return true;
                     });
                 }
+
+                if (dilFilter !== 'all') {
+                    table.addFilter(function(data) {
+                        const INV = parseFloat(data['INV'] || 0);
+                        const OVL30 = parseFloat(data['L30'] || 0);
+                        
+                        if (INV === 0) return dilFilter === 'red'; // 0% is red
+                        
+                        // Calculate DIL percentage (matching the column formatter)
+                        const dil = (OVL30 / INV) * 100;
+                        
+                        if (dilFilter === 'red') return dil < 16.66;
+                        if (dilFilter === 'yellow') return dil >= 16.66 && dil < 25;
+                        if (dilFilter === 'green') return dil >= 25 && dil < 50;
+                        if (dilFilter === 'pink') return dil >= 50;
+                        return true;
+                    });
+                }
                 
                 updateCalcValues();
                 updateSummary();
@@ -2822,6 +2925,49 @@
 
             $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #status-filter, #ads-filter').on('change', function() {
                 applyFilters();
+            });
+
+            // DIL Filter Dropdown Button Handlers
+            $(document).on('click', '.manual-dropdown-container .btn', function(e) {
+                e.stopPropagation();
+                const container = $(this).closest('.manual-dropdown-container');
+                
+                // Close other dropdowns
+                $('.manual-dropdown-container').not(container).removeClass('show');
+                
+                // Toggle current dropdown
+                container.toggleClass('show');
+            });
+
+            $(document).on('click', '.column-filter', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const $item = $(this);
+                const column = $item.data('column');
+                const color = $item.data('color');
+                const container = $item.closest('.manual-dropdown-container');
+                const button = container.find('.btn');
+                
+                // Update active state
+                container.find('.column-filter').removeClass('active');
+                $item.addClass('active');
+                
+                // Update button text and icon
+                const statusCircle = $item.find('.status-circle').clone();
+                const text = $item.text().trim();
+                button.html('').append(statusCircle).append(' DIL%');
+                
+                // Close dropdown
+                container.removeClass('show');
+                
+                // Apply filters
+                applyFilters();
+            });
+
+            // Close dropdowns when clicking outside
+            $(document).on('click', function() {
+                $('.manual-dropdown-container').removeClass('show');
             });
             
             // Update PFT% and ROI% calc values
@@ -2847,9 +2993,13 @@
                 // const avgRoi = sumLp > 0 ? (totalProfit / sumLp) * 100 : 0;
             }
 
-            // Update summary badges for INV > 0
+            // Update summary badges - ALWAYS use ALL data, not filtered
             function updateSummary() {
-                const data = table.getData("active");
+                // Use allTableData (include ALL rows, even PARENT rows)
+                const data = allTableData;
+                
+                console.log('updateSummary - Total rows:', data.length);
+                
                 let totalPmtSpendL30 = 0;
                 let totalPftAmt = 0;
                 let totalSalesAmt = 0;
@@ -2867,32 +3017,31 @@
                 const countedItemsPmt = new Set();
 
                 data.forEach(row => {
-                    if (parseFloat(row.INV) > 0) {
-                        totalPftAmt += parseFloat(row['Total_pft'] || 0);
-                        totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
-                        totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * parseFloat(row['eBay L30'] || 0);
-                        totalFbaInv += parseFloat(row.INV || 0);
-                        totalFbaL30 += parseFloat(row['eBay L30'] || 0);
-                        
-                        // PMT Spend - count once per item_id (listing-wise ads)
-                        const itemId = row['eBay_item_id'] || '';
-                        const pmtSpend = parseFloat(row['pmt_spend_L30'] || 0);
-                        if (itemId && pmtSpend > 0 && !countedItemsPmt.has(itemId)) {
-                            countedItemsPmt.add(itemId);
-                            totalPmtSpendL30 += pmtSpend;
-                        }
-                        
-                        // Count SKUs with 0 sold (L30 = 0)
-                        const l30 = parseFloat(row['eBay L30'] || 0);
-                        if (l30 === 0) {
-                            zeroSoldCount++;
-                        }
-                        
-                        const dil = parseFloat(row['E Dil%'] || 0);
-                        if (!isNaN(dil)) {
-                            totalDilPercent += dil;
-                            dilCount++;
-                        }
+                    // Count all rows regardless of filters
+                    totalPftAmt += parseFloat(row['Total_pft'] || 0);
+                    totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
+                    totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * parseFloat(row['eBay L30'] || 0);
+                    totalFbaInv += parseFloat(row.INV || 0);
+                    totalFbaL30 += parseFloat(row['eBay L30'] || 0);
+                    
+                    // PMT Spend - count once per item_id (listing-wise ads)
+                    const itemId = row['eBay_item_id'] || '';
+                    const pmtSpend = parseFloat(row['pmt_spend_L30'] || 0);
+                    if (itemId && pmtSpend > 0 && !countedItemsPmt.has(itemId)) {
+                        countedItemsPmt.add(itemId);
+                        totalPmtSpendL30 += pmtSpend;
+                    }
+                    
+                    // Count SKUs with 0 sold (L30 = 0)
+                    const l30 = parseFloat(row['eBay L30'] || 0);
+                    if (l30 === 0) {
+                        zeroSoldCount++;
+                    }
+                    
+                    const dil = parseFloat(row['E Dil%'] || 0);
+                    if (!isNaN(dil)) {
+                        totalDilPercent += dil;
+                        dilCount++;
                     }
                 });
 
@@ -2901,9 +3050,7 @@
 
                 let totalViews = 0;
                 data.forEach(row => {
-                    if (parseFloat(row.INV) > 0) {
-                        totalViews += parseFloat(row.views || 0);
-                    }
+                    totalViews += parseFloat(row.views || 0);
                 });
                 $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
                 
@@ -2919,6 +3066,7 @@
                 const netRoiPercent = roiPercent - parseFloat(tcosPercent);
                 $('#net-roi-percent-badge').text('NROI %: ' + netRoiPercent.toFixed(2) + '%');
                 
+                console.log('updateSummary - Total eBay L30:', totalFbaL30);
                 $('#total-fba-l30-badge').text('Total eBay L30: ' + Math.round(totalFbaL30).toLocaleString());
                 $('#zero-sold-count-badge').text('0 Sold Count: ' + zeroSoldCount.toLocaleString());
                 $('#total-pft-amt').text('$' + Math.round(totalPftAmt));

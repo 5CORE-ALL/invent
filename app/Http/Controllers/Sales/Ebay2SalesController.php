@@ -48,7 +48,15 @@ class Ebay2SalesController extends Controller
         $itemIds = [];
         foreach ($orders as $order) {
             foreach ($order->items as $item) {
-                $skus[] = $item->sku;
+                // For OPEN BOX or USED items, extract the base SKU
+                $baseSku = $item->sku;
+                if (stripos($item->sku, 'OPEN BOX') !== false) {
+                    $baseSku = trim(str_ireplace('OPEN BOX', '', $item->sku));
+                } elseif (stripos($item->sku, 'USED') !== false) {
+                    $baseSku = trim(str_ireplace('USED', '', $item->sku));
+                }
+                $skus[] = $baseSku;
+                
                 if ($item->item_id) {
                     $itemIds[] = $item->item_id;
                 }
@@ -103,13 +111,15 @@ class Ebay2SalesController extends Controller
         $data = [];
         foreach ($orders as $order) {
             foreach ($order->items as $item) {
-                // Skip OPEN BOX and USED items - they don't have ProductMaster entries
-                $skuUpper = strtoupper($item->sku);
-                if (strpos($skuUpper, 'OPEN BOX') !== false || strpos($skuUpper, 'USED') !== false) {
-                    continue;
+                // For OPEN BOX or USED items, use the base SKU to get ProductMaster data
+                $lookupSku = $item->sku;
+                if (stripos($item->sku, 'OPEN BOX') !== false) {
+                    $lookupSku = trim(str_ireplace('OPEN BOX', '', $item->sku));
+                } elseif (stripos($item->sku, 'USED') !== false) {
+                    $lookupSku = trim(str_ireplace('USED', '', $item->sku));
                 }
-
-                $pm = $productMasters[$item->sku] ?? null;
+                
+                $pm = $productMasters[$lookupSku] ?? null;
 
                 // Extract LP, Ship, and Weight Act
                 $lp = 0;
@@ -169,7 +179,7 @@ class Ebay2SalesController extends Controller
                     'price' => round($unitPrice, 2),
                     'total_amount' => $order->total_amount,
                     'currency' => $order->currency,
-                    'order_date' => $order->order_date,
+                    'order_date' => \Carbon\Carbon::parse($order->order_date)->setTimezone('America/Los_Angeles')->toIso8601String(),
                     'status' => $order->status,
                     'period' => $order->period,
                     'lp' => round($lp, 2),

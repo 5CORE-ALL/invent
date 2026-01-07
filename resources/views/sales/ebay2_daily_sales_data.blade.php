@@ -497,10 +497,8 @@
                 const tacosPercentage = totalRevenue > 0 ? (PMT_SPENT / totalRevenue) * 100 : 0;
                 const mPft = pftPercentage - tacosPercentage;
                 
-                // Calculate N ROI: (Net Profit / Total COGS) * 100
-                // Net Profit = Total PFT - PMT Spent
-                const netProfit = totalPft - PMT_SPENT;
-                const nRoi = totalCogs > 0 ? (netProfit / totalCogs) * 100 : 0;
+                // Calculate N ROI: ROI % - TACOS % (same as N PFT formula)
+                const nRoi = roiPercentage - tacosPercentage;
 
                 $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
                 $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());

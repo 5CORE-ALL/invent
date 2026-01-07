@@ -16,6 +16,8 @@ use App\Models\Ebay2GeneralReport;
 use App\Models\ADVMastersData;
 use App\Models\Ebay2Metric;
 use App\Models\EbayTwoListingStatus;
+use App\Models\Ebay2Order;
+use App\Models\Ebay2OrderItem;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -94,7 +96,8 @@ class EbayTwoController extends Controller
         $productMasters = ProductMaster::orderBy("parent", "asc")
             ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy("sku", "asc")
-            ->get();
+            ->get()
+            ->keyBy("sku");
 
         // 2. SKU list
         $skus = $productMasters->pluck("sku")
@@ -108,10 +111,43 @@ class EbayTwoController extends Controller
             ->get()
             ->keyBy("sku");
 
+        // Fetch ALL ebay2_metrics (including Open Box items not in product_masters)
         $ebayMetrics = Ebay2Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'views', 'item_id')
-            ->whereIn("sku", $skus)
             ->get()
-            ->keyBy("sku");  
+            ->keyBy("sku");
+        
+        // Add OPEN BOX and USED items from ebay2_metrics to processing list
+        foreach ($ebayMetrics as $metric) {
+            $sku = $metric->sku;
+            
+            // Skip if already in product masters
+            if (isset($productMasters[$sku])) {
+                continue;
+            }
+            
+            // Check if this is OPEN BOX or USED item
+            $isOpenBox = stripos($sku, 'OPEN BOX') !== false;
+            $isUsed = stripos($sku, 'USED') !== false;
+            
+            if ($isOpenBox || $isUsed) {
+                // Extract base SKU
+                $baseSku = $sku;
+                if ($isOpenBox) {
+                    $baseSku = trim(str_ireplace('OPEN BOX', '', $baseSku));
+                } elseif ($isUsed) {
+                    $baseSku = trim(str_ireplace('USED', '', $baseSku));
+                }
+                
+                // Check if base SKU exists in product masters
+                if (isset($productMasters[$baseSku])) {
+                    // Create a pseudo product master entry for this OPEN BOX/USED item
+                    $baseProduct = $productMasters[$baseSku];
+                    $pseudoProduct = clone $baseProduct;
+                    $pseudoProduct->sku = $sku;
+                    $productMasters[$sku] = $pseudoProduct;
+                }
+            }
+        }
 
         $nrValues = EbayTwoDataView::whereIn("sku", $skus)->pluck("value", "sku");
         
@@ -320,6 +356,75 @@ class EbayTwoController extends Controller
             $row["image_path"] = $shopify->image_src ?? ($values["image_path"] ?? ($pm->image_path ?? null));
 
             $result[] = (object) $row;
+        }
+
+        // Add Open Box and other items from ebay2_metrics that don't exist in product_masters
+        $processedSkus = collect($result)->pluck('(Child) sku')->toArray();
+        foreach ($ebayMetrics as $metricSku => $metric) {
+            if (!in_array($metricSku, $processedSkus)) {
+                // This SKU exists in ebay2_metrics but not in product_masters (e.g., Open Box items)
+                $row = [];
+                $row["Parent"] = "";
+                $row["(Child) sku"] = $metricSku;
+                $row['fba'] = "";
+                $row["INV"] = 0;
+                $row["L30"] = 0;
+                $row['nr_req'] = 'REQ';
+                $row['B Link'] = '';
+                $row['S Link'] = '';
+                
+                // eBay2 Metrics from ebay_2_metrics
+                $row["eBay L30"] = $metric->ebay_l30 ?? 0;
+                $row["eBay L60"] = $metric->ebay_l60 ?? 0;
+                $row["eBay Price"] = $metric->ebay_price ?? 0;
+                $row['views'] = $metric->views ?? 0;
+                $row['eBay_item_id'] = $metric->item_id ?? null;
+                $row["E Dil%"] = 0;
+                
+                // Initialize ad metrics
+                foreach (['L60', 'L30', 'L7'] as $range) {
+                    foreach (['Imp', 'Clk', 'Ctr', 'Sls', 'GENERAL_SPENT'] as $suffix) {
+                        $key = "Pmt{$suffix}{$range}";
+                        $row[$key] = 0;
+                    }
+                }
+                
+                $row["AD_Spend_L30"] = 0;
+                $row["spend_l30"] = 0;
+                $row["pmt_spend_L30"] = 0;
+                $row["kw_spend_L30"] = 0;
+                $row["AD_Sales_L30"] = 0;
+                $row["AD_Units_L30"] = 0;
+                
+                $price = floatval($row["eBay Price"] ?? 0);
+                $units_ordered_l30 = floatval($row["eBay L30"] ?? 0);
+                $row["AD%"] = 0;
+                $row["Total_pft"] = 0;
+                $row["Profit"] = 0;
+                $row["T_Sale_l30"] = round($price * $units_ordered_l30, 2);
+                $row["Sales L30"] = $row["T_Sale_l30"];
+                $row["TacosL30"] = 0;
+                $row["GPFT%"] = 0;
+                $row["PFT %"] = 0;
+                $row["ROI%"] = 0;
+                $row['SCVR'] = 0;
+                $row["percentage"] = 0.85;
+                $row["pmt_ads"] = 0;
+                $row["LP_productmaster"] = 0;
+                $row["Ship_productmaster"] = 0;
+                $row["ebay2_ship"] = 0;
+                $row['NR'] = "";
+                $row['SPRICE'] = null;
+                $row['SGPFT'] = null;
+                $row['SPFT'] = null;
+                $row['SROI'] = null;
+                $row['Listed'] = null;
+                $row['Live'] = null;
+                $row['APlus'] = null;
+                $row["image_path"] = null;
+                
+                $result[] = (object) $row;
+            }
         }
 
         return response()->json([

@@ -175,20 +175,21 @@ class FetchEbay2Metrics extends Command
 
     private function dateRanges()
     {
-        $today = Carbon::today();
+        // Use California timezone to match FetchEbay2Orders
+        $today = Carbon::now('America/Los_Angeles')->startOfDay();
 
         return [
             'l7' => [
                 'start' => $today->copy()->subDays(6),
-                'end' => $today->copy()->subDay(),
+                'end' => $today->copy()->subDay()->endOfDay(),
             ],
             'l30' => [
-                'start' => $today->copy()->subDays(29),
-                'end' => $today->copy()->subDay(),
+                'start' => $today->copy()->subDays(30),
+                'end' => $today->copy()->subDay()->endOfDay(),
             ],
             'l60' => [
-                'start' => $today->copy()->subDays(59),
-                'end' => $today->copy()->subDays(30),
+                'start' => $today->copy()->subDays(60),
+                'end' => $today->copy()->subDays(31)->endOfDay(),
             ],
         ];
     }
