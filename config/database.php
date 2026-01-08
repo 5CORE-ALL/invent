@@ -60,9 +60,13 @@ return [
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
-                PDO::ATTR_TIMEOUT => 5, // Connection timeout
+                PDO::ATTR_TIMEOUT => 5,
                 PDO::ATTR_EMULATE_PREPARES => false,
             ]) : [],
+            'pool' => [
+                'min' => env('DB_POOL_MIN', 2),
+                'max' => env('DB_POOL_MAX', 10),
+            ],
             'sticky' => true,
         ],
 
@@ -83,7 +87,12 @@ return [
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                PDO::ATTR_TIMEOUT => 5,
             ]) : [],
+            'pool' => [
+                'min' => 1,
+                'max' => 5,
+            ],
         ],
 
         'apicentral' => [
@@ -98,6 +107,13 @@ return [
             'prefix' => '',
             'strict' => true,
             'engine' => null,
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                PDO::ATTR_TIMEOUT => 5,
+            ]) : [],
+            'pool' => [
+                'min' => 1,
+                'max' => 5,
+            ],
         ],
 
         'shiphub' => [
@@ -109,6 +125,17 @@ return [
             'password' => env('DB_PASSWORD_SHIPHUB', ''),
             'charset' => 'utf8mb4',
             'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'strict' => true,
+            'engine' => null,
+            'options' => extension_loaded('pdo_mysql') ? array_filter([
+                PDO::ATTR_TIMEOUT => 5,
+            ]) : [],
+            'pool' => [
+                'min' => 1,
+                'max' => 5,
+            ],
+        ],
             'prefix' => '',
             'strict' => true,
             'engine' => null,
