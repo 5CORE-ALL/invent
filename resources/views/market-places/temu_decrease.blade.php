@@ -580,6 +580,7 @@
     let decreaseModeActive = false;
     let increaseModeActive = false;
     let selectedSkus = new Set();
+    let soldSpriceBlankFilterActive = false;
     
     // SKU-specific chart
     let skuMetricsChart = null;
@@ -984,8 +985,10 @@
                 $(this).removeClass('btn-danger').addClass('btn-warning');
                 $(this).html('<i class="fas fa-arrow-down"></i> Decrease Mode');
                 selectedSkus.clear();
+                soldSpriceBlankFilterActive = false;
                 updateSelectedCount();
                 updateSelectAllCheckbox();
+                applyFilters();
             }
         });
         
@@ -1005,8 +1008,10 @@
                 selectedSkus.clear();
                 $(this).removeClass('btn-danger').addClass('btn-success');
                 $(this).html('<i class="fas fa-arrow-up"></i> Increase Mode');
+                soldSpriceBlankFilterActive = false;
                 updateSelectedCount();
                 updateSelectAllCheckbox();
+                applyFilters();
             }
         });
 
@@ -1476,19 +1481,9 @@
                 }
             });
             
-            // Apply table filter to show only sold items with blank SPRICE and INV > 0
-            table.clearFilter();
-            table.addFilter(function(data) {
-                const temuL30Val = data['temu_l30'];
-                const spriceVal = data['sprice'];
-                const invVal = data['inventory'];
-                
-                const temuL30 = temuL30Val ? parseInt(temuL30Val) : 0;
-                const inventory = invVal ? parseInt(invVal) : 0;
-                const spriceIsBlank = !spriceVal || spriceVal === '' || spriceVal === 0 || parseFloat(spriceVal) === 0;
-                
-                return inventory > 0 && temuL30 > 0 && spriceIsBlank;
-            });
+            // Set the filter flag and reapply all filters
+            soldSpriceBlankFilterActive = true;
+            applyFilters();
             
             // Update UI
             updateSelectedCount();
@@ -2268,6 +2263,21 @@
                     if (spriceFilter === 'lt27') return sprice > 0 && sprice < 27;
                     if (spriceFilter === 'gt31') return sprice > 31;
                     return true;
+                });
+            }
+
+            // Sold+SPRC Blank filter (if active)
+            if (soldSpriceBlankFilterActive) {
+                table.addFilter(function(data) {
+                    const temuL30Val = data['temu_l30'];
+                    const spriceVal = data['sprice'];
+                    const invVal = data['inventory'];
+                    
+                    const temuL30 = temuL30Val ? parseInt(temuL30Val) : 0;
+                    const inventory = invVal ? parseInt(invVal) : 0;
+                    const spriceIsBlank = !spriceVal || spriceVal === '' || spriceVal === 0 || parseFloat(spriceVal) === 0;
+                    
+                    return inventory > 0 && temuL30 > 0 && spriceIsBlank;
                 });
             }
 
