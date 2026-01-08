@@ -7,6 +7,15 @@
             paginationMode: "local",
             height: "auto",
             placeholder: "No Data Available",
+            rowFormatter: function(row) {
+                const data = row.getData();
+                const group = data.group || '';
+                const rowElement = row.getElement();
+                
+                if (group) {
+                    rowElement.setAttribute('data-group', group);
+                }
+            },
             columns: [
                 {
                     title: "Group",
@@ -15,7 +24,99 @@
                     headerSort: true,
                     formatter: function(cell) {
                         const value = cell.getValue();
-                        return value || '<span class="text-muted">No Group</span>';
+                        const row = cell.getRow();
+                        const group = value || '';
+                        
+                        if (!group) {
+                            return '<span class="text-muted">No Group</span>';
+                        }
+                        
+                        // Check if this row is marked as group header
+                        const rowElement = row.getElement();
+                        const isGroupHeader = rowElement.classList.contains('group-header-row');
+                        
+                        if (isGroupHeader) {
+                            return `
+                                <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                                    <span style="flex: 1; text-align: left;">${value}</span>
+                                    <span class="group-toggle-icon" style="cursor: pointer; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; background-color: #f8f9fa; border: 1.5px solid #dee2e6; transition: all 0.3s ease; margin-left: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                                        <i class="fas fa-chevron-down" style="font-size: 11px; color: #495057; transition: all 0.3s ease; font-weight: 600;"></i>
+                                    </span>
+                                </div>
+                            `;
+                        }
+                        
+                        return `<span style="padding-left: 20px;">${value}</span>`;
+                    },
+                    cellClick: function(e, cell) {
+                        const row = cell.getRow();
+                        const rowElement = row.getElement();
+                        const group = (cell.getValue() || '').trim();
+                        
+                        // Only handle clicks on group header rows with toggle icons
+                        if (!rowElement || !rowElement.classList.contains('group-header-row') || !group) {
+                            return;
+                        }
+                        
+                        // Check if click was on the icon or the group text
+                        const clickedElement = e.target;
+                        const toggleIcon = rowElement.querySelector('.group-toggle-icon');
+                        
+                        // Only proceed if clicking on the icon area or group text
+                        if (!toggleIcon && !clickedElement.closest('.group-toggle-icon')) {
+                            // Allow clicking elsewhere in the cell, but check if it's the group header
+                            if (!clickedElement.closest('.tabulator-cell') || 
+                                !rowElement.classList.contains('group-header-row')) {
+                                return;
+                            }
+                        }
+                        
+                        const icon = rowElement.querySelector('.group-toggle-icon i');
+                        if (!icon) {
+                            return;
+                        }
+                        
+                        const isExpanded = rowElement.classList.toggle('expanded');
+                        const toggleButton = icon.closest('.group-toggle-icon');
+                        
+                        // Change icon and button style
+                        if (isExpanded) {
+                            icon.classList.remove('fa-chevron-down');
+                            icon.classList.add('fa-chevron-up');
+                            if (toggleButton) {
+                                toggleButton.style.backgroundColor = '#007bff';
+                                toggleButton.style.borderColor = '#007bff';
+                                toggleButton.style.boxShadow = '0 2px 8px rgba(0, 123, 255, 0.3)';
+                                icon.style.color = '#ffffff';
+                            }
+                        } else {
+                            icon.classList.remove('fa-chevron-up');
+                            icon.classList.add('fa-chevron-down');
+                            if (toggleButton) {
+                                toggleButton.style.backgroundColor = '#f8f9fa';
+                                toggleButton.style.borderColor = '#dee2e6';
+                                toggleButton.style.boxShadow = '0 2px 4px rgba(0,0,0,0.05)';
+                                icon.style.color = '#495057';
+                            }
+                        }
+                        
+                        // Show/hide all rows with the same group
+                        const allRows = table.getRows();
+                        allRows.forEach(r => {
+                            try {
+                                const rData = r.getData();
+                                const rElement = r.getElement();
+                                const rGroup = (rData.group || '').trim();
+                                
+                                if (rGroup === group && rElement && rElement.classList.contains('group-child-row')) {
+                                    rElement.style.display = isExpanded ? 'table-row' : 'none';
+                                }
+                            } catch(err) {
+                                console.error('Error toggling row:', err);
+                            }
+                        });
+                        
+                        e.stopPropagation();
                     }
                 },
                 {
@@ -223,7 +324,70 @@
             }
         });
 
+        // Function to organize groups after data is loaded
+        function organizeGroups() {
+            try {
+                const allRows = table.getRows();
+                if (!allRows || allRows.length === 0) {
+                    return;
+                }
+                
+                const groupMap = {};
+                
+                // First pass: identify all groups and their rows
+                allRows.forEach((row, index) => {
+                    try {
+                        const data = row.getData();
+                        const group = (data.group || '').trim();
+                        const rowElement = row.getElement();
+                        
+                        if (group && rowElement) {
+                            if (!groupMap[group]) {
+                                groupMap[group] = [];
+                            }
+                            groupMap[group].push({ row: row, index: index, element: rowElement });
+                        }
+                    } catch(e) {
+                        console.error('Error processing row:', e);
+                    }
+                });
+                
+                // Second pass: mark first row of each group and hide others
+                Object.keys(groupMap).forEach(group => {
+                    const groupRows = groupMap[group];
+                    
+                    if (groupRows.length > 1) {
+                        // Sort by index to ensure proper order
+                        groupRows.sort((a, b) => a.index - b.index);
+                        
+                        // Mark first row as header
+                        groupRows[0].element.classList.add('group-header-row');
+                        groupRows[0].element.classList.remove('group-child-row');
+                        groupRows[0].element.classList.remove('expanded');
+                        
+                        // Mark and hide other rows
+                        for (let i = 1; i < groupRows.length; i++) {
+                            groupRows[i].element.classList.add('group-child-row');
+                            groupRows[i].element.classList.remove('group-header-row');
+                            groupRows[i].element.style.display = 'none';
+                        }
+                        
+                        // Redraw the first row to update the formatter (show arrow icon)
+                        groupRows[0].row.reformat();
+                    } else if (groupRows.length === 1) {
+                        // Single row in group, no need for collapse
+                        groupRows[0].element.classList.remove('group-header-row', 'group-child-row', 'expanded');
+                        groupRows[0].row.reformat();
+                    }
+                });
+            } catch(e) {
+                console.error('Error organizing groups:', e);
+            }
+        }
+        
         table.on("tableBuilt", function() {
+            organizeGroups();
+            
             function combinedFilter(data) {
                 let searchVal = $("#global-search").val()?.toLowerCase() || "";
                 if (searchVal && !(data.sku?.toLowerCase().includes(searchVal) || data.group?.toLowerCase().includes(searchVal))) {
@@ -268,9 +432,21 @@
                 document.getElementById("percentage-campaigns").innerText = percentage + "%";
             }
 
-            table.on("dataFiltered", updateCampaignStats);
-            table.on("pageLoaded", updateCampaignStats);
-            table.on("dataProcessed", updateCampaignStats);
+            table.on("dataFiltered", function() {
+                updateCampaignStats();
+                setTimeout(organizeGroups, 100);
+            });
+            table.on("pageLoaded", function() {
+                updateCampaignStats();
+                setTimeout(organizeGroups, 100);
+            });
+            table.on("dataProcessed", function() {
+                updateCampaignStats();
+                setTimeout(organizeGroups, 100);
+            });
+            table.on("dataLoaded", function() {
+                setTimeout(organizeGroups, 100);
+            });
 
             $("#global-search").on("keyup", function() {
                 table.setFilter(combinedFilter);
@@ -284,6 +460,30 @@
         });
 
         document.body.style.zoom = "70%";
+        
+        // Add hover effects for toggle buttons using event delegation
+        $(document).on('mouseenter', '.group-toggle-icon', function() {
+            if (!$(this).closest('.group-header-row').hasClass('expanded')) {
+                $(this).css({
+                    'backgroundColor': '#e9ecef',
+                    'borderColor': '#007bff',
+                    'boxShadow': '0 2px 6px rgba(0, 123, 255, 0.2)'
+                });
+                $(this).find('i').css('color', '#007bff');
+            }
+        });
+        
+        $(document).on('mouseleave', '.group-toggle-icon', function() {
+            const isExpanded = $(this).closest('.group-header-row').hasClass('expanded');
+            if (!isExpanded) {
+                $(this).css({
+                    'backgroundColor': '#f8f9fa',
+                    'borderColor': '#dee2e6',
+                    'boxShadow': '0 2px 4px rgba(0,0,0,0.05)'
+                });
+                $(this).find('i').css('color', '#495057');
+            }
+        });
     });
 </script>
 

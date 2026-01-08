@@ -754,13 +754,23 @@ class GoogleAdsController extends Controller
 
     public function getGoogleShoppingAdsData(){
 
-        $productMasters = ProductMaster::orderBy('parent', 'asc')
+        // Get all product masters excluding soft deleted ones (similar to Amazon)
+        $productMasters = ProductMaster::whereNull('deleted_at')
+            ->orderBy('parent', 'asc')
             ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
 
+        // Count total SKUs (non-parent SKUs only, similar to Amazon KW/PT)
+        $totalSkuCount = ProductMaster::whereNull('deleted_at')
+            ->where('sku', 'NOT LIKE', 'PARENT %')
+            ->count();
+
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        
+        // Get NRL, NRA from GoogleDataView (similar to AmazonDataView)
+        $nrValues = GoogleDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
         // Calculate date ranges
         $dateRanges = $this->calculateDateRanges();
@@ -781,118 +791,177 @@ class GoogleAdsController extends Controller
                 'ga4_ad_sales'
             )
             ->where('advertising_channel_type', 'SHOPPING')
+            ->where('campaign_status', '!=', 'ARCHIVED')
             ->whereBetween('date', [$dateRanges['L30']['start'], $dateRanges['L30']['end']])
             ->get();
 
         $result = [];
-        
-        // Get all unique campaign IDs from the fetched campaigns
-        $uniqueCampaignIds = $googleCampaigns->pluck('campaign_id')->unique();
-        
-        // Create a map of campaign_id to campaign_name for quick lookup
-        $campaignMap = $googleCampaigns->groupBy('campaign_id')->map(function ($campaigns) {
-            return $campaigns->first();
-        });
+        $campaignMap = [];
 
-        // Process each unique campaign
-        foreach ($uniqueCampaignIds as $campaignId) {
-            $campaign = $campaignMap[$campaignId];
-            $campaignName = $campaign->campaign_name;
-            
-            // Try to find matching SKU from ProductMaster
-            $matchedSku = null;
-            $matchedPm = null;
-            
-            foreach ($productMasters as $pm) {
-                $sku = strtoupper(trim($pm->sku));
-                // Remove trailing period from campaign name (some campaigns have "." at the end)
-                $campaignCleaned = rtrim(trim($campaignName), '.');
-                $campaignUpper = strtoupper(trim($campaignCleaned));
+        // Process each SKU (similar to Amazon - loop through SKUs, not campaigns)
+        foreach ($productMasters as $pm) {
+            // Skip parent SKUs (similar to Amazon KW/PT)
+            $sku = strtoupper(trim($pm->sku));
+            if (stripos($sku, 'PARENT') !== false) {
+                continue;
+            }
+
+            $parent = $pm->parent;
+            $shopify = $shopifyData[$pm->sku] ?? null;
+
+            // Find matching campaign for this SKU
+            $matchedCampaign = $googleCampaigns->first(function ($c) use ($sku) {
+                $campaign = strtoupper(trim($c->campaign_name));
+                $campaignCleaned = rtrim(trim($campaign), '.');
                 $skuTrimmed = strtoupper(trim($sku));
                 
-                $parts = array_map('trim', explode(',', $campaignUpper));
-                // Also clean each part (remove trailing periods)
+                $parts = array_map('trim', explode(',', $campaignCleaned));
                 $parts = array_map(function($part) {
                     return rtrim(trim($part), '.');
                 }, $parts);
                 $exactMatch = in_array($skuTrimmed, $parts);
                 
                 if (!$exactMatch) {
-                    $exactMatch = $campaignUpper === $skuTrimmed;
+                    $exactMatch = $campaignCleaned === $skuTrimmed;
                 }
                 
-                if ($exactMatch) {
-                    $matchedSku = $pm->sku;
-                    $matchedPm = $pm;
-                    break;
+                return $exactMatch;
+            });
+
+            // Check if campaign exists
+            $hasCampaign = !empty($matchedCampaign);
+            
+            $campaignId = $matchedCampaign ? $matchedCampaign->campaign_id : null;
+            $campaignName = $matchedCampaign ? $matchedCampaign->campaign_name : null;
+            
+            // Get NRL, NRA from GoogleDataView
+            $nra = '';
+            $nrl = 'REQ'; // Default value
+            if (isset($nrValues[$pm->sku])) {
+                $raw = $nrValues[$pm->sku];
+                if (!is_array($raw)) {
+                    $raw = json_decode($raw, true);
+                }
+                if (is_array($raw)) {
+                    $nra = $raw['NRA'] ?? '';
+                    $nrl = $raw['NRL'] ?? 'REQ';
                 }
             }
-            
-            $row = [];
-            
-            if ($matchedPm) {
-                // Campaign has matching SKU
-                $row['parent'] = $matchedPm->parent;
-                $row['sku'] = $matchedPm->sku;
-                $shopify = $shopifyData[$matchedPm->sku] ?? null;
-                $row['INV'] = $shopify->inv ?? 0;
-                $row['L30'] = $shopify->quantity ?? 0;
-                $skuForMetrics = strtoupper(trim($matchedPm->sku));
-            } else {
-                // Campaign has no matching SKU - still show it
-                $row['parent'] = null;
-                $row['sku'] = null;
-                $row['INV'] = 0;
-                $row['L30'] = 0;
-                $skuForMetrics = strtoupper(trim($campaignName));
-            }
-            
-            $row['campaign_id'] = $campaignId;
-            $row['campaignName'] = $campaignName;
-            
-            // Get budget from the latest campaign record
-            $latestCampaign = $googleCampaigns->where('campaign_id', $campaignId)
-                ->sortByDesc('date')
-                ->first();
-            $row['campaignBudgetAmount'] = $latestCampaign && $latestCampaign->budget_amount_micros 
-                ? $latestCampaign->budget_amount_micros / 1000000 
-                : null;
-            $row['status'] = $campaign->campaign_status ?? null;
 
-            // Calculate metrics using campaign name as SKU (for campaigns without SKU match)
-            foreach ($rangesNeeded as $rangeName) {
-                $metrics = $this->aggregateMetricsByRange(
-                    $googleCampaigns, 
-                    $skuForMetrics, 
-                    $dateRanges[$rangeName], 
-                    'ENABLED'
-                );
+            // Skip SKUs with NRA = 'NRA' (similar to Amazon)
+            if ($nra === 'NRA') {
+                continue;
+            }
+
+            // Use SKU as key (since we're looping by SKUs, not campaigns)
+            $mapKey = 'SKU_' . $pm->sku;
+
+            if (!isset($campaignMap[$mapKey])) {
+                $campaignMap[$mapKey] = [
+                    'parent' => $parent,
+                    'sku' => $pm->sku,
+                    'campaign_id' => $campaignId,
+                    'campaignName' => $campaignName,
+                    'campaignBudgetAmount' => $matchedCampaign && $matchedCampaign->budget_amount_micros 
+                        ? $matchedCampaign->budget_amount_micros / 1000000 
+                        : 0,
+                    'status' => $matchedCampaign ? $matchedCampaign->campaign_status : null,
+                    'campaignStatus' => $matchedCampaign ? $matchedCampaign->campaign_status : null,
+                    'INV' => ($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0,
+                    'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
+                    'NRL' => $nrl,
+                    'NRA' => $nra,
+                    'hasCampaign' => $hasCampaign,
+                    'spend_L1' => 0,
+                    'spend_L7' => 0,
+                    'spend_L30' => 0,
+                    'clicks_L1' => 0,
+                    'clicks_L7' => 0,
+                    'clicks_L30' => 0,
+                    'cpc_L1' => 0,
+                    'cpc_L7' => 0,
+                    'ad_sales_L1' => 0,
+                    'ad_sales_L7' => 0,
+                    'ad_sold_L1' => 0,
+                    'ad_sold_L7' => 0,
+                ];
+            }
+
+            // Calculate metrics for matched campaign
+            if ($matchedCampaign && $hasCampaign) {
+                $skuForMetrics = strtoupper(trim($pm->sku));
                 
-                $row["spend_$rangeName"] = $metrics['spend'];
-                $row["clicks_$rangeName"] = $metrics['clicks'];
-                $row["impressions_$rangeName"] = $metrics['impressions'];
-                $row["cpc_$rangeName"] = $metrics['cpc'];
-                $row["ad_sales_$rangeName"] = $metrics['ad_sales'];
-                $row["ad_sold_$rangeName"] = $metrics['ad_sold'];
+                foreach ($rangesNeeded as $rangeName) {
+                    $metrics = $this->aggregateMetricsByRange(
+                        $googleCampaigns, 
+                        $skuForMetrics, 
+                        $dateRanges[$rangeName], 
+                        'ENABLED'
+                    );
+                    
+                    $campaignMap[$mapKey]["spend_$rangeName"] = $metrics['spend'];
+                    $campaignMap[$mapKey]["clicks_$rangeName"] = $metrics['clicks'];
+                    $campaignMap[$mapKey]["cpc_$rangeName"] = $metrics['cpc'];
+                    $campaignMap[$mapKey]["ad_sales_$rangeName"] = $metrics['ad_sales'];
+                    $campaignMap[$mapKey]["ad_sold_$rangeName"] = $metrics['ad_sold'];
+                }
+                
+                // Get budget from latest campaign record
+                $latestCampaign = $googleCampaigns->where('campaign_id', $campaignId)
+                    ->sortByDesc('date')
+                    ->first();
+                if ($latestCampaign && $latestCampaign->budget_amount_micros) {
+                    $campaignMap[$mapKey]['campaignBudgetAmount'] = $latestCampaign->budget_amount_micros / 1000000;
+                }
+                $campaignMap[$mapKey]['status'] = $matchedCampaign->campaign_status ?? null;
+                $campaignMap[$mapKey]['campaignStatus'] = $matchedCampaign->campaign_status ?? null;
             }
-
-            // Calculate UB7
-            $budget = $row['campaignBudgetAmount'] ?? 0;
-            $spend_L7 = $row['spend_L7'] ?? 0;
+            
+            // Calculate SBID for this SKU/campaign
+            $budget = $campaignMap[$mapKey]['campaignBudgetAmount'] ?? 0;
+            $spend_L7 = $campaignMap[$mapKey]['spend_L7'] ?? 0;
+            $spend_L1 = $campaignMap[$mapKey]['spend_L1'] ?? 0;
+            $cpc_L7 = $campaignMap[$mapKey]['cpc_L7'] ?? 0;
+            $cpc_L1 = $campaignMap[$mapKey]['cpc_L1'] ?? 0;
+            
             $ub7 = $budget > 0 ? ($spend_L7 / ($budget * 7)) * 100 : 0;
-
-            // Include all campaigns (with or without SKU match)
-            if(!empty($row['campaignName'])) {
-                $result[] = (object) $row;
+            $ub1 = $budget > 0 ? ($spend_L1 / $budget) * 100 : 0;
+            
+            $sbid = 0;
+            
+            // Determine utilization type
+            if ($ub7 > 90 && $ub1 > 90) {
+                // Over-utilized: decrease bid
+                if ($cpc_L7 == 0) {
+                    $sbid = 0.75;
+                } else {
+                    $sbid = floor($cpc_L7 * 0.90 * 100) / 100;
+                }
+            } elseif ($ub7 < 70 && $ub1 < 70) {
+                // Under-utilized: increase bid
+                if ($cpc_L1 == 0 && $cpc_L7 == 0) {
+                    $sbid = 0.75;
+                } elseif ($ub7 < 10 || $cpc_L7 == 0) {
+                    $sbid = 0.75;
+                } elseif ($cpc_L7 > 0 && $cpc_L7 < 0.30) {
+                    $sbid = round($cpc_L7 + 0.20, 2);
+                } else {
+                    $sbid = floor($cpc_L7 * 1.10 * 100) / 100;
+                }
             }
+            
+            $campaignMap[$mapKey]['sbid'] = $sbid;
+            $campaignMap[$mapKey]['ub7'] = $ub7;
+            $campaignMap[$mapKey]['ub1'] = $ub1;
         }
-        
-        // Use unique by campaign_id since we're now iterating by campaigns, not SKUs
-        $uniqueResult = collect($result)->unique('campaign_id')->values()->all();
+
+        // Convert campaignMap to result array (all SKUs will be included)
+        $result = array_values($campaignMap);
 
         return response()->json([
             'message' => 'Data fetched successfully',
-            'data'    => $uniqueResult,
+            'data'    => $result,
+            'total_sku_count' => $totalSkuCount,
             'status'  => 200,
         ]);
     }

@@ -290,12 +290,12 @@
                     {
                         title: "INV",
                         field: "INV",
-                        visible: false
+                        visible: true
                     },
                     {
                         title: "OV L30",
                         field: "L30",
-                        visible: false
+                        visible: true
                     },
                     {
                         title: "DIL %",
@@ -312,12 +312,12 @@
                             }
                             return `<div class="text-center"><span class="dil-percent-value red">0%</span></div>`;
                         },
-                        visible: false
+                        visible: true
                     },
                     {
                         title: "WA L30",
                         field: "WA_L30",
-                        visible: false
+                        visible: true
                     },
                     {
                         title: "NRA",
@@ -348,7 +348,7 @@
                             `;
                         },
                         hozAlign: "center",
-                        visible: false
+                        visible: true
                     },
                     {
                         title: "Missing Ads",
@@ -360,17 +360,11 @@
                             
                             if(campaign){
                                 return `
-                                    <span style="color: green;">Running</span>
-                                    <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
-                                        style="cursor:pointer; margin-left:8px;">
-                                    </i>
+                                    <i class="fa fa-circle" style="color: #28a745; font-size: 12px;"></i>
                                 `;
                             }else{
                                 return `
-                                    <span style="color: red;">Missing</span>
-                                    <i class="fa fa-info-circle text-primary toggle-missingAds-btn" 
-                                        style="cursor:pointer; margin-left:8px;">
-                                    </i>
+                                    <i class="fa fa-circle" style="color: #dc3545; font-size: 12px;"></i>
                                 `;
                             } 
                             
