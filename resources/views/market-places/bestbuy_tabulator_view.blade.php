@@ -1,6 +1,7 @@
 @extends('layouts.vertical', ['title' => 'Best Buy Pricing', 'sidenav' => 'condensed'])
 
 @section('css')
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
@@ -81,6 +82,15 @@
                         <option value="60plus">60%+</option>
                     </select>
 
+                    <select id="dil-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">All DIL%</option>
+                        <option value="red">Red (&lt;16.7%)</option>
+                        <option value="yellow">Yellow (16.7-25%)</option>
+                        <option value="green">Green (25-50%)</option>
+                        <option value="pink">Pink (50%+)</option>
+                    </select>
+
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
@@ -102,6 +112,10 @@
                     
                     <button id="increase-btn" class="btn btn-sm btn-success">
                         <i class="fas fa-arrow-up"></i> Increase Mode
+                    </button>
+                    
+                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadPriceModal">
+                        <i class="fa fa-dollar-sign"></i> Upload Price
                     </button>
                 </div>
 
@@ -134,6 +148,9 @@
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
                             placeholder="Enter %" step="0.01" style="width: 100px;">
                         <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
+                        <button id="sugg-amz-prc-btn" class="btn btn-sm btn-info">
+                            <i class="fas fa-copy"></i> Sugg Amz Prc
+                        </button>
                     </div>
                 </div>
                 <div id="bestbuy-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
@@ -143,6 +160,34 @@
                     </div>
                     <!-- Table body -->
                     <div id="bestbuy-table" style="flex: 1;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload Price Modal -->
+    <div class="modal fade" id="uploadPriceModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="fa fa-dollar-sign me-2"></i>Upload Price Data</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="uploadPriceForm" action="{{ route('bestbuy-upload-price') }}" method="POST" enctype="multipart/form-data">
+                        @csrf
+                        <div class="mb-3">
+                            <label class="form-label fw-bold"><i class="fa fa-file-excel text-success me-1"></i>Choose File</label>
+                            <input type="file" class="form-control" name="excel_file" accept=".xlsx,.xls,.csv,.txt" required>
+                        </div>
+                        <div class="alert alert-warning">
+                            <i class="fa fa-exclamation-triangle me-2"></i><strong>Warning:</strong> This will TRUNCATE (clear) the table before uploading!
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" form="uploadPriceForm" class="btn btn-primary"><i class="fa fa-upload me-1"></i>Upload</button>
                 </div>
             </div>
         </div>
@@ -271,6 +316,11 @@
             }
         });
 
+        // Sugg Amz Prc button
+        $('#sugg-amz-prc-btn').on('click', function() {
+            applySuggestAmazonPrice();
+        });
+
         // Update selected count display
         function updateSelectedCount() {
             const count = selectedSkus.size;
@@ -296,7 +346,14 @@
             $('#select-all-checkbox').prop('checked', allFilteredSelected);
         }
 
-        // Apply discount to selected SKUs
+        // Custom price rounding function to round to .99 endings
+        function roundToRetailPrice(price) {
+            // Round to the nearest dollar and subtract 0.01 to make it .99
+            const roundedDollar = Math.ceil(price);
+            return roundedDollar - 0.01;
+        }
+
+        // Apply discount to selected SKUs (based on BB Price)
         function applyDiscount() {
             const discountType = $('#discount-type-select').val();
             const discountValue = parseFloat($('#discount-percentage-input').val());
@@ -305,51 +362,155 @@
                 showToast('Please enter a valid discount value', 'error');
                 return;
             }
+
+            if (selectedSkus.size === 0) {
+                showToast('Please select at least one SKU', 'error');
+                return;
+            }
             
-            const allData = table.getData();
             let updatedCount = 0;
+            const updates = []; // Store updates for backend saving
             
-            allData.forEach((row, index) => {
-                const sku = row['(Child) sku'];
-                if (selectedSkus.has(sku)) {
-                    const currentPrice = parseFloat(row['BB Price']) || 0;
-                    let newSprice;
+            // Loop through selected SKUs
+            selectedSkus.forEach(sku => {
+                const rows = table.searchRows("(Child) sku", "=", sku);
+                
+                if (rows.length > 0) {
+                    const row = rows[0];
+                    const rowData = row.getData();
+                    const currentPrice = parseFloat(rowData['BB Price']) || 0;
                     
-                    if (discountType === 'percentage') {
-                        if (decreaseModeActive) {
-                            newSprice = currentPrice * (1 - discountValue / 100);
+                    if (currentPrice > 0) {
+                        let newSprice;
+                        
+                        if (discountType === 'percentage') {
+                            if (increaseModeActive) {
+                                newSprice = currentPrice * (1 + discountValue / 100);
+                            } else {
+                                newSprice = currentPrice * (1 - discountValue / 100);
+                            }
                         } else {
-                            newSprice = currentPrice * (1 + discountValue / 100);
+                            if (increaseModeActive) {
+                                newSprice = currentPrice + discountValue;
+                            } else {
+                                newSprice = currentPrice - discountValue;
+                            }
                         }
-                    } else {
-                        if (decreaseModeActive) {
-                            newSprice = currentPrice - discountValue;
-                        } else {
-                            newSprice = currentPrice + discountValue;
-                        }
+                        
+                        // Apply retail price rounding (round to .99 endings)
+                        newSprice = roundToRetailPrice(newSprice);
+                        
+                        // Ensure minimum price
+                        newSprice = Math.max(0.99, newSprice);
+                        
+                        // Update SPRICE in table
+                        row.update({
+                            SPRICE: newSprice
+                        });
+                        
+                        // Store update for backend saving
+                        updates.push({
+                            sku: sku,
+                            sprice: newSprice
+                        });
+                        
+                        updatedCount++;
                     }
-                    
-                    newSprice = Math.round(newSprice * 100) / 100;
-                    if (newSprice < 0) newSprice = 0;
-                    
-                    // Update SPRICE in table
-                    row['SPRICE'] = newSprice;
-                    
-                    // Recalculate SGPFT, SPFT, SROI
-                    const percentage = row['percentage'] || 0.80;
-                    const lp = row['LP_productmaster'] || 0;
-                    const ship = row['Ship_productmaster'] || 0;
-                    
-                    row['SGPFT'] = newSprice > 0 ? Math.round(((newSprice * percentage - ship - lp) / newSprice) * 100 * 100) / 100 : 0;
-                    row['SPFT'] = row['SGPFT'];
-                    row['SROI'] = lp > 0 ? Math.round(((newSprice * percentage - lp - ship) / lp) * 100 * 100) / 100 : 0;
-                    
-                    updatedCount++;
                 }
             });
             
-            table.setData(allData);
-            showToast(`Updated SPRICE for ${updatedCount} SKUs`, 'success');
+            // Save to backend if there are updates
+            if (updates.length > 0) {
+                saveSpriceUpdates(updates);
+            }
+            
+            showToast(`${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s) based on BB Price`, 'success');
+            $('#discount-percentage-input').val('');
+        }
+
+        // Apply Amazon suggested price
+        function applySuggestAmazonPrice() {
+            if (selectedSkus.size === 0) {
+                showToast('Please select SKUs first', 'error');
+                return;
+            }
+
+            let updatedCount = 0;
+            let noAmazonPriceCount = 0;
+            const updates = []; // Store updates for backend saving
+
+            // Loop through selected SKUs
+            selectedSkus.forEach(sku => {
+                const rows = table.searchRows("(Child) sku", "=", sku);
+                
+                if (rows.length > 0) {
+                    const row = rows[0];
+                    const rowData = row.getData();
+                    const amazonPrice = parseFloat(rowData['A Price']);
+                    
+                    if (amazonPrice && amazonPrice > 0) {
+                        // Update the row
+                        row.update({
+                            SPRICE: amazonPrice
+                        });
+                        
+                        // Store update for backend saving
+                        updates.push({
+                            sku: sku,
+                            sprice: amazonPrice
+                        });
+                        
+                        updatedCount++;
+                    } else {
+                        noAmazonPriceCount++;
+                    }
+                } else {
+                    noAmazonPriceCount++;
+                }
+            });
+            
+            // Save to backend if there are updates
+            if (updates.length > 0) {
+                saveSpriceUpdates(updates);
+            }
+            
+            let message = `Amazon price applied to ${updatedCount} SKU(s)`;
+            if (noAmazonPriceCount > 0) {
+                message += ` (${noAmazonPriceCount} SKU(s) had no Amazon price or not found)`;
+            }
+            
+            showToast(message, updatedCount > 0 ? 'success' : 'warning');
+        }
+
+        // Save SPRICE updates to backend (unified function for all SPRICE updates)
+        function saveSpriceUpdates(updates) {
+            $.ajax({
+                url: '/bestbuy-save-sprice',
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                data: {
+                    updates: updates
+                },
+                success: function(response) {
+                    if (response.success) {
+                        console.log('SPRICE updates saved successfully:', response.updated, 'records');
+                        // Show subtle success notification
+                        if (response.errors && response.errors.length > 0) {
+                            console.warn('Some updates had errors:', response.errors);
+                        }
+                    }
+                },
+                error: function(xhr) {
+                    console.error('Error saving SPRICE updates:', xhr);
+                    let errorMessage = 'Error saving SPRICE updates to database';
+                    if (xhr.responseJSON && xhr.responseJSON.error) {
+                        errorMessage += ': ' + xhr.responseJSON.error;
+                    }
+                    showToast(errorMessage, 'error');
+                }
+            });
         }
 
         // SAVE SPRICE to database with retry
@@ -413,20 +574,7 @@
                 }
             },
             columns: [
-                {
-                    title: "<input type='checkbox' id='select-all-checkbox'>",
-                    field: "_select",
-                    hozAlign: "center",
-                    headerSort: false,
-                    width: 40,
-                    visible: false,
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const sku = rowData['(Child) sku'];
-                        const isChecked = selectedSkus.has(sku) ? 'checked' : '';
-                        return `<input type='checkbox' class='sku-select-checkbox' data-sku='${sku}' ${isChecked}>`;
-                    }
-                },
+               
                 {
                     title: "Parent",
                     field: "Parent",
@@ -478,6 +626,7 @@
                     frozen: true,
                     width: 100,
                     hozAlign: "center",
+                    visible: false,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const buyerLink = rowData['B Link'] || '';
@@ -590,6 +739,20 @@
                     width: 70
                 },
                 {
+                    title: "A Prc",
+                    field: "A Price",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue());
+                        if (value === null || value === 0 || isNaN(value)) {
+                            return '<span style="color: #6c757d;">-</span>';
+                        }
+                        return `$${value.toFixed(2)}`;
+                    },
+                    width: 70
+                },
+                {
                     title: "GPFT%",
                     field: "GPFT%",
                     hozAlign: "center",
@@ -656,6 +819,7 @@
                     field: "Profit",
                     hozAlign: "center",
                     sorter: "number",
+                    visible: false,
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue() || 0);
                         let color = value >= 0 ? '#28a745' : '#a00211';
@@ -668,6 +832,7 @@
                     field: "Sales L30",
                     hozAlign: "center",
                     sorter: "number",
+                    visible: false,
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue() || 0);
                         return `$${value.toFixed(2)}`;
@@ -679,6 +844,7 @@
                     field: "LP_productmaster",
                     hozAlign: "center",
                     sorter: "number",
+                    visible: false,
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue() || 0);
                         return `$${value.toFixed(2)}`;
@@ -690,11 +856,26 @@
                     field: "Ship_productmaster",
                     hozAlign: "center",
                     sorter: "number",
+                    visible: false,
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue() || 0);
                         return `$${value.toFixed(2)}`;
                     },
                     width: 60
+                },
+                 {
+                    title: "<input type='checkbox' id='select-all-checkbox'>",
+                    field: "_select",
+                    hozAlign: "center",
+                    headerSort: false,
+                    width: 40,
+                    visible: false,
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const sku = rowData['(Child) sku'];
+                        const isChecked = selectedSkus.has(sku) ? 'checked' : '';
+                        return `<input type='checkbox' class='sku-select-checkbox' data-sku='${sku}' ${isChecked}>`;
+                    }
                 },
                 {
                     title: "SPRICE",
@@ -863,40 +1044,57 @@
             const inventoryFilter = $('#inventory-filter').val();
             const nrlFilter = $('#nrl-filter').val();
             const gpftFilter = $('#gpft-filter').val();
+            const dilFilter = $('#dil-filter').val();
 
-            let filters = [];
+            // Clear all filters first
+            table.clearFilter();
 
             // Inventory filter
             if (inventoryFilter === 'zero') {
-                filters.push({ field: "INV", type: "=", value: 0 });
+                table.addFilter("INV", "=", 0);
             } else if (inventoryFilter === 'more') {
-                filters.push({ field: "INV", type: ">", value: 0 });
+                table.addFilter("INV", ">", 0);
             }
 
             // NRL filter
             if (nrlFilter === 'REQ') {
-                filters.push({ field: "nr_req", type: "=", value: "REQ" });
+                table.addFilter("nr_req", "=", "REQ");
             } else if (nrlFilter === 'NR') {
-                filters.push({ field: "nr_req", type: "=", value: "NR" });
+                table.addFilter("nr_req", "=", "NR");
             }
 
             // GPFT filter
             if (gpftFilter !== 'all') {
                 if (gpftFilter === 'negative') {
-                    filters.push({ field: "GPFT%", type: "<", value: 0 });
+                    table.addFilter("GPFT%", "<", 0);
                 } else if (gpftFilter === '60plus') {
-                    filters.push({ field: "GPFT%", type: ">=", value: 60 });
+                    table.addFilter("GPFT%", ">=", 60);
                 } else {
                     const [min, max] = gpftFilter.split('-').map(Number);
-                    filters.push({ field: "GPFT%", type: ">=", value: min });
-                    filters.push({ field: "GPFT%", type: "<", value: max });
+                    table.addFilter("GPFT%", ">=", min);
+                    table.addFilter("GPFT%", "<", max);
                 }
             }
 
-            table.setFilter(filters);
+            // DIL filter (calculated as L30 / INV * 100)
+            if (dilFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const inv = parseFloat(data['INV']) || 0;
+                    const l30 = parseFloat(data['L30']) || 0;
+                    const dil = inv === 0 ? 0 : (l30 / inv) * 100;
+                    
+                    if (dilFilter === 'red') return dil < 16.66;
+                    if (dilFilter === 'yellow') return dil >= 16.66 && dil < 25;
+                    if (dilFilter === 'green') return dil >= 25 && dil < 50;
+                    if (dilFilter === 'pink') return dil >= 50;
+                    return true;
+                });
+            }
+
+            updateSummary();
         }
 
-        $('#inventory-filter, #nrl-filter, #gpft-filter').on('change', function() {
+        $('#inventory-filter, #nrl-filter, #gpft-filter, #dil-filter').on('change', function() {
             applyFilters();
         });
 
@@ -1071,6 +1269,40 @@
             });
             buildColumnDropdown();
             saveColumnVisibilityToServer();
+        });
+
+        // Upload Price Form Handler
+        $('#uploadPriceForm').on('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const submitBtn = $(this).find('button[type="submit"]');
+            const originalText = submitBtn.html();
+            
+            submitBtn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin me-1"></i>Uploading...');
+            
+            $.ajax({
+                url: $(this).attr('action'),
+                method: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(response) {
+                    showToast(response.success || 'Price data uploaded successfully!', 'success');
+                    $('#uploadPriceModal').modal('hide');
+                    $('#uploadPriceForm')[0].reset();
+                    
+                    // Reload table data
+                    table.setData();
+                },
+                error: function(xhr) {
+                    const errorMsg = xhr.responseJSON?.error || 'Error uploading price data';
+                    showToast(errorMsg, 'error');
+                },
+                complete: function() {
+                    submitBtn.prop('disabled', false).html(originalText);
+                }
+            });
         });
     });
 </script>

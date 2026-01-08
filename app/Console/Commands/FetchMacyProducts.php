@@ -548,7 +548,12 @@ class FetchMacyProducts extends Command
                 foreach ($order['order_lines'] ?? [] as $line) {
                     $sku = $line['product']['id'] ?? null;
                     $qty = $line['quantity'] ?? 0;
+                    $lineStatus = $line['status'] ?? null;
+                    
                     if (!$sku) continue;
+
+                    // Skip CLOSED orders (canceled/refunded) - matching UpdateMarketplaceDailyMetrics logic
+                    if ($lineStatus === 'CLOSED') continue;
 
                     $sku = strtolower($sku);
 
