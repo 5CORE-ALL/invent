@@ -1455,35 +1455,39 @@
             
             // Don't clear current selection - only add unselected items
             
-            // Select SKUs where Temu L30 > 0 AND SPRICE is null/blank AND not already selected
+            // Select SKUs where INV > 0 AND Temu L30 > 0 AND SPRICE is null/blank AND not already selected
             allData.forEach(row => {
                 const temuL30Val = row['temu_l30'];
                 const spriceVal = row['sprice'];
+                const invVal = row['inventory'];
                 const sku = row['sku'];
                 
                 // Parse temu_l30 - must be a positive number
                 const temuL30 = temuL30Val ? parseInt(temuL30Val) : 0;
+                const inventory = invVal ? parseInt(invVal) : 0;
                 
                 // Check if sprice is null, undefined, empty string, or 0
                 const spriceIsBlank = !spriceVal || spriceVal === '' || spriceVal === 0 || parseFloat(spriceVal) === 0;
                 
-                // Only select if: has SKU AND temu sold > 0 AND sprice is blank AND not already selected
-                if (sku && temuL30 > 0 && spriceIsBlank && !selectedSkus.has(sku)) {
+                // Only select if: has SKU AND inventory > 0 AND temu sold > 0 AND sprice is blank AND not already selected
+                if (sku && inventory > 0 && temuL30 > 0 && spriceIsBlank && !selectedSkus.has(sku)) {
                     selectedSkus.add(sku);
                     newlySelectedCount++;
                 }
             });
             
-            // Apply table filter to show only sold items with blank SPRICE
+            // Apply table filter to show only sold items with blank SPRICE and INV > 0
             table.clearFilter();
             table.addFilter(function(data) {
                 const temuL30Val = data['temu_l30'];
                 const spriceVal = data['sprice'];
+                const invVal = data['inventory'];
                 
                 const temuL30 = temuL30Val ? parseInt(temuL30Val) : 0;
+                const inventory = invVal ? parseInt(invVal) : 0;
                 const spriceIsBlank = !spriceVal || spriceVal === '' || spriceVal === 0 || parseFloat(spriceVal) === 0;
                 
-                return temuL30 > 0 && spriceIsBlank;
+                return inventory > 0 && temuL30 > 0 && spriceIsBlank;
             });
             
             // Update UI
