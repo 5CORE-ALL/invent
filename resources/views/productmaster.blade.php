@@ -3615,14 +3615,7 @@
                     const allColumns = [
                         "Parent", "SKU", "UPC", "INV", "OV L30", "STATUS", "Unit", "LP", "CP$",
                         "FRGHT", "SHIP", "TEMU SHIP", "MOQ", "EBAY2 SHIP", "INITIAL QUANTITY", "Label QTY", "WT ACT", "WT DECL", "L", "W", "H",
-                        "CBM", "Image", "L(2)", "Verified Data", "DC", "Pcs/Box", "L1", "B", "H1", "Weight", "MSRP", "MAP",
-                        "Title 150", "Title 100", "Title 80", "Title 60",
-                        "Bullet 1", "Bullet 2", "Bullet 3", "Bullet 4", "Bullet 5",
-                        "Product Description",
-                        "Feature 1", "Feature 2", "Feature 3", "Feature 4",
-                        "Main Image", "Main Image Brand",
-                        "Image 1", "Image 2", "Image 3", "Image 4", "Image 5", "Image 6",
-                        "Image 7", "Image 8", "Image 9", "Image 10", "Image 11", "Image 12"
+                        "CBM", "Image", "L(2)", "Verified Data", "DC", "Pcs/Box", "L1", "B", "H1", "Weight", "MSRP", "MAP"
                     ];
 
                     // Filter out hidden columns
@@ -3728,90 +3721,6 @@
                         },
                         "MAP": {
                             key: "map"
-                        },
-                        "Title 150": {
-                            key: "title150"
-                        },
-                        "Title 100": {
-                            key: "title100"
-                        },
-                        "Title 80": {
-                            key: "title80"
-                        },
-                        "Title 60": {
-                            key: "title60"
-                        },
-                        "Bullet 1": {
-                            key: "bullet1"
-                        },
-                        "Bullet 2": {
-                            key: "bullet2"
-                        },
-                        "Bullet 3": {
-                            key: "bullet3"
-                        },
-                        "Bullet 4": {
-                            key: "bullet4"
-                        },
-                        "Bullet 5": {
-                            key: "bullet5"
-                        },
-                        "Product Description": {
-                            key: "product_description"
-                        },
-                        "Feature 1": {
-                            key: "feature1"
-                        },
-                        "Feature 2": {
-                            key: "feature2"
-                        },
-                        "Feature 3": {
-                            key: "feature3"
-                        },
-                        "Feature 4": {
-                            key: "feature4"
-                        },
-                        "Main Image": {
-                            key: "main_image"
-                        },
-                        "Main Image Brand": {
-                            key: "main_image_brand"
-                        },
-                        "Image 1": {
-                            key: "image1"
-                        },
-                        "Image 2": {
-                            key: "image2"
-                        },
-                        "Image 3": {
-                            key: "image3"
-                        },
-                        "Image 4": {
-                            key: "image4"
-                        },
-                        "Image 5": {
-                            key: "image5"
-                        },
-                        "Image 6": {
-                            key: "image6"
-                        },
-                        "Image 7": {
-                            key: "image7"
-                        },
-                        "Image 8": {
-                            key: "image8"
-                        },
-                        "Image 9": {
-                            key: "image9"
-                        },
-                        "Image 10": {
-                            key: "image10"
-                        },
-                        "Image 11": {
-                            key: "image11"
-                        },
-                        "Image 12": {
-                            key: "image12"
                         }
                     };
 
@@ -3845,11 +3754,11 @@
                                             const verified = item.verified_data !== undefined ? item.verified_data : (item.Values && item.Values.verified_data);
                                             value = verified === 1 || verified === true ? 'Yes' : 'No';
                                         } else {
-                                            // Check direct property first, then Values JSON
-                                            if (item[key] !== undefined && item[key] !== null && item[key] !== '') {
-                                                value = item[key];
-                                            } else if (item.Values && item.Values[key] !== undefined && item.Values[key] !== null && item.Values[key] !== '') {
+                                            // Check Values JSON only for Values column data
+                                            if (item.Values && item.Values[key] !== undefined && item.Values[key] !== null && item.Values[key] !== '') {
                                                 value = item.Values[key];
+                                            } else if (item[key] !== undefined && item[key] !== null && item[key] !== '') {
+                                                value = item[key];
                                             } else {
                                                 value = '';
                                             }
@@ -3887,22 +3796,10 @@
                                     return {
                                         wch: 12
                                     };
-                                } else if (["Image", "L(2)", "Main Image", "Main Image Brand", 
-                                           "Image 1", "Image 2", "Image 3", "Image 4", "Image 5", "Image 6",
-                                           "Image 7", "Image 8", "Image 9", "Image 10", "Image 11", "Image 12"].includes(col)) {
+                                } else if (["Image", "L(2)"].includes(col)) {
                                     return {
                                         wch: 50
                                     }; // Wider for URL columns
-                                } else if (["Title 150", "Title 100", "Title 80", "Title 60",
-                                           "Bullet 1", "Bullet 2", "Bullet 3", "Bullet 4", "Bullet 5",
-                                           "Feature 1", "Feature 2", "Feature 3", "Feature 4"].includes(col)) {
-                                    return {
-                                        wch: 40
-                                    }; // Medium width for title/bullet columns
-                                } else if (col === "Product Description") {
-                                    return {
-                                        wch: 60
-                                    }; // Extra wide for description
                                 } else {
                                     return {
                                         wch: 10
