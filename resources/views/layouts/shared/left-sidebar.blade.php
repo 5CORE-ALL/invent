@@ -2236,9 +2236,9 @@
                                         </a>
                                         <div class="collapse" id="macysSubmenu">
                                             <ul class="side-nav-fourth-level">
-                                                <li>
+                                                {{-- <li>
                                                     <a href="{{ route('macys') }}">Macy's Analytics</a>
-                                                </li>
+                                                </li> --}}
                                                 <li>
                                                     <a href="{{ route('macy.zero.view') }}">Macy's 0
                                                         view</a>
@@ -2261,12 +2261,12 @@
 
 
                                     <li>
-                                        <a href="{{ url('macy-pricing-cvr') }}">Macy's Pricing CVR</a>
+                                        <a href="{{ url('/macys-pricing') }}">Macy's Pricing CVR</a>
                                     </li>
 
-                                    <li>
+                                    {{-- <li>
                                         <a href="{{ url('/macys-pricing') }}">Pricing - Increase
-                                            / Decrease</a>
+                                            / Decrease</a> --}}
 
 
 
@@ -2653,10 +2653,10 @@
                                         </a>
                                         <div class="collapse" id="walmartSubmenu">
                                             <ul class="side-nav-fourth-level">
-                                                <li>
+                                                {{-- <li>
                                                     <a href="{{ url('walmartAnalysis') }}">Walmart's
                                                         Analytics</a>
-                                                </li>
+                                                </li> --}}
 
                                                 <li>
                                                     <a href="{{ route('zero.walmart') }}">Walmart 0
@@ -2669,12 +2669,12 @@
                                     <li>
                                         <a href="{{ route('listing.walmart') }}">Listing Walmart</a>
                                     </li>
-                                    <li>
+                                    {{-- <li>
                                         <a href="{{ url('walmart-tabulator-view') }}">Walmart Pricing - CVR</a>
-                                    </li>
-                                    <li>
+                                    </li> --}}
+                                    {{-- <li>
                                         <a href="{{ route('walmart.sheet.upload') }}">Walmart Pricing</a>
-                                    </li>
+                                    </li> --}}
                                     <li>
                                         <a href="{{ route('walmart.utilized.bgt') }}">Walmart BGT Util.</a>
                                     </li>

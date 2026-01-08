@@ -14,7 +14,29 @@ return new class extends Migration
         Schema::create('macys_price_data', function (Blueprint $table) {
             $table->id();
             $table->string('sku')->index();
+            $table->string('offer_sku')->nullable();
+            $table->string('product_sku')->nullable();
+            $table->string('category_code')->nullable();
+            $table->string('category_label')->nullable();
+            $table->string('brand')->nullable();
+            $table->text('product_name')->nullable();
+            $table->string('offer_state')->nullable();
             $table->decimal('price', 10, 2)->nullable();
+            $table->decimal('original_price', 10, 2)->nullable();
+            $table->integer('quantity')->nullable();
+            $table->integer('alert_threshold')->nullable();
+            $table->string('logistic_class')->nullable();
+            $table->boolean('activated')->default(false);
+            $table->date('available_start_date')->nullable();
+            $table->date('available_end_date')->nullable();
+            $table->boolean('favorite_offer')->default(false);
+            $table->decimal('discount_price', 10, 2)->nullable();
+            $table->date('discount_start_date')->nullable();
+            $table->date('discount_end_date')->nullable();
+            $table->integer('lead_time_to_ship')->nullable();
+            $table->string('upc')->nullable();
+            $table->string('inactivity_reason')->nullable();
+            $table->string('fulfillment_center_code')->nullable();
             $table->timestamps();
         });
     }

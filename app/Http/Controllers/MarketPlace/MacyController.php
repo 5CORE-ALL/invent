@@ -92,13 +92,18 @@ class MacyController extends Controller
         // NR/REQ + SPRICE data from MacyDataView
         $dataViews = MacyDataView::whereIn("sku", $skus)->pluck("value", "sku");
 
-        // Fetch price data from MacysPriceData table
-        $priceDataCollection = MacysPriceData::whereIn('sku', $skus)
+        // Fetch price data from MacysPriceData table (key by uppercase for case-insensitive lookup)
+        $uppercaseSkus = array_map('strtoupper', $skus);
+        $priceDataCollection = MacysPriceData::whereIn('sku', $uppercaseSkus)
             ->get()
             ->keyBy('sku');
 
-        // Fetch Amazon pricing data
-        $amazonData = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
+        // Fetch Amazon pricing data (key by uppercase for case-insensitive lookup)
+        $amazonData = AmazonDatasheet::whereIn('sku', $skus)
+            ->get()
+            ->keyBy(function($item) {
+                return strtoupper($item->sku);
+            });
 
         // Listing status data
         $listingStatusData = MacysListingStatus::whereIn("sku", $skus)
@@ -130,8 +135,8 @@ class MacyController extends Controller
             $shopify = $shopifyData[$pm->sku] ?? null;
             $macysMetric = $macysMetrics[$pm->sku] ?? null;
             $listingStatus = $listingStatusData[strtolower($pm->sku)] ?? null;
-            $priceData = $priceDataCollection[$pm->sku] ?? null;
-            $amazon = $amazonData[$pm->sku] ?? null;
+            $priceData = $priceDataCollection[strtoupper($pm->sku)] ?? null; // Use uppercase for lookup
+            $amazon = $amazonData[strtoupper($pm->sku)] ?? null; // Use uppercase for lookup
 
             $row = [];
             $row["Parent"] = $parent;
@@ -428,7 +433,29 @@ class MacyController extends Controller
 
                     MacysPriceData::create([
                         'sku' => $sku,
+                        'offer_sku' => $rowData['Offer SKU'] ?? null,
+                        'product_sku' => $rowData['Product SKU'] ?? null,
+                        'category_code' => $rowData['Category code'] ?? null,
+                        'category_label' => $rowData['Category label'] ?? null,
+                        'brand' => $rowData['Brand'] ?? null,
+                        'product_name' => $rowData['Product'] ?? null,
+                        'offer_state' => $rowData['Offer state'] ?? null,
                         'price' => !empty($rowData['Price']) ? floatval($rowData['Price']) : null,
+                        'original_price' => !empty($rowData['Original price']) ? floatval($rowData['Original price']) : null,
+                        'quantity' => !empty($rowData['Quantity']) ? intval($rowData['Quantity']) : null,
+                        'alert_threshold' => !empty($rowData['Alert threshold']) ? intval($rowData['Alert threshold']) : null,
+                        'logistic_class' => $rowData['Logistic Class'] ?? null,
+                        'activated' => isset($rowData['Activated']) ? filter_var($rowData['Activated'], FILTER_VALIDATE_BOOLEAN) : false,
+                        'available_start_date' => !empty($rowData['Available Start Date']) ? date('Y-m-d', strtotime($rowData['Available Start Date'])) : null,
+                        'available_end_date' => !empty($rowData['Available End Date']) ? date('Y-m-d', strtotime($rowData['Available End Date'])) : null,
+                        'favorite_offer' => isset($rowData['Favorite Offer']) ? filter_var($rowData['Favorite Offer'], FILTER_VALIDATE_BOOLEAN) : false,
+                        'discount_price' => !empty($rowData['Discount price']) ? floatval($rowData['Discount price']) : null,
+                        'discount_start_date' => !empty($rowData['Discount Start Date']) ? date('Y-m-d', strtotime($rowData['Discount Start Date'])) : null,
+                        'discount_end_date' => !empty($rowData['Discount End Date']) ? date('Y-m-d', strtotime($rowData['Discount End Date'])) : null,
+                        'lead_time_to_ship' => !empty($rowData['Lead time to ship']) ? intval($rowData['Lead time to ship']) : null,
+                        'upc' => $rowData['UPC'] ?? null,
+                        'inactivity_reason' => $rowData['Inactivity reason'] ?? null,
+                        'fulfillment_center_code' => $rowData['Fulfillment center code'] ?? null,
                     ]);
                     $imported++;
                 }
