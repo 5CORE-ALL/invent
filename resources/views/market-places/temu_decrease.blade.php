@@ -295,6 +295,9 @@
                         <button id="sugg-r-prc-btn" class="btn btn-sm btn-success">
                             <i class="fas fa-tag"></i> Suggest R Price
                         </button>
+                        <button id="sprc-26-99-btn" class="btn btn-sm btn-primary">
+                            <i class="fas fa-dollar-sign"></i> SPRC 26.99
+                        </button>
                     </div>
                 </div>
                 <div id="temu-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
@@ -1055,6 +1058,10 @@
             }
         });
 
+        $('#sprc-26-99-btn').on('click', function() {
+            applySprice2699();
+        });
+
         $('#discount-percentage-input').on('keypress', function(e) {
             if (e.which === 13) {
                 applyDiscount();
@@ -1360,20 +1367,110 @@
             });
         }
 
+        function applySprice2699() {
+            if (selectedSkus.size === 0) {
+                showToast('Please select SKUs first', 'error');
+                return;
+            }
+
+            let updatedCount = 0;
+            const updates = [];
+            const targetPrice = 26.99;
+
+            selectedSkus.forEach(sku => {
+                const rows = table.searchRows("sku", "=", sku);
+                
+                if (rows.length > 0) {
+                    const row = rows[0];
+                    
+                    // Update the row with new SPRICE
+                    row.update({ 
+                        sprice: targetPrice
+                    });
+                    row.reformat();
+                    
+                    // Add to batch update
+                    updates.push({
+                        sku: sku,
+                        sprice: targetPrice
+                    });
+                    
+                    updatedCount++;
+                }
+            });
+            
+            if (updates.length > 0) {
+                saveTemuSprice2699Updates(updates);
+            }
+            
+            showToast(`SPRICE set to $26.99 for ${updatedCount} SKU(s)`, updatedCount > 0 ? 'success' : 'error');
+        }
+
+        function saveTemuSprice2699Updates(updates) {
+            let saved = 0;
+            let errors = 0;
+            
+            updates.forEach((update, index) => {
+                $.ajax({
+                    url: '/temu-pricing/save-sprice',
+                    method: 'POST',
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        sku: update.sku,
+                        sprice: update.sprice
+                    },
+                    success: function(response) {
+                        saved++;
+                        if (index === updates.length - 1) {
+                            showToast(`SPRICE $26.99 saved for ${saved} SKU(s)`, 'success');
+                            table.redraw();
+                        }
+                    },
+                    error: function(xhr) {
+                        errors++;
+                        if (index === updates.length - 1) {
+                            if (errors === updates.length) {
+                                showToast('Failed to save SPRICE', 'error');
+                            } else {
+                                showToast(`SPRICE saved for ${saved} SKU(s), ${errors} failed`, 'warning');
+                            }
+                        }
+                    }
+                });
+            });
+        }
+
         function clearAllSprice() {
+            if (selectedSkus.size === 0) {
+                showToast('Please select SKUs first', 'error');
+                return;
+            }
+
+            const skusArray = Array.from(selectedSkus);
+            
             $.ajax({
                 url: '/temu-clear-sprice',
                 method: 'POST',
                 data: {
-                    _token: '{{ csrf_token() }}'
+                    _token: '{{ csrf_token() }}',
+                    skus: skusArray
                 },
                 beforeSend: function() {
                     $('#clear-sprice-btn').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Clearing...');
                 },
                 success: function(response) {
                     if (response.success) {
+                        // Update the table rows
+                        skusArray.forEach(sku => {
+                            const rows = table.searchRows("sku", "=", sku);
+                            if (rows.length > 0) {
+                                rows[0].update({ sprice: null });
+                                rows[0].reformat();
+                            }
+                        });
+                        
                         showToast(`Successfully cleared SPRICE for ${response.cleared} SKU(s)`, 'success');
-                        table.replaceData();
+                        table.redraw();
                     }
                 },
                 error: function(xhr) {

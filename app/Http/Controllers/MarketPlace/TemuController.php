@@ -2545,9 +2545,18 @@ class TemuController extends Controller
             DB::beginTransaction();
             
             $cleared = 0;
+            $skus = $request->input('skus', []); // Get selected SKUs array
             
-            // Get all temu_data_view records that have sprice
-            $dataViewRecords = TemuDataView::all();
+            // If no SKUs provided, return error
+            if (empty($skus)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No SKUs selected'
+                ], 400);
+            }
+            
+            // Get temu_data_view records for selected SKUs only
+            $dataViewRecords = TemuDataView::whereIn('sku', $skus)->get();
             
             foreach ($dataViewRecords as $record) {
                 $value = $record->value ?? [];
@@ -2555,6 +2564,9 @@ class TemuController extends Controller
                 // Remove sprice and related calculated fields from value array
                 $fieldsToRemove = [
                     'sprice',
+                    'spft_percent',
+                    'sroi_percent',
+                    'ship',
                     'amazon_price_applied_at',
                     'r_price_applied_at',
                     'sprice_status'
@@ -2586,7 +2598,7 @@ class TemuController extends Controller
 
             DB::commit();
 
-            Log::info("Cleared SPRICE data for {$cleared} SKUs in Temu");
+            Log::info("Cleared SPRICE data for {$cleared} selected SKUs in Temu");
 
             return response()->json([
                 'success' => true,
