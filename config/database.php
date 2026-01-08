@@ -136,10 +136,7 @@ return [
                 'max' => 5,
             ],
         ],
-            'prefix' => '',
-            'strict' => true,
-            'engine' => null,
-        ],
+
 
         'repricer' => [
             'driver' => 'mysql',
