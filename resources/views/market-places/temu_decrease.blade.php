@@ -238,6 +238,10 @@
                     <button type="button" id="clear-sprice-btn" class="btn btn-sm btn-danger">
                         <i class="fa fa-trash"></i> Clear SPRICE
                     </button>
+                    
+                    <button id="sold-sprc-blank-btn" class="btn btn-sm btn-warning">
+                        <i class="fas fa-filter"></i> Sold+SPRC Blank
+                    </button>
                 </div>
 
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
@@ -1062,6 +1066,10 @@
             applySprice2699();
         });
 
+        $('#sold-sprc-blank-btn').on('click', function() {
+            selectSoldWithBlankSprice();
+        });
+
         $('#discount-percentage-input').on('keypress', function(e) {
             if (e.which === 13) {
                 applyDiscount();
@@ -1438,6 +1446,76 @@
                     }
                 });
             });
+        }
+
+        function selectSoldWithBlankSprice() {
+            // Get all table data
+            const allData = table.getData('all');
+            let newlySelectedCount = 0;
+            
+            // Don't clear current selection - only add unselected items
+            
+            // Select SKUs where Temu L30 > 0 AND SPRICE is null/blank AND not already selected
+            allData.forEach(row => {
+                const temuL30Val = row['temu_l30'];
+                const spriceVal = row['sprice'];
+                const sku = row['sku'];
+                
+                // Parse temu_l30 - must be a positive number
+                const temuL30 = temuL30Val ? parseInt(temuL30Val) : 0;
+                
+                // Check if sprice is null, undefined, empty string, or 0
+                const spriceIsBlank = !spriceVal || spriceVal === '' || spriceVal === 0 || parseFloat(spriceVal) === 0;
+                
+                // Only select if: has SKU AND temu sold > 0 AND sprice is blank AND not already selected
+                if (sku && temuL30 > 0 && spriceIsBlank && !selectedSkus.has(sku)) {
+                    selectedSkus.add(sku);
+                    newlySelectedCount++;
+                }
+            });
+            
+            // Apply table filter to show only sold items with blank SPRICE
+            table.clearFilter();
+            table.addFilter(function(data) {
+                const temuL30Val = data['temu_l30'];
+                const spriceVal = data['sprice'];
+                
+                const temuL30 = temuL30Val ? parseInt(temuL30Val) : 0;
+                const spriceIsBlank = !spriceVal || spriceVal === '' || spriceVal === 0 || parseFloat(spriceVal) === 0;
+                
+                return temuL30 > 0 && spriceIsBlank;
+            });
+            
+            // Update UI
+            updateSelectedCount();
+            updateSelectAllCheckbox();
+            updateSummary();
+            
+            // Update checkboxes
+            $('.sku-select-checkbox').each(function() {
+                const sku = $(this).data('sku');
+                $(this).prop('checked', selectedSkus.has(sku));
+            });
+            
+            // Show selection mode if items found
+            if (newlySelectedCount > 0 || selectedSkus.size > 0) {
+                const selectColumn = table.getColumn('_select');
+                selectColumn.show();
+                
+                if (!decreaseModeActive && !increaseModeActive) {
+                    decreaseModeActive = true;
+                    $('#decrease-btn').removeClass('btn-warning').addClass('btn-danger');
+                    $('#decrease-btn').html('<i class="fas fa-times"></i> Cancel Decrease');
+                }
+                
+                if (newlySelectedCount > 0) {
+                    showToast(`Added ${newlySelectedCount} sold SKU(s) with blank SPRICE to selection (Total: ${selectedSkus.size})`, 'success');
+                } else {
+                    showToast(`Filtered to show sold items with blank SPRICE (${selectedSkus.size} already selected)`, 'info');
+                }
+            } else {
+                showToast('No sold items with blank SPRICE found', 'info');
+            }
         }
 
         function clearAllSprice() {
