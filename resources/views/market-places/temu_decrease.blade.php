@@ -191,9 +191,9 @@
                     <div>
                         <select id="sprice-filter" class="form-select form-select-sm" style="width: 130px;">
                             <option value="all">All SPRICE</option>
-                            <option value="27-35">$27-$35</option>
+                            <option value="27-31">$27-$31</option>
                             <option value="lt27">&lt; $27</option>
-                            <option value="gt35">&gt; $35</option>
+                            <option value="gt31">&gt; $31</option>
                         </select>
                     </div>
 
@@ -2182,9 +2182,9 @@
                 table.addFilter(function(data) {
                     const sprice = parseFloat(data.sprice) || 0;
                     
-                    if (spriceFilter === '27-35') return sprice >= 27 && sprice <= 35;
+                    if (spriceFilter === '27-31') return sprice >= 27 && sprice <= 31;
                     if (spriceFilter === 'lt27') return sprice > 0 && sprice < 27;
-                    if (spriceFilter === 'gt35') return sprice > 35;
+                    if (spriceFilter === 'gt31') return sprice > 31;
                     return true;
                 });
             }
