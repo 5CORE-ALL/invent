@@ -197,6 +197,22 @@
                         </select>
                     </div>
 
+                    <!-- Ads Req Filter -->
+                    <div>
+                        <select id="ads-req-filter" class="form-select form-select-sm" style="width: 130px;">
+                            <option value="all">All Ads Req</option>
+                            <option value="below-avg">Below Avg Views</option>
+                        </select>
+                    </div>
+
+                    <!-- Ads Running Filter -->
+                    <div>
+                        <select id="ads-running-filter" class="form-select form-select-sm" style="width: 140px;">
+                            <option value="all">All Ads Status</option>
+                            <option value="running">Ads Running</option>
+                        </select>
+                    </div>
+
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
                             id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
@@ -242,6 +258,18 @@
                     <button id="sold-sprc-blank-btn" class="btn btn-sm btn-warning">
                         <i class="fas fa-filter"></i> Sold+SPRC Blank
                     </button>
+                    
+                    <button id="avg-views-btn" class="btn btn-sm btn-info">
+                        <i class="fas fa-eye"></i> AVG Views
+                    </button>
+                    
+                    <button id="store-daily-avg-btn" class="btn btn-sm btn-success">
+                        <i class="fas fa-save"></i> Store Daily Avg
+                    </button>
+                    
+                    <button id="view-avg-views-chart-btn" class="btn btn-sm btn-primary">
+                        <i class="fas fa-chart-line"></i> View Avg Chart
+                    </button>
                 </div>
 
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
@@ -276,7 +304,9 @@
                         
                         <!-- Engagement -->
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Total Views: 0</span>
+                        <span class="badge bg-info fs-6 p-2" id="avg-views-badge" style="color: black; font-weight: bold;">Avg Views: 0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="total-temu-l30-badge" style="color: black; font-weight: bold;">Total Temu L30: 0</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color: black; font-weight: bold;">Total INV: 0</span>
                     </div>
                 </div>
             </div>
@@ -571,6 +601,40 @@
             </div>
         </div>
     </div>
+
+    <!-- Average Views History Modal -->
+    <div class="modal fade" id="avgViewsChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fa fa-chart-line me-2"></i>Daily Average Views History</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3 d-flex justify-content-between align-items-center">
+                        <div>
+                            <label class="form-label fw-bold mb-0 me-2">Date Range:</label>
+                            <select id="avg-views-days-filter" class="form-select form-select-sm d-inline-block" style="width: auto;">
+                                <option value="30" selected>Last 30 Days</option>
+                                <option value="60">Last 60 Days</option>
+                                <option value="90">Last 90 Days</option>
+                            </select>
+                        </div>
+                        <div class="text-muted">
+                            <small><i class="fa fa-info-circle"></i> Shows historical average views across all products</small>
+                        </div>
+                    </div>
+                    <div id="avg-views-no-data-message" class="alert alert-warning" style="display: none;">
+                        <i class="fa fa-exclamation-triangle me-2"></i>
+                        <strong>No Data Available:</strong> No historical data available yet. Click "Store Daily Avg" to begin tracking.
+                    </div>
+                    <div style="height: 400px; position: relative;">
+                        <canvas id="avgViewsChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -581,10 +645,16 @@
     let increaseModeActive = false;
     let selectedSkus = new Set();
     let soldSpriceBlankFilterActive = false;
+    let latestAvgViews = 0;
+    let adsReqFilter = 'all';
+    let adsRunningFilter = 'all';
     
     // SKU-specific chart
     let skuMetricsChart = null;
     let currentSku = null;
+
+    // Average Views chart
+    let avgViewsChart = null;
 
     function initSkuMetricsChart() {
         const ctx = document.getElementById('skuMetricsChart').getContext('2d');
@@ -929,9 +999,264 @@
         toast.addEventListener('hidden.bs.toast', () => toast.remove());
     }
 
+    function initAvgViewsChart() {
+        const ctx = document.getElementById('avgViewsChart').getContext('2d');
+        
+        // Register datalabels plugin if not already registered
+        if (!Chart.registry.getPlugin('datalabels')) {
+            Chart.register(ChartDataLabels);
+        }
+        
+        avgViewsChart = new Chart(ctx, {
+            type: 'line',
+            plugins: [ChartDataLabels],
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Average Views',
+                        data: [],
+                        borderColor: '#28a745',
+                        backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                        borderWidth: 3,
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        pointBackgroundColor: '#28a745',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        tension: 0.3,
+                        fill: true,
+                        datalabels: {
+                            display: true,
+                            align: 'top',
+                            offset: 8,
+                            color: '#28a745',
+                            font: {
+                                weight: 'bold',
+                                size: 11
+                            },
+                            formatter: function(value) {
+                                return value ? Math.round(value) : '';
+                            }
+                        }
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Daily Average Views Trend',
+                        font: {
+                            size: 16,
+                            weight: 'bold'
+                        }
+                    },
+                    legend: {
+                        display: true,
+                        position: 'bottom'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return 'Average Views: ' + Math.round(context.parsed.y);
+                            },
+                            afterLabel: function(context) {
+                                const dataIndex = context.dataIndex;
+                                const dataset = avgViewsChart.data.datasets[0];
+                                if (dataset.totalProducts && dataset.totalProducts[dataIndex]) {
+                                    return 'Products: ' + dataset.totalProducts[dataIndex];
+                                }
+                                return '';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        title: {
+                            display: true,
+                            text: 'Average Views',
+                            font: {
+                                size: 12,
+                                weight: 'bold'
+                            }
+                        },
+                        ticks: {
+                            callback: function(value) {
+                                return Math.round(value);
+                            }
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Date',
+                            font: {
+                                size: 12,
+                                weight: 'bold'
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    function loadAvgViewsHistory(days = 30) {
+        fetch(`/temu-avg-views-history?days=${days}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (avgViewsChart) {
+                    if (!data || data.length === 0) {
+                        $('#avg-views-no-data-message').show();
+                        avgViewsChart.data.labels = [];
+                        avgViewsChart.data.datasets[0].data = [];
+                        avgViewsChart.update();
+                        return;
+                    }
+                    
+                    $('#avg-views-no-data-message').hide();
+                    
+                    avgViewsChart.data.labels = data.map(d => d.date);
+                    avgViewsChart.data.datasets[0].data = data.map(d => parseFloat(d.avg_views));
+                    
+                    // Store additional data for tooltip
+                    avgViewsChart.data.datasets[0].totalProducts = data.map(d => d.total_products);
+                    
+                    avgViewsChart.update();
+                }
+            })
+            .catch(error => {
+                console.error('Error loading average views history:', error);
+                showToast('Failed to load average views history', 'error');
+            });
+    }
+
+    function storeDailyAvgViews() {
+        const data = table.getData('active');
+        
+        if (!data || data.length === 0) {
+            showToast('No data available to calculate average', 'error');
+            return;
+        }
+        
+        const totalViews = data.reduce((sum, row) => sum + (parseInt(row['product_clicks']) || 0), 0);
+        const totalProducts = data.length;
+        const avgViews = totalViews / totalProducts;
+        
+        $.ajax({
+            url: '/temu-store-daily-avg-views',
+            method: 'POST',
+            data: {
+                _token: '{{ csrf_token() }}',
+                avg_views: avgViews,
+                total_products: totalProducts,
+                total_views: totalViews
+            },
+            success: function(response) {
+                if (response.success) {
+                    showToast(`Daily average views stored successfully (${Math.round(avgViews)} avg)`, 'success');
+                    // Update the latest avg views for filtering
+                    latestAvgViews = avgViews;
+                } else {
+                    showToast('Failed to store daily average views', 'error');
+                }
+            },
+            error: function(xhr) {
+                showToast('Failed to store daily average views', 'error');
+            }
+        });
+    }
+
+    function autoStoreDailyAvgViews() {
+        // Check if today's record already exists
+        fetch('/temu-latest-avg-views')
+            .then(response => response.json())
+            .then(data => {
+                const today = new Date().toISOString().split('T')[0];
+                const latestDate = data && data.date ? data.date : null;
+                
+                // If no record for today, store it automatically
+                if (latestDate !== today) {
+                    const tableData = table.getData('active');
+                    
+                    if (tableData && tableData.length > 0) {
+                        const totalViews = tableData.reduce((sum, row) => sum + (parseInt(row['product_clicks']) || 0), 0);
+                        const totalProducts = tableData.length;
+                        const avgViews = totalViews / totalProducts;
+                        
+                        $.ajax({
+                            url: '/temu-store-daily-avg-views',
+                            method: 'POST',
+                            data: {
+                                _token: '{{ csrf_token() }}',
+                                avg_views: avgViews,
+                                total_products: totalProducts,
+                                total_views: totalViews
+                            },
+                            success: function(response) {
+                                if (response.success) {
+                                    console.log(`Auto-stored daily average: ${Math.round(avgViews)} views`);
+                                    latestAvgViews = avgViews;
+                                }
+                            },
+                            error: function(xhr) {
+                                console.error('Failed to auto-store daily average views');
+                            }
+                        });
+                    }
+                } else {
+                    // Update the latest avg for filtering
+                    if (data && data.avg_views) {
+                        latestAvgViews = parseFloat(data.avg_views);
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error checking latest average views:', error);
+            });
+    }
+
+    function loadLatestAvgViews() {
+        fetch('/temu-latest-avg-views')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data && data.avg_views) {
+                    latestAvgViews = parseFloat(data.avg_views);
+                }
+            })
+            .catch(error => {
+                console.error('Error loading latest average views:', error);
+            });
+    }
+
     $(document).ready(function() {
         // Initialize SKU-specific chart
         initSkuMetricsChart();
+
+        // Initialize Average Views chart
+        initAvgViewsChart();
+
+        // Load latest average views for filtering
+        loadLatestAvgViews();
 
         // SKU chart days filter
         $('#sku-chart-days-filter').on('change', function() {
@@ -943,6 +1268,12 @@
                 }
                 loadSkuMetricsData(currentSku, days);
             }
+        });
+
+        // Average Views chart days filter
+        $('#avg-views-days-filter').on('change', function() {
+            const days = $(this).val();
+            loadAvgViewsHistory(days);
         });
 
         // Event delegation for chart button clicks
@@ -1073,6 +1404,21 @@
 
         $('#sold-sprc-blank-btn').on('click', function() {
             selectSoldWithBlankSprice();
+        });
+
+        $('#avg-views-btn').on('click', function() {
+            showToast('Average Views is displayed in the Summary Statistics section', 'info');
+        });
+
+        $('#store-daily-avg-btn').on('click', function() {
+            storeDailyAvgViews();
+        });
+
+        $('#view-avg-views-chart-btn').on('click', function() {
+            $('#avg-views-days-filter').val('30');
+            $('#avg-views-no-data-message').hide();
+            loadAvgViewsHistory(30);
+            $('#avgViewsChartModal').modal('show');
         });
 
         $('#discount-percentage-input').on('keypress', function(e) {
@@ -1648,6 +1994,9 @@
             // Calculate TCOS: (Total Ad Spend / Total Revenue) × 100
             const totalTcos = totalRevenue > 0 ? (totalSpend / totalRevenue) * 100 : 0;
             
+            // Calculate average views
+            const avgViews = totalProducts > 0 ? totalViews / totalProducts : 0;
+            
             // Update badges
             $('#total-products-badge').text('Total Products: ' + totalProducts.toLocaleString());
             $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
@@ -1666,6 +2015,7 @@
             $('#avg-npft-badge').text('Avg NPFT%: ' + avgNpft.toFixed(1) + '%');
             $('#avg-nroi-badge').text('Avg NROI%: ' + avgNroi.toFixed(1) + '%');
             $('#total-views-badge').text('Total Views: ' + totalViews.toLocaleString());
+            $('#avg-views-badge').text('Avg Views: ' + Math.round(avgViews));
             $('#total-temu-l30-badge').text('Total Temu L30: ' + totalTemuL30.toLocaleString());
             $('#total-inv-badge').text('Total INV: ' + totalInv.toLocaleString());
         }
@@ -2037,30 +2387,6 @@
                     }
                 },
                 {
-                    title: "SROI%",
-                    field: "sroi_percent",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const sprice = parseFloat(rowData['sprice']) || 0;
-                        const lp = parseFloat(rowData['lp']) || 0;
-                        const temuShip = parseFloat(rowData['temu_ship']) || 0;
-                        const percentage = 0.91; // Temu marketplace percentage
-                        
-                        if (sprice === 0 || lp === 0) return '';
-                        
-                        // Calculate Suggested Temu Price
-                        const stemuPrice = sprice <= 26.99 ? sprice + 2.99 : sprice;
-                        
-                        // SROI% = ((S Temu Price × percentage - LP - Temu Ship) / LP) × 100
-                        const sroi = lp > 0 ? ((stemuPrice * percentage - lp - temuShip) / lp) * 100 : 0;
-                        
-                        const colorClass = getRoiColor(sroi);
-                        return `<span class="dil-percent-value ${colorClass}">${Math.round(sroi)}%</span>`;
-                    }
-                },
-                {
                     title: "SPFT%",
                     field: "spft_percent",
                     hozAlign: "center",
@@ -2088,34 +2414,6 @@
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(spft)}%</span>`;
                     }
                 },
-                {
-                    title: "SNROI%",
-                    field: "snroi_percent",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const sprice = parseFloat(rowData['sprice']) || 0;
-                        const lp = parseFloat(rowData['lp']) || 0;
-                        const temuShip = parseFloat(rowData['temu_ship']) || 0;
-                        const adsPercent = parseFloat(rowData['ads_percent']) || 0;
-                        const percentage = 0.91; // Temu marketplace percentage
-                        
-                        if (sprice === 0 || lp === 0) return '';
-                        
-                        // Calculate Suggested Temu Price
-                        const stemuPrice = sprice <= 26.99 ? sprice + 2.99 : sprice;
-                        
-                        // SROI%
-                        const sroi = lp > 0 ? ((stemuPrice * percentage - lp - temuShip) / lp) * 100 : 0;
-                        
-                        // SNROI% = SROI% - ADS%
-                        const snroi = sroi - adsPercent;
-                        
-                        const colorClass = getRoiColor(snroi);
-                        return `<span class="dil-percent-value ${colorClass}">${Math.round(snroi)}%</span>`;
-                    }
-                },
                  {
                     title: "Spend",
                     field: "spend",
@@ -2124,6 +2422,88 @@
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue()) || 0;
                         return '$' + value.toFixed(2);
+                    }
+                },
+                {
+                    title: "Net ROAS",
+                    field: "net_roas",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        return value.toFixed(2);
+                    }
+                },
+                {
+                    title: "ACOS AD",
+                    field: "acos_ad",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        return value.toFixed(2) + '%';
+                    }
+                },
+                {
+                    title: "Clicks",
+                    field: "ad_clicks",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseInt(cell.getValue()) || 0;
+                        return value.toLocaleString();
+                    }
+                },
+                {
+                    title: "Target",
+                    field: "target",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        return '$' + value.toFixed(2);
+                    }
+                },
+                {
+                    title: "S Target",
+                    field: "starget",
+                    hozAlign: "center",
+                    sorter: "number",
+                    editor: "input",
+                    editorParams: {
+                        min: 0,
+                        step: 0.01
+                    },
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue());
+                        if (!value || value <= 0) {
+                            return '<span style="color: #999;">-</span>';
+                        }
+                        return '$' + value.toFixed(2);
+                    },
+                    cellEdited: function(cell) {
+                        const sku = cell.getRow().getData().sku;
+                        const starget = parseFloat(cell.getValue()) || 0;
+                        
+                        $.ajax({
+                            url: '/temu-pricing/save-starget',
+                            method: 'POST',
+                            data: {
+                                _token: '{{ csrf_token() }}',
+                                sku: sku,
+                                starget: starget
+                            },
+                            success: function(response) {
+                                if (response.success) {
+                                    showToast('S Target saved successfully', 'success');
+                                } else {
+                                    showToast('Failed to save S Target', 'error');
+                                }
+                            },
+                            error: function(xhr) {
+                                showToast('Failed to save S Target', 'error');
+                            }
+                        });
                     }
                 },
                 {
@@ -2172,6 +2552,8 @@
             const spriceFilter = $('#sprice-filter').val();
             const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
             const skuSearch = $('#sku-search').val();
+            adsReqFilter = $('#ads-req-filter').val();
+            adsRunningFilter = $('#ads-running-filter').val();
 
             // Clear all filters first
             table.clearFilter();
@@ -2281,12 +2663,61 @@
                 });
             }
 
+            // Ads Req filter
+            if (adsReqFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const views = parseFloat(data['product_clicks']) || 0;
+                    if (adsReqFilter === 'below-avg' && latestAvgViews > 0) {
+                        return views > 0 && views < latestAvgViews;
+                    }
+                    return true;
+                });
+            }
+
+            // Ads Running filter
+            if (adsRunningFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const target = parseFloat(data['target']) || 0;
+                    if (adsRunningFilter === 'running') {
+                        return target > 0;
+                    }
+                    return true;
+                });
+            }
+
             updateSummary();
             updateSelectAllCheckbox();
         }
 
-        $('#inventory-filter, #gpft-filter, #cvr-filter, #ads-filter, #sprice-filter').on('change', function() {
+        $('#inventory-filter, #gpft-filter, #cvr-filter, #ads-filter, #sprice-filter, #ads-req-filter, #ads-running-filter').on('change', function() {
             applyFilters();
+        });
+
+        // Handle column visibility for Ads Req filter
+        $('#ads-req-filter').on('change', function() {
+            const value = $(this).val();
+            
+            if (value === 'below-avg') {
+                // Hide columns from GROI% to SPFT%
+                table.getColumn('roi_percent').hide();
+                table.getColumn('npft_percent').hide();
+                table.getColumn('nroi_percent').hide();
+                table.getColumn('recommended_base_price').hide();
+                table.getColumn('sprice').hide();
+                table.getColumn('stemu_price').hide();
+                table.getColumn('sgprft_percent').hide();
+                table.getColumn('spft_percent').hide();
+            } else {
+                // Show columns when filter is cleared
+                table.getColumn('roi_percent').show();
+                table.getColumn('npft_percent').show();
+                table.getColumn('nroi_percent').show();
+                table.getColumn('recommended_base_price').show();
+                table.getColumn('sprice').show();
+                table.getColumn('stemu_price').show();
+                table.getColumn('sgprft_percent').show();
+                table.getColumn('spft_percent').show();
+            }
         });
 
         $(document).on('click', '.column-filter', function(e) {
@@ -2456,6 +2887,10 @@
             // Apply default INV > 0 filter on page load
             applyFilters();
             updateSummary();
+            
+            // Auto-store daily average views if not already stored today
+            autoStoreDailyAvgViews();
+            
             setTimeout(function() {
                 $('.sku-select-checkbox').each(function() {
                     const sku = $(this).data('sku');

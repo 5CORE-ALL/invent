@@ -1478,8 +1478,8 @@ class TemuController extends Controller
                 ->get()
                 ->keyBy('goods_id');
 
-            // Fetch ad data (spend) - no date filter as it always has 30 days data
-            $adData = TemuAdData::select('goods_id', 'spend')
+            // Fetch ad data (spend, net_roas, acos_ad, clicks, target) - no date filter as it always has 30 days data
+            $adData = TemuAdData::select('goods_id', 'spend', 'net_roas', 'acos_ad', 'clicks', 'target')
                 ->get()
                 ->keyBy('goods_id');
 
@@ -1551,9 +1551,13 @@ class TemuController extends Controller
                 $productClicks = $viewDataItem ? $viewDataItem->product_clicks : 0;
                 $ctr = $viewDataItem ? $viewDataItem->ctr : 0;
                 
-                // Get ad data by goods_id (spend) - only if item exists in Temu
+                // Get ad data by goods_id (spend, net_roas, acos_ad, clicks, target) - only if item exists in Temu
                 $adDataItem = $goodsId ? $adData->get($goodsId) : null;
                 $spend = $adDataItem ? $adDataItem->spend : 0;
+                $netRoas = $adDataItem ? $adDataItem->net_roas : 0;
+                $acosAd = $adDataItem ? $adDataItem->acos_ad : 0;
+                $adClicks = $adDataItem ? $adDataItem->clicks : 0;
+                $target = $adDataItem ? $adDataItem->target : 0;
                 
                 // Calculate OVL30 and Dil%
                 $ovl30 = $l30;
@@ -1611,6 +1615,7 @@ class TemuController extends Controller
                         : (is_string($temuDataViewItem->value) ? json_decode($temuDataViewItem->value, true) : []);
                 }
                 $sprice = $temuDataViewValue['sprice'] ?? null;
+                $starget = $temuDataViewValue['starget'] ?? null;
                 
                 // Get Amazon price from AmazonDatasheet
                 $amazon = $amazonData->get($sku);
@@ -1649,10 +1654,15 @@ class TemuController extends Controller
                     'ctr' => round($ctr, 2),
                     'cvr_percent' => round($cvrPercent, 2),
                     'spend' => round($spend, 2),
+                    'net_roas' => round($netRoas, 2),
+                    'acos_ad' => round($acosAd, 2),
+                    'ad_clicks' => (int)$adClicks,
+                    'target' => round($target, 2),
                     'ads_percent' => round($adsPercent, 2),
                     'npft_percent' => round($npftPercent, 2),
                     'nroi_percent' => round($nroiPercent, 2),
                     'sprice' => $sprice,
+                    'starget' => $starget,
                     'recommended_base_price' => $recommendedBasePrice
                 ];
             });
@@ -2662,6 +2672,119 @@ class TemuController extends Controller
             Log::error('Error fetching Temu metrics history: ' . $e->getMessage());
             // Return empty array instead of 500 error to show "No data" message
             return response()->json([]);
+        }
+    }
+
+    /**
+     * Store daily average views
+     */
+    public function storeDailyAvgViews(Request $request)
+    {
+        try {
+            $date = $request->input('date', now()->format('Y-m-d'));
+            $avgViews = $request->input('avg_views');
+            $totalProducts = $request->input('total_products');
+            $totalViews = $request->input('total_views');
+
+            \App\Models\TemuDailyAvgViews::updateOrCreate(
+                ['date' => $date],
+                [
+                    'avg_views' => $avgViews,
+                    'total_products' => $totalProducts,
+                    'total_views' => $totalViews
+                ]
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Daily average views stored successfully'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error storing daily average views: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to store data'], 500);
+        }
+    }
+
+    /**
+     * Get average views history for chart
+     */
+    public function getAvgViewsHistory(Request $request)
+    {
+        try {
+            $days = $request->input('days', 30);
+            
+            $history = \App\Models\TemuDailyAvgViews::orderBy('date', 'desc')
+                ->take($days)
+                ->get()
+                ->reverse()
+                ->values();
+
+            return response()->json($history);
+        } catch (\Exception $e) {
+            Log::error('Error fetching average views history: ' . $e->getMessage());
+            return response()->json([]);
+        }
+    }
+
+    /**
+     * Get latest average views
+     */
+    public function getLatestAvgViews()
+    {
+        try {
+            $latest = \App\Models\TemuDailyAvgViews::orderBy('date', 'desc')->first();
+            return response()->json($latest);
+        } catch (\Exception $e) {
+            Log::error('Error fetching latest average views: ' . $e->getMessage());
+            return response()->json(['avg_views' => 0]);
+        }
+    }
+
+    /**
+     * Save S Target (Suggested Target)
+     */
+    public function saveStarget(Request $request)
+    {
+        try {
+            $request->validate([
+                'sku' => 'required|string',
+                'starget' => 'required|numeric|min:0'
+            ]);
+
+            $sku = $request->sku;
+            $starget = $request->starget;
+
+            // Get or create TemuDataView record
+            $temuData = TemuDataView::where('sku', $sku)->first();
+            
+            if (!$temuData) {
+                $temuData = new TemuDataView();
+                $temuData->sku = $sku;
+            }
+
+            // Get current value or initialize as empty array
+            $value = is_array($temuData->value) 
+                ? $temuData->value 
+                : (is_string($temuData->value) ? json_decode($temuData->value, true) : []);
+            
+            if (!is_array($value)) {
+                $value = [];
+            }
+
+            // Update starget
+            $value['starget'] = $starget;
+            
+            $temuData->value = $value;
+            $temuData->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'S Target saved successfully',
+                'data' => $temuData
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error saving S Target: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to save S Target'], 500);
         }
     }
 }
