@@ -405,6 +405,14 @@ class FetchMacyProducts extends Command
                     
                     if ($price === null) continue;
 
+                    // Calculate total stock from all warehouses
+                    $stock = 0;
+                    if (isset($product['quantities']) && is_array($product['quantities'])) {
+                        foreach ($product['quantities'] as $quantity) {
+                            $stock += $quantity['available_quantity'] ?? 0;
+                        }
+                    }
+
                     $originalSku = $sku;
                     $sku = strtolower($sku);
                     $l30 = $skuSales[$channelName][$sku]['l30'] ?? 0;
@@ -412,6 +420,7 @@ class FetchMacyProducts extends Command
                     $updates[] = [
                         'sku' => $originalSku,
                         'price' => $price,
+                        'stock' => $stock,
                         'm_l30' => $l30,
                     ];
                 }
@@ -424,17 +433,18 @@ class FetchMacyProducts extends Command
                         $bindings = [];
                         
                         foreach ($updates as $update) {
-                            $values[] = "(?, ?, ?, ?, ?)";
+                            $values[] = "(?, ?, ?, ?, ?, ?)";
                             $bindings[] = $update['sku'];
                             $bindings[] = $update['price'];
+                            $bindings[] = $update['stock'];
                             $bindings[] = $update['m_l30'];
                             $bindings[] = $now;
                             $bindings[] = $now;
                         }
                         
-                        $sql = "INSERT INTO {$tableName} (sku, price, m_l30, created_at, updated_at) VALUES " 
+                        $sql = "INSERT INTO {$tableName} (sku, price, stock, m_l30, created_at, updated_at) VALUES " 
                              . implode(', ', $values)
-                             . " ON DUPLICATE KEY UPDATE price = VALUES(price), m_l30 = VALUES(m_l30), updated_at = VALUES(updated_at)";
+                             . " ON DUPLICATE KEY UPDATE price = VALUES(price), stock = VALUES(stock), m_l30 = VALUES(m_l30), updated_at = VALUES(updated_at)";
                         
                         DB::statement($sql, $bindings);
                         $totalProcessed += count($updates);
@@ -504,7 +514,7 @@ class FetchMacyProducts extends Command
         $pageToken = null;
         $sales = [];
 
-        $now = now('America/New_York');
+        $now = now('America/Los_Angeles');
         $startDate = $now->copy()->subDays(29)->startOfDay()->toIso8601String();
 
         $startL30 = $now->copy()->subDays(29)->startOfDay();
@@ -543,12 +553,17 @@ class FetchMacyProducts extends Command
 
             foreach ($orders as $order) {
                 $channel = $order['origin']['channel_name'] ?? 'UNKNOWN';
-                $created = Carbon::parse($order['created_at'], 'America/New_York');
+                $created = Carbon::parse($order['created_at'], 'America/Los_Angeles');
 
                 foreach ($order['order_lines'] ?? [] as $line) {
                     $sku = $line['product']['id'] ?? null;
                     $qty = $line['quantity'] ?? 0;
+                    $lineStatus = $line['status'] ?? null;
+                    
                     if (!$sku) continue;
+
+                    // Skip CLOSED orders (canceled/refunded) - matching UpdateMarketplaceDailyMetrics logic
+                    if ($lineStatus === 'CLOSED') continue;
 
                     $sku = strtolower($sku);
 

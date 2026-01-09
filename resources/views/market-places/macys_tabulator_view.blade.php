@@ -81,6 +81,15 @@
                         <option value="60plus">60%+</option>
                     </select>
 
+                    <select id="dil-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">All DIL%</option>
+                        <option value="red">Red (&lt;16.7%)</option>
+                        <option value="yellow">Yellow (16.7-25%)</option>
+                        <option value="green">Green (25-50%)</option>
+                        <option value="pink">Pink (50%+)</option>
+                    </select>
+
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
@@ -97,7 +106,15 @@
                     </button>
 
                     <button id="export-btn" class="btn btn-sm btn-info">
-                        <i class="fas fa-file-excel"></i> Export Sheet
+                        <i class="fas fa-file-excel"></i> Export CSV
+                    </button>
+
+                    <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#uploadPriceModal">
+                        <i class="fa fa-dollar-sign"></i> Upload Price
+                    </button>
+
+                    <button id="sugg-amz-prc-btn" class="btn btn-sm btn-info">
+                        <i class="fas fa-copy"></i> Sugg Amz Prc
                     </button>
 
                     <button id="decrease-btn" class="btn btn-sm btn-warning">
@@ -119,10 +136,15 @@
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color: black; font-weight: bold;">Total INV: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color: black; font-weight: bold;">Total MC L30: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold;">0 Sold: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
+                        <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales">&gt; 0 Sold</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-dil-badge" style="color: black; font-weight: bold;">DIL%: 0%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-cogs-badge" style="color: black; font-weight: bold;">COGS: $0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI%: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz</span>
+                        <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz</span>
+                        <span class="badge bg-danger fs-6 p-2" id="missing-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing prices">MISSING: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="mapping-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter inventory mapping issues">MAPPING: 0</span>
                     </div>
                 </div>
             </div>
@@ -138,6 +160,9 @@
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
                             placeholder="Enter %" step="0.01" style="width: 100px;">
                         <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
+                        <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
+                            <i class="fas fa-eraser"></i> Clear SPRICE
+                        </button>
                     </div>
                 </div>
                 <div id="macys-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
@@ -147,6 +172,35 @@
                     </div>
                     <!-- Table body -->
                     <div id="macys-table" style="flex: 1;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload Price Modal -->
+    <div class="modal fade" id="uploadPriceModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title"><i class="fa fa-dollar-sign me-2"></i>Upload Price Data</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="uploadPriceForm" action="{{ route('macys.upload.price') }}" method="POST" enctype="multipart/form-data">
+                        @csrf
+                        <div class="mb-3">
+                            <label class="form-label fw-bold"><i class="fa fa-file-excel text-success me-1"></i>Choose File</label>
+                            <input type="file" class="form-control" name="excel_file" accept=".xlsx,.xls,.csv,.tsv" required>
+                            <small class="text-muted">Supported formats: Excel (.xlsx, .xls), CSV, TSV</small>
+                        </div>
+                        <div class="alert alert-warning">
+                            <i class="fa fa-exclamation-triangle me-2"></i><strong>Warning:</strong> This will TRUNCATE (clear) the table before uploading!
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" form="uploadPriceForm" class="btn btn-success"><i class="fa fa-upload me-1"></i>Upload</button>
                 </div>
             </div>
         </div>
@@ -275,6 +329,124 @@
             }
         });
 
+        // Sugg Amz Prc button
+        $('#sugg-amz-prc-btn').on('click', function() {
+            applySuggestAmazonPrice();
+        });
+
+        // Clear SPRICE button
+        $('#clear-sprice-btn').on('click', function() {
+            clearSpriceForSelected();
+        });
+
+        // 0 Sold badge click handler - filter to show only 0 sold items
+        let zeroSoldFilterActive = false;
+        $('#zero-sold-count-badge').on('click', function() {
+            zeroSoldFilterActive = !zeroSoldFilterActive;
+            moreSoldFilterActive = false; // Deactivate the other filter
+            applyFilters();
+        });
+
+        // > 0 Sold badge click handler - filter to show items with sales > 0
+        let moreSoldFilterActive = false;
+        $('#more-sold-count-badge').on('click', function() {
+            moreSoldFilterActive = !moreSoldFilterActive;
+            zeroSoldFilterActive = false; // Deactivate the other filter
+            applyFilters();
+        });
+
+        // < Amz badge click handler - filter prices less than Amazon
+        let lessAmzFilterActive = false;
+        $('#less-amz-badge').on('click', function() {
+            lessAmzFilterActive = !lessAmzFilterActive;
+            moreAmzFilterActive = false; // Deactivate the other filter
+            applyFilters();
+        });
+
+        // > Amz badge click handler - filter prices greater than Amazon
+        let moreAmzFilterActive = false;
+        $('#more-amz-badge').on('click', function() {
+            moreAmzFilterActive = !moreAmzFilterActive;
+            lessAmzFilterActive = false; // Deactivate the other filter
+            applyFilters();
+        });
+
+        // MISSING badge click handler - filter and show only specific columns
+        let missingFilterActive = false;
+        $('#missing-badge').on('click', function() {
+            missingFilterActive = !missingFilterActive;
+            mappingFilterActive = false; // Deactivate mapping filter
+            
+            if (missingFilterActive) {
+                // Hide all columns except: SKU, INV, Sold (L30), DIL, Missing, MAP
+                table.getColumns().forEach(col => {
+                    const field = col.getField();
+                    if (field === '(Child) sku' || field === 'INV' || field === 'MC L30' || 
+                        field === 'MC Dil%' || field === 'Missing' || field === 'Mapping') {
+                        col.show();
+                    } else {
+                        col.hide();
+                    }
+                });
+            } else {
+                // Show all columns
+                table.getColumns().forEach(col => {
+                    col.show();
+                });
+            }
+            applyFilters();
+        });
+
+        // MAPPING badge click handler - filter and show only specific columns
+        let mappingFilterActive = false;
+        $('#mapping-badge').on('click', function() {
+            mappingFilterActive = !mappingFilterActive;
+            missingFilterActive = false; // Deactivate missing filter
+            
+            if (mappingFilterActive) {
+                // Hide all columns except: SKU, INV, Sold (L30), DIL, Missing, MAP
+                table.getColumns().forEach(col => {
+                    const field = col.getField();
+                    if (field === '(Child) sku' || field === 'INV' || field === 'MC L30' || 
+                        field === 'MC Dil%' || field === 'Missing' || field === 'Mapping') {
+                        col.show();
+                    } else {
+                        col.hide();
+                    }
+                });
+            } else {
+                // Show all columns
+                table.getColumns().forEach(col => {
+                    col.show();
+                });
+            }
+            applyFilters();
+        });
+
+        // Upload Price Form Handler
+        $('#uploadPriceForm').on('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            
+            $.ajax({
+                url: $(this).attr('action'),
+                method: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(response) {
+                    $('#uploadPriceModal').modal('hide');
+                    showToast(response.success || 'Price data uploaded successfully!', 'success');
+                    table.setData(); // Reload table data
+                },
+                error: function(xhr) {
+                    const errorMsg = xhr.responseJSON?.error || 'Error uploading file';
+                    showToast(errorMsg, 'error');
+                }
+            });
+        });
+
         // Update selected count display
         function updateSelectedCount() {
             const count = selectedSkus.size;
@@ -300,6 +472,13 @@
             $('#select-all-checkbox').prop('checked', allFilteredSelected);
         }
 
+        // Custom price rounding function to round to .99 endings
+        function roundToRetailPrice(price) {
+            // Round to the nearest dollar and subtract 0.01 to make it .99
+            const roundedDollar = Math.ceil(price);
+            return roundedDollar - 0.01;
+        }
+
         // Apply discount to selected SKUs
         function applyDiscount() {
             const discountType = $('#discount-type-select').val();
@@ -310,50 +489,224 @@
                 return;
             }
             
-            const allData = table.getData();
-            let updatedCount = 0;
+            if (selectedSkus.size === 0) {
+                showToast('Please select at least one SKU', 'error');
+                return;
+            }
             
-            allData.forEach((row, index) => {
-                const sku = row['(Child) sku'];
-                if (selectedSkus.has(sku)) {
-                    const currentPrice = parseFloat(row['MC Price']) || 0;
-                    let newSprice;
+            let updatedCount = 0;
+            const updates = []; // Store updates for backend saving
+            
+            // Loop through selected SKUs
+            selectedSkus.forEach(sku => {
+                const rows = table.searchRows("(Child) sku", "=", sku);
+                
+                if (rows.length > 0) {
+                    const row = rows[0];
+                    const rowData = row.getData();
+                    const currentPrice = parseFloat(rowData['MC Price']) || 0;
                     
-                    if (discountType === 'percentage') {
-                        if (decreaseModeActive) {
-                            newSprice = currentPrice * (1 - discountValue / 100);
+                    if (currentPrice > 0) {
+                        let newSprice;
+                        
+                        if (discountType === 'percentage') {
+                            if (decreaseModeActive) {
+                                newSprice = currentPrice * (1 - discountValue / 100);
+                            } else {
+                                newSprice = currentPrice * (1 + discountValue / 100);
+                            }
                         } else {
-                            newSprice = currentPrice * (1 + discountValue / 100);
+                            if (decreaseModeActive) {
+                                newSprice = currentPrice - discountValue;
+                            } else {
+                                newSprice = currentPrice + discountValue;
+                            }
                         }
-                    } else {
-                        if (decreaseModeActive) {
-                            newSprice = currentPrice - discountValue;
-                        } else {
-                            newSprice = currentPrice + discountValue;
-                        }
+                        
+                        // Apply retail price rounding (round to .99 endings)
+                        newSprice = roundToRetailPrice(newSprice);
+                        
+                        // Ensure minimum price
+                        newSprice = Math.max(0.99, newSprice);
+                        
+                        // Calculate metrics with 80% margin
+                        const percentage = 0.80; // 80% margin for Macys
+                        const lp = parseFloat(rowData['LP_productmaster']) || 0;
+                        const ship = parseFloat(rowData['Ship_productmaster']) || 0;
+                        
+                        const sgpft = newSprice > 0 ? Math.round(((newSprice * percentage - ship - lp) / newSprice) * 100 * 100) / 100 : 0;
+                        const spft = sgpft; // Same as SGPFT for Macys (no ads)
+                        const sroi = lp > 0 ? Math.round(((newSprice * percentage - lp - ship) / lp) * 100 * 100) / 100 : 0;
+                        
+                        // Update SPRICE and metrics in table
+                        row.update({
+                            SPRICE: newSprice,
+                            SGPFT: sgpft,
+                            SPFT: spft,
+                            SROI: sroi
+                        });
+                        
+                        // Store update for backend saving
+                        updates.push({
+                            sku: sku,
+                            sprice: newSprice
+                        });
+                        
+                        updatedCount++;
                     }
-                    
-                    newSprice = Math.round(newSprice * 100) / 100;
-                    if (newSprice < 0) newSprice = 0;
-                    
-                    // Update SPRICE in table
-                    row['SPRICE'] = newSprice;
-                    
-                    // Recalculate SGPFT, SPFT, SROI
-                    const percentage = row['percentage'] || 0.76;
-                    const lp = row['LP_productmaster'] || 0;
-                    const ship = row['Ship_productmaster'] || 0;
-                    
-                    row['SGPFT'] = newSprice > 0 ? Math.round(((newSprice * percentage - ship - lp) / newSprice) * 100 * 100) / 100 : 0;
-                    row['SPFT'] = row['SGPFT'];
-                    row['SROI'] = lp > 0 ? Math.round(((newSprice * percentage - lp - ship) / lp) * 100 * 100) / 100 : 0;
-                    
-                    updatedCount++;
                 }
             });
             
-            table.setData(allData);
-            showToast(`Updated SPRICE for ${updatedCount} SKUs`, 'success');
+            // Save to backend if there are updates
+            if (updates.length > 0) {
+                saveSpriceUpdates(updates);
+            }
+            
+            showToast(`${decreaseModeActive ? 'Decrease' : 'Increase'} applied to ${updatedCount} SKU(s) based on MC Price`, 'success');
+            $('#discount-percentage-input').val('');
+        }
+
+        // Apply Amazon suggested price
+        function applySuggestAmazonPrice() {
+            if (selectedSkus.size === 0) {
+                showToast('Please select SKUs first', 'error');
+                return;
+            }
+
+            let updatedCount = 0;
+            let noAmazonPriceCount = 0;
+            const updates = []; // Store updates for backend saving
+
+            // Loop through selected SKUs
+            selectedSkus.forEach(sku => {
+                const rows = table.searchRows("(Child) sku", "=", sku);
+                
+                if (rows.length > 0) {
+                    const row = rows[0];
+                    const rowData = row.getData();
+                    const amazonPrice = parseFloat(rowData['A Price']);
+                    
+                    if (amazonPrice && amazonPrice > 0) {
+                        // Calculate metrics with 80% margin
+                        const percentage = 0.80; // 80% margin for Macys
+                        const lp = parseFloat(rowData['LP_productmaster']) || 0;
+                        const ship = parseFloat(rowData['Ship_productmaster']) || 0;
+                        
+                        const sgpft = amazonPrice > 0 ? Math.round(((amazonPrice * percentage - ship - lp) / amazonPrice) * 100 * 100) / 100 : 0;
+                        const spft = sgpft; // Same as SGPFT for Macys (no ads)
+                        const sroi = lp > 0 ? Math.round(((amazonPrice * percentage - lp - ship) / lp) * 100 * 100) / 100 : 0;
+                        
+                        // Update the row with Amazon price and calculated metrics
+                        row.update({
+                            SPRICE: amazonPrice,
+                            SGPFT: sgpft,
+                            SPFT: spft,
+                            SROI: sroi
+                        });
+                        
+                        // Store update for backend saving
+                        updates.push({
+                            sku: sku,
+                            sprice: amazonPrice
+                        });
+                        
+                        updatedCount++;
+                    } else {
+                        noAmazonPriceCount++;
+                    }
+                } else {
+                    noAmazonPriceCount++;
+                }
+            });
+            
+            // Save to backend if there are updates
+            if (updates.length > 0) {
+                saveSpriceUpdates(updates);
+            }
+            
+            let message = `Amazon price applied to ${updatedCount} SKU(s)`;
+            if (noAmazonPriceCount > 0) {
+                message += ` (${noAmazonPriceCount} SKU(s) had no Amazon price or not found)`;
+            }
+            
+            showToast(message, updatedCount > 0 ? 'success' : 'warning');
+        }
+
+        // Save SPRICE updates to backend (unified function for all SPRICE updates)
+        function saveSpriceUpdates(updates) {
+            $.ajax({
+                url: '/macys-save-sprice-batch',
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                data: {
+                    updates: updates
+                },
+                success: function(response) {
+                    if (response.success) {
+                        console.log('SPRICE updates saved successfully:', response.updated, 'records');
+                        // Show subtle success notification
+                        if (response.errors && response.errors.length > 0) {
+                            console.warn('Some updates had errors:', response.errors);
+                        }
+                    }
+                },
+                error: function(xhr) {
+                    console.error('Error saving SPRICE updates:', xhr);
+                    let errorMessage = 'Error saving SPRICE updates to database';
+                    if (xhr.responseJSON && xhr.responseJSON.error) {
+                        errorMessage += ': ' + xhr.responseJSON.error;
+                    }
+                    showToast(errorMessage, 'error');
+                }
+            });
+        }
+
+        // Clear SPRICE for selected SKUs
+        function clearSpriceForSelected() {
+            if (selectedSkus.size === 0) {
+                showToast('Please select SKUs first', 'error');
+                return;
+            }
+
+            if (!confirm(`Are you sure you want to clear SPRICE for ${selectedSkus.size} selected SKU(s)?`)) {
+                return;
+            }
+
+            let clearedCount = 0;
+            const updates = [];
+
+            // Get all rows and filter by selected SKUs
+            table.getRows().forEach(row => {
+                const rowData = row.getData();
+                const sku = rowData['(Child) sku'];
+                
+                if (selectedSkus.has(sku)) {
+                    // Clear SPRICE in table
+                    row.update({
+                        SPRICE: 0,
+                        SGPFT: 0,
+                        SPFT: 0,
+                        SROI: 0
+                    });
+                    
+                    // Store update for backend saving
+                    updates.push({
+                        sku: sku,
+                        sprice: 0
+                    });
+                    
+                    clearedCount++;
+                }
+            });
+
+            // Save to backend if there are updates
+            if (updates.length > 0) {
+                saveSpriceUpdates(updates);
+            }
+
+            showToast(`SPRICE cleared for ${clearedCount} SKU(s)`, 'success');
         }
 
         // SAVE SPRICE to database with retry
@@ -468,6 +821,7 @@
                     frozen: true,
                     width: 100,
                     hozAlign: "center",
+                    visible: false,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const buyerLink = rowData['B Link'] || '';
@@ -581,14 +935,74 @@
                     sorter: "number",
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue() || 0);
+                        const rowData = cell.getRow().getData();
+                        const amazonPrice = parseFloat(rowData['A Price']) || 0;
                         
                         if (value === 0) {
                             return `<span style="color: #a00211; font-weight: 600;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
                         }
                         
+                        // Show red if MC Price is less than Amazon Price
+                        if (amazonPrice > 0 && value < amazonPrice) {
+                            return `<span style="color: #a00211; font-weight: 600;">$${value.toFixed(2)}</span>`;
+                        }
+                        
+                        // Show green if MC Price is greater than Amazon Price
+                        if (amazonPrice > 0 && value > amazonPrice) {
+                            return `<span style="color: #28a745; font-weight: 600;">$${value.toFixed(2)}</span>`;
+                        }
+                        
                         return `$${value.toFixed(2)}`;
                     },
                     width: 70
+                },
+                {
+                    title: "A Price",
+                    field: "A Price",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue());
+                        if (value === null || value === 0 || isNaN(value)) {
+                            return '<span style="color: #6c757d;">-</span>';
+                        }
+                        return `$${value.toFixed(2)}`;
+                    },
+                    width: 70
+                },
+                {
+                    title: "<span style='color: #a00211;'>Missing</span>",
+                    field: "Missing",
+                    hozAlign: "center",
+                    sorter: "string",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const price = parseFloat(rowData['MC Price']) || 0;
+                        
+                        if (price === 0) {
+                            return '<span style="color: #a00211; font-weight: 600;">M</span>';
+                        }
+                        return '';
+                    },
+                    width: 60
+                },
+                {
+                    title: "<span style='color: #a00211;'>Mapping</span>",
+                    field: "Mapping",
+                    hozAlign: "center",
+                    sorter: "string",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const ourInv = parseFloat(rowData['INV']) || 0;
+                        const mcInv = parseFloat(rowData['MC INV']) || 0; // Marketplace inventory from Macy's API
+                        
+                        const diff = Math.abs(mcInv - ourInv);
+                        if (diff > 3) {
+                            return '<span style="color: #a00211; font-weight: 600;">MAP</span>';
+                        }
+                        return '';
+                    },
+                    width: 60
                 },
                 {
                     title: "GPFT%",
@@ -847,8 +1261,8 @@
                 const sku = rowData['(Child) sku'];
                 const newSprice = parseFloat(cell.getValue()) || 0;
                 
-                // Recalculate SGPFT, SPFT, SROI
-                const percentage = rowData['percentage'] || 0.76;
+                // Recalculate SGPFT, SPFT, SROI with 80% margin
+                const percentage = 0.80; // 80% margin for Macys
                 const lp = rowData['LP_productmaster'] || 0;
                 const ship = rowData['Ship_productmaster'] || 0;
                 
@@ -882,40 +1296,103 @@
             const inventoryFilter = $('#inventory-filter').val();
             const nrlFilter = $('#nrl-filter').val();
             const gpftFilter = $('#gpft-filter').val();
+            const dilFilter = $('#dil-filter').val();
 
-            let filters = [];
+            // Clear all filters first
+            table.clearFilter();
 
             // Inventory filter
             if (inventoryFilter === 'zero') {
-                filters.push({ field: "INV", type: "=", value: 0 });
+                table.addFilter("INV", "=", 0);
             } else if (inventoryFilter === 'more') {
-                filters.push({ field: "INV", type: ">", value: 0 });
+                table.addFilter("INV", ">", 0);
             }
 
             // NRL filter
             if (nrlFilter === 'REQ') {
-                filters.push({ field: "nr_req", type: "=", value: "REQ" });
+                table.addFilter("nr_req", "=", "REQ");
             } else if (nrlFilter === 'NR') {
-                filters.push({ field: "nr_req", type: "=", value: "NR" });
+                table.addFilter("nr_req", "=", "NR");
             }
 
             // GPFT filter
             if (gpftFilter !== 'all') {
                 if (gpftFilter === 'negative') {
-                    filters.push({ field: "GPFT%", type: "<", value: 0 });
+                    table.addFilter("GPFT%", "<", 0);
                 } else if (gpftFilter === '60plus') {
-                    filters.push({ field: "GPFT%", type: ">=", value: 60 });
+                    table.addFilter("GPFT%", ">=", 60);
                 } else {
                     const [min, max] = gpftFilter.split('-').map(Number);
-                    filters.push({ field: "GPFT%", type: ">=", value: min });
-                    filters.push({ field: "GPFT%", type: "<", value: max });
+                    table.addFilter("GPFT%", ">=", min);
+                    table.addFilter("GPFT%", "<", max);
                 }
             }
 
-            table.setFilter(filters);
+            // DIL filter (calculated as L30 / INV * 100)
+            if (dilFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const inv = parseFloat(data['INV']) || 0;
+                    const l30 = parseFloat(data['L30']) || 0;
+                    const dil = inv === 0 ? 0 : (l30 / inv) * 100;
+                    
+                    if (dilFilter === 'red') return dil < 16.66;
+                    if (dilFilter === 'yellow') return dil >= 16.66 && dil < 25;
+                    if (dilFilter === 'green') return dil >= 25 && dil < 50;
+                    if (dilFilter === 'pink') return dil >= 50;
+                    return true;
+                });
+            }
+
+            // 0 Sold filter (based on MC L30) - triggered by badge click
+            if (zeroSoldFilterActive) {
+                table.addFilter("MC L30", "=", 0);
+            }
+
+            // > 0 Sold filter (based on MC L30) - triggered by badge click
+            if (moreSoldFilterActive) {
+                table.addFilter("MC L30", ">", 0);
+            }
+
+            // < Amz filter - show prices less than Amazon price
+            if (lessAmzFilterActive) {
+                table.addFilter(function(data) {
+                    const mcPrice = parseFloat(data['MC Price']) || 0;
+                    const amazonPrice = parseFloat(data['A Price']) || 0;
+                    return amazonPrice > 0 && mcPrice > 0 && mcPrice < amazonPrice;
+                });
+            }
+
+            // > Amz filter - show prices greater than Amazon price
+            if (moreAmzFilterActive) {
+                table.addFilter(function(data) {
+                    const mcPrice = parseFloat(data['MC Price']) || 0;
+                    const amazonPrice = parseFloat(data['A Price']) || 0;
+                    return amazonPrice > 0 && mcPrice > 0 && mcPrice > amazonPrice;
+                });
+            }
+
+            // MISSING filter - show rows with price = 0 or null
+            if (missingFilterActive) {
+                table.addFilter(function(data) {
+                    const price = parseFloat(data['MC Price']) || 0;
+                    return price === 0;
+                });
+            }
+
+            // MAPPING filter - show rows with inventory difference > 3
+            if (mappingFilterActive) {
+                table.addFilter(function(data) {
+                    const ourInv = parseFloat(data['INV']) || 0;
+                    const mcInv = parseFloat(data['MC INV']) || 0;
+                    const diff = Math.abs(mcInv - ourInv);
+                    return diff > 3;
+                });
+            }
+
+            updateSummary();
         }
 
-        $('#inventory-filter, #nrl-filter, #gpft-filter').on('change', function() {
+        $('#inventory-filter, #nrl-filter, #gpft-filter, #dil-filter').on('change', function() {
             applyFilters();
         });
 
@@ -929,6 +1406,7 @@
             let totalPft = 0, totalSales = 0, totalGpft = 0, totalPrice = 0, priceCount = 0;
             let totalInv = 0, totalL30 = 0, zeroSoldCount = 0, totalDil = 0, dilCount = 0;
             let totalCogs = 0, totalRoi = 0, roiCount = 0;
+            let missingCount = 0, mappingCount = 0;
 
             data.forEach(row => {
                 totalPft += parseFloat(row.Profit) || 0;
@@ -939,6 +1417,8 @@
                 if (price > 0) {
                     totalPrice += price;
                     priceCount++;
+                } else {
+                    missingCount++; // Count missing prices
                 }
                 
                 totalInv += parseFloat(row.INV) || 0;
@@ -963,6 +1443,14 @@
                     totalRoi += roi;
                     roiCount++;
                 }
+
+                // Count mapping issues (inventory difference > 3)
+                const ourInv = parseFloat(row['INV']) || 0;
+                const mcInv = parseFloat(row['MC INV']) || 0;
+                const diff = Math.abs(mcInv - ourInv);
+                if (diff > 3) {
+                    mappingCount++;
+                }
             });
 
             const avgGpft = data.length > 0 ? totalGpft / data.length : 0;
@@ -980,6 +1468,8 @@
             $('#avg-dil-badge').text(`DIL%: ${(avgDil * 100).toFixed(1)}%`);
             $('#total-cogs-badge').text(`COGS: $${Math.round(totalCogs).toLocaleString()}`);
             $('#roi-percent-badge').text(`ROI%: ${avgRoi.toFixed(1)}%`);
+            $('#missing-badge').text(`MISSING: ${missingCount}`);
+            $('#mapping-badge').text(`MAPPING: ${mappingCount}`);
         }
 
         // Build Column Visibility Dropdown
@@ -1141,8 +1631,9 @@
             link.click();
             document.body.removeChild(link);
             
-            toastr.success('Export downloaded successfully!');
+            showToast('Export downloaded successfully!', 'success');
         });
     });
 </script>
 @endsection
+

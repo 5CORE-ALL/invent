@@ -792,9 +792,32 @@
             });
         }
 
+        // Store all unfiltered data for summary calculations
+        let allTableData = [];
+        
         // Initialize Tabulator
         table = new Tabulator("#ebay3-table", {
             ajaxURL: "/ebay3-data-json",
+            ajaxResponse: function(url, params, response) {
+                // Store all unfiltered data for summary calculations
+                allTableData = response || [];
+                console.log('API Response - Total rows:', allTableData.length);
+                
+                // Calculate total L30 for verification
+                let totalL30 = 0;
+                let parentCount = 0;
+                allTableData.forEach(row => {
+                    const sku = row['(Child) sku'] || '';
+                    if (sku.toUpperCase().includes('PARENT')) {
+                        parentCount++;
+                    } else {
+                        totalL30 += parseFloat(row['eBay L30'] || 0);
+                    }
+                });
+                console.log('Total eBay3 L30 from API:', totalL30, '(excluding', parentCount, 'PARENT rows)');
+                
+                return response;
+            },
             ajaxSorting: false,
             layout: "fitDataStretch",
             pagination: true,
@@ -1675,26 +1698,12 @@
             });
         }
 
-        // Update summary badges
+        // Update summary badges - ALWAYS use ALL data, not filtered
         function updateSummary() {
-            const rawData = table.getData("active");
+            // Use allTableData (include ALL rows)
+            const data = allTableData;
             
-            // Flatten tree data to get all child rows
-            const data = [];
-            rawData.forEach(row => {
-                // Add children if they exist
-                if (row._children && row._children.length > 0) {
-                    row._children.forEach(child => {
-                        data.push(child);
-                    });
-                } else {
-                    // Only add if not a parent (for orphan rows)
-                    const sku = row['(Child) sku'] || '';
-                    if (!sku.toUpperCase().includes('PARENT')) {
-                        data.push(row);
-                    }
-                }
-            });
+            console.log('updateSummary - Total rows:', data.length);
             
             let totalTcos = 0;
             let totalSpendL30 = 0;
@@ -1715,41 +1724,39 @@
             const countedItemsPmt = new Set();
 
             data.forEach(row => {
-                // Child rows only (already filtered above)
-                if (parseFloat(row.INV) > 0) {
-                    totalTcos += parseFloat(row['AD%'] || 0);
-                    totalPftAmt += parseFloat(row['Total_pft'] || 0);
-                    totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
-                    totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * parseFloat(row['eBay L30'] || 0);
-                    totalFbaInv += parseFloat(row.INV || 0);
-                    totalFbaL30 += parseFloat(row['eBay L30'] || 0);
-                    
-                    // KW Spend - count once per parent (parent-wise ads)
-                    const parent = row['Parent'] || '';
-                    const kwSpend = parseFloat(row['kw_spend_L30'] || 0);
-                    if (parent && kwSpend > 0 && !countedParentsKw.has(parent)) {
-                        totalKwSpendL30 += kwSpend;
-                        countedParentsKw.add(parent);
-                    }
-                    
-                    // PMT Spend - count once per item_id (listing-wise ads)
-                    const itemId = row['eBay_item_id'] || '';
-                    const pmtSpend = parseFloat(row['pmt_spend_L30'] || 0);
-                    if (itemId && pmtSpend > 0 && !countedItemsPmt.has(itemId)) {
-                        totalPmtSpendL30 += pmtSpend;
-                        countedItemsPmt.add(itemId);
-                    }
-                    
-                    const l30 = parseFloat(row['eBay L30'] || 0);
-                    if (l30 === 0) {
-                        zeroSoldCount++;
-                    }
-                    
-                    const dil = parseFloat(row['E Dil%'] || 0);
-                    if (!isNaN(dil)) {
-                        totalDilPercent += dil;
-                        dilCount++;
-                    }
+                // Count all rows regardless of filters
+                totalTcos += parseFloat(row['AD%'] || 0);
+                totalPftAmt += parseFloat(row['Total_pft'] || 0);
+                totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
+                totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * parseFloat(row['eBay L30'] || 0);
+                totalFbaInv += parseFloat(row.INV || 0);
+                totalFbaL30 += parseFloat(row['eBay L30'] || 0);
+                
+                // KW Spend - count once per parent (parent-wise ads)
+                const parent = row['Parent'] || '';
+                const kwSpend = parseFloat(row['kw_spend_L30'] || 0);
+                if (parent && kwSpend > 0 && !countedParentsKw.has(parent)) {
+                    totalKwSpendL30 += kwSpend;
+                    countedParentsKw.add(parent);
+                }
+                
+                // PMT Spend - count once per item_id (listing-wise ads)
+                const itemId = row['eBay_item_id'] || '';
+                const pmtSpend = parseFloat(row['pmt_spend_L30'] || 0);
+                if (itemId && pmtSpend > 0 && !countedItemsPmt.has(itemId)) {
+                    totalPmtSpendL30 += pmtSpend;
+                    countedItemsPmt.add(itemId);
+                }
+                
+                const l30 = parseFloat(row['eBay L30'] || 0);
+                if (l30 === 0) {
+                    zeroSoldCount++;
+                }
+                
+                const dil = parseFloat(row['E Dil%'] || 0);
+                if (!isNaN(dil)) {
+                    totalDilPercent += dil;
+                    dilCount++;
                 }
             });
             
@@ -1759,21 +1766,17 @@
             let totalWeightedPrice = 0;
             let totalL30 = 0;
             data.forEach(row => {
-                if (parseFloat(row.INV) > 0) {
-                    const price = parseFloat(row['eBay Price'] || 0);
-                    const l30 = parseFloat(row['eBay L30'] || 0);
-                    totalWeightedPrice += price * l30;
-                    totalL30 += l30;
-                }
+                const price = parseFloat(row['eBay Price'] || 0);
+                const l30 = parseFloat(row['eBay L30'] || 0);
+                totalWeightedPrice += price * l30;
+                totalL30 += l30;
             });
             const avgPrice = totalL30 > 0 ? totalWeightedPrice / totalL30 : 0;
             $('#avg-price-badge').text('Avg Price: $' + Math.round(avgPrice));
 
             let totalViews = 0;
             data.forEach(row => {
-                if (parseFloat(row.INV) > 0) {
-                    totalViews += parseFloat(row.views || 0);
-                }
+                totalViews += parseFloat(row.views || 0);
             });
             const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
             $('#avg-cvr-badge').text('Avg CVR: ' + avgCVR.toFixed(1) + '%');
@@ -1813,12 +1816,10 @@
             let totalPftPercent = 0;
             let pftPercentCount = 0;
             data.forEach(row => {
-                if (parseFloat(row.INV) > 0) {
-                    const pftPercent = parseFloat(row['PFT %'] || 0);
-                    if (!isNaN(pftPercent)) {
-                        totalPftPercent += pftPercent;
-                        pftPercentCount++;
-                    }
+                const pftPercent = parseFloat(row['PFT %'] || 0);
+                if (!isNaN(pftPercent)) {
+                    totalPftPercent += pftPercent;
+                    pftPercentCount++;
                 }
             });
             const avgPft = pftPercentCount > 0 ? (totalPftPercent / pftPercentCount).toFixed(1) : '0.0';

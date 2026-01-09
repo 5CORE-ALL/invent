@@ -1,6 +1,7 @@
 @extends('layouts.vertical', ['title' => 'Best Buy Pricing', 'sidenav' => 'condensed'])
 
 @section('css')
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
@@ -81,6 +82,15 @@
                         <option value="60plus">60%+</option>
                     </select>
 
+                    <select id="dil-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">All DIL%</option>
+                        <option value="red">Red (&lt;16.7%)</option>
+                        <option value="yellow">Yellow (16.7-25%)</option>
+                        <option value="green">Green (25-50%)</option>
+                        <option value="pink">Pink (50%+)</option>
+                    </select>
+
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
@@ -96,12 +106,20 @@
                         <i class="fa fa-eye"></i> Show All
                     </button>
 
+                    <button id="export-btn" class="btn btn-sm btn-info">
+                        <i class="fas fa-file-excel"></i> Export CSV
+                    </button>
+
                     <button id="decrease-btn" class="btn btn-sm btn-warning">
                         <i class="fas fa-arrow-down"></i> Decrease Mode
                     </button>
                     
                     <button id="increase-btn" class="btn btn-sm btn-success">
                         <i class="fas fa-arrow-up"></i> Increase Mode
+                    </button>
+                    
+                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadPriceModal">
+                        <i class="fa fa-dollar-sign"></i> Upload Price
                     </button>
                 </div>
 
@@ -115,10 +133,13 @@
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color: black; font-weight: bold;">Total INV: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color: black; font-weight: bold;">Total BB L30: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold;">0 Sold: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
+                        <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales">&gt; 0 Sold</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-dil-badge" style="color: black; font-weight: bold;">DIL%: 0%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-cogs-badge" style="color: black; font-weight: bold;">COGS: $0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI%: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz</span>
+                        <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz</span>
                     </div>
                 </div>
             </div>
@@ -134,6 +155,12 @@
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
                             placeholder="Enter %" step="0.01" style="width: 100px;">
                         <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
+                        <button id="sugg-amz-prc-btn" class="btn btn-sm btn-info">
+                            <i class="fas fa-copy"></i> Sugg Amz Prc
+                        </button>
+                        <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
+                            <i class="fas fa-eraser"></i> Clear SPRICE
+                        </button>
                     </div>
                 </div>
                 <div id="bestbuy-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
@@ -143,6 +170,34 @@
                     </div>
                     <!-- Table body -->
                     <div id="bestbuy-table" style="flex: 1;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Upload Price Modal -->
+    <div class="modal fade" id="uploadPriceModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title"><i class="fa fa-dollar-sign me-2"></i>Upload Price Data</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="uploadPriceForm" action="{{ route('bestbuy-upload-price') }}" method="POST" enctype="multipart/form-data">
+                        @csrf
+                        <div class="mb-3">
+                            <label class="form-label fw-bold"><i class="fa fa-file-excel text-success me-1"></i>Choose File</label>
+                            <input type="file" class="form-control" name="excel_file" accept=".xlsx,.xls,.csv,.txt" required>
+                        </div>
+                        <div class="alert alert-warning">
+                            <i class="fa fa-exclamation-triangle me-2"></i><strong>Warning:</strong> This will TRUNCATE (clear) the table before uploading!
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" form="uploadPriceForm" class="btn btn-primary"><i class="fa fa-upload me-1"></i>Upload</button>
                 </div>
             </div>
         </div>
@@ -271,6 +326,48 @@
             }
         });
 
+        // Sugg Amz Prc button
+        $('#sugg-amz-prc-btn').on('click', function() {
+            applySuggestAmazonPrice();
+        });
+
+        // Clear SPRICE button
+        $('#clear-sprice-btn').on('click', function() {
+            clearSpriceForSelected();
+        });
+
+        // 0 Sold badge click handler - filter to show only 0 sold items
+        let zeroSoldFilterActive = false;
+        $('#zero-sold-count-badge').on('click', function() {
+            zeroSoldFilterActive = !zeroSoldFilterActive;
+            moreSoldFilterActive = false; // Deactivate the other filter
+            applyFilters();
+        });
+
+        // > 0 Sold badge click handler - filter to show items with sales > 0
+        let moreSoldFilterActive = false;
+        $('#more-sold-count-badge').on('click', function() {
+            moreSoldFilterActive = !moreSoldFilterActive;
+            zeroSoldFilterActive = false; // Deactivate the other filter
+            applyFilters();
+        });
+
+        // < Amz badge click handler - filter prices less than Amazon
+        let lessAmzFilterActive = false;
+        $('#less-amz-badge').on('click', function() {
+            lessAmzFilterActive = !lessAmzFilterActive;
+            moreAmzFilterActive = false; // Deactivate the other filter
+            applyFilters();
+        });
+
+        // > Amz badge click handler - filter prices greater than Amazon
+        let moreAmzFilterActive = false;
+        $('#more-amz-badge').on('click', function() {
+            moreAmzFilterActive = !moreAmzFilterActive;
+            lessAmzFilterActive = false; // Deactivate the other filter
+            applyFilters();
+        });
+
         // Update selected count display
         function updateSelectedCount() {
             const count = selectedSkus.size;
@@ -296,7 +393,14 @@
             $('#select-all-checkbox').prop('checked', allFilteredSelected);
         }
 
-        // Apply discount to selected SKUs
+        // Custom price rounding function to round to .99 endings
+        function roundToRetailPrice(price) {
+            // Round to the nearest dollar and subtract 0.01 to make it .99
+            const roundedDollar = Math.ceil(price);
+            return roundedDollar - 0.01;
+        }
+
+        // Apply discount to selected SKUs (based on BB Price)
         function applyDiscount() {
             const discountType = $('#discount-type-select').val();
             const discountValue = parseFloat($('#discount-percentage-input').val());
@@ -305,51 +409,201 @@
                 showToast('Please enter a valid discount value', 'error');
                 return;
             }
+
+            if (selectedSkus.size === 0) {
+                showToast('Please select at least one SKU', 'error');
+                return;
+            }
             
-            const allData = table.getData();
             let updatedCount = 0;
+            const updates = []; // Store updates for backend saving
             
-            allData.forEach((row, index) => {
-                const sku = row['(Child) sku'];
-                if (selectedSkus.has(sku)) {
-                    const currentPrice = parseFloat(row['BB Price']) || 0;
-                    let newSprice;
+            // Loop through selected SKUs
+            selectedSkus.forEach(sku => {
+                const rows = table.searchRows("(Child) sku", "=", sku);
+                
+                if (rows.length > 0) {
+                    const row = rows[0];
+                    const rowData = row.getData();
+                    const currentPrice = parseFloat(rowData['BB Price']) || 0;
                     
-                    if (discountType === 'percentage') {
-                        if (decreaseModeActive) {
-                            newSprice = currentPrice * (1 - discountValue / 100);
+                    if (currentPrice > 0) {
+                        let newSprice;
+                        
+                        if (discountType === 'percentage') {
+                            if (increaseModeActive) {
+                                newSprice = currentPrice * (1 + discountValue / 100);
+                            } else {
+                                newSprice = currentPrice * (1 - discountValue / 100);
+                            }
                         } else {
-                            newSprice = currentPrice * (1 + discountValue / 100);
+                            if (increaseModeActive) {
+                                newSprice = currentPrice + discountValue;
+                            } else {
+                                newSprice = currentPrice - discountValue;
+                            }
                         }
-                    } else {
-                        if (decreaseModeActive) {
-                            newSprice = currentPrice - discountValue;
-                        } else {
-                            newSprice = currentPrice + discountValue;
-                        }
+                        
+                        // Apply retail price rounding (round to .99 endings)
+                        newSprice = roundToRetailPrice(newSprice);
+                        
+                        // Ensure minimum price
+                        newSprice = Math.max(0.99, newSprice);
+                        
+                        // Update SPRICE in table
+                        row.update({
+                            SPRICE: newSprice
+                        });
+                        
+                        // Store update for backend saving
+                        updates.push({
+                            sku: sku,
+                            sprice: newSprice
+                        });
+                        
+                        updatedCount++;
                     }
-                    
-                    newSprice = Math.round(newSprice * 100) / 100;
-                    if (newSprice < 0) newSprice = 0;
-                    
-                    // Update SPRICE in table
-                    row['SPRICE'] = newSprice;
-                    
-                    // Recalculate SGPFT, SPFT, SROI
-                    const percentage = row['percentage'] || 0.80;
-                    const lp = row['LP_productmaster'] || 0;
-                    const ship = row['Ship_productmaster'] || 0;
-                    
-                    row['SGPFT'] = newSprice > 0 ? Math.round(((newSprice * percentage - ship - lp) / newSprice) * 100 * 100) / 100 : 0;
-                    row['SPFT'] = row['SGPFT'];
-                    row['SROI'] = lp > 0 ? Math.round(((newSprice * percentage - lp - ship) / lp) * 100 * 100) / 100 : 0;
-                    
-                    updatedCount++;
                 }
             });
             
-            table.setData(allData);
-            showToast(`Updated SPRICE for ${updatedCount} SKUs`, 'success');
+            // Save to backend if there are updates
+            if (updates.length > 0) {
+                saveSpriceUpdates(updates);
+            }
+            
+            showToast(`${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s) based on BB Price`, 'success');
+            $('#discount-percentage-input').val('');
+        }
+
+        // Apply Amazon suggested price
+        function applySuggestAmazonPrice() {
+            if (selectedSkus.size === 0) {
+                showToast('Please select SKUs first', 'error');
+                return;
+            }
+
+            let updatedCount = 0;
+            let noAmazonPriceCount = 0;
+            const updates = []; // Store updates for backend saving
+
+            // Loop through selected SKUs
+            selectedSkus.forEach(sku => {
+                const rows = table.searchRows("(Child) sku", "=", sku);
+                
+                if (rows.length > 0) {
+                    const row = rows[0];
+                    const rowData = row.getData();
+                    const amazonPrice = parseFloat(rowData['A Price']);
+                    
+                    if (amazonPrice && amazonPrice > 0) {
+                        // Update the row
+                        row.update({
+                            SPRICE: amazonPrice
+                        });
+                        
+                        // Store update for backend saving
+                        updates.push({
+                            sku: sku,
+                            sprice: amazonPrice
+                        });
+                        
+                        updatedCount++;
+                    } else {
+                        noAmazonPriceCount++;
+                    }
+                } else {
+                    noAmazonPriceCount++;
+                }
+            });
+            
+            // Save to backend if there are updates
+            if (updates.length > 0) {
+                saveSpriceUpdates(updates);
+            }
+            
+            let message = `Amazon price applied to ${updatedCount} SKU(s)`;
+            if (noAmazonPriceCount > 0) {
+                message += ` (${noAmazonPriceCount} SKU(s) had no Amazon price or not found)`;
+            }
+            
+            showToast(message, updatedCount > 0 ? 'success' : 'warning');
+        }
+
+        // Save SPRICE updates to backend (unified function for all SPRICE updates)
+        function saveSpriceUpdates(updates) {
+            $.ajax({
+                url: '/bestbuy-save-sprice',
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                data: {
+                    updates: updates
+                },
+                success: function(response) {
+                    if (response.success) {
+                        console.log('SPRICE updates saved successfully:', response.updated, 'records');
+                        // Show subtle success notification
+                        if (response.errors && response.errors.length > 0) {
+                            console.warn('Some updates had errors:', response.errors);
+                        }
+                    }
+                },
+                error: function(xhr) {
+                    console.error('Error saving SPRICE updates:', xhr);
+                    let errorMessage = 'Error saving SPRICE updates to database';
+                    if (xhr.responseJSON && xhr.responseJSON.error) {
+                        errorMessage += ': ' + xhr.responseJSON.error;
+                    }
+                    showToast(errorMessage, 'error');
+                }
+            });
+        }
+
+        // Clear SPRICE for selected SKUs
+        function clearSpriceForSelected() {
+            if (selectedSkus.size === 0) {
+                showToast('Please select SKUs first', 'error');
+                return;
+            }
+
+            if (!confirm(`Are you sure you want to clear SPRICE for ${selectedSkus.size} selected SKU(s)?`)) {
+                return;
+            }
+
+            let clearedCount = 0;
+            const updates = [];
+
+            // Get all rows and filter by selected SKUs
+            table.getRows().forEach(row => {
+                const rowData = row.getData();
+                const sku = rowData['(Child) sku'];
+                
+                if (selectedSkus.has(sku)) {
+                    // Clear SPRICE in table
+                    row.update({
+                        SPRICE: 0,
+                        SGPFT: 0,
+                        SPFT: 0,
+                        SROI: 0
+                    });
+                    
+                    // Store update for backend saving
+                    updates.push({
+                        sku: sku,
+                        sprice: 0
+                    });
+                    
+                    clearedCount++;
+                }
+            });
+
+            // Save to backend if there are updates
+            if (updates.length > 0) {
+                saveSpriceUpdates(updates);
+            }
+
+            showToast(`SPRICE cleared for ${clearedCount} SKU(s)`, 'success');
         }
 
         // SAVE SPRICE to database with retry
@@ -413,20 +667,7 @@
                 }
             },
             columns: [
-                {
-                    title: "<input type='checkbox' id='select-all-checkbox'>",
-                    field: "_select",
-                    hozAlign: "center",
-                    headerSort: false,
-                    width: 40,
-                    visible: false,
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const sku = rowData['(Child) sku'];
-                        const isChecked = selectedSkus.has(sku) ? 'checked' : '';
-                        return `<input type='checkbox' class='sku-select-checkbox' data-sku='${sku}' ${isChecked}>`;
-                    }
-                },
+               
                 {
                     title: "Parent",
                     field: "Parent",
@@ -478,6 +719,7 @@
                     frozen: true,
                     width: 100,
                     hozAlign: "center",
+                    visible: false,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const buyerLink = rowData['B Link'] || '';
@@ -580,11 +822,37 @@
                     sorter: "number",
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue() || 0);
+                        const rowData = cell.getRow().getData();
+                        const amazonPrice = parseFloat(rowData['A Price']) || 0;
                         
                         if (value === 0) {
                             return `<span style="color: #a00211; font-weight: 600;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
                         }
                         
+                        // Show red if BB Price is less than Amazon Price
+                        if (amazonPrice > 0 && value < amazonPrice) {
+                            return `<span style="color: #a00211; font-weight: 600;">$${value.toFixed(2)}</span>`;
+                        }
+                        
+                        // Show green if BB Price is greater than Amazon Price
+                        if (amazonPrice > 0 && value > amazonPrice) {
+                            return `<span style="color: #28a745; font-weight: 600;">$${value.toFixed(2)}</span>`;
+                        }
+                        
+                        return `$${value.toFixed(2)}`;
+                    },
+                    width: 70
+                },
+                {
+                    title: "A Prc",
+                    field: "A Price",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue());
+                        if (value === null || value === 0 || isNaN(value)) {
+                            return '<span style="color: #6c757d;">-</span>';
+                        }
                         return `$${value.toFixed(2)}`;
                     },
                     width: 70
@@ -656,6 +924,7 @@
                     field: "Profit",
                     hozAlign: "center",
                     sorter: "number",
+                    visible: false,
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue() || 0);
                         let color = value >= 0 ? '#28a745' : '#a00211';
@@ -668,6 +937,7 @@
                     field: "Sales L30",
                     hozAlign: "center",
                     sorter: "number",
+                    visible: false,
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue() || 0);
                         return `$${value.toFixed(2)}`;
@@ -679,6 +949,7 @@
                     field: "LP_productmaster",
                     hozAlign: "center",
                     sorter: "number",
+                    visible: false,
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue() || 0);
                         return `$${value.toFixed(2)}`;
@@ -690,11 +961,26 @@
                     field: "Ship_productmaster",
                     hozAlign: "center",
                     sorter: "number",
+                    visible: false,
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue() || 0);
                         return `$${value.toFixed(2)}`;
                     },
                     width: 60
+                },
+                 {
+                    title: "<input type='checkbox' id='select-all-checkbox'>",
+                    field: "_select",
+                    hozAlign: "center",
+                    headerSort: false,
+                    width: 40,
+                    visible: false,
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const sku = rowData['(Child) sku'];
+                        const isChecked = selectedSkus.has(sku) ? 'checked' : '';
+                        return `<input type='checkbox' class='sku-select-checkbox' data-sku='${sku}' ${isChecked}>`;
+                    }
                 },
                 {
                     title: "SPRICE",
@@ -863,40 +1149,85 @@
             const inventoryFilter = $('#inventory-filter').val();
             const nrlFilter = $('#nrl-filter').val();
             const gpftFilter = $('#gpft-filter').val();
+            const dilFilter = $('#dil-filter').val();
 
-            let filters = [];
+            // Clear all filters first
+            table.clearFilter();
 
             // Inventory filter
             if (inventoryFilter === 'zero') {
-                filters.push({ field: "INV", type: "=", value: 0 });
+                table.addFilter("INV", "=", 0);
             } else if (inventoryFilter === 'more') {
-                filters.push({ field: "INV", type: ">", value: 0 });
+                table.addFilter("INV", ">", 0);
             }
 
             // NRL filter
             if (nrlFilter === 'REQ') {
-                filters.push({ field: "nr_req", type: "=", value: "REQ" });
+                table.addFilter("nr_req", "=", "REQ");
             } else if (nrlFilter === 'NR') {
-                filters.push({ field: "nr_req", type: "=", value: "NR" });
+                table.addFilter("nr_req", "=", "NR");
             }
 
             // GPFT filter
             if (gpftFilter !== 'all') {
                 if (gpftFilter === 'negative') {
-                    filters.push({ field: "GPFT%", type: "<", value: 0 });
+                    table.addFilter("GPFT%", "<", 0);
                 } else if (gpftFilter === '60plus') {
-                    filters.push({ field: "GPFT%", type: ">=", value: 60 });
+                    table.addFilter("GPFT%", ">=", 60);
                 } else {
                     const [min, max] = gpftFilter.split('-').map(Number);
-                    filters.push({ field: "GPFT%", type: ">=", value: min });
-                    filters.push({ field: "GPFT%", type: "<", value: max });
+                    table.addFilter("GPFT%", ">=", min);
+                    table.addFilter("GPFT%", "<", max);
                 }
             }
 
-            table.setFilter(filters);
+            // DIL filter (calculated as L30 / INV * 100)
+            if (dilFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const inv = parseFloat(data['INV']) || 0;
+                    const l30 = parseFloat(data['L30']) || 0;
+                    const dil = inv === 0 ? 0 : (l30 / inv) * 100;
+                    
+                    if (dilFilter === 'red') return dil < 16.66;
+                    if (dilFilter === 'yellow') return dil >= 16.66 && dil < 25;
+                    if (dilFilter === 'green') return dil >= 25 && dil < 50;
+                    if (dilFilter === 'pink') return dil >= 50;
+                    return true;
+                });
+            }
+
+            // 0 Sold filter (based on BB L30) - triggered by badge click
+            if (zeroSoldFilterActive) {
+                table.addFilter("BB L30", "=", 0);
+            }
+
+            // > 0 Sold filter (based on BB L30) - triggered by badge click
+            if (moreSoldFilterActive) {
+                table.addFilter("BB L30", ">", 0);
+            }
+
+            // < Amz filter - show prices less than Amazon price
+            if (lessAmzFilterActive) {
+                table.addFilter(function(data) {
+                    const bbPrice = parseFloat(data['BB Price']) || 0;
+                    const amazonPrice = parseFloat(data['A Price']) || 0;
+                    return amazonPrice > 0 && bbPrice > 0 && bbPrice < amazonPrice;
+                });
+            }
+
+            // > Amz filter - show prices greater than Amazon price
+            if (moreAmzFilterActive) {
+                table.addFilter(function(data) {
+                    const bbPrice = parseFloat(data['BB Price']) || 0;
+                    const amazonPrice = parseFloat(data['A Price']) || 0;
+                    return amazonPrice > 0 && bbPrice > 0 && bbPrice > amazonPrice;
+                });
+            }
+
+            updateSummary();
         }
 
-        $('#inventory-filter, #nrl-filter, #gpft-filter').on('change', function() {
+        $('#inventory-filter, #nrl-filter, #gpft-filter, #dil-filter').on('change', function() {
             applyFilters();
         });
 
@@ -1071,6 +1402,100 @@
             });
             buildColumnDropdown();
             saveColumnVisibilityToServer();
+        });
+
+        // Upload Price Form Handler
+        $('#uploadPriceForm').on('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const submitBtn = $(this).find('button[type="submit"]');
+            const originalText = submitBtn.html();
+            
+            submitBtn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin me-1"></i>Uploading...');
+            
+            $.ajax({
+                url: $(this).attr('action'),
+                method: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function(response) {
+                    showToast(response.success || 'Price data uploaded successfully!', 'success');
+                    $('#uploadPriceModal').modal('hide');
+                    $('#uploadPriceForm')[0].reset();
+                    
+                    // Reload table data
+                    table.setData();
+                },
+                error: function(xhr) {
+                    const errorMsg = xhr.responseJSON?.error || 'Error uploading price data';
+                    showToast(errorMsg, 'error');
+                },
+                complete: function() {
+                    submitBtn.prop('disabled', false).html(originalText);
+                }
+            });
+        });
+
+        // Export CSV button
+        $('#export-btn').on('click', function() {
+            const exportData = [];
+            const visibleColumns = table.getColumns().filter(col => col.isVisible() && col.getField() !== '_select');
+            
+            // Get headers
+            const headers = visibleColumns.map(col => {
+                let title = col.getDefinition().title || col.getField();
+                // Remove HTML tags from header
+                return title.replace(/<[^>]*>/g, '');
+            });
+            exportData.push(headers);
+            
+            // Get filtered data (all visible rows)
+            const data = table.getData("active");
+            data.forEach(row => {
+                const rowData = [];
+                visibleColumns.forEach(col => {
+                    const field = col.getField();
+                    let value = row[field];
+                    
+                    // Clean up values
+                    if (value === null || value === undefined) {
+                        value = '';
+                    } else if (typeof value === 'number') {
+                        value = parseFloat(value.toFixed(2));
+                    } else if (typeof value === 'string') {
+                        // Remove HTML tags
+                        value = value.replace(/<[^>]*>/g, '').trim();
+                    }
+                    rowData.push(value);
+                });
+                exportData.push(rowData);
+            });
+            
+            // Create CSV
+            let csv = '';
+            exportData.forEach(row => {
+                csv += row.map(cell => {
+                    if (typeof cell === 'string' && (cell.includes(',') || cell.includes('"') || cell.includes('\n'))) {
+                        return '"' + cell.replace(/"/g, '""') + '"';
+                    }
+                    return cell;
+                }).join(',') + '\n';
+            });
+            
+            // Download
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', 'bestbuy_pricing_export_' + new Date().toISOString().slice(0,10) + '.csv');
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            showToast('Export downloaded successfully!', 'success');
         });
     });
 </script>

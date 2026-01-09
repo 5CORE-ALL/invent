@@ -8,12 +8,15 @@ use App\Models\ChannelMaster;
 use App\Models\MacyDataView;
 use App\Models\MacyProduct;
 use App\Models\MacysListingStatus;
+use App\Models\MacysPriceData;
+use App\Models\AmazonDatasheet;
 use App\Models\MarketplacePercentage;
 use App\Models\MiraklDailyData;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -36,7 +39,7 @@ class MacyController extends Controller
         $demo = $request->query("demo");
 
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Macys')->first();
-        $percentage = $marketplaceData ? $marketplaceData->percentage : 76;
+        $percentage = $marketplaceData ? $marketplaceData->percentage : 80;
 
         return view("market-places.macys_tabulator_view", [
             "mode" => $mode,
@@ -89,6 +92,19 @@ class MacyController extends Controller
         // NR/REQ + SPRICE data from MacyDataView
         $dataViews = MacyDataView::whereIn("sku", $skus)->pluck("value", "sku");
 
+        // Fetch price data from MacysPriceData table (key by uppercase for case-insensitive lookup)
+        $uppercaseSkus = array_map('strtoupper', $skus);
+        $priceDataCollection = MacysPriceData::whereIn('sku', $uppercaseSkus)
+            ->get()
+            ->keyBy('sku');
+
+        // Fetch Amazon pricing data (key by uppercase for case-insensitive lookup)
+        $amazonData = AmazonDatasheet::whereIn('sku', $skus)
+            ->get()
+            ->keyBy(function($item) {
+                return strtoupper($item->sku);
+            });
+
         // Listing status data
         $listingStatusData = MacysListingStatus::whereIn("sku", $skus)
             ->get()
@@ -105,9 +121,9 @@ class MacyController extends Controller
             ->groupBy('sku_lower')
             ->pluck('total_qty', 'sku_lower');
 
-        // 4. Marketplace percentage (76% for Macys)
+        // 4. Marketplace percentage (80% for Macys)
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Macys')->first();
-        $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.76;
+        $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.80;
 
         // 5. Build Result
         $result = [];
@@ -119,6 +135,8 @@ class MacyController extends Controller
             $shopify = $shopifyData[$pm->sku] ?? null;
             $macysMetric = $macysMetrics[$pm->sku] ?? null;
             $listingStatus = $listingStatusData[strtolower($pm->sku)] ?? null;
+            $priceData = $priceDataCollection[strtoupper($pm->sku)] ?? null; // Use uppercase for lookup
+            $amazon = $amazonData[strtoupper($pm->sku)] ?? null; // Use uppercase for lookup
 
             $row = [];
             $row["Parent"] = $parent;
@@ -130,7 +148,10 @@ class MacyController extends Controller
 
             // Macys Metrics from macy_products table
             $row["MC L30"] = $macysMetric->m_l30 ?? 0;
-            $row["MC Price"] = $macysMetric->price ?? 0;
+            $row["MC Price"] = $priceData->price ?? $macysMetric->price ?? 0; // Use uploaded price first
+
+            // Amazon price
+            $row["A Price"] = $amazon ? floatval($amazon->price ?? 0) : null;
 
             // Macy's Sales Qty from MiraklDailyData (L30)
             $row["MC Sales Qty"] = $salesQtyData[strtolower($pm->sku)] ?? 0;
@@ -227,6 +248,7 @@ class MacyController extends Controller
             // Check for saved SPRICE
             $savedSprice = null;
             $savedStatus = null;
+            $hasSavedSprice = false;
             if (isset($dataViews[$pm->sku])) {
                 $raw = $dataViews[$pm->sku];
                 if (!is_array($raw)) {
@@ -235,6 +257,7 @@ class MacyController extends Controller
                 if (is_array($raw)) {
                     if (isset($raw['SPRICE'])) {
                         $savedSprice = floatval($raw['SPRICE']);
+                        $hasSavedSprice = true;
                     }
                     if (isset($raw['SPRICE_STATUS'])) {
                         $savedStatus = $raw['SPRICE_STATUS'];
@@ -242,13 +265,14 @@ class MacyController extends Controller
                 }
             }
 
-            // Use saved SPRICE if exists, otherwise calculated
-            if ($savedSprice !== null && abs($savedSprice - $calculatedSprice) > 0.01) {
+            // Use saved SPRICE if exists, otherwise use calculated or 0 if record exists without SPRICE
+            if ($hasSavedSprice) {
                 $row['SPRICE'] = $savedSprice;
                 $row['has_custom_sprice'] = true;
                 $row['SPRICE_STATUS'] = $savedStatus ?: 'saved';
             } else {
-                $row['SPRICE'] = $calculatedSprice;
+                // If record exists but no SPRICE, it was cleared - show 0
+                $row['SPRICE'] = isset($dataViews[$pm->sku]) ? 0 : $calculatedSprice;
                 $row['has_custom_sprice'] = false;
                 $row['SPRICE_STATUS'] = $savedStatus;
             }
@@ -318,7 +342,7 @@ class MacyController extends Controller
         }
 
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Macys')->first();
-        $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.76;
+        $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.80;
 
         $pm = ProductMaster::where('sku', $sku)->first();
         if (!$pm) {
@@ -366,6 +390,289 @@ class MacyController extends Controller
             'sroi_percent' => $sroi,
             'sgpft_percent' => $sgpft
         ]);
+    }
+
+    // Upload Price Data for Macys
+    public function uploadPriceData(Request $request)
+    {
+        $request->validate([
+            'excel_file' => 'required|file'
+        ]);
+
+        try {
+            $file = $request->file('excel_file');
+            $rows = $this->parseFile($file);
+
+            if (empty($rows)) {
+                return response()->json(['error' => 'File is empty'], 400);
+            }
+
+            $headers = array_shift($rows);
+            $headers = array_map('trim', $headers);
+
+            DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+            MacysPriceData::truncate();
+            DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+
+            Log::info('Macys Price Data table truncated before import');
+
+            $imported = 0;
+            $skipped = 0;
+
+            DB::beginTransaction();
+            try {
+                foreach ($rows as $row) {
+                    $row = array_map('trim', $row);
+                    if (count(array_filter($row)) === 0) {
+                        $skipped++;
+                        continue;
+                    }
+                    $rowData = array_combine($headers, $row);
+                    $sku = strtoupper($rowData['Offer SKU'] ?? $rowData['SKU'] ?? '');
+                    if (empty($sku)) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    MacysPriceData::create([
+                        'sku' => $sku,
+                        'offer_sku' => $rowData['Offer SKU'] ?? null,
+                        'product_sku' => $rowData['Product SKU'] ?? null,
+                        'category_code' => $rowData['Category code'] ?? null,
+                        'category_label' => $rowData['Category label'] ?? null,
+                        'brand' => $rowData['Brand'] ?? null,
+                        'product_name' => $rowData['Product'] ?? null,
+                        'offer_state' => $rowData['Offer state'] ?? null,
+                        'price' => !empty($rowData['Price']) ? floatval($rowData['Price']) : null,
+                        'original_price' => !empty($rowData['Original price']) ? floatval($rowData['Original price']) : null,
+                        'quantity' => !empty($rowData['Quantity']) ? intval($rowData['Quantity']) : null,
+                        'alert_threshold' => !empty($rowData['Alert threshold']) ? intval($rowData['Alert threshold']) : null,
+                        'logistic_class' => $rowData['Logistic Class'] ?? null,
+                        'activated' => isset($rowData['Activated']) ? filter_var($rowData['Activated'], FILTER_VALIDATE_BOOLEAN) : false,
+                        'available_start_date' => !empty($rowData['Available Start Date']) ? date('Y-m-d', strtotime($rowData['Available Start Date'])) : null,
+                        'available_end_date' => !empty($rowData['Available End Date']) ? date('Y-m-d', strtotime($rowData['Available End Date'])) : null,
+                        'favorite_offer' => isset($rowData['Favorite Offer']) ? filter_var($rowData['Favorite Offer'], FILTER_VALIDATE_BOOLEAN) : false,
+                        'discount_price' => !empty($rowData['Discount price']) ? floatval($rowData['Discount price']) : null,
+                        'discount_start_date' => !empty($rowData['Discount Start Date']) ? date('Y-m-d', strtotime($rowData['Discount Start Date'])) : null,
+                        'discount_end_date' => !empty($rowData['Discount End Date']) ? date('Y-m-d', strtotime($rowData['Discount End Date'])) : null,
+                        'lead_time_to_ship' => !empty($rowData['Lead time to ship']) ? intval($rowData['Lead time to ship']) : null,
+                        'upc' => $rowData['UPC'] ?? null,
+                        'inactivity_reason' => $rowData['Inactivity reason'] ?? null,
+                        'fulfillment_center_code' => $rowData['Fulfillment center code'] ?? null,
+                    ]);
+                    $imported++;
+                }
+                DB::commit();
+                return response()->json([
+                    'success' => "Successfully imported $imported price records (skipped $skipped)",
+                    'imported' => $imported,
+                    'skipped' => $skipped
+                ]);
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+        } catch (\Exception $e) {
+            Log::error('Error importing Macys price data: ' . $e->getMessage());
+            return response()->json(['error' => 'Error importing file: ' . $e->getMessage()], 500);
+        }
+    }
+
+    // Parse different file formats
+    private function parseFile($file)
+    {
+        $extension = strtolower($file->getClientOriginalExtension());
+        
+        if (in_array($extension, ['csv', 'tsv', 'txt'])) {
+            $delimiter = ($extension === 'tsv' || $extension === 'txt') ? "\t" : ',';
+            $rows = [];
+            if (($handle = fopen($file->getRealPath(), 'r')) !== false) {
+                while (($data = fgetcsv($handle, 0, $delimiter)) !== false) {
+                    $rows[] = $data;
+                }
+                fclose($handle);
+            }
+            return $rows;
+        } else {
+            $spreadsheet = IOFactory::load($file->getRealPath());
+            $sheet = $spreadsheet->getActiveSheet();
+            return $sheet->toArray();
+        }
+    }
+
+    // Save SPRICE updates in batch
+    public function saveSpriceUpdates(Request $request)
+    {
+        try {
+            // Handle both single SKU/SPRICE update and batch updates
+            if ($request->has('sku') && $request->has('sprice')) {
+                // Single update format (from manual cell edit)
+                $updates = [[
+                    'sku' => $request->input('sku'),
+                    'sprice' => $request->input('sprice')
+                ]];
+            } else {
+                // Batch update format (from decrease/increase mode or Amazon price)
+                $updates = $request->input('updates', []);
+            }
+            
+            if (empty($updates)) {
+                return response()->json(['error' => 'No updates provided'], 400);
+            }
+
+            $updated = 0;
+            $errors = [];
+
+            DB::beginTransaction();
+            
+            foreach ($updates as $update) {
+                $sku = strtoupper(trim($update['sku'] ?? ''));
+                $sprice = floatval($update['sprice'] ?? 0);
+                
+                if (empty($sku)) {
+                    $errors[] = "Invalid SKU";
+                    continue;
+                }
+
+                // Handle clearing SPRICE (when sprice = 0)
+                if ($sprice == 0) {
+                    $dataViewRecord = MacyDataView::where('sku', $sku)->first();
+                    
+                    if ($dataViewRecord) {
+                        // Get existing value array and remove SPRICE fields
+                        $existingValue = is_array($dataViewRecord->value) 
+                            ? $dataViewRecord->value 
+                            : (json_decode($dataViewRecord->value, true) ?? []);
+                        
+                        // Remove all SPRICE related fields
+                        unset($existingValue['SPRICE']);
+                        unset($existingValue['SPFT']);
+                        unset($existingValue['SROI']);
+                        unset($existingValue['SGPFT']);
+                        unset($existingValue['sprice_updated_at']);
+                        
+                        // Update the record without SPRICE data
+                        $dataViewRecord->update([
+                            'value' => $existingValue,
+                            'updated_at' => now()
+                        ]);
+                        
+                        Log::info("Cleared SPRICE data for SKU: {$sku}");
+                    }
+                    
+                    $updated++;
+                    continue; // Skip the rest of the processing
+                }
+
+                // Get ProductMaster for lp and ship to calculate metrics
+                $pm = ProductMaster::where('sku', $sku)->first();
+                if (!$pm) {
+                    $errors[] = "SKU not found in product master: {$sku}";
+                    continue;
+                }
+
+                // Extract lp and ship
+                $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+                $lp = 0;
+                foreach ($values as $k => $v) {
+                    if (strtolower($k) === "lp") {
+                        $lp = floatval($v);
+                        break;
+                    }
+                }
+                if ($lp === 0 && isset($pm->lp)) {
+                    $lp = floatval($pm->lp);
+                }
+
+                $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+
+                // Get marketplace percentage (80%)
+                $marketplaceData = MarketplacePercentage::where('marketplace', 'Macys')->first();
+                $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.80;
+
+                // Calculate SGPFT
+                $sgpft = $sprice > 0 ? round((($sprice * $percentage - $ship - $lp) / $sprice) * 100, 2) : 0;
+
+                // SPFT = SGPFT (no ads for Macys)
+                $spft = $sgpft;
+
+                // SROI
+                $sroi = round(
+                    $lp > 0 ? (($sprice * $percentage - $lp - $ship) / $lp) * 100 : 0,
+                    2
+                );
+
+                // Update or create record in MacyDataView table
+                $dataViewRecord = MacyDataView::where('sku', $sku)->first();
+                
+                if ($dataViewRecord) {
+                    // Get existing value array and update it
+                    $existingValue = is_array($dataViewRecord->value) 
+                        ? $dataViewRecord->value 
+                        : (json_decode($dataViewRecord->value, true) ?? []);
+                    
+                    $existingValue['SPRICE'] = $sprice;
+                    $existingValue['SPFT'] = $spft;
+                    $existingValue['SROI'] = $sroi;
+                    $existingValue['SGPFT'] = $sgpft;
+                    $existingValue['sprice_updated_at'] = now()->toDateTimeString();
+                    
+                    $dataViewRecord->update([
+                        'value' => $existingValue,
+                        'updated_at' => now()
+                    ]);
+                } else {
+                    // Create new record
+                    MacyDataView::create([
+                        'sku' => $sku,
+                        'value' => [
+                            'SPRICE' => $sprice,
+                            'SPFT' => $spft,
+                            'SROI' => $sroi,
+                            'SGPFT' => $sgpft,
+                            'sprice_updated_at' => now()->toDateTimeString()
+                        ]
+                    ]);
+                }
+                $updated++;
+                
+                // Store last calculated metrics for single update response
+                if (count($updates) === 1) {
+                    $lastMetrics = [
+                        'spft_percent' => $spft,
+                        'sroi_percent' => $sroi,
+                        'sgpft_percent' => $sgpft
+                    ];
+                }
+            }
+
+            DB::commit();
+
+            $response = [
+                'success' => true,
+                'updated' => $updated,
+                'message' => "Successfully saved {$updated} SPRICE update(s)"
+            ];
+
+            // Include calculated metrics for single updates (manual cell edits)
+            if (isset($lastMetrics)) {
+                $response = array_merge($response, $lastMetrics);
+            }
+
+            if (!empty($errors)) {
+                $response['errors'] = $errors;
+                $response['message'] .= ' with ' . count($errors) . ' error(s)';
+            }
+
+            Log::info("Macys SPRICE updates saved to macy_data_views: {$updated} records updated");
+
+            return response()->json($response);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error saving Macys SPRICE updates: ' . $e->getMessage());
+            return response()->json(['error' => 'Error saving updates: ' . $e->getMessage()], 500);
+        }
     }
 
     // Column Visibility for Tabulator

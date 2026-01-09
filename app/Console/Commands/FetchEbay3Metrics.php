@@ -145,9 +145,6 @@ class FetchEbay3Metrics extends Command
                 DB::connection()->disconnect();
             }
 
-            // Fetch competitor prices (LMP) using Browse API
-            $this->updateCompetitorPrices();
-
             $this->info('✅ eBay Metrics updated');
             return 0;
         } catch (\Exception $e) {
@@ -159,154 +156,25 @@ class FetchEbay3Metrics extends Command
         }
     }
 
-    /**
-     * Fetch competitor prices for all SKUs using Browse API
-     */
-    private function updateCompetitorPrices()
-    {
-        $this->info('🔄 Fetching competitor prices...');
 
-        $ebayService = app(EbayThreeApiService::class);
-        $allMetrics = Ebay3Metric::whereNotNull('sku')
-            ->whereNotNull('item_id')
-            ->where('sku', 'not like', '%PARENT%')
-            ->get();
-
-        $processedCount = 0;
-        $totalCount = $allMetrics->count();
-        $maxLmps = 5; // Store top 5 lowest competitor prices
-
-        foreach ($allMetrics as $metric) {
-            $sku = $metric->sku;
-            $itemId = $metric->item_id;
-
-            // First, get the item details (title, categoryId, epid) from eBay
-            $itemDetails = $this->getItemDetails($itemId);
-            
-            if (empty($itemDetails) || empty($itemDetails['title'])) {
-                $this->warn("⚠️  No details found for {$sku} (item_id: {$itemId}), skipping LMP");
-                $processedCount++;
-                continue;
-            }
-            
-            $itemTitle = $itemDetails['title'];
-            $categoryId = $itemDetails['categoryId'] ?? null;
-            $epid = $itemDetails['epid'] ?? null;
-            
-            // Use EPID-based search if available, otherwise category + title search
-            $this->info("🔍 {$sku}: Title: " . substr($itemTitle, 0, 40) . "... | Cat: {$categoryId} | EPID: " . ($epid ?? 'N/A'));
-            
-            $competitors = $ebayService->doRepricingWithCategory($itemTitle, $categoryId, $epid, $itemId);
-
-            if (!empty($competitors)) {
-                // Filter out our own listing and get top competitors
-                $filteredCompetitors = [];
-                foreach ($competitors as $comp) {
-                    // Skip if it's our own item (compare as string)
-                    $compItemId = str_replace(['v1|', '|0'], '', $comp['item_id']);
-                    if ($compItemId == $metric->item_id) {
-                        continue;
-                    }
-                    
-                    if ($comp['total_price'] > 0) {
-                        $filteredCompetitors[] = [
-                            'price' => $comp['total_price'],
-                            'link' => $comp['link'],
-                            'title' => $comp['title'],
-                            'seller' => $comp['seller'],
-                        ];
-                    }
-
-                    // Limit to maxLmps
-                    if (count($filteredCompetitors) >= $maxLmps) {
-                        break;
-                    }
-                }
-
-                if (!empty($filteredCompetitors)) {
-                    // Lowest price for quick access
-                    $lowestPrice = $filteredCompetitors[0]['price'] ?? null;
-                    $lowestLink = $filteredCompetitors[0]['link'] ?? null;
-
-                    $metric->update([
-                        'price_lmpa' => $lowestPrice,
-                        'lmp_link' => $lowestLink,
-                        'lmp_data' => $filteredCompetitors,
-                    ]);
-                    
-                    $lmpCount = count($filteredCompetitors);
-                    $this->info("📊 {$sku}: {$lmpCount} LMPs found, Lowest = \${$lowestPrice}");
-                }
-            }
-
-            $processedCount++;
-
-            // Rate limiting - add small delay every 10 SKUs
-            if ($processedCount % 10 === 0) {
-                $this->info("⏳ Processed {$processedCount}/{$totalCount} SKUs...");
-                sleep(1);
-            }
-        }
-
-        $this->info("✅ Competitor prices updated for {$processedCount} SKUs");
-    }
-
-    /**
-     * Get item details (title, categoryId, epid) from eBay using Browse API
-     */
-    private function getItemDetails($itemId)
-    {
-        $ebayService = app(EbayThreeApiService::class);
-        $token = $ebayService->generateBrowseToken();
-        
-        if (!$token) {
-            return null;
-        }
-
-        try {
-            // Use get_items_by_item_group API - this works with legacy item IDs
-            $response = Http::withToken($token)
-                ->timeout(30)
-                ->connectTimeout(15)
-                ->get("https://api.ebay.com/buy/browse/v1/item/get_items_by_item_group?item_group_id={$itemId}");
-
-            if ($response->successful()) {
-                $data = $response->json();
-                $items = $data['items'] ?? [];
-                
-                if (!empty($items)) {
-                    $item = $items[0];
-                    return [
-                        'title' => $item['title'] ?? null,
-                        'categoryId' => $item['categoryId'] ?? null,
-                        'epid' => $item['epid'] ?? null,
-                    ];
-                }
-            }
-
-        } catch (\Exception $e) {
-            $this->warn("Failed to get item details for {$itemId}: " . $e->getMessage());
-        }
-
-        return null;
-    }
 
     private function dateRanges()
     {
-        $today = Carbon::today();
+        // Use California timezone to match FetchEbay3DailyData
+        $today = Carbon::now('America/Los_Angeles')->startOfDay();
 
         return [
             'l7' => [
                 'start' => $today->copy()->subDays(6),
-                'end' => $today->copy()->subDay(),
+                'end' => $today->copy()->subDay()->endOfDay(),
             ],
             'l30' => [
                 'start' => $today->copy()->subDays(29),
-                'end' => $today->copy()->subDay(),
+                'end' => $today->copy()->subDay()->endOfDay(),
             ],
             'l60' => [
                 'start' => $today->copy()->subDays(59),
-                'end' => $today->copy()->subDays(30),
+                'end' => $today->copy()->subDays(30)->endOfDay(),
             ],
         ];
     }

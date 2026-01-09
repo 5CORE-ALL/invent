@@ -813,12 +813,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/bestbuy-update-listed-live', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'updateListedLive'])->name('bestbuy.update.listed.live');
     Route::get('/bestbuy-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'getColumnVisibility'])->name('bestbuy.pricing.column.get');
     Route::post('/bestbuy-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'setColumnVisibility'])->name('bestbuy.pricing.column.set');
+    Route::post('/bestbuy-upload-price', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'uploadPriceData'])->name('bestbuy-upload-price');
+    Route::post('/bestbuy-save-sprice', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'saveSpriceUpdates'])->name('bestbuy-save-sprice');
 
     // Macy's Pricing Routes (Tabulator)
     Route::get('/macys-pricing', [\App\Http\Controllers\MarketPlace\MacyController::class, 'macysTabulatorView'])->name('macys.pricing');
     Route::get('/macys-data-json', [\App\Http\Controllers\MarketPlace\MacyController::class, 'macysDataJson'])->name('macys.data.json');
     Route::post('/macys-update-nr-req', [\App\Http\Controllers\MarketPlace\MacyController::class, 'updateNrReq'])->name('macys.update.nr.req');
     Route::post('/macys-save-sprice-tabulator', [\App\Http\Controllers\MarketPlace\MacyController::class, 'saveSpriceTabulator'])->name('macys.save.sprice.tabulator');
+    Route::post('/macys-save-sprice-batch', [\App\Http\Controllers\MarketPlace\MacyController::class, 'saveSpriceUpdates'])->name('macys.save.sprice.batch');
+    Route::post('/macys-upload-price', [\App\Http\Controllers\MarketPlace\MacyController::class, 'uploadPriceData'])->name('macys.upload.price');
     Route::get('/macys-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\MacyController::class, 'getTabulatorColumnVisibility'])->name('macys.pricing.column.get');
     Route::post('/macys-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\MacyController::class, 'setTabulatorColumnVisibility'])->name('macys.pricing.column.set');
 
