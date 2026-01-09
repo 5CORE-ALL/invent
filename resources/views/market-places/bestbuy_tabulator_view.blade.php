@@ -129,10 +129,12 @@
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color: black; font-weight: bold;">Total INV: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color: black; font-weight: bold;">Total BB L30: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold;">0 Sold: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-dil-badge" style="color: black; font-weight: bold;">DIL%: 0%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-cogs-badge" style="color: black; font-weight: bold;">COGS: $0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI%: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz</span>
+                        <span class="badge bg-success fs-6 p-2" id="more-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz</span>
                     </div>
                 </div>
             </div>
@@ -319,6 +321,29 @@
         // Sugg Amz Prc button
         $('#sugg-amz-prc-btn').on('click', function() {
             applySuggestAmazonPrice();
+        });
+
+        // 0 Sold badge click handler - filter to show only 0 sold items
+        let zeroSoldFilterActive = false;
+        $('#zero-sold-count-badge').on('click', function() {
+            zeroSoldFilterActive = !zeroSoldFilterActive;
+            applyFilters();
+        });
+
+        // < Amz badge click handler - filter prices less than Amazon
+        let lessAmzFilterActive = false;
+        $('#less-amz-badge').on('click', function() {
+            lessAmzFilterActive = !lessAmzFilterActive;
+            moreAmzFilterActive = false; // Deactivate the other filter
+            applyFilters();
+        });
+
+        // > Amz badge click handler - filter prices greater than Amazon
+        let moreAmzFilterActive = false;
+        $('#more-amz-badge').on('click', function() {
+            moreAmzFilterActive = !moreAmzFilterActive;
+            lessAmzFilterActive = false; // Deactivate the other filter
+            applyFilters();
         });
 
         // Update selected count display
@@ -729,9 +754,21 @@
                     sorter: "number",
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue() || 0);
+                        const rowData = cell.getRow().getData();
+                        const amazonPrice = parseFloat(rowData['A Price']) || 0;
                         
                         if (value === 0) {
                             return `<span style="color: #a00211; font-weight: 600;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
+                        }
+                        
+                        // Show red if BB Price is less than Amazon Price
+                        if (amazonPrice > 0 && value < amazonPrice) {
+                            return `<span style="color: #a00211; font-weight: 600;">$${value.toFixed(2)}</span>`;
+                        }
+                        
+                        // Show green if BB Price is greater than Amazon Price
+                        if (amazonPrice > 0 && value > amazonPrice) {
+                            return `<span style="color: #28a745; font-weight: 600;">$${value.toFixed(2)}</span>`;
                         }
                         
                         return `$${value.toFixed(2)}`;
@@ -1088,6 +1125,29 @@
                     if (dilFilter === 'green') return dil >= 25 && dil < 50;
                     if (dilFilter === 'pink') return dil >= 50;
                     return true;
+                });
+            }
+
+            // 0 Sold filter (based on BB L30) - triggered by badge click
+            if (zeroSoldFilterActive) {
+                table.addFilter("BB L30", "=", 0);
+            }
+
+            // < Amz filter - show prices less than Amazon price
+            if (lessAmzFilterActive) {
+                table.addFilter(function(data) {
+                    const bbPrice = parseFloat(data['BB Price']) || 0;
+                    const amazonPrice = parseFloat(data['A Price']) || 0;
+                    return amazonPrice > 0 && bbPrice > 0 && bbPrice < amazonPrice;
+                });
+            }
+
+            // > Amz filter - show prices greater than Amazon price
+            if (moreAmzFilterActive) {
+                table.addFilter(function(data) {
+                    const bbPrice = parseFloat(data['BB Price']) || 0;
+                    const amazonPrice = parseFloat(data['A Price']) || 0;
+                    return amazonPrice > 0 && bbPrice > 0 && bbPrice > amazonPrice;
                 });
             }
 
