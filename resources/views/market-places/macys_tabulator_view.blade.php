@@ -475,9 +475,21 @@
                         // Ensure minimum price
                         newSprice = Math.max(0.99, newSprice);
                         
-                        // Update SPRICE in table
+                        // Calculate metrics with 80% margin
+                        const percentage = 0.80; // 80% margin for Macys
+                        const lp = parseFloat(rowData['LP_productmaster']) || 0;
+                        const ship = parseFloat(rowData['Ship_productmaster']) || 0;
+                        
+                        const sgpft = newSprice > 0 ? Math.round(((newSprice * percentage - ship - lp) / newSprice) * 100 * 100) / 100 : 0;
+                        const spft = sgpft; // Same as SGPFT for Macys (no ads)
+                        const sroi = lp > 0 ? Math.round(((newSprice * percentage - lp - ship) / lp) * 100 * 100) / 100 : 0;
+                        
+                        // Update SPRICE and metrics in table
                         row.update({
-                            SPRICE: newSprice
+                            SPRICE: newSprice,
+                            SGPFT: sgpft,
+                            SPFT: spft,
+                            SROI: sroi
                         });
                         
                         // Store update for backend saving
@@ -521,9 +533,21 @@
                     const amazonPrice = parseFloat(rowData['A Price']);
                     
                     if (amazonPrice && amazonPrice > 0) {
-                        // Update the row
+                        // Calculate metrics with 80% margin
+                        const percentage = 0.80; // 80% margin for Macys
+                        const lp = parseFloat(rowData['LP_productmaster']) || 0;
+                        const ship = parseFloat(rowData['Ship_productmaster']) || 0;
+                        
+                        const sgpft = amazonPrice > 0 ? Math.round(((amazonPrice * percentage - ship - lp) / amazonPrice) * 100 * 100) / 100 : 0;
+                        const spft = sgpft; // Same as SGPFT for Macys (no ads)
+                        const sroi = lp > 0 ? Math.round(((amazonPrice * percentage - lp - ship) / lp) * 100 * 100) / 100 : 0;
+                        
+                        // Update the row with Amazon price and calculated metrics
                         row.update({
-                            SPRICE: amazonPrice
+                            SPRICE: amazonPrice,
+                            SGPFT: sgpft,
+                            SPFT: spft,
+                            SROI: sroi
                         });
                         
                         // Store update for backend saving
@@ -1149,8 +1173,8 @@
                 const sku = rowData['(Child) sku'];
                 const newSprice = parseFloat(cell.getValue()) || 0;
                 
-                // Recalculate SGPFT, SPFT, SROI
-                const percentage = rowData['percentage'] || 0.76;
+                // Recalculate SGPFT, SPFT, SROI with 80% margin
+                const percentage = 0.80; // 80% margin for Macys
                 const lp = rowData['LP_productmaster'] || 0;
                 const ship = rowData['Ship_productmaster'] || 0;
                 
