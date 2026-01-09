@@ -22,6 +22,9 @@ class MetaApiService
         if (!$this->accessToken || !$this->adAccountId) {
             throw new \Exception('Meta API credentials not configured. Please set META_ACCESS_TOKEN and META_AD_ACCOUNT_ID in .env');
         }
+
+        // Normalize ad account ID - remove 'act_' prefix if it exists, we'll add it when needed
+        $this->adAccountId = preg_replace('/^act_/i', '', $this->adAccountId);
     }
 
     /**
@@ -476,6 +479,213 @@ class MetaApiService
                 'campaign_id' => $campaignId,
             ]);
             return 0;
+        }
+    }
+
+    /**
+     * Fetch raw ads data from Meta API
+     * Returns all available fields for ads
+     * 
+     * @param array $fields Optional array of fields to fetch. If empty, fetches all common fields
+     * @return array
+     */
+    public function fetchRawAdsData($fields = [])
+    {
+        try {
+            $ads = [];
+            $url = "{$this->baseUrl}/act_{$this->adAccountId}/ads";
+
+            // Default fields if none specified
+            if (empty($fields)) {
+                $fields = [
+                    'id',
+                    'name',
+                    'status',
+                    'adset_id',
+                    'campaign_id',
+                    'effective_object_story_id',
+                    'preview_shareable_link',
+                    'source_ad',
+                    'source_ad_id',
+                    'updated_time',
+                    'created_time',
+                ];
+            }
+
+            $params = [
+                'access_token' => $this->accessToken,
+                'fields' => implode(',', $fields),
+                'limit' => 500,
+            ];
+
+            // Fetch all ads with pagination
+            do {
+                $response = Http::timeout(120)->get($url, $params);
+
+                if (!$response->successful()) {
+                    $errorBody = $response->json();
+                    $errorMessage = $response->body();
+                    
+                    // Try to extract a more readable error message
+                    if (isset($errorBody['error']['message'])) {
+                        $errorMessage = $errorBody['error']['message'];
+                        if (isset($errorBody['error']['code'])) {
+                            $errorMessage .= ' (Code: ' . $errorBody['error']['code'] . ')';
+                        }
+                    }
+                    
+                    Log::error('Meta API Error - Raw Ads', [
+                        'status' => $response->status(),
+                        'url' => $url,
+                        'body' => $response->body(),
+                        'ad_account_id' => $this->adAccountId,
+                    ]);
+                    
+                    throw new \Exception('Failed to fetch ads: ' . $errorMessage);
+                }
+
+                $data = $response->json();
+                
+                // Check if there's an error in the response
+                if (isset($data['error'])) {
+                    $errorMessage = $data['error']['message'] ?? 'Unknown error';
+                    if (isset($data['error']['code'])) {
+                        $errorMessage .= ' (Code: ' . $data['error']['code'] . ')';
+                    }
+                    throw new \Exception('Meta API Error: ' . $errorMessage);
+                }
+                
+                $ads = array_merge($ads, $data['data'] ?? []);
+
+                // Get next page URL if available
+                $url = $data['paging']['next'] ?? null;
+                $params = []; // Next URL already has all params
+            } while ($url);
+
+            return $ads;
+        } catch (\Exception $e) {
+            Log::error('Meta API Error - fetchRawAdsData', [
+                'error' => $e->getMessage(),
+                'ad_account_id' => $this->adAccountId,
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Fetch raw campaigns data from Meta API (without processing)
+     * Returns all available fields for campaigns
+     * 
+     * @param array $fields Optional array of fields to fetch
+     * @return array
+     */
+    public function fetchRawCampaignsData($fields = [])
+    {
+        try {
+            $campaigns = [];
+            $url = "{$this->baseUrl}/act_{$this->adAccountId}/campaigns";
+
+            // Default fields if none specified
+            if (empty($fields)) {
+                $fields = [
+                    'id',
+                    'name',
+                    'status',
+                    'objective',
+                    'daily_budget',
+                    'lifetime_budget',
+                    'budget_remaining',
+                    'created_time',
+                    'updated_time',
+                    'start_time',
+                    'stop_time',
+                    'special_ad_categories',
+                    'buying_type',
+                    'bid_strategy',
+                ];
+            }
+
+            $params = [
+                'access_token' => $this->accessToken,
+                'fields' => implode(',', $fields),
+                'limit' => 500,
+            ];
+
+            // Fetch all campaigns with pagination
+            do {
+                $response = Http::timeout(120)->get($url, $params);
+
+                if (!$response->successful()) {
+                    Log::error('Meta API Error - Raw Campaigns', [
+                        'status' => $response->status(),
+                        'body' => $response->body(),
+                    ]);
+                    throw new \Exception('Failed to fetch campaigns: ' . $response->body());
+                }
+
+                $data = $response->json();
+                $campaigns = array_merge($campaigns, $data['data'] ?? []);
+
+                // Get next page URL if available
+                $url = $data['paging']['next'] ?? null;
+                $params = []; // Next URL already has all params
+            } while ($url);
+
+            return $campaigns;
+        } catch (\Exception $e) {
+            Log::error('Meta API Error - fetchRawCampaignsData', [
+                'error' => $e->getMessage(),
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Fetch raw insights data from Meta API
+     * 
+     * @param string $datePreset Date preset (last_7d, last_30d, etc.)
+     * @param string $level Level of insights (account, campaign, adset, ad)
+     * @return array
+     */
+    public function fetchRawInsightsData($datePreset = 'last_30d', $level = 'campaign')
+    {
+        try {
+            $insights = [];
+            $url = "{$this->baseUrl}/act_{$this->adAccountId}/insights";
+
+            $params = [
+                'access_token' => $this->accessToken,
+                'date_preset' => $datePreset,
+                'level' => $level,
+                'limit' => 500,
+            ];
+
+            // Fetch all insights with pagination
+            do {
+                $response = Http::timeout(120)->get($url, $params);
+
+                if (!$response->successful()) {
+                    Log::error('Meta API Error - Raw Insights', [
+                        'status' => $response->status(),
+                        'body' => $response->body(),
+                    ]);
+                    throw new \Exception('Failed to fetch insights: ' . $response->body());
+                }
+
+                $data = $response->json();
+                $insights = array_merge($insights, $data['data'] ?? []);
+
+                // Get next page URL if available
+                $url = $data['paging']['next'] ?? null;
+                $params = []; // Next URL already has all params
+            } while ($url);
+
+            return $insights;
+        } catch (\Exception $e) {
+            Log::error('Meta API Error - fetchRawInsightsData', [
+                'error' => $e->getMessage(),
+            ]);
+            throw $e;
         }
     }
 }

@@ -1315,6 +1315,9 @@
                             <div class="collapse" id="meta-ads-master">
                                 <ul class="side-nav-second-level">
                                     <li>
+                                        <a href="{{ route('meta.ads.manager.dashboard') }}">Dashboard</a>
+                                    </li>
+                                    <li>
                                         <a href="{{ route('meta.all.ads') }}">ALL ADS</a>
                                     </li>
                                     <li>
