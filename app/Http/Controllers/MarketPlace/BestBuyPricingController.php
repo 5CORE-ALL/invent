@@ -218,6 +218,7 @@ class BestBuyPricingController extends Controller
             // Check for saved SPRICE
             $savedSprice = null;
             $savedStatus = null;
+            $hasSavedSprice = false;
             if (isset($dataViews[$pm->sku])) {
                 $raw = $dataViews[$pm->sku];
                 if (!is_array($raw)) {
@@ -226,6 +227,7 @@ class BestBuyPricingController extends Controller
                 if (is_array($raw)) {
                     if (isset($raw['SPRICE'])) {
                         $savedSprice = floatval($raw['SPRICE']);
+                        $hasSavedSprice = true;
                     }
                     if (isset($raw['SPRICE_STATUS'])) {
                         $savedStatus = $raw['SPRICE_STATUS'];
@@ -233,13 +235,14 @@ class BestBuyPricingController extends Controller
                 }
             }
 
-            // Use saved SPRICE if exists, otherwise calculated
-            if ($savedSprice !== null && abs($savedSprice - $calculatedSprice) > 0.01) {
+            // Use saved SPRICE if exists, otherwise use calculated or 0 if record exists without SPRICE
+            if ($hasSavedSprice) {
                 $row['SPRICE'] = $savedSprice;
                 $row['has_custom_sprice'] = true;
                 $row['SPRICE_STATUS'] = $savedStatus ?: 'saved';
             } else {
-                $row['SPRICE'] = $calculatedSprice;
+                // If record exists but no SPRICE, it was cleared - show 0
+                $row['SPRICE'] = isset($dataViews[$pm->sku]) ? 0 : $calculatedSprice;
                 $row['has_custom_sprice'] = false;
                 $row['SPRICE_STATUS'] = $savedStatus;
             }
@@ -611,9 +614,40 @@ class BestBuyPricingController extends Controller
                 $sku = strtoupper(trim($update['sku'] ?? ''));
                 $sprice = floatval($update['sprice'] ?? 0);
                 
-                if (empty($sku) || $sprice <= 0) {
-                    $errors[] = "Invalid data for SKU: {$sku}";
+                if (empty($sku)) {
+                    $errors[] = "Invalid SKU";
                     continue;
+                }
+
+                // Update or create record in BestbuyUSADataView table
+                $dataViewRecord = BestbuyUSADataView::where('sku', $sku)->first();
+                
+                // If sprice is 0, remove SPRICE data (clearing)
+                if ($sprice == 0) {
+                    if ($dataViewRecord) {
+                        // Get existing value array and remove SPRICE fields
+                        $existingValue = is_array($dataViewRecord->value) 
+                            ? $dataViewRecord->value 
+                            : (json_decode($dataViewRecord->value, true) ?? []);
+                        
+                        // Remove all SPRICE related fields
+                        unset($existingValue['SPRICE']);
+                        unset($existingValue['SPFT']);
+                        unset($existingValue['SROI']);
+                        unset($existingValue['SGPFT']);
+                        unset($existingValue['sprice_updated_at']);
+                        
+                        // Update the record without SPRICE data
+                        $dataViewRecord->update([
+                            'value' => $existingValue,
+                            'updated_at' => now()
+                        ]);
+                        
+                        Log::info("Cleared SPRICE data for SKU: {$sku}");
+                    }
+                    
+                    $updated++;
+                    continue; // Skip the rest of the processing
                 }
 
                 // Get ProductMaster for lp and ship to calculate metrics
@@ -654,9 +688,6 @@ class BestBuyPricingController extends Controller
                     2
                 );
 
-                // Update or create record in BestbuyUSADataView table
-                $dataViewRecord = BestbuyUSADataView::where('sku', $sku)->first();
-                
                 if ($dataViewRecord) {
                     // Get existing value array and update it
                     $existingValue = is_array($dataViewRecord->value) 

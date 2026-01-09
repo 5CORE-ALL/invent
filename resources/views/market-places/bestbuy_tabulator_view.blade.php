@@ -158,6 +158,9 @@
                         <button id="sugg-amz-prc-btn" class="btn btn-sm btn-info">
                             <i class="fas fa-copy"></i> Sugg Amz Prc
                         </button>
+                        <button id="clear-sprice-btn" class="btn btn-danger btn-sm">
+                            <i class="fas fa-eraser"></i> Clear SPRICE
+                        </button>
                     </div>
                 </div>
                 <div id="bestbuy-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
@@ -326,6 +329,11 @@
         // Sugg Amz Prc button
         $('#sugg-amz-prc-btn').on('click', function() {
             applySuggestAmazonPrice();
+        });
+
+        // Clear SPRICE button
+        $('#clear-sprice-btn').on('click', function() {
+            clearSpriceForSelected();
         });
 
         // 0 Sold badge click handler - filter to show only 0 sold items
@@ -550,6 +558,52 @@
                     showToast(errorMessage, 'error');
                 }
             });
+        }
+
+        // Clear SPRICE for selected SKUs
+        function clearSpriceForSelected() {
+            if (selectedSkus.size === 0) {
+                showToast('Please select SKUs first', 'error');
+                return;
+            }
+
+            if (!confirm(`Are you sure you want to clear SPRICE for ${selectedSkus.size} selected SKU(s)?`)) {
+                return;
+            }
+
+            let clearedCount = 0;
+            const updates = [];
+
+            // Get all rows and filter by selected SKUs
+            table.getRows().forEach(row => {
+                const rowData = row.getData();
+                const sku = rowData['(Child) sku'];
+                
+                if (selectedSkus.has(sku)) {
+                    // Clear SPRICE in table
+                    row.update({
+                        SPRICE: 0,
+                        SGPFT: 0,
+                        SPFT: 0,
+                        SROI: 0
+                    });
+                    
+                    // Store update for backend saving
+                    updates.push({
+                        sku: sku,
+                        sprice: 0
+                    });
+                    
+                    clearedCount++;
+                }
+            });
+
+            // Save to backend if there are updates
+            if (updates.length > 0) {
+                saveSpriceUpdates(updates);
+            }
+
+            showToast(`SPRICE cleared for ${clearedCount} SKU(s)`, 'success');
         }
 
         // SAVE SPRICE to database with retry
