@@ -267,37 +267,40 @@ class WalmartUtilisationController extends Controller
 
         $uniqueResult = collect($result)->unique('sku')->values()->all();
 
-        // Calculate totals ONLY from records that exist in the current Google Sheet
-        // Use recently updated records (within last 2 hours) to ensure we only count current Google Sheet data
-        // This avoids including old/stale records that are no longer in the Google Sheet
-        // For sales: Cast to DECIMAL to handle NULL and ensure proper numeric conversion
+        // Calculate totals using MAX(spend) per campaign (to avoid duplicates) - same as Amazon KW/PT logic
+        // Group by campaignName and take MAX spend, then sum to get accurate total
+        // This prevents double counting when there are multiple records for the same campaign
         $totals = DB::table('walmart_campaign_reports')
             ->where('report_range', 'L30')
             ->where('updated_at', '>=', Carbon::now()->subHours(2))
             ->selectRaw('
-                COALESCE(SUM(COALESCE(spend, 0)), 0) as total_spend,
-                COALESCE(SUM(COALESCE(CAST(sales AS DECIMAL(10,2)), 0)), 0) as total_sales
+                campaignName,
+                MAX(COALESCE(spend, 0)) as max_spend,
+                MAX(COALESCE(CAST(sales AS DECIMAL(10,2)), 0)) as max_sales
             ')
-            ->first();
+            ->groupBy('campaignName')
+            ->get();
         
         // If no recent records found, try fetching current Google Sheet data directly
-        if (($totals->total_spend ?? 0) == 0 && ($totals->total_sales ?? 0) == 0) {
+        if ($totals->isEmpty()) {
             $currentSheetCampaigns = $this->getCurrentGoogleSheetCampaigns();
             if (!empty($currentSheetCampaigns)) {
                 $totals = DB::table('walmart_campaign_reports')
                     ->where('report_range', 'L30')
                     ->whereIn('campaignName', $currentSheetCampaigns)
                     ->selectRaw('
-                        COALESCE(SUM(COALESCE(spend, 0)), 0) as total_spend,
-                        COALESCE(SUM(COALESCE(CAST(sales AS DECIMAL(10,2)), 0)), 0) as total_sales
+                        campaignName,
+                        MAX(COALESCE(spend, 0)) as max_spend,
+                        MAX(COALESCE(CAST(sales AS DECIMAL(10,2)), 0)) as max_sales
                     ')
-                    ->first();
+                    ->groupBy('campaignName')
+                    ->get();
             }
         }
         
-        // Ensure proper decimal precision (round to 2 decimal places)
-        $totalSpend = round((float)($totals->total_spend ?? 0), 2);
-        $totalSales = round((float)($totals->total_sales ?? 0), 2);
+        // Sum the MAX values to get accurate totals (avoiding duplicates)
+        $totalSpend = round($totals->sum('max_spend'), 2);
+        $totalSales = round($totals->sum('max_sales'), 2);
         
         // Calculate average ACOS: (total spend / total sales) * 100
         $avgAcos = $totalSales > 0 ? round(($totalSpend / $totalSales) * 100, 2) : 0;

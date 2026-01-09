@@ -2386,11 +2386,8 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateWalmartMetrics($date)
     {
-        // 33 days: Get latest Walmart order date from ShipHub and calculate 33-day range
-        $latestDate = DB::connection('shiphub')
-            ->table('orders')
-            ->where('marketplace', '=', 'walmart')
-            ->max('order_date');
+        // 33 days: Get latest Walmart order date from walmart_daily_data (same as Sales page)
+        $latestDate = \App\Models\WalmartDailyData::max('order_date');
 
         if (!$latestDate) {
             return null;
@@ -2399,23 +2396,17 @@ class UpdateMarketplaceDailyMetrics extends Command
         $latestDateCarbon = Carbon::parse($latestDate);
         $startDate = $latestDateCarbon->copy()->subDays(32); // 33 days total (matches Amazon)
 
-        // Get Walmart orders from ShipHub (orders table contains item details directly)
-        $orders = DB::connection('shiphub')
-            ->table('orders')
+        // Get Walmart orders from walmart_daily_data (same as Sales page)
+        $orders = \App\Models\WalmartDailyData::where('period', 'l30')
             ->whereBetween('order_date', [$startDate, $latestDateCarbon->endOfDay()])
-            ->where('marketplace', '=', 'walmart')
-            ->where(function($query) {
-                $query->where('order_status', '!=', 'Canceled')
-                      ->where('order_status', '!=', 'Cancelled')
-                      ->orWhereNull('order_status');
-            })
+            ->where('fulfillment_option', 'DELIVERY')
+            ->where('status', '!=', 'Cancelled')
             ->select([
-                'marketplace_order_id as order_id',
-                'order_number',
+                DB::raw("COALESCE(customer_order_id, purchase_order_id, CONCAT('WM-', id)) as order_id"),
                 'order_date',
-                'item_sku as sku',
+                'sku',
                 'quantity',
-                'order_total',
+                'unit_price as price',
             ])
             ->get();
 
@@ -2441,15 +2432,14 @@ class UpdateMarketplaceDailyMetrics extends Command
         $percentage = $marketplaceData ? $marketplaceData->percentage : 80;
         $margin = $percentage / 100; // Convert to decimal
 
-        // Process order items from ShipHub
+        // Process order items from walmart_daily_data (same as Sales page)
         foreach ($orders as $order) {
             $sku = strtoupper(trim($order->sku ?? ''));
             $quantity = (int) ($order->quantity ?? 1);
-            $orderTotal = (float) ($order->order_total ?? 0);
+            $unitPrice = (float) ($order->price ?? 0);
             
-            // For Walmart, order_total is the price for this item line
-            $saleAmount = $orderTotal;
-            $unitPrice = $quantity > 0 ? $saleAmount / $quantity : 0;
+            // Calculate sale amount from unit price and quantity
+            $saleAmount = $unitPrice * $quantity;
             
             $uniqueOrders[$order->order_id] = true;
             $totalQuantity += $quantity;
@@ -2523,7 +2513,39 @@ class UpdateMarketplaceDailyMetrics extends Command
         $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
-        // Walmart may have ads in the future, but for now set to 0
+        // Get Walmart ad spend (L30) - use MAX per campaign to avoid duplicates
+        // Filter by recently updated records (within last 2 hours) to match current Google Sheet data
+        $walmartSpentData = DB::table('walmart_campaign_reports')
+            ->selectRaw('campaignName, MAX(spend) as max_spend')
+            ->where('report_range', 'L30')
+            ->where('updated_at', '>=', Carbon::now()->subHours(2))
+            ->whereNotNull('campaignName')
+            ->where('campaignName', '!=', '')
+            ->groupBy('campaignName')
+            ->get();
+        
+        // If no recent records found, try without the updated_at filter (fallback)
+        if ($walmartSpentData->isEmpty()) {
+            $walmartSpentData = DB::table('walmart_campaign_reports')
+                ->selectRaw('campaignName, MAX(spend) as max_spend')
+                ->where('report_range', 'L30')
+                ->whereNotNull('campaignName')
+                ->where('campaignName', '!=', '')
+                ->groupBy('campaignName')
+                ->get();
+        }
+        
+        $walmartSpent = $walmartSpentData->sum('max_spend') ?? 0;
+        
+        // Calculate TACOS %: (Walmart Spent / Total Sales) * 100
+        $tacosPercentage = $totalRevenue > 0 ? ($walmartSpent / $totalRevenue) * 100 : 0;
+        
+        // Calculate N PFT: GPFT % - TACOS %
+        $nPftPercentage = $pftPercentage - $tacosPercentage;
+        
+        // Calculate N ROI: ROI % - TACOS %
+        $nRoiPercentage = $roiPercentage - $tacosPercentage;
+
         return [
             'total_orders' => $totalOrders,
             'total_quantity' => $totalQuantity,
@@ -2535,10 +2557,11 @@ class UpdateMarketplaceDailyMetrics extends Command
             'roi_percentage' => round($roiPercentage, 1),
             'avg_price' => $avgPrice,
             'l30_sales' => $totalRevenue,
-            'kw_spent' => 0,
-            'pmt_spent' => 0,
-            'n_pft' => $totalPft,
-            'n_roi' => round($roiPercentage, 1),
+            'kw_spent' => round($walmartSpent, 2),
+            'pmt_spent' => 0, // Walmart doesn't have separate PMT (all in kw_spent)
+            'tacos_percentage' => round($tacosPercentage, 1),
+            'n_pft' => round($nPftPercentage, 1),
+            'n_roi' => round($nRoiPercentage, 1),
         ];
     }
 }

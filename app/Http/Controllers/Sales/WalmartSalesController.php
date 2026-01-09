@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 use App\Models\ProductMaster;
 use App\Models\MarketplacePercentage;
@@ -16,7 +17,35 @@ class WalmartSalesController extends Controller
 {
     public function index()
     {
-        return view('sales.walmart_daily_sales_data');
+        // Calculate Walmart Spend (L30) - similar to Amazon KW Spent logic
+        // Uses L30 report_range, group by campaignName to get MAX(spend), then sum
+        // Filter by recently updated records (within last 2 hours) to match current Google Sheet data
+        // This avoids double counting duplicate campaign records and ensures fresh data
+        $walmartSpentData = DB::table('walmart_campaign_reports')
+            ->selectRaw('campaignName, MAX(spend) as max_spend')
+            ->where('report_range', 'L30')
+            ->where('updated_at', '>=', Carbon::now()->subHours(2))
+            ->whereNotNull('campaignName')
+            ->where('campaignName', '!=', '')
+            ->groupBy('campaignName')
+            ->get();
+        
+        // If no recent records found, try without the updated_at filter (fallback)
+        if ($walmartSpentData->isEmpty()) {
+            $walmartSpentData = DB::table('walmart_campaign_reports')
+                ->selectRaw('campaignName, MAX(spend) as max_spend')
+                ->where('report_range', 'L30')
+                ->whereNotNull('campaignName')
+                ->where('campaignName', '!=', '')
+                ->groupBy('campaignName')
+                ->get();
+        }
+        
+        $walmartSpent = $walmartSpentData->sum('max_spend') ?? 0;
+
+        return view('sales.walmart_daily_sales_data', [
+            'walmartSpent' => (float) $walmartSpent,
+        ]);
     }
 
     public function getData(Request $request)
@@ -33,10 +62,7 @@ class WalmartSalesController extends Controller
             $latestDate = WalmartDailyData::max('order_date');
 
             if (!$latestDate) {
-                return response()->json([
-                    'data' => [],
-                    'message' => 'No Walmart data found in walmart_daily_data table'
-                ]);
+                return response()->json([]);
             }
 
             $latestDateCarbon = Carbon::parse($latestDate);
@@ -67,29 +93,39 @@ class WalmartSalesController extends Controller
                 ->get();
 
             if ($orderItems->isEmpty()) {
-                return response()->json([
-                    'data' => [],
-                    'message' => 'No Walmart orders found in date range'
-                ]);
+                return response()->json([]);
             }
 
-            // Get all unique SKUs
-            $skus = $orderItems->pluck('sku')->filter()->unique()->values()->toArray();
+        // Get all unique SKUs
+        $skus = $orderItems->pluck('sku')->filter()->unique()->values()->toArray();
 
-            // Fetch ProductMaster data with UPPERCASE keys (similar to Amazon approach)
-            $productMasters = ProductMaster::whereIn('sku', $skus)
-                ->get()
-                ->keyBy(function ($item) {
-                    return strtoupper($item->sku);
-                });
+        // Fetch ProductMaster data with UPPERCASE keys (similar to Amazon approach)
+        $productMasters = ProductMaster::whereIn('sku', $skus)
+            ->get()
+            ->keyBy(function ($item) {
+                return strtoupper($item->sku);
+            });
 
-            // Fetch ad spend data from WalmartCampaignReport (L30)
-            $normalizeSku = fn($sku) => strtoupper(trim($sku));
+        // Fetch ad spend data from WalmartCampaignReport (L30)
+        // Filter by recently updated records (within last 2 hours) for consistency
+        $normalizeSku = fn($sku) => strtoupper(trim($sku));
+        $walmartCampaignReportsL30 = WalmartCampaignReport::where('report_range', 'L30')
+            ->where('updated_at', '>=', Carbon::now()->subHours(2))
+            ->whereIn('campaignName', $skus)
+            ->selectRaw('campaignName, MAX(spend) as max_spend')
+            ->groupBy('campaignName')
+            ->get()
+            ->keyBy(fn($item) => $normalizeSku($item->campaignName));
+        
+        // If no recent records found, try without the updated_at filter (fallback)
+        if ($walmartCampaignReportsL30->isEmpty()) {
             $walmartCampaignReportsL30 = WalmartCampaignReport::where('report_range', 'L30')
-                ->where('status', 'Live')
                 ->whereIn('campaignName', $skus)
+                ->selectRaw('campaignName, MAX(spend) as max_spend')
+                ->groupBy('campaignName')
                 ->get()
                 ->keyBy(fn($item) => $normalizeSku($item->campaignName));
+        }
 
             // Process data (similar to Amazon logic)
             $data = [];
@@ -145,62 +181,60 @@ class WalmartSalesController extends Controller
                 // ROI = (PFT Each / LP) × 100
                 $roi = $lp > 0 ? ($pftEach / $lp) * 100 : 0;
 
-                // Get ad spend for this SKU
+                // Get ad spend for this SKU (using MAX spend to avoid duplicates)
                 $normalizedSku = $normalizeSku($sku);
-                $kwSpend = 0;
-                $pmtSpend = 0; // Walmart doesn't have PMT spend
+                $walmartSpend = 0;
                 
                 if (isset($walmartCampaignReportsL30[$normalizedSku])) {
                     $campaign = $walmartCampaignReportsL30[$normalizedSku];
-                    $kwSpend = floatval($campaign->spend ?? 0);
+                    $walmartSpend = floatval($campaign->max_spend ?? 0);
                 }
 
                 $data[] = [
                     'order_id' => $item->order_id,
+                    'order_number' => $item->order_id,
                     'order_date' => $item->order_date,
                     'sku' => $sku,
                     'title' => $item->title ?? '',
                     'quantity' => $quantity,
+                    'unit_price' => round($unitPrice, 2),
                     'sale_amount' => round($saleAmount, 2),
-                    'price' => round($unitPrice, 2),
                     'lp' => round($lp, 2),
                     'ship' => round($ship, 2),
+                    't_weight' => round($tWeight, 2),
                     'ship_cost' => round($shipCost, 2),
                     'cogs' => round($cogs, 2),
                     'pft_each' => round($pftEach, 2),
                     'pft_each_pct' => round($pftEachPct, 2),
-                    't_pft' => round($pft, 2),
+                    'pft' => round($pft, 2),
                     'roi' => round($roi, 2),
                     'margin' => round($margin * 100, 2),
-                    'kw_spend' => round($kwSpend, 2),
-                    'pmt_spend' => round($pmtSpend, 2),
-                    'hl_spend' => 0, // No HL spend for Walmart
-                    'order_status' => $item->status ?? 'Unknown',
+                    'walmart_spent' => round($walmartSpend, 2),
+                    'status' => $item->status ?? 'Unknown',
                     'currency' => $item->currency ?? 'USD',
-                    'period' => 'L30'
+                    'period' => 'L30',
+                    'shipping_state' => '',
+                    'shipping_city' => ''
                 ];
             }
 
-            return response()->json(['data' => $data]);
+            return response()->json($data);
 
         } catch (\Exception $e) {
-            \Log::error('Walmart Sales Data Error: ' . $e->getMessage());
-            return response()->json([
-                'error' => 'Error fetching data: ' . $e->getMessage(),
-                'data' => []
-            ], 500);
+            Log::error('Walmart Sales Data Error: ' . $e->getMessage());
+            return response()->json([], 500);
         }
     }
 
     public function getColumnVisibility()
     {
-        $visibility = Cache::get('walmart_sales_column_visibility', '{}');
-        return response()->json(['visibility' => $visibility]);
+        $visibility = Cache::get('walmart_sales_column_visibility', []);
+        return response()->json($visibility);
     }
 
     public function saveColumnVisibility(Request $request)
     {
-        $visibility = $request->input('visibility');
+        $visibility = $request->input('visibility', []);
         Cache::put('walmart_sales_column_visibility', $visibility, now()->addYears(1));
         return response()->json(['success' => true]);
     }
