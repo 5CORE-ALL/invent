@@ -17,6 +17,8 @@ class ShopifySku extends Model
         'inv',
         'quantity',
         'price',
+        'b2b_price',
+        'b2c_price',
         'price_updated_manually_at',
         'image_src',
         'shopify_l30',

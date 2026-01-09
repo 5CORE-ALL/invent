@@ -2801,6 +2801,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay-3/over-utilized/campaign-chart', 'getCampaignChartData')->name('ebay3.over.utilized.campaign-chart');
         Route::put('/update-ebay3-keywords-bid-price', 'updateKeywordsBidDynamic');
         Route::post('/update-ebay3-nr-data', 'updateEbay3NrData');
+        Route::post('/update-ebay3-sbid-m', 'updateEbay3SbidM');
+        Route::post('/bulk-update-ebay3-sbid-m', 'bulkUpdateEbay3SbidM');
     });
 
     Route::controller(Ebay3KeywordAdsController::class)->group(function () {

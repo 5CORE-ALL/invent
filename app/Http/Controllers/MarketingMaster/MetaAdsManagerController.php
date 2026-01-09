@@ -663,9 +663,16 @@ class MetaAdsManagerController extends Controller
                 ->orderBy('started_at', 'desc')
                 ->paginate(20);
         } else {
+            // Show user's logs, or all logs if user has none (fallback for server)
             $logs = MetaActionLog::where('user_id', Auth::id())
                 ->orderBy('created_at', 'desc')
                 ->paginate(20);
+            
+            // Fallback: if no logs for user, show all logs
+            if ($logs->isEmpty() && Auth::id()) {
+                $logs = MetaActionLog::orderBy('created_at', 'desc')
+                    ->paginate(20);
+            }
         }
 
         return view('marketing-masters.meta_ads_manager.logs', [

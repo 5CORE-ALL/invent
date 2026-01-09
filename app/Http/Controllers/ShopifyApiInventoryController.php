@@ -220,6 +220,7 @@ class ShopifyApiInventoryController extends Controller
 
         while ($hasMore) {
             $pageCount++;
+            // Include price and compare_at_price in fields to get both B2B and B2C prices
             $queryParams = ['limit' => 250, 'fields' => 'id,title,variants,image,images'];
             if ($pageInfo) {
                 $queryParams['page_info'] = $pageInfo;
@@ -260,6 +261,14 @@ class ShopifyApiInventoryController extends Controller
                     );
 
                     if (!empty($variant['sku'])) {
+                        // B2C price is the standard price (public price)
+                        $b2cPrice = $variant['price'] ?? null;
+                        
+                        // B2B price can come from compare_at_price (wholesale) or metafields
+                        // For now, we'll use compare_at_price if available, otherwise null
+                        // You can extend this to fetch from metafields if needed
+                        $b2bPrice = !empty($variant['compare_at_price']) ? $variant['compare_at_price'] : null;
+                        
                         $inventoryData[$variant['sku']] = [
                             'variant_id'        => $variant['id'],
                             'inventory'         => $variant['inventory_quantity'] ?? 0,
@@ -270,6 +279,8 @@ class ShopifyApiInventoryController extends Controller
                             'on_hand'           => $variant['old_inventory_quantity'] ?? 0,   // OnHand
                             'available_to_sell' => $variant['inventory_quantity'] ?? 0,       // AvailableToSell
                             'price'             => $variant['price'],
+                            'b2b_price'         => $b2bPrice,
+                            'b2c_price'         => $b2cPrice,
                             'image_src'         => $imageUrl,
                         ];
 
@@ -631,6 +642,8 @@ class ShopifyApiInventoryController extends Controller
                 'quantity' => 0,
                 'inventory' => $data['inventory'],
                 'price' => $data['price'],
+                'b2b_price' => $data['b2b_price'] ?? null,
+                'b2c_price' => $data['b2c_price'] ?? null,
                 'image_src' => $data['image_src'],
                 'product_title' => $data['product_title'] ?? null,
                 'variant_title' => $data['variant_title'] ?? null
@@ -670,6 +683,8 @@ class ShopifyApiInventoryController extends Controller
                     'inv' => 0,
                     'quantity' => 0,
                     'price' => null,
+                    'b2b_price' => null,
+                    'b2c_price' => null,
                 ]);
             }
 
@@ -691,6 +706,8 @@ class ShopifyApiInventoryController extends Controller
                             'quantity_L30' => $item['quantity'],
                             'inv' => $item['inventory'],
                             'price' => $item['price'],
+                            'b2b_price' => $item['b2b_price'] ?? null,
+                            'b2c_price' => $item['b2c_price'] ?? null,
                             'image_src' => $item['image_src'],
                         ]);
                     }
@@ -703,6 +720,8 @@ class ShopifyApiInventoryController extends Controller
                             'variant_id' => $item['variant_id'],
                             'inv' => $item['inventory'],
                             'price' => $item['price'],
+                            'b2b_price' => $item['b2b_price'] ?? null,
+                            'b2c_price' => $item['b2c_price'] ?? null,
                             'image_src' => $item['image_src'],
                             'updated_at' => now()
                         ]

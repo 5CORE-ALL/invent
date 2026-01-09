@@ -223,6 +223,16 @@ class Ebay3UtilizedAdsController extends Controller
                 $invValue = $sums['INV'] > 0 ? $sums['INV'] : (($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0);
                 $l30Value = $sums['L30'] > 0 ? $sums['L30'] : (($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0);
                 
+                // Get sbid_m from L30 report if available
+                $sbidM = null;
+                if ($matchedCampaignL30 && isset($matchedCampaignL30->sbid_m)) {
+                    $sbidM = $matchedCampaignL30->sbid_m;
+                } elseif ($matchedCampaignL7 && isset($matchedCampaignL7->sbid_m)) {
+                    $sbidM = $matchedCampaignL7->sbid_m;
+                } elseif ($matchedCampaignL1 && isset($matchedCampaignL1->sbid_m)) {
+                    $sbidM = $matchedCampaignL1->sbid_m;
+                }
+                
                 $campaignMap[$mapKey] = [
                     'parent' => $parent,
                     'sku' => $pm->sku,
@@ -247,6 +257,7 @@ class Ebay3UtilizedAdsController extends Controller
                     'NR' => $nrValue,
                     'NRL' => $nrlValue,
                     'hasCampaign' => $hasCampaign,
+                    'sbid_m' => $sbidM,
                 ];
             }
 
@@ -335,6 +346,20 @@ class Ebay3UtilizedAdsController extends Controller
             $matchedEbay = $matchedSku && isset($ebayMetricData[$matchedSku]) ? $ebayMetricData[$matchedSku] : null;
             $ebayL30 = $matchedEbay ? ($matchedEbay->ebay_l30 ?? 0) : 0;
             
+            // Get sbid_m from any report
+            $sbidM = null;
+            $l30Report = $campaignReports->where('report_range', 'L30')->first();
+            $l7Report = $campaignReports->where('report_range', 'L7')->first();
+            $l1Report = $campaignReports->where('report_range', 'L1')->first();
+            
+            if ($l30Report && isset($l30Report->sbid_m)) {
+                $sbidM = $l30Report->sbid_m;
+            } elseif ($l7Report && isset($l7Report->sbid_m)) {
+                $sbidM = $l7Report->sbid_m;
+            } elseif ($l1Report && isset($l1Report->sbid_m)) {
+                $sbidM = $l1Report->sbid_m;
+            }
+            
             $campaignMap[$campaignId] = [
                 'parent' => '',
                 'sku' => $campaignName,
@@ -359,6 +384,7 @@ class Ebay3UtilizedAdsController extends Controller
                 'NR' => $nrValue,
                 'NRL' => '',
                 'hasCampaign' => true,
+                'sbid_m' => $sbidM,
             ];
 
             foreach ($campaignReports as $campaign) {
@@ -509,6 +535,64 @@ class Ebay3UtilizedAdsController extends Controller
             'status' => 200,
             'message' => "Field updated successfully",
             'updated_json' => $jsonData
+        ]);
+    }
+
+    public function updateEbay3SbidM(Request $request)
+    {
+        $campaignId = $request->input('campaign_id');
+        $sbidM = $request->input('sbid_m');
+
+        if (empty($campaignId)) {
+            return response()->json([
+                'status' => 400,
+                'message' => "Campaign ID is required"
+            ]);
+        }
+
+        // Update sbid_m for all reports with this campaign_id (L7, L1, L30)
+        $updated = Ebay3PriorityReport::where('campaign_id', $campaignId)
+            ->update(['sbid_m' => $sbidM !== null && $sbidM !== '' ? (float)$sbidM : null]);
+
+        return response()->json([
+            'status' => 200,
+            'message' => "SBID M updated successfully",
+            'updated_count' => $updated
+        ]);
+    }
+
+    public function bulkUpdateEbay3SbidM(Request $request)
+    {
+        $campaignIds = $request->input('campaign_ids', []);
+        $sbidMValues = $request->input('sbid_m_values', []);
+
+        if (empty($campaignIds) || empty($sbidMValues)) {
+            return response()->json([
+                'status' => 400,
+                'message' => "Campaign IDs and SBID M values are required"
+            ]);
+        }
+
+        if (count($campaignIds) !== count($sbidMValues)) {
+            return response()->json([
+                'status' => 400,
+                'message' => "Campaign IDs and SBID M values count mismatch"
+            ]);
+        }
+
+        $updatedCount = 0;
+        foreach ($campaignIds as $index => $campaignId) {
+            $sbidM = $sbidMValues[$index];
+            $updated = Ebay3PriorityReport::where('campaign_id', $campaignId)
+                ->update(['sbid_m' => $sbidM !== null && $sbidM !== '' ? (float)$sbidM : null]);
+            $updatedCount += $updated;
+        }
+
+        return response()->json([
+            'status' => 200,
+            'message' => "SBID M bulk updated successfully",
+            'updated_count' => $updatedCount,
+            'total_campaigns' => count($campaignIds)
         ]);
     }
 

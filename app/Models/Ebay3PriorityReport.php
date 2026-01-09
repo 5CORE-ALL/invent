@@ -19,6 +19,7 @@ class Ebay3PriorityReport extends Model
         'campaign_name',
         'campaignBudgetAmount',
         'campaignStatus',
+        'sbid_m',
         'cpc_impressions',
         'cpc_clicks',
         'cpc_attributed_sales',

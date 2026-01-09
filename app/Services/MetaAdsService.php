@@ -423,18 +423,27 @@ class MetaAdsService
             $success = $response->successful();
 
             // Log the action
-            MetaActionLog::create([
-                'user_id' => $userId,
-                'action_type' => 'update_status',
-                'entity_type' => $entityType,
-                'entity_meta_id' => $entityMetaId,
-                'status' => $success ? 'success' : 'failed',
-                'request_payload' => $requestPayload,
-                'response_payload' => $responsePayload,
-                'error_message' => $success ? null : ($responsePayload['error']['message'] ?? 'Unknown error'),
-                'meta_error_code' => $success ? null : ($responsePayload['error']['code'] ?? null),
-                'meta_error_message' => $success ? null : ($responsePayload['error']['message'] ?? null),
-            ]);
+            try {
+                MetaActionLog::create([
+                    'user_id' => $userId,
+                    'action_type' => 'update_status',
+                    'entity_type' => $entityType,
+                    'entity_meta_id' => $entityMetaId,
+                    'status' => $success ? 'success' : 'failed',
+                    'request_payload' => $requestPayload,
+                    'response_payload' => $responsePayload,
+                    'error_message' => $success ? null : ($responsePayload['error']['message'] ?? 'Unknown error'),
+                    'meta_error_code' => $success ? null : ($responsePayload['error']['code'] ?? null),
+                    'meta_error_message' => $success ? null : ($responsePayload['error']['message'] ?? null),
+                ]);
+            } catch (\Exception $e) {
+                Log::error('MetaAdsService: Failed to create action log', [
+                    'error' => $e->getMessage(),
+                    'user_id' => $userId,
+                    'entity_type' => $entityType,
+                    'entity_meta_id' => $entityMetaId,
+                ]);
+            }
 
             if (!$success) {
                 throw new \Exception('Failed to update status: ' . ($responsePayload['error']['message'] ?? 'Unknown error'));
@@ -479,18 +488,27 @@ class MetaAdsService
             $success = $response->successful();
 
             // Log the action
-            MetaActionLog::create([
-                'user_id' => $userId,
-                'action_type' => 'update_budget',
-                'entity_type' => $entityType,
-                'entity_meta_id' => $entityMetaId,
-                'status' => $success ? 'success' : 'failed',
-                'request_payload' => $requestPayload,
-                'response_payload' => $responsePayload,
-                'error_message' => $success ? null : ($responsePayload['error']['message'] ?? 'Unknown error'),
-                'meta_error_code' => $success ? null : ($responsePayload['error']['code'] ?? null),
-                'meta_error_message' => $success ? null : ($responsePayload['error']['message'] ?? null),
-            ]);
+            try {
+                MetaActionLog::create([
+                    'user_id' => $userId,
+                    'action_type' => 'update_budget',
+                    'entity_type' => $entityType,
+                    'entity_meta_id' => $entityMetaId,
+                    'status' => $success ? 'success' : 'failed',
+                    'request_payload' => $requestPayload,
+                    'response_payload' => $responsePayload,
+                    'error_message' => $success ? null : ($responsePayload['error']['message'] ?? 'Unknown error'),
+                    'meta_error_code' => $success ? null : ($responsePayload['error']['code'] ?? null),
+                    'meta_error_message' => $success ? null : ($responsePayload['error']['message'] ?? null),
+                ]);
+            } catch (\Exception $e) {
+                Log::error('MetaAdsService: Failed to create action log', [
+                    'error' => $e->getMessage(),
+                    'user_id' => $userId,
+                    'entity_type' => $entityType,
+                    'entity_meta_id' => $entityMetaId,
+                ]);
+            }
 
             if (!$success) {
                 throw new \Exception('Failed to update budget: ' . ($responsePayload['error']['message'] ?? 'Unknown error'));

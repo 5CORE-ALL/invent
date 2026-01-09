@@ -237,7 +237,7 @@
                                             <div class="badge-count-item"
                                                 style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                                                 <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Total
-                                                    SKU</span>
+                                                    Parent</span>
                                                 <span class="fw-bold" id="total-sku-count"
                                                     style="font-size: 1.1rem;">0</span>
                             </div>
@@ -364,6 +364,10 @@
                                             <button id="apr-all-sbid-btn" class="btn btn-info btn-sm w-100 d-none">
                                                 <i class="fa-solid fa-check-double me-1"></i>
                                                 APR ALL SBID
+                                            </button>
+                                            <button id="bulk-update-sbid-m-btn" class="btn btn-warning btn-sm w-100 d-none">
+                                                <i class="fa-solid fa-save me-1"></i>
+                                                Bulk Update SBID M
                                             </button>
                                             <button id="export-data-btn" class="btn btn-success btn-sm w-100">
                                                 <i class="fa-solid fa-download me-1"></i>
@@ -517,8 +521,9 @@
                                 // Check if this is a red dot (missing AND not yellow)
                                 let rowNrlForMissing = row.NRL ? row.NRL.trim() : "";
                                 let rowNraForMissing = row.NR ? row.NR.trim() : "";
-                                // Only count as missing (red dot) if neither NRL='NRL' nor NRA='NRA'
-                                if (rowNrlForMissing !== 'NRL' && rowNraForMissing !== 'NRA') {
+                                // Only count as missing (red dot) if neither NRL='NRL' nor NRA='NRA' AND INV > 0
+                                let inv = parseFloat(row.INV || 0);
+                                if (rowNrlForMissing !== 'NRL' && rowNraForMissing !== 'NRA' && inv > 0) {
                                     missingCount++;
                                 } else {
                                     // Count NRA missing (yellow dots) separately
@@ -991,6 +996,10 @@
                 }
             });
 
+            // Store edited SBID M values separately to prevent cross-contamination
+            // This object maintains edited values per row using unique identifier (campaign_id + sku)
+            var editedSbidMValues = {}; // key: unique row id (campaign_id + sku), value: edited sbid_m value
+            
             var table = new Tabulator("#budget-under-table", {
                 index: "sku",
                 ajaxURL: "/ebay-3/utilized/ads/data",
@@ -1003,7 +1012,11 @@
                 resizableColumns: true,
                 height: "700px",             
                 virtualDom: true,
-                pagination: false,
+                pagination: true,
+                paginationMode: "local",
+                paginationSize: 25,
+                paginationSizeSelector: [10, 25, 50, 100, 200, 500],
+                paginationCounter: "rows",
                 rowFormatter: function(row) {
                     const data = row.getData();
                     const sku = data["sku"] || '';
@@ -1702,6 +1715,60 @@
                         width: 70
                     },
                     {
+                        title: "SBID M",
+                        field: "sbid_m",
+                        hozAlign: "center",
+                        formatter: function(cell, formatterParams, onRendered) {
+                            var row = cell.getRow().getData();
+                            var rowComponent = cell.getRow();
+                            
+                            // Use stable unique identifier (campaign_id + sku) that doesn't change with row position
+                            var uniqueId = (row.campaign_id || '') + '_' + (row.sku || '');
+                            
+                            // Check if this row has an edited value stored (prioritize edited value over row data)
+                            var value = editedSbidMValues[uniqueId] !== undefined ? editedSbidMValues[uniqueId] : row.sbid_m;
+                            
+                            // Check if NRA (🔴) is selected - don't show input for NRA
+                            var nraValue = row.NR ? row.NR.trim() : "";
+                            if (nraValue === 'NRA') {
+                                return '-';
+                            }
+                            
+                            var sbidM = '';
+                            if (value !== null && value !== undefined && value !== '') {
+                                var numValue = parseFloat(value);
+                                if (!isNaN(numValue) && numValue >= 0) {
+                                    sbidM = numValue.toFixed(2);
+                                }
+                            }
+                            
+                            // Use onRendered to ensure input field maintains its value after reformat
+                            onRendered(function() {
+                                var inputElement = cell.getElement().querySelector('.sbid-m-input');
+                                if (inputElement) {
+                                    // Ensure the input has the correct value from editedSbidMValues or row data
+                                    var currentValue = editedSbidMValues[uniqueId] !== undefined ? editedSbidMValues[uniqueId] : row.sbid_m;
+                                    if (currentValue !== null && currentValue !== undefined && currentValue !== '') {
+                                        var numVal = parseFloat(currentValue);
+                                        if (!isNaN(numVal) && numVal >= 0) {
+                                            inputElement.value = numVal.toFixed(2);
+                                        } else {
+                                            inputElement.value = '';
+                                        }
+                                    } else {
+                                        inputElement.value = '';
+                                    }
+                                }
+                            });
+                            
+                            return `
+                                <input type="number" class="form-control form-control-sm text-center sbid-m-input" value="${sbidM}" min="0" step="0.01" data-campaign-id="${row.campaign_id || ''}" data-unique-id="${uniqueId}" data-sku="${row.sku || ''}" style="width: 70px;">
+                            `;
+                        },
+                        visible: true,
+                        width: 70
+                    },
+                    {
                         title: "APR BID",
                         field: "apr_bid",
                         hozAlign: "center",
@@ -1906,6 +1973,23 @@
                     if (zeroInvCountEl) {
                         zeroInvCountEl.textContent = zeroInvCountFromBackend;
                     }
+                    
+                    // When data is loaded from server, sync editedSbidMValues with loaded data
+                    // This ensures saved values from database are reflected
+                    if (response.data && Array.isArray(response.data)) {
+                        response.data.forEach(function(rowData) {
+                            var uniqueId = (rowData.campaign_id || '') + '_' + (rowData.sku || '');
+                            // If row has sbid_m from database, use it (it's the saved value)
+                            if (rowData.sbid_m !== null && rowData.sbid_m !== undefined && rowData.sbid_m !== '') {
+                                // If edited value matches loaded value, we can clear it (it's already saved)
+                                if (editedSbidMValues[uniqueId] === rowData.sbid_m) {
+                                    delete editedSbidMValues[uniqueId];
+                                }
+                                // If edited value exists but doesn't match, keep it (unsaved edit)
+                                // Otherwise, loaded value from database will be used
+                            }
+                        });
+                    }
 
                     return response.data;
                 }
@@ -1918,11 +2002,12 @@
                     const hasCampaign = data.hasCampaign !== undefined ? data.hasCampaign : (data.campaign_id &&
                         data.campaignName);
                     if (hasCampaign) return false;
-                    // Check if this is a red dot (missing AND not yellow)
+                    // Check if this is a red dot (missing AND not yellow) AND INV > 0
                     let rowNrlForMissing = data.NRL ? data.NRL.trim() : "";
                     let rowNraForMissing = data.NR ? data.NR.trim() : "";
-                    // Only show as missing (red dot) if neither NRL='NRL' nor NRA='NRA'
-                    if (rowNrlForMissing === 'NRL' || rowNraForMissing === 'NRA') return false;
+                    let inv = parseFloat(data.INV || 0);
+                    // Only show as missing (red dot) if neither NRL='NRL' nor NRA='NRA' AND INV > 0
+                    if (rowNrlForMissing === 'NRL' || rowNraForMissing === 'NRA' || inv <= 0) return false;
                 }
 
                 if (showNraMissingOnly) {
@@ -2080,8 +2165,10 @@
             table.on("rowSelectionChanged", function(data, rows) {
                 if (data.length > 0) {
                     document.getElementById("apr-all-sbid-btn").classList.remove("d-none");
+                    document.getElementById("bulk-update-sbid-m-btn").classList.remove("d-none");
                 } else {
                     document.getElementById("apr-all-sbid-btn").classList.add("d-none");
+                    document.getElementById("bulk-update-sbid-m-btn").classList.add("d-none");
                 }
             });
 
@@ -2128,7 +2215,133 @@
                     })
                     .catch(err => console.error(err));
                 }
+                
+                // Handle SBID M input changes
+                if (e.target.classList.contains("sbid-m-input")) {
+                    // Prevent event from bubbling
+                    e.stopPropagation();
+                    
+                    let campaignId = e.target.getAttribute("data-campaign-id");
+                    let uniqueId = e.target.getAttribute("data-unique-id");
+                    let sku = e.target.getAttribute("data-sku");
+                    let newValue = e.target.value;
+                    
+                    if (!campaignId) {
+                        return;
+                    }
+                    
+                    // Get row element and find the corresponding Tabulator row
+                    let rowElement = e.target.closest('.tabulator-row');
+                    if (!rowElement) return;
+                    
+                    // Get row using Tabulator's row component directly from element
+                    let row = table.getRow(rowElement);
+                    if (!row) {
+                        // Fallback: find by position
+                        let rowIndex = Array.from(rowElement.parentNode.children).indexOf(rowElement);
+                        row = table.getRowFromPosition(rowIndex);
+                    }
+                    
+                    if (!row) return;
+                    
+                    let rowData = row.getData();
+                    
+                    // Verify we have the correct row by comparing SKU and campaign_id
+                    let currentUniqueId = (rowData.campaign_id || '') + '_' + (rowData.sku || '');
+                    if (uniqueId !== currentUniqueId) {
+                        console.warn("Row mismatch detected, skipping update. Expected:", uniqueId, "Got:", currentUniqueId);
+                        return;
+                    }
+                    
+                    // Check if NRA (🔴) is selected
+                    let nraValue = rowData.NR ? rowData.NR.trim() : "";
+                    if (nraValue === 'NRA') {
+                        // Restore previous value
+                        let prevValue = editedSbidMValues[uniqueId] !== undefined ? editedSbidMValues[uniqueId] : rowData.sbid_m;
+                        if (prevValue !== null && prevValue !== undefined && prevValue !== '') {
+                            e.target.value = parseFloat(prevValue).toFixed(2);
+                        } else {
+                            e.target.value = '';
+                        }
+                        alert("Cannot edit SBID M for NRA campaigns");
+                        return;
+                    }
+                    
+                    let editedValue = null;
+                    let prevValue = editedSbidMValues[uniqueId] !== undefined ? editedSbidMValues[uniqueId] : rowData.sbid_m;
+                    
+                    if (newValue !== null && newValue !== undefined && newValue !== '') {
+                        editedValue = parseFloat(newValue);
+                        if (!isNaN(editedValue) && editedValue >= 0) {
+                            // Round to 2 decimal places
+                            editedValue = Math.round(editedValue * 100) / 100;
+                            e.target.value = editedValue.toFixed(2);
+                        } else {
+                            // Invalid value - restore previous value
+                            if (prevValue !== null && prevValue !== undefined && prevValue !== '') {
+                                e.target.value = parseFloat(prevValue).toFixed(2);
+                            } else {
+                                e.target.value = '';
+                            }
+                            alert("Please enter a valid number (>= 0)");
+                            return;
+                        }
+                    }
+                    
+                    // Store edited value immediately to prevent cross-contamination
+                    editedSbidMValues[uniqueId] = editedValue;
+                    
+                    // Save to database
+                    fetch('/update-ebay3-sbid-m', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')
+                                .getAttribute('content')
+                        },
+                        body: JSON.stringify({
+                            campaign_id: campaignId,
+                            sbid_m: editedValue
+                        })
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.status === 200) {
+                            // Success - value already stored in editedSbidMValues
+                            // Don't call row.update() to prevent reformatting
+                            // The editedSbidMValues object will maintain the value for this row
+                        } else {
+                            // Restore previous value on error
+                            editedSbidMValues[uniqueId] = prevValue;
+                            if (prevValue !== null && prevValue !== undefined && prevValue !== '') {
+                                e.target.value = parseFloat(prevValue).toFixed(2);
+                            } else {
+                                e.target.value = '';
+                            }
+                            console.error("Failed to save SBID M:", data.message);
+                        }
+                    })
+                    .catch(err => {
+                        // Restore previous value on error
+                        editedSbidMValues[uniqueId] = prevValue;
+                        if (prevValue !== null && prevValue !== undefined && prevValue !== '') {
+                            e.target.value = parseFloat(prevValue).toFixed(2);
+                        } else {
+                            e.target.value = '';
+                        }
+                        console.error("Error saving SBID M:", err);
+                    });
+                }
             });
+            
+            // Handle blur event for SBID M input (when user finishes editing)
+            document.addEventListener("blur", function(e) {
+                if (e.target.classList.contains("sbid-m-input")) {
+                    // Use change event handler logic instead of duplicating
+                    // The change event will handle saving, blur just ensures value is validated
+                    e.stopPropagation();
+                }
+            }, true);
 
             // Export data button handler
             document.getElementById("export-data-btn").addEventListener("click", function() {
@@ -2298,6 +2511,9 @@
                                 value = calculatedSbid;
                             } else if (field === 'NR') {
                                 value = processedNr;
+                            } else if (field === 'sbid_m') {
+                                // Get sbid_m value from row data (should be updated from input)
+                                value = row.sbid_m !== null && row.sbid_m !== undefined ? parseFloat(row.sbid_m).toFixed(2) : '';
                             } else {
                                 value = row[field];
                             }
@@ -2346,6 +2562,19 @@
                             return; // Skip update if NRA is selected
                         }
 
+                        // Check if manually edited SBID M exists, use it first (read from input field)
+                        var sbid = 0;
+                        var sbidMInput = rowEl.querySelector('.sbid-m-input');
+                        if (sbidMInput && sbidMInput.value !== null && sbidMInput.value !== undefined && sbidMInput.value !== '') {
+                            var editedSbidM = parseFloat(sbidMInput.value);
+                            if (!isNaN(editedSbidM) && editedSbidM > 0) {
+                                sbid = editedSbidM;
+                                campaignIds.push(rowData.campaign_id);
+                                bids.push(sbid);
+                                return; // Use edited value, skip calculation
+                            }
+                        }
+                        
                         var l1_cpc = parseFloat(rowData.l1_cpc) || 0;
                         var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
                         var budget = parseFloat(rowData.campaignBudgetAmount) || 0;
@@ -2355,8 +2584,6 @@
                             ub7 = (parseFloat(rowData.l7_spend) || 0) / (budget * 7) * 100;
                             ub1 = (parseFloat(rowData.l1_spend) || 0) / budget * 100;
                         }
-                        
-                        var sbid = 0;
                         
                         // Special rule: If UB7 = 0% and UB1 = 0%, set SBID to 0.50 (ebay3 doesn't have price field)
                         if (ub7 === 0 && ub1 === 0) {
@@ -2479,43 +2706,195 @@
                                 }
                             }
                         }
-
-                        campaignIds.push(rowData.campaign_id);
-                        bids.push(sbid);
+                        
+                        // Only push if we haven't already (sbid_m case already pushed and returned)
+                        if (sbid > 0 && rowData.campaign_id) {
+                            campaignIds.push(rowData.campaign_id);
+                            bids.push(sbid);
+                        }
                     }
                 });
 
-                fetch('/update-ebay3-keywords-bid-price', {
-                    method: 'PUT',
+                // fetch('/update-ebay3-keywords-bid-price', {
+                //     method: 'PUT',
+                //     headers: {
+                //         'Content-Type': 'application/json',
+                //             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')
+                //                 .getAttribute('content')
+                //     },
+                //     body: JSON.stringify({
+                //         campaign_ids: campaignIds,
+                //         bids: bids
+                //     })
+                // })
+                // .then(res => res.json())
+                // .then(data => {
+                //     if (data.status === 200) {
+                //         alert("Keywords updated successfully!");
+                //     } else {
+                //         let errorMsg = data.message || "Something went wrong";
+                //         if (errorMsg.includes("Premium Ads")) {
+                //             alert("Error: " + errorMsg);
+                //         } else {
+                //             alert("Something went wrong: " + errorMsg);
+                //         }
+                //     }
+                // })
+                // .catch(err => {
+                //     console.error(err);
+                //     alert("Error updating bids");
+                // })
+                // .finally(() => {
+                //     overlay.style.display = "none";
+                // });
+            });
+
+            // Bulk Update SBID M for selected campaigns
+            document.getElementById("bulk-update-sbid-m-btn").addEventListener("click", function() {
+                var selectedRows = table.getSelectedRows();
+                
+                if (selectedRows.length === 0) {
+                    alert("Please select at least one campaign to update SBID M.");
+                    return;
+                }
+
+                // Filter out NRA campaigns and collect valid campaign IDs
+                var validCampaigns = [];
+                var nraCampaigns = [];
+                
+                selectedRows.forEach(function(row) {
+                    var rowEl = row.getElement();
+                    if (rowEl && rowEl.offsetParent !== null) {
+                        var rowData = row.getData();
+                        
+                        // Check if NRA (🔴) is selected - skip NRA campaigns
+                        var nraValue = rowData.NR ? rowData.NR.trim() : "";
+                        if (nraValue === 'NRA') {
+                            nraCampaigns.push(rowData.campaign_id || rowData.sku || 'Unknown');
+                            return; // Skip NRA campaigns
+                        }
+                        
+                        if (rowData.campaign_id) {
+                            validCampaigns.push({
+                                campaign_id: rowData.campaign_id,
+                                sku: rowData.sku || '',
+                                row: row
+                            });
+                        }
+                    }
+                });
+
+                if (validCampaigns.length === 0) {
+                    if (nraCampaigns.length > 0) {
+                        alert("Cannot update SBID M for NRA campaigns. Please select non-NRA campaigns.");
+                    } else {
+                        alert("No valid campaigns selected.");
+                    }
+                    return;
+                }
+
+                // Show prompt to enter SBID M value
+                var sbidMInput = prompt(
+                    "Enter SBID M value to apply to " + validCampaigns.length + " selected campaign(s):\n\n" +
+                    (nraCampaigns.length > 0 ? "Note: " + nraCampaigns.length + " NRA campaign(s) will be skipped.\n\n" : "") +
+                    "Enter a number (>= 0) or leave empty to clear:",
+                    ""
+                );
+
+                // If user cancelled, return
+                if (sbidMInput === null) {
+                    return;
+                }
+
+                // Parse and validate SBID M value
+                var sbidMValue = null;
+                if (sbidMInput !== null && sbidMInput !== undefined && sbidMInput.trim() !== '') {
+                    var parsedValue = parseFloat(sbidMInput.trim());
+                    if (isNaN(parsedValue) || parsedValue < 0) {
+                        alert("Please enter a valid number (>= 0) or leave empty to clear.");
+                        return;
+                    }
+                    // Round to 2 decimal places
+                    sbidMValue = Math.round(parsedValue * 100) / 100;
+                }
+
+                // Confirm before updating
+                var confirmMessage = "Are you sure you want to set SBID M = " + 
+                    (sbidMValue !== null ? sbidMValue.toFixed(2) : "empty") + 
+                    " for " + validCampaigns.length + " campaign(s)?";
+                
+                if (!confirm(confirmMessage)) {
+                    return;
+                }
+
+                // Show overlay
+                const overlay = document.getElementById("progress-overlay");
+                overlay.style.display = "flex";
+
+                // Prepare campaign IDs and values (same value for all)
+                var campaignIds = [];
+                var sbidMValues = [];
+                
+                validCampaigns.forEach(function(campaign) {
+                    campaignIds.push(campaign.campaign_id);
+                    sbidMValues.push(sbidMValue);
+                    
+                    // Update local editedSbidMValues for immediate UI feedback
+                    var uniqueId = campaign.campaign_id + '_' + campaign.sku;
+                    if (sbidMValue !== null) {
+                        editedSbidMValues[uniqueId] = sbidMValue;
+                    } else {
+                        delete editedSbidMValues[uniqueId];
+                    }
+                });
+
+                // Send bulk update request
+                fetch('/bulk-update-ebay3-sbid-m', {
+                    method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')
-                                .getAttribute('content')
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
                     },
                     body: JSON.stringify({
                         campaign_ids: campaignIds,
-                        bids: bids
+                        sbid_m_values: sbidMValues
                     })
                 })
                 .then(res => res.json())
                 .then(data => {
+                    overlay.style.display = "none";
                     if (data.status === 200) {
-                        alert("Keywords updated successfully!");
-                    } else {
-                        let errorMsg = data.message || "Something went wrong";
-                        if (errorMsg.includes("Premium Ads")) {
-                            alert("Error: " + errorMsg);
-                        } else {
-                            alert("Something went wrong: " + errorMsg);
+                        // Update input fields in UI for immediate feedback
+                        validCampaigns.forEach(function(campaign) {
+                            var rowEl = campaign.row.getElement();
+                            if (rowEl) {
+                                var sbidMInputField = rowEl.querySelector('.sbid-m-input');
+                                if (sbidMInputField) {
+                                    if (sbidMValue !== null) {
+                                        sbidMInputField.value = sbidMValue.toFixed(2);
+                                    } else {
+                                        sbidMInputField.value = '';
+                                    }
+                                }
+                            }
+                        });
+                        
+                        var successMessage = "SBID M bulk updated successfully for " + data.total_campaigns + " campaign(s)!";
+                        if (nraCampaigns.length > 0) {
+                            successMessage += "\n\nNote: " + nraCampaigns.length + " NRA campaign(s) were skipped.";
                         }
+                        alert(successMessage);
+                        
+                        // Refresh table data to show updated values from database
+                        table.replaceData();
+                    } else {
+                        alert("Error: " + (data.message || "Failed to update SBID M values"));
                     }
                 })
                 .catch(err => {
-                    console.error(err);
-                    alert("Error updating bids");
-                })
-                .finally(() => {
                     overlay.style.display = "none";
+                    console.error("Error bulk updating SBID M:", err);
+                    alert("Error updating SBID M values. Please try again.");
                 });
             });
 
