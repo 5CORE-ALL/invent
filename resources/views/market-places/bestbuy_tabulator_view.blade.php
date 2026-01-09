@@ -134,12 +134,12 @@
                         <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color: black; font-weight: bold;">Total INV: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color: black; font-weight: bold;">Total BB L30: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="more-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales">&gt; 0 Sold</span>
+                        <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales">&gt; 0 Sold</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-dil-badge" style="color: black; font-weight: bold;">DIL%: 0%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-cogs-badge" style="color: black; font-weight: bold;">COGS: $0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI%: 0%</span>
                         <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz</span>
-                        <span class="badge bg-success fs-6 p-2" id="more-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz</span>
+                        <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz</span>
                     </div>
                 </div>
             </div>
