@@ -44,8 +44,30 @@ class MetaAdsManagerController extends Controller
         // Get KPIs for current period
         $currentKPIs = $this->getKPIs($userId, $dateStart, $dateEnd, $adAccountId);
         
+        // If no data for current user, try to get all data (fallback for server)
+        $hasData = array_sum($currentKPIs) > 0;
+        if (!$hasData && $userId) {
+            Log::info('Meta Ads Dashboard: No data for user, trying fallback', [
+                'user_id' => $userId,
+                'date_start' => $dateStart,
+                'date_end' => $dateEnd,
+            ]);
+            // Try without user filter as fallback
+            $currentKPIs = $this->getKPIs(null, $dateStart, $dateEnd, $adAccountId);
+            Log::info('Meta Ads Dashboard: Fallback data', [
+                'has_data' => array_sum($currentKPIs) > 0,
+                'kpis' => $currentKPIs,
+            ]);
+        }
+        
         // Get KPIs for previous period
         $previousKPIs = $this->getKPIs($userId, $prevDateStart, $prevDateEnd, $adAccountId);
+        
+        // If no previous data, try without user filter
+        $hasPrevData = array_sum($previousKPIs) > 0;
+        if (!$hasPrevData && $userId) {
+            $previousKPIs = $this->getKPIs(null, $prevDateStart, $prevDateEnd, $adAccountId);
+        }
 
         // Calculate changes
         $changes = [];
@@ -55,7 +77,12 @@ class MetaAdsManagerController extends Controller
             $changes[$key] = round($change, 2);
         }
 
+        // Get ad accounts - show user's accounts first, then all if none found
         $adAccounts = MetaAdAccount::when($userId, fn($q) => $q->where('user_id', $userId))->get();
+        if ($adAccounts->isEmpty() && $userId) {
+            // Fallback: show all accounts if user has none
+            $adAccounts = MetaAdAccount::all();
+        }
 
         return view('marketing-masters.meta_ads_manager.dashboard', [
             'currentKPIs' => $currentKPIs,
@@ -73,8 +100,12 @@ class MetaAdsManagerController extends Controller
      */
     protected function getKPIs($userId, $dateStart, $dateEnd, $adAccountId = null)
     {
-        $query = MetaInsightDaily::where('user_id', $userId)
-            ->whereBetween('date_start', [$dateStart, $dateEnd]);
+        $query = MetaInsightDaily::whereBetween('date_start', [$dateStart, $dateEnd]);
+        
+        // Filter by user_id if provided, otherwise get all
+        if ($userId !== null) {
+            $query->where('user_id', $userId);
+        }
 
         if ($adAccountId) {
             $account = MetaAdAccount::find($adAccountId);
