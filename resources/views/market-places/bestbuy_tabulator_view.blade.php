@@ -106,6 +106,10 @@
                         <i class="fa fa-eye"></i> Show All
                     </button>
 
+                    <button id="export-btn" class="btn btn-sm btn-info">
+                        <i class="fas fa-file-excel"></i> Export CSV
+                    </button>
+
                     <button id="decrease-btn" class="btn btn-sm btn-warning">
                         <i class="fas fa-arrow-down"></i> Decrease Mode
                     </button>
@@ -1363,6 +1367,66 @@
                     submitBtn.prop('disabled', false).html(originalText);
                 }
             });
+        });
+
+        // Export CSV button
+        $('#export-btn').on('click', function() {
+            const exportData = [];
+            const visibleColumns = table.getColumns().filter(col => col.isVisible() && col.getField() !== '_select');
+            
+            // Get headers
+            const headers = visibleColumns.map(col => {
+                let title = col.getDefinition().title || col.getField();
+                // Remove HTML tags from header
+                return title.replace(/<[^>]*>/g, '');
+            });
+            exportData.push(headers);
+            
+            // Get filtered data (all visible rows)
+            const data = table.getData("active");
+            data.forEach(row => {
+                const rowData = [];
+                visibleColumns.forEach(col => {
+                    const field = col.getField();
+                    let value = row[field];
+                    
+                    // Clean up values
+                    if (value === null || value === undefined) {
+                        value = '';
+                    } else if (typeof value === 'number') {
+                        value = parseFloat(value.toFixed(2));
+                    } else if (typeof value === 'string') {
+                        // Remove HTML tags
+                        value = value.replace(/<[^>]*>/g, '').trim();
+                    }
+                    rowData.push(value);
+                });
+                exportData.push(rowData);
+            });
+            
+            // Create CSV
+            let csv = '';
+            exportData.forEach(row => {
+                csv += row.map(cell => {
+                    if (typeof cell === 'string' && (cell.includes(',') || cell.includes('"') || cell.includes('\n'))) {
+                        return '"' + cell.replace(/"/g, '""') + '"';
+                    }
+                    return cell;
+                }).join(',') + '\n';
+            });
+            
+            // Download
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', 'bestbuy_pricing_export_' + new Date().toISOString().slice(0,10) + '.csv');
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            showToast('Export downloaded successfully!', 'success');
         });
     });
 </script>

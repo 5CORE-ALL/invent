@@ -106,7 +106,7 @@
                     </button>
 
                     <button id="export-btn" class="btn btn-sm btn-info">
-                        <i class="fas fa-file-excel"></i> Export Sheet
+                        <i class="fas fa-file-excel"></i> Export CSV
                     </button>
 
                     <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#uploadPriceModal">
@@ -1419,7 +1419,7 @@
             link.click();
             document.body.removeChild(link);
             
-            toastr.success('Export downloaded successfully!');
+            showToast('Export downloaded successfully!', 'success');
         });
     });
 </script>
