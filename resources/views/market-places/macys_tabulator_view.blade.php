@@ -143,6 +143,8 @@
                         <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI%: 0%</span>
                         <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz</span>
                         <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz</span>
+                        <span class="badge bg-danger fs-6 p-2" id="missing-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing prices">MISSING: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="mapping-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter inventory mapping issues">MAPPING: 0</span>
                     </div>
                 </div>
             </div>
@@ -366,6 +368,58 @@
         $('#more-amz-badge').on('click', function() {
             moreAmzFilterActive = !moreAmzFilterActive;
             lessAmzFilterActive = false; // Deactivate the other filter
+            applyFilters();
+        });
+
+        // MISSING badge click handler - filter and show only specific columns
+        let missingFilterActive = false;
+        $('#missing-badge').on('click', function() {
+            missingFilterActive = !missingFilterActive;
+            mappingFilterActive = false; // Deactivate mapping filter
+            
+            if (missingFilterActive) {
+                // Hide all columns except: SKU, INV, Sold (L30), DIL, Missing, MAP
+                table.getColumns().forEach(col => {
+                    const field = col.getField();
+                    if (field === '(Child) sku' || field === 'INV' || field === 'MC L30' || 
+                        field === 'MC Dil%' || field === 'Missing' || field === 'Mapping') {
+                        col.show();
+                    } else {
+                        col.hide();
+                    }
+                });
+            } else {
+                // Show all columns
+                table.getColumns().forEach(col => {
+                    col.show();
+                });
+            }
+            applyFilters();
+        });
+
+        // MAPPING badge click handler - filter and show only specific columns
+        let mappingFilterActive = false;
+        $('#mapping-badge').on('click', function() {
+            mappingFilterActive = !mappingFilterActive;
+            missingFilterActive = false; // Deactivate missing filter
+            
+            if (mappingFilterActive) {
+                // Hide all columns except: SKU, INV, Sold (L30), DIL, Missing, MAP
+                table.getColumns().forEach(col => {
+                    const field = col.getField();
+                    if (field === '(Child) sku' || field === 'INV' || field === 'MC L30' || 
+                        field === 'MC Dil%' || field === 'Missing' || field === 'Mapping') {
+                        col.show();
+                    } else {
+                        col.hide();
+                    }
+                });
+            } else {
+                // Show all columns
+                table.getColumns().forEach(col => {
+                    col.show();
+                });
+            }
             applyFilters();
         });
 
@@ -917,6 +971,40 @@
                     width: 70
                 },
                 {
+                    title: "<span style='color: #a00211;'>Missing</span>",
+                    field: "Missing",
+                    hozAlign: "center",
+                    sorter: "string",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const price = parseFloat(rowData['MC Price']) || 0;
+                        
+                        if (price === 0) {
+                            return '<span style="color: #a00211; font-weight: 600;">M</span>';
+                        }
+                        return '';
+                    },
+                    width: 60
+                },
+                {
+                    title: "<span style='color: #a00211;'>Mapping</span>",
+                    field: "Mapping",
+                    hozAlign: "center",
+                    sorter: "string",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const ourInv = parseFloat(rowData['INV']) || 0;
+                        const mcInv = parseFloat(rowData['MC INV']) || 0; // Marketplace inventory from Macy's API
+                        
+                        const diff = Math.abs(mcInv - ourInv);
+                        if (diff > 3) {
+                            return '<span style="color: #a00211; font-weight: 600;">MAP</span>';
+                        }
+                        return '';
+                    },
+                    width: 60
+                },
+                {
                     title: "GPFT%",
                     field: "GPFT%",
                     hozAlign: "center",
@@ -1283,6 +1371,24 @@
                 });
             }
 
+            // MISSING filter - show rows with price = 0 or null
+            if (missingFilterActive) {
+                table.addFilter(function(data) {
+                    const price = parseFloat(data['MC Price']) || 0;
+                    return price === 0;
+                });
+            }
+
+            // MAPPING filter - show rows with inventory difference > 3
+            if (mappingFilterActive) {
+                table.addFilter(function(data) {
+                    const ourInv = parseFloat(data['INV']) || 0;
+                    const mcInv = parseFloat(data['MC INV']) || 0;
+                    const diff = Math.abs(mcInv - ourInv);
+                    return diff > 3;
+                });
+            }
+
             updateSummary();
         }
 
@@ -1300,6 +1406,7 @@
             let totalPft = 0, totalSales = 0, totalGpft = 0, totalPrice = 0, priceCount = 0;
             let totalInv = 0, totalL30 = 0, zeroSoldCount = 0, totalDil = 0, dilCount = 0;
             let totalCogs = 0, totalRoi = 0, roiCount = 0;
+            let missingCount = 0, mappingCount = 0;
 
             data.forEach(row => {
                 totalPft += parseFloat(row.Profit) || 0;
@@ -1310,6 +1417,8 @@
                 if (price > 0) {
                     totalPrice += price;
                     priceCount++;
+                } else {
+                    missingCount++; // Count missing prices
                 }
                 
                 totalInv += parseFloat(row.INV) || 0;
@@ -1334,6 +1443,14 @@
                     totalRoi += roi;
                     roiCount++;
                 }
+
+                // Count mapping issues (inventory difference > 3)
+                const ourInv = parseFloat(row['INV']) || 0;
+                const mcInv = parseFloat(row['MC INV']) || 0;
+                const diff = Math.abs(mcInv - ourInv);
+                if (diff > 3) {
+                    mappingCount++;
+                }
             });
 
             const avgGpft = data.length > 0 ? totalGpft / data.length : 0;
@@ -1351,6 +1468,8 @@
             $('#avg-dil-badge').text(`DIL%: ${(avgDil * 100).toFixed(1)}%`);
             $('#total-cogs-badge').text(`COGS: $${Math.round(totalCogs).toLocaleString()}`);
             $('#roi-percent-badge').text(`ROI%: ${avgRoi.toFixed(1)}%`);
+            $('#missing-badge').text(`MISSING: ${missingCount}`);
+            $('#mapping-badge').text(`MAPPING: ${mappingCount}`);
         }
 
         // Build Column Visibility Dropdown
