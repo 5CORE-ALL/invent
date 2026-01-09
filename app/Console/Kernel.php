@@ -66,6 +66,10 @@ class Kernel extends ConsoleKernel
         AmazonSdCampaignReports::class,
         FetchGoogleAdsCampaigns::class,
         \App\Console\Commands\SyncMetaAllAds::class,
+        \App\Console\Commands\MetaAdsSyncCommand::class,
+        \App\Console\Commands\MetaAdsImportRawCommand::class,
+        \App\Console\Commands\MetaAdsAutomationCommand::class,
+        \App\Console\Commands\MetaAdsSyncAdsCommand::class,
         \App\Console\Commands\SyncFbaShipmentStatus::class,
         \App\Console\Commands\StoreAmazonUtilizationCounts::class,
         \App\Console\Commands\StoreAmazonFbaUtilizationCounts::class,
@@ -145,6 +149,27 @@ class Kernel extends ConsoleKernel
             ->dailyAt('10:00')
             ->timezone('Asia/Kolkata')
             ->name('meta-ads-sync-daily')
+            ->withoutOverlapping();
+
+        // Meta Ads Manager - Full sync (entities + insights)
+        $schedule->command('meta-ads:sync')
+            ->dailyAt('11:00')
+            ->timezone('Asia/Kolkata')
+            ->name('meta-ads-manager-full-sync')
+            ->withoutOverlapping();
+
+        // Meta Ads Manager - Daily insights sync (faster, runs more frequently)
+        $schedule->command('meta-ads:sync --insights-only')
+            ->dailyAt('02:00')
+            ->timezone('UTC')
+            ->name('meta-ads-manager-insights-sync')
+            ->withoutOverlapping();
+
+        // Meta Ads Manager - Automation rules execution (runs after insights sync)
+        $schedule->command('meta-ads:run-automation')
+            ->dailyAt('03:00')
+            ->timezone('UTC')
+            ->name('meta-ads-automation-rules')
             ->withoutOverlapping();
 
         $schedule->command('app:ebay-campaign-reports')

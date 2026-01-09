@@ -2451,7 +2451,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/meta-all-ads-control/sync-meta-api', 'syncMetaAdsFromApi')->name('meta.ads.sync');
         
         // Group management routes
+        Route::get('/meta-ads/group/list', 'getMetaAdGroups')->name('meta.ads.group.list');
         Route::post('/meta-ads/group/store', 'storeGroup')->name('meta.ads.group.store');
+        Route::delete('/meta-ads/group/delete', 'deleteMetaAdGroup')->name('meta.ads.group.delete');
         
         // Import/Export routes
         Route::post('/meta-ads/import', 'importAds')->name('meta.ads.import');
@@ -2484,12 +2486,60 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         // FB GRP CAROUSAL NEW routes
         Route::get('/meta-ads/facebook/carousal/new', 'metaFacebookCarousalNew')->name('meta.ads.facebook.carousal.new');
         Route::get('/meta-ads/facebook/carousal/new/data', 'metaFacebookCarousalNewData')->name('meta.ads.facebook.carousal.new.data');
+        Route::post('/meta-ads/facebook/carousal/new/store', 'storeFacebookCarousalNewCampaign')->name('meta.ads.facebook.carousal.new.store');
+        Route::post('/meta-ads/facebook/carousal/new/update-group', 'updateGroupForCampaigns')->name('meta.ads.facebook.carousal.new.update.group');
+        
+        // Raw Facebook Ads Data routes
+        Route::get('/meta-ads/raw-data', 'showRawAdsData')->name('meta.ads.raw');
+        Route::get('/meta-ads/raw-data/fetch', 'fetchRawAdsData')->name('meta.ads.raw.data');
+        Route::get('/meta-ads/test-connection', 'testMetaApiConnection')->name('meta.ads.test.connection');
         
         Route::get('/facebook-ads-control/data', 'index')->name('facebook.ads.index');
         Route::get('/facebook-web-to-video', 'facebookWebToVideo')->name('facebook.web.to.video');
         Route::get('/facebook-web-to-video-data', 'facebookWebToVideoData')->name('facebook.web.to.video.data');
         Route::get('/fb-img-caraousal-to-web', 'FbImgCaraousalToWeb')->name('fb.img.caraousal.to.web');
         Route::get('/fb-img-caraousal-to-web-data', 'FbImgCaraousalToWebData')->name('fb.img.caraousal.to.web.data');
+    });
+
+    // Meta Ads Manager - Comprehensive Module
+    Route::controller(\App\Http\Controllers\MarketingMaster\MetaAdsManagerController::class)->group(function () {
+        // Dashboard
+        Route::get('/meta-ads-manager/dashboard', 'dashboard')->name('meta.ads.manager.dashboard');
+        
+        // Accounts
+        Route::get('/meta-ads-manager/accounts', 'accounts')->name('meta.ads.manager.accounts');
+        Route::get('/meta-ads-manager/accounts/data', 'accountsData')->name('meta.ads.manager.accounts.data');
+        
+        // Campaigns
+        Route::get('/meta-ads-manager/campaigns', 'campaigns')->name('meta.ads.manager.campaigns');
+        Route::get('/meta-ads-manager/campaigns/data', 'campaignsData')->name('meta.ads.manager.campaigns.data');
+        
+        // AdSets
+        Route::get('/meta-ads-manager/adsets', 'adsets')->name('meta.ads.manager.adsets');
+        Route::get('/meta-ads-manager/adsets/data', 'adsetsData')->name('meta.ads.manager.adsets.data');
+        
+        // Ads
+        Route::get('/meta-ads-manager/ads', 'ads')->name('meta.ads.manager.ads');
+        Route::get('/meta-ads-manager/ads/data', 'adsData')->name('meta.ads.manager.ads.data');
+        
+        // Actions
+        Route::post('/meta-ads-manager/update-status', 'updateStatus')->name('meta.ads.manager.update.status');
+        Route::post('/meta-ads-manager/update-budget', 'updateBudget')->name('meta.ads.manager.update.budget');
+        Route::post('/meta-ads-manager/bulk-update', 'bulkUpdate')->name('meta.ads.manager.bulk.update');
+        
+        // Automation
+        Route::get('/meta-ads-manager/automation', 'automation')->name('meta.ads.manager.automation');
+        Route::get('/meta-ads-manager/automation/create', 'createRule')->name('meta.ads.manager.automation.create');
+        Route::post('/meta-ads-manager/automation', 'storeRule')->name('meta.ads.manager.automation.store');
+        Route::get('/meta-ads-manager/automation/{id}/edit', 'editRule')->name('meta.ads.manager.automation.edit');
+        Route::put('/meta-ads-manager/automation/{id}', 'updateRule')->name('meta.ads.manager.automation.update');
+        Route::delete('/meta-ads-manager/automation/{id}', 'deleteRule')->name('meta.ads.manager.automation.delete');
+        
+        // Logs
+        Route::get('/meta-ads-manager/logs', 'logs')->name('meta.ads.manager.logs');
+        
+        // Export
+        Route::get('/meta-ads-manager/export', 'export')->name('meta.ads.manager.export');
     });
 
     Route::controller(InstagramAdsManagerController::class)->group(function () {

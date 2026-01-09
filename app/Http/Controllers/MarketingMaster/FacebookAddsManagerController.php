@@ -704,6 +704,28 @@ class FacebookAddsManagerController extends Controller
     }
 
     /**
+     * Get all meta ad groups
+     */
+    public function getMetaAdGroups()
+    {
+        try {
+            $groups = MetaAdGroup::orderBy('group_name', 'asc')->get(['id', 'group_name']);
+            
+            return response()->json([
+                'success' => true,
+                'groups' => $groups
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Get Meta Ad Groups Error', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching groups',
+                'groups' => []
+            ], 500);
+        }
+    }
+
+    /**
      * Store a new group
      */
     public function storeGroup(Request $request)
@@ -746,6 +768,52 @@ class FacebookAddsManagerController extends Controller
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to create group: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete a meta ad group
+     */
+    public function deleteMetaAdGroup(Request $request)
+    {
+        try {
+            $request->validate([
+                'group_name' => 'required|string',
+            ]);
+
+            $group = MetaAdGroup::where('group_name', $request->group_name)->first();
+
+            if (!$group) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Group not found'
+                ], 404);
+            }
+
+            // Check if group is DRUM THRONE or KB BENCH (default groups - cannot be deleted)
+            if (in_array($request->group_name, ['DRUM THRONE', 'KB BENCH'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Default groups cannot be deleted'
+                ], 422);
+            }
+
+            // Update all campaigns with this group_id to null
+            MetaAllAd::where('group_id', $group->id)->update(['group_id' => null]);
+
+            // Delete the group
+            $group->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Group deleted successfully'
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Delete Meta Ad Group Error', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error deleting group: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -821,43 +889,70 @@ class FacebookAddsManagerController extends Controller
     public function metaFacebookCarousalNewData()
     {
         try {
-            $productMasters = ProductMaster::with('productGroup')
-                ->orderBy('parent', 'asc')
-                ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-                ->orderBy('sku', 'asc')
+            // Fetch saved campaigns from meta_all_ads table
+            $metaAds = MetaAllAd::with('group')
+                ->where('platform', 'Facebook')
+                ->orderBy('group_id', 'asc')
+                ->orderBy('campaign_name', 'asc')
                 ->get();
 
-            $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
-
-            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
-
             $data = [];
-            foreach ($productMasters as $pm) {
-                $sku = $pm->sku;
-                $shopify = $shopifyData[$sku] ?? null;
-
-                // Get ov_l30 from shopify_skus quantity column
-                $ovL30 = $shopify ? (float) ($shopify->quantity ?? 0) : 0;
+            
+            // Group campaigns by group name
+            $groupedAds = [];
+            foreach ($metaAds as $ad) {
+                $groupName = $ad->group ? $ad->group->group_name : 'No Group';
                 
-                // Get inventory
-                $inv = $shopify ? (int) ($shopify->inv ?? 0) : 0;
-
-                // Get group name from relationship
-                $groupName = $pm->productGroup ? $pm->productGroup->group_name : '';
-
-                // Calculate dil_percent = (l30 / inv) * 100
-                $dilPercent = 0;
-                if ($inv > 0) {
-                    $dilPercent = (int) round(($ovL30 / $inv) * 100);
+                if (!isset($groupedAds[$groupName])) {
+                    $groupedAds[$groupName] = [];
                 }
+                
+                $groupedAds[$groupName][] = [
+                    'group' => $groupName,
+                    'l_page' => $ad->l_page ?? '',
+                    'purpose' => $ad->purpose ?? '',
+                    'audience' => $ad->audience ?? '',
+                    'ad_type' => $ad->ad_type ?? '',
+                    'campaign_id' => $ad->campaign_id ?? '',
+                    'campaign' => $ad->campaign_name ?? '',
+                    'bgt' => $ad->bgt ?? 0,
+                    'imp_l30' => $ad->imp_l30 ?? 0,
+                    'spend_l30' => $ad->spent_l30 ?? 0,
+                    'clks_l30' => $ad->clicks_l30 ?? 0,
+                    'ad_sls_l30' => 0,
+                    'ad_sld_l30' => 0,
+                    'acos_l30' => 0,
+                    'cvr_l30' => 0,
+                    'status' => strtoupper($ad->campaign_delivery ?? 'inactive')
+                ];
+            }
+            
+            // Flatten grouped data - first row is header, rest are children
+            foreach ($groupedAds as $groupName => $campaigns) {
+                foreach ($campaigns as $campaign) {
+                    $data[] = $campaign;
+                }
+            }
+            
+            // Also include groups from ProductMaster that don't have campaigns yet
+            $productMasters = ProductMaster::with('productGroup')
+                ->whereHas('productGroup')
+                ->get()
+                ->groupBy(function($item) {
+                    return $item->productGroup ? $item->productGroup->group_name : null;
+                })
+                ->filter(function($group, $groupName) use ($groupedAds) {
+                    return $groupName !== null && !isset($groupedAds[$groupName]);
+                });
 
+            foreach ($productMasters as $groupName => $products) {
                 $data[] = [
                     'group' => $groupName,
-                    'parent' => $pm->parent ?? '',
-                    'sku' => $sku ?? '',
-                    'inv' => $inv,
-                    'ov_l30' => $ovL30,
-                    'dil_percent' => $dilPercent,
+                    'l_page' => '',
+                    'purpose' => '',
+                    'audience' => '',
+                    'ad_type' => '',
+                    'campaign_id' => '',
                     'campaign' => '',
                     'bgt' => 0,
                     'imp_l30' => 0,
@@ -872,7 +967,7 @@ class FacebookAddsManagerController extends Controller
             }
 
             return response()->json([
-                'message' => 'Product SKU data fetched successfully',
+                'message' => 'Campaign data fetched successfully',
                 'data' => $data,
                 'status' => 200,
             ]);
@@ -882,6 +977,223 @@ class FacebookAddsManagerController extends Controller
                 'message' => 'Error fetching data: ' . $e->getMessage(),
                 'data' => [],
                 'status' => 500,
+            ], 500);
+        }
+    }
+
+    /**
+     * Store new campaign for FB GRP CAROUSAL NEW
+     */
+    public function storeFacebookCarousalNewCampaign(Request $request)
+    {
+        try {
+            $request->validate([
+                'group' => 'required|string',
+                'l_page' => 'nullable|string|max:255',
+                'purpose' => 'nullable|string|max:255',
+                'audience' => 'nullable|string|max:255',
+                'ad_type' => 'nullable|string|max:255',
+                'campaign' => 'nullable|string|max:255',
+                'campaign_id' => 'nullable|string|max:255',
+            ]);
+
+            // Get or create group
+            $group = \App\Models\MetaAdGroup::firstOrCreate(
+                ['group_name' => $request->group],
+                ['group_name' => $request->group]
+            );
+
+            // Create campaign
+            $campaign = \App\Models\MetaAllAd::create([
+                'campaign_name' => $request->campaign ?: 'Untitled Campaign',
+                'campaign_id' => $request->campaign_id,
+                'group_id' => $group->id,
+                'l_page' => $request->l_page,
+                'purpose' => $request->purpose,
+                'audience' => $request->audience,
+                'ad_type' => $request->ad_type,
+                'platform' => 'Facebook',
+                'campaign_delivery' => 'inactive',
+                'bgt' => 0,
+                'imp_l30' => 0,
+                'spent_l30' => 0,
+                'clicks_l30' => 0,
+                'imp_l7' => 0,
+                'spent_l7' => 0,
+                'clicks_l7' => 0,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Campaign created successfully',
+                    'data' => [
+                        'id' => $campaign->id,
+                        'group' => $group->group_name,
+                        'l_page' => $campaign->l_page,
+                        'purpose' => $campaign->purpose,
+                        'audience' => $campaign->audience,
+                        'ad_type' => $campaign->ad_type,
+                        'campaign' => $campaign->campaign_name,
+                        'campaign_id' => $campaign->campaign_id,
+                        'bgt' => 0,
+                        'imp_l30' => 0,
+                        'spend_l30' => 0,
+                        'clks_l30' => 0,
+                        'ad_sls_l30' => 0,
+                        'ad_sld_l30' => 0,
+                        'acos_l30' => 0,
+                    'cvr_l30' => 0,
+                    'status' => 'inactive'
+                ]
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Store Campaign Error', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error creating campaign: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Update group for all campaigns in a group
+     */
+    public function updateGroupForCampaigns(Request $request)
+    {
+        try {
+            $request->validate([
+                'old_group' => 'required|string',
+                'new_group' => 'required|string',
+            ]);
+
+            // Get or create new group
+            $newGroup = MetaAdGroup::firstOrCreate(
+                ['group_name' => $request->new_group],
+                ['group_name' => $request->new_group]
+            );
+
+            // Find old group
+            $oldGroup = MetaAdGroup::where('group_name', $request->old_group)->first();
+
+            if ($oldGroup) {
+                // Update all campaigns with old group_id to new group_id
+                MetaAllAd::where('group_id', $oldGroup->id)
+                    ->where('platform', 'Facebook')
+                    ->update(['group_id' => $newGroup->id]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Group updated successfully for all campaigns'
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Update Group Error', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error updating group: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Display raw Facebook ads data page
+     */
+    public function showRawAdsData()
+    {
+        return view('marketing-masters.meta_ads_manager.raw_ads_data');
+    }
+
+    /**
+     * Test Meta API connection
+     */
+    public function testMetaApiConnection()
+    {
+        try {
+            $metaApi = new MetaApiService();
+            
+            // Test credentials
+            $isValid = $metaApi->validateCredentials();
+            
+            if (!$isValid) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid API credentials. Please check META_ACCESS_TOKEN in .env',
+                ], 401);
+            }
+            
+            // Try to fetch ad accounts to verify access
+            $adAccounts = $metaApi->fetchAdAccounts();
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'API connection successful',
+                'ad_accounts_count' => count($adAccounts),
+                'ad_accounts' => array_slice($adAccounts, 0, 5), // Show first 5
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Test Meta API Connection Error', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+                'message' => 'Error testing API connection: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Fetch raw Facebook ads data from API
+     */
+    public function fetchRawAdsData(Request $request)
+    {
+        try {
+            $metaApi = new MetaApiService();
+            
+            $type = $request->get('type', 'ads'); // ads, campaigns, insights
+            $datePreset = $request->get('date_preset', 'last_30d');
+            $level = $request->get('level', 'campaign');
+            
+            $rawData = [];
+            
+            switch ($type) {
+                case 'ads':
+                    $rawData = $metaApi->fetchRawAdsData();
+                    break;
+                case 'campaigns':
+                    $rawData = $metaApi->fetchRawCampaignsData();
+                    break;
+                case 'insights':
+                    $rawData = $metaApi->fetchRawInsightsData($datePreset, $level);
+                    break;
+                default:
+                    $rawData = $metaApi->fetchRawAdsData();
+            }
+            
+            return response()->json([
+                'success' => true,
+                'type' => $type,
+                'count' => count($rawData),
+                'data' => $rawData,
+                'fetched_at' => now()->toDateTimeString(),
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Fetch Raw Ads Data Error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'type' => $request->get('type', 'ads'),
+            ]);
+            
+            $errorMessage = $e->getMessage();
+            
+            // Check if it's a credentials issue
+            if (strpos($errorMessage, 'not configured') !== false) {
+                $errorMessage = 'Meta API credentials not configured. Please set META_ACCESS_TOKEN and META_AD_ACCOUNT_ID in .env file.';
+            }
+            
+            return response()->json([
+                'success' => false,
+                'error' => $errorMessage,
+                'message' => 'Error fetching raw ads data: ' . $errorMessage,
+                'type' => $request->get('type', 'ads'),
             ], 500);
         }
     }
