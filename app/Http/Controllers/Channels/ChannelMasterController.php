@@ -1502,16 +1502,13 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // Get latest order date from ShipHub
-        $latestDate = DB::connection('shiphub')
-            ->table('orders')
-            ->where('marketplace', '=', 'walmart')
-            ->max('order_date');
+        // Use walmart_daily_data table (same as Sales page) instead of ShipHub
+        $latestDate = \App\Models\WalmartDailyData::max('order_date');
 
         if (!$latestDate) {
             return response()->json([
                 'status' => 200,
-                'message' => 'No Walmart data found in ShipHub',
+                'message' => 'No Walmart data found in walmart_daily_data',
                 'data' => [[
                     'Channel ' => 'Walmart',
                     'L-60 Sales' => 0,
@@ -1539,39 +1536,29 @@ class ChannelMasterController extends Controller
         $percentage = $marketplaceData ? $marketplaceData->percentage : 80;
         $margin = $percentage / 100; // convert % to fraction
 
-        // Get L30 order items from ShipHub (orders table contains item details directly)
-        $l30Orders = DB::connection('shiphub')
-            ->table('orders')
+        // Get L30 order items from walmart_daily_data (same as Sales page)
+        $l30Orders = \App\Models\WalmartDailyData::where('period', 'l30')
             ->whereBetween('order_date', [$l30StartDate, $l30EndDate])
-            ->where('marketplace', '=', 'walmart')
-            ->where(function($query) {
-                $query->where('order_status', '!=', 'Canceled')
-                      ->where('order_status', '!=', 'Cancelled')
-                      ->orWhereNull('order_status');
-            })
+            ->where('fulfillment_option', 'DELIVERY')
+            ->where('status', '!=', 'Cancelled')
             ->select([
-                'marketplace_order_id as order_id',
-                'item_sku as sku',
+                DB::raw("COALESCE(customer_order_id, purchase_order_id, CONCAT('WM-', id)) as order_id"),
+                'sku',
                 'quantity',
-                'order_total',
+                'unit_price as price',
             ])
             ->get();
 
-        // Get L60 order items from ShipHub
-        $l60Orders = DB::connection('shiphub')
-            ->table('orders')
+        // Get L60 order items from walmart_daily_data
+        $l60Orders = \App\Models\WalmartDailyData::where('period', 'l30')
             ->whereBetween('order_date', [$l60StartDate, $l60EndDate])
-            ->where('marketplace', '=', 'walmart')
-            ->where(function($query) {
-                $query->where('order_status', '!=', 'Canceled')
-                      ->where('order_status', '!=', 'Cancelled')
-                      ->orWhereNull('order_status');
-            })
+            ->where('fulfillment_option', 'DELIVERY')
+            ->where('status', '!=', 'Cancelled')
             ->select([
-                'marketplace_order_id as order_id',
-                'item_sku as sku',
+                DB::raw("COALESCE(customer_order_id, purchase_order_id, CONCAT('WM-', id)) as order_id"),
+                'sku',
                 'quantity',
-                'order_total',
+                'unit_price as price',
             ])
             ->get();
 
@@ -1595,10 +1582,9 @@ class ChannelMasterController extends Controller
         foreach ($l30Orders as $order) {
             $sku = strtoupper(trim($order->sku ?? ''));
             $quantity = floatval($order->quantity ?? 1);
-            $orderTotal = floatval($order->order_total ?? 0);
+            $unitPrice = floatval($order->price ?? 0);
             
-            $saleAmount = $orderTotal;
-            $unitPrice = $quantity > 0 ? $saleAmount / $quantity : 0;
+            $saleAmount = $unitPrice * $quantity;
 
             // Get ProductMaster data
             $pm = $productMasters->get($sku);
@@ -1646,10 +1632,9 @@ class ChannelMasterController extends Controller
         foreach ($l60Orders as $order) {
             $sku = strtoupper(trim($order->sku ?? ''));
             $quantity = floatval($order->quantity ?? 1);
-            $orderTotal = floatval($order->order_total ?? 0);
+            $unitPrice = floatval($order->price ?? 0);
             
-            $saleAmount = $orderTotal;
-            $unitPrice = $quantity > 0 ? $saleAmount / $quantity : 0;
+            $saleAmount = $unitPrice * $quantity;
 
             // Get ProductMaster data
             $pm = $productMasters->get($sku);
@@ -1687,13 +1672,47 @@ class ChannelMasterController extends Controller
         }
         $l60OrderCount = count($l60OrderIds);
 
+        // Get Walmart ad spend (L30) - use MAX per campaign to avoid duplicates
+        // Filter by recently updated records (within last 2 hours) to match current Google Sheet data
+        $walmartSpentData = DB::table('walmart_campaign_reports')
+            ->selectRaw('campaignName, MAX(spend) as max_spend')
+            ->where('report_range', 'L30')
+            ->where('updated_at', '>=', \Carbon\Carbon::now()->subHours(2))
+            ->whereNotNull('campaignName')
+            ->where('campaignName', '!=', '')
+            ->groupBy('campaignName')
+            ->get();
+        
+        // If no recent records found, try fetching current Google Sheet data directly
+        if ($walmartSpentData->isEmpty()) {
+            $currentSheetCampaigns = $this->getCurrentGoogleSheetCampaigns();
+            if (!empty($currentSheetCampaigns)) {
+                $walmartSpentData = DB::table('walmart_campaign_reports')
+                    ->where('report_range', 'L30')
+                    ->whereIn('campaignName', $currentSheetCampaigns)
+                    ->selectRaw('campaignName, MAX(spend) as max_spend')
+                    ->groupBy('campaignName')
+                    ->get();
+            }
+        }
+        
+        $walmartSpent = $walmartSpentData->sum('max_spend') ?? 0;
+        
         // Calculate percentages
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
         $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
         $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
         $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
-        $nPft = $gProfitPct; // Walmart has no ads for now
+        
+        // Calculate TACOS %: (Walmart Spent / Total Sales) * 100
+        $tacosPercentage = $l30Sales > 0 ? ($walmartSpent / $l30Sales) * 100 : 0;
+        
+        // Calculate N PFT: GPFT % - TACOS %
+        $nPft = $gProfitPct - $tacosPercentage;
+        
+        // Calculate N ROI: ROI % - TACOS %
+        $nRoi = $gRoi - $tacosPercentage;
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Walmart')->first();
@@ -1717,8 +1736,10 @@ class ChannelMasterController extends Controller
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'      => round($gRoiL60, 2),
             'Total PFT'  => round($totalProfit, 2),
+            'Walmart Spent' => round($walmartSpent, 2),
+            'TACOS %'    => round($tacosPercentage, 2) . '%',
             'N PFT'      => round($nPft, 2) . '%',
-            'N ROI'      => round($gRoi, 2),
+            'N ROI'      => round($nRoi, 2),
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -2742,7 +2763,7 @@ class ChannelMasterController extends Controller
             $nRoi = $gRoi;
             
             // Debug log
-            \Log::info('TikTok Channel Data Calculation', [
+            Log::info('TikTok Channel Data Calculation', [
                 'l30_sales' => $l30Sales,
                 'total_profit' => $totalProfit,
                 'total_cogs' => $totalCogs,
@@ -5011,7 +5032,43 @@ class ChannelMasterController extends Controller
         ], 200);
     }
 
-
-
+    /**
+     * Get list of campaign names currently in Google Sheet (L30 data only)
+     * This ensures we only sum data that exists in the current Google Sheet
+     */
+    private function getCurrentGoogleSheetCampaigns()
+    {
+        try {
+            $url = "https://script.google.com/macros/s/AKfycbxWwC98yCcPDcXjXfKpbE0dMC74L0YfF0fx2HdG_i3G7BzSjuhD8H9X98byGQymFNbx/exec";
+            
+            $response = \Illuminate\Support\Facades\Http::timeout(10)->get($url);
+            
+            if (!$response->ok()) {
+                Log::warning('Failed to fetch current Google Sheet data for totals calculation');
+                return [];
+            }
+            
+            $json = $response->json();
+            
+            // Get L30 data only
+            if (!isset($json['L30']['data'])) {
+                return [];
+            }
+            
+            // Extract unique campaign names from current Google Sheet
+            $campaignNames = [];
+            foreach ($json['L30']['data'] as $row) {
+                $campaignName = $row['campaign_name'] ?? null;
+                if ($campaignName && !empty(trim($campaignName))) {
+                    $campaignNames[] = trim($campaignName);
+                }
+            }
+            
+            return array_unique($campaignNames);
+        } catch (\Exception $e) {
+            Log::error('Error fetching current Google Sheet campaigns: ' . $e->getMessage());
+            return [];
+        }
+    }
 
 }

@@ -1357,14 +1357,23 @@
             let totalAdsAmount = 0;
             let totalAdSpend = 0;
             data.forEach(function(row) {
+                const channel = (row['Channel'] || '').trim().toLowerCase();
                 const l30Sales = parseNumber(row['L30 Sales'] || 0);
-                const adsPercent = parseNumber(row['Ads%'] || 0);
+                
+                // For Walmart, use TACOS% as Ads%; for others use Ads%
+                let adsPercent = 0;
+                if (channel === 'walmart') {
+                    adsPercent = parseNumber(row['TACOS %'] || 0);
+                } else {
+                    adsPercent = parseNumber(row['Ads%'] || 0);
+                }
                 totalAdsAmount += (adsPercent / 100) * l30Sales;
                 
-                // Sum up actual ad spend (KW + PMT)
+                // Sum up actual ad spend (KW + PMT + Walmart Spent)
                 const kwSpent = parseNumber(row['KW Spent'] || 0);
                 const pmtSpent = parseNumber(row['PMT Spent'] || 0);
-                totalAdSpend += kwSpent + pmtSpent;
+                const walmartSpent = parseNumber(row['Walmart Spent'] || 0);
+                totalAdSpend += kwSpent + pmtSpent + walmartSpent;
             });
             let avgAdsPercent = totalL30Sales !== 0 ? (totalAdsAmount / totalL30Sales) * 100 : 0;
             
@@ -1873,14 +1882,25 @@
                         }
                     },
                     {
-                        data: 'Ads%',
-                        render: function (v) {
-                            const n = pctFix(v);
+                        data: null,
+                        render: function (v, type, row) {
+                            const channel = (row['Channel'] || '').trim().toLowerCase();
+                            let adsPercent = 0;
+                            
+                            // For Walmart, use TACOS % as Ads %
+                            if (channel === 'walmart') {
+                                adsPercent = pctFix(pick(row, ['TACOS %', 'tacos_percentage', 'tacosPercentage'], 0));
+                            } else {
+                                adsPercent = pctFix(row['Ads%'] || 0);
+                            }
+                            
+                            if (type === 'sort' || type === 'type') return adsPercent;
+                            
                             let bg = '', color = 'white';
-                            if (n < 5) { bg = '#ff69b4'; } // Pink: below 5%
-                            else if (n >= 5 && n <= 10) { bg = '#00ff00'; } // Green: 5-10%
+                            if (adsPercent < 5) { bg = '#ff69b4'; } // Pink: below 5%
+                            else if (adsPercent >= 5 && adsPercent <= 10) { bg = '#00ff00'; } // Green: 5-10%
                             else { bg = '#ff0000'; } // Red: above 10%
-                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${n.toFixed(1)}%</span>`;
+                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${adsPercent.toFixed(1)}%</span>`;
                         }
                     },
                     {
@@ -1889,8 +1909,8 @@
                             const channel = (row['Channel'] || '').trim().toLowerCase();
                             let nPft = 0;
                             
-                            // For Amazon and eBay, use the N PFT from backend
-                            if (channel === 'amazon' || channel === 'ebay') {
+                            // For Amazon, eBay, and Walmart, use the N PFT from backend
+                            if (channel === 'amazon' || channel === 'ebay' || channel === 'walmart') {
                                 nPft = pctFix(row['N PFT'] || 0);
                             } else {
                                 // For other channels, calculate N PFT = GPFT% - Ads%
@@ -1938,14 +1958,40 @@
                     {
                         data: null,
                         render: function (v, type, row) {
+                            const channel = (row['Channel'] || '').trim().toLowerCase();
                             const kwSpent = toNum(pick(row, ['KW Spent', 'kw_spent', 'kwSpent'], 0));
                             const pmtSpent = toNum(pick(row, ['PMT Spent', 'pmt_spent', 'pmtSpent'], 0));
                             const hlSpent = toNum(pick(row, ['HL Spent', 'hl_spent', 'hlSpent'], 0));
-                            const totalSpent = kwSpent + pmtSpent + hlSpent;
+                            const walmartSpent = toNum(pick(row, ['Walmart Spent', 'walmart_spent', 'walmartSpent'], 0));
+                            
+                            // For Walmart, use Walmart Spent as total
+                            let totalSpent = 0;
+                            if (channel === 'walmart') {
+                                totalSpent = walmartSpent;
+                            } else {
+                                totalSpent = kwSpent + pmtSpent + hlSpent;
+                            }
                             
                             if (type === 'sort' || type === 'type') return totalSpent;
                             
-                            // Create a select element with color styling to show breakdown
+                            // For Walmart, show single option
+                            if (channel === 'walmart') {
+                                return `
+                                    <select class="form-select form-select-sm ad-spend-select" 
+                                            style="min-width: 120px; 
+                                                   font-size: 11px; 
+                                                   padding: 4px 8px; 
+                                                   background-color: #91e1ff; 
+                                                   color: black; 
+                                                   border: 1px solid #91e1ff;
+                                                   font-weight: bold;">
+                                        <option value="total" selected style="background-color: #91e1ff; color: black; font-weight: bold;">$${Math.round(totalSpent).toLocaleString('en-US')}</option>
+                                        <option value="walmart" style="background-color: #0071ce; color: white; font-weight: bold;">Walmart: $${walmartSpent.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option>
+                                    </select>
+                                `;
+                            }
+                            
+                            // For other channels, show KW/PMT/HL breakdown
                             return `
                                 <select class="form-select form-select-sm ad-spend-select" 
                                         style="min-width: 120px; 
@@ -2090,11 +2136,15 @@
                                 let nRoi = pctFix(pick(item, ['N ROI', 'n_roi', 'nRoi'], 0));
                                 let adsPercentage = pctFix(pick(item, ['Ads%', 'ads_percentage', 'adsPercentage'], 0));
                                 
+                                // Walmart specific fields
+                                let walmartSpent = toNum(pick(item, ['Walmart Spent', 'walmart_spent', 'walmartSpent'], 0), 0);
+                                let tacosPercentage = pctFix(pick(item, ['TACOS %', 'tacos_percentage', 'tacosPercentage'], 0));
+                                
                                 // Ad Spend data
                                 let kwSpent = toNum(pick(item, ['KW Spent', 'kw_spent', 'kwSpent'], 0), 0);
                                 let pmtSpent = toNum(pick(item, ['PMT Spent', 'pmt_spent', 'pmtSpent'], 0), 0);
                                 let hlSpent = toNum(pick(item, ['HL Spent', 'hl_spent', 'hlSpent'], 0), 0);
-                                let totalAdSpend = kwSpent + pmtSpent + hlSpent;
+                                let totalAdSpend = kwSpent + pmtSpent + hlSpent + walmartSpent;
 
                                 // Get type from backend (normalized to B2C, B2B, Dropship only)
                                 let channelType = pick(item, ['type'], 'B2C');
@@ -2131,9 +2181,11 @@
                                     'N PFT': nPft,
                                     'N ROI': nRoi,
                                     'Ads%': adsPercentage,
+                                    'TACOS %': tacosPercentage,
                                     'KW Spent': kwSpent,
                                     'PMT Spent': pmtSpent,
                                     'HL Spent': hlSpent,
+                                    'Walmart Spent': walmartSpent,
                                     'Total Ad Spend': totalAdSpend,
                                     'Red Margin': toNum(pick(item, ['red_margin', 'Total_pft', 'total_pft'], 0), 0),
                                     'NR': toNum(pick(item, ['nr','NR'], 0), 0),

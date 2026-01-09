@@ -16,7 +16,8 @@ class ReverbProduct extends Model
         'r_l30',
         'r_l60',
         'price',
-        'views',        
+        'views',
+        'remaining_inventory',
         'status',
     ];
 }

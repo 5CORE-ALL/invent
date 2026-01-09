@@ -93,6 +93,14 @@
                             style="color: white; font-weight: bold;">GPFT Total: $0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge"
                             style="color: white; font-weight: bold;">Total COGS: $0</span>
+                        <span class="badge fs-6 p-2" id="walmart-spent-badge"
+                            style="background-color: #28a745; color: white; font-weight: bold;">Walmart Spent: ${{ number_format($walmartSpent ?? 0, 0) }}</span>
+                        <span class="badge fs-6 p-2" id="tacos-percentage-badge"
+                            style="background-color: #6f42c1; color: white; font-weight: bold;">TACOS %: 0%</span>
+                        <span class="badge fs-6 p-2" id="n-pft-badge"
+                            style="background-color: #fd7e14; color: white; font-weight: bold;">N PFT: 0%</span>
+                        <span class="badge fs-6 p-2" id="n-roi-badge"
+                            style="background-color: #e83e8c; color: white; font-weight: bold;">N ROI: 0%</span>
                     </div>
                 </div>
             </div>
@@ -115,8 +123,9 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
-        const COLUMN_VIS_KEY = "walmart_sales_column_visibility";
-        let table = null;
+    const COLUMN_VIS_KEY = "walmart_sales_column_visibility";
+    let table = null;
+    const WALMART_SPENT = {{ $walmartSpent ?? 0 }};
 
         // Toast notification function
         function showToast(message, type = 'info') {
@@ -488,6 +497,15 @@
                 const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
                 const pftPercentage = totalL30Sales > 0 ? (totalPft / totalL30Sales) * 100 : 0;
                 const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
+                
+                // Calculate TACOS: (Walmart Spent / Total Sales) * 100
+                const tacosPercentage = totalRevenue > 0 ? (WALMART_SPENT / totalRevenue) * 100 : 0;
+                
+                // Calculate N PFT: GPFT % - TACOS %
+                const nPft = pftPercentage - tacosPercentage;
+                
+                // Calculate N ROI: ROI % - TACOS %
+                const nRoi = roiPercentage - tacosPercentage;
 
                 $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
                 $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
@@ -505,6 +523,9 @@
                 }
 
                 $('#total-cogs-badge').text('Total COGS: $' + Math.round(totalCogs).toLocaleString());
+                $('#tacos-percentage-badge').text('TACOS %: ' + tacosPercentage.toFixed(1) + '%');
+                $('#n-pft-badge').text('N PFT: ' + nPft.toFixed(1) + '%');
+                $('#n-roi-badge').text('N ROI: ' + nRoi.toFixed(1) + '%');
             }
 
             // Build Column Visibility Dropdown
@@ -512,7 +533,7 @@
                 const menu = document.getElementById("column-dropdown-menu");
                 menu.innerHTML = '';
 
-                fetch('/bestbuy-daily-sales-column-visibility', {
+                fetch('/walmart-column-visibility', {
                         method: 'GET',
                         headers: {
                             'Content-Type': 'application/json',
@@ -554,7 +575,7 @@
                     }
                 });
 
-                fetch('/bestbuy-daily-sales-column-visibility', {
+                fetch('/walmart-column-visibility', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -567,7 +588,7 @@
             }
 
             function applyColumnVisibilityFromServer() {
-                fetch('/bestbuy-daily-sales-column-visibility', {
+                fetch('/walmart-column-visibility', {
                         method: 'GET',
                         headers: {
                             'Content-Type': 'application/json',
@@ -632,7 +653,7 @@
 
             // Export functionality
             $('#export-btn').on('click', function() {
-                table.download("csv", "bestbuy_daily_sales_data.csv");
+                table.download("csv", "walmart_daily_sales_data.csv");
             });
         });
     </script>

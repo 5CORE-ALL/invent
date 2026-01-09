@@ -2367,13 +2367,13 @@
                                     </li>
 
                                     <li>
-                                        <a href="{{ url('reverb-pricing-increase-cvr') }}">
-                                            Reverb Pricing Increase CVR</a>
+                                        <a href="{{ url('reverb-pricing') }}">
+                                            Reverb Pricing</a>
                                     </li>
-                                    <li>
+                                    {{-- <li>
                                         <a href="{{ url('reverb-pricing-decrease-cvr') }}">
                                             Reverb Pricing Decrease CVR</a>
-                                    </li>
+                                    </li> --}}
                                 </ul>
                             </div>
                         </li>
@@ -2672,9 +2672,9 @@
                                     {{-- <li>
                                         <a href="{{ url('walmart-tabulator-view') }}">Walmart Pricing - CVR</a>
                                     </li> --}}
-                                    {{-- <li>
+                                    <li>
                                         <a href="{{ route('walmart.sheet.upload') }}">Walmart Pricing</a>
-                                    </li> --}}
+                                    </li>
                                     <li>
                                         <a href="{{ route('walmart.utilized.bgt') }}">Walmart BGT Util.</a>
                                     </li>

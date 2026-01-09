@@ -13,6 +13,7 @@ use App\Models\MarketplacePercentage;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use App\Models\ReverbViewData;
+use App\Models\ReverbListingStatus;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -629,5 +630,437 @@ class ReverbController extends Controller
         $writer = new Xlsx($spreadsheet);
         $writer->save('php://output');
         exit;
+    }
+
+    // Reverb Tabulator View and Methods
+    public function reverbTabulatorView(Request $request)
+    {
+        $mode = $request->query("mode");
+        $demo = $request->query("demo");
+
+        $marketplaceData = ChannelMaster::where('channel', 'Reverb')->first();
+        $percentage = $marketplaceData ? $marketplaceData->channel_percentage : 85;
+
+        return view("market-places.reverb_tabulator_view", [
+            "mode" => $mode,
+            "demo" => $demo,
+            "reverbPercentage" => $percentage,
+        ]);
+    }
+
+    public function reverbDataJson(Request $request)
+    {
+        try {
+            $response = $this->getViewReverbTabularData($request);
+            $data = json_decode($response->getContent(), true);
+            
+            return response()->json($data['data'] ?? []);
+        } catch (\Exception $e) {
+            Log::error('Error fetching Reverb data for Tabulator: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to fetch data'], 500);
+        }
+    }
+
+    public function getViewReverbTabularData(Request $request)
+    {
+        // Get percentage from database
+        $marketplaceData = ChannelMaster::where('channel', 'Reverb')->first();
+        $percentage = $marketplaceData ? $marketplaceData->channel_percentage : 85;
+        $percentageValue = $percentage / 100;
+
+        // Fetch all product master records (excluding parent rows)
+        $productMasterRows = ProductMaster::all()
+            ->filter(function ($item) {
+                return stripos($item->sku, 'PARENT') === false;
+            })
+            ->keyBy("sku");
+
+        // Get all unique SKUs from product master
+        $skus = $productMasterRows->pluck("sku")->toArray();
+
+        // Fetch shopify data for these SKUs
+        $shopifyData = ShopifySku::whereIn("sku", $skus)->get()->keyBy("sku");
+
+        // Fetch reverb data for these SKUs
+        $reverbData = ReverbProduct::whereIn("sku", $skus)->get()->keyBy("sku");
+
+        // Fetch reverb view data for SPRICE
+        $reverbViewData = ReverbViewData::whereIn("sku", $skus)->get()->keyBy("sku");
+
+        // Fetch reverb listing status for NR/REQ (same table as listing page)
+        $reverbListingStatus = ReverbListingStatus::whereIn("sku", $skus)
+            ->orderBy('updated_at', 'desc')
+            ->get()
+            ->keyBy("sku");
+
+        // Fetch Amazon data for price comparison
+        $amazonData = \App\Models\AmazonDatasheet::whereIn("sku", $skus)
+            ->get()
+            ->keyBy("sku");
+
+        // Process data
+        $processedData = [];
+        $slNo = 1;
+
+        foreach ($productMasterRows as $productMaster) {
+            $sku = $productMaster->sku;
+            $isParent = stripos($sku, "PARENT") !== false;
+
+            // Initialize the data structure
+            $processedItem = [
+                "SL No." => $slNo++,
+                "Parent" => $productMaster->parent ?? null,
+                "(Child) sku" => $sku,
+                "is_parent" => $isParent,
+            ];
+
+            // Add values from product_master
+            $values = $productMaster->Values ?: [];
+            $processedItem["LP_productmaster"] = $values["lp"] ?? 0;
+            $processedItem["Ship_productmaster"] = $values["ship"] ?? 0;
+            $processedItem["COGS"] = $values["cogs"] ?? 0;
+            
+            // Image path - check shopify first, then product master Values, then product master direct field
+            $processedItem["image_path"] = null;
+
+            // Add data from shopify_skus if available
+            if (isset($shopifyData[$sku])) {
+                $shopifyItem = $shopifyData[$sku];
+                $processedItem["INV"] = $shopifyItem->inv ?? 0;
+                $processedItem["L30"] = $shopifyItem->quantity ?? 0;
+                // Get image from shopify if available
+                $processedItem["image_path"] = $shopifyItem->image_src ?? ($values["image_path"] ?? ($productMaster->image_path ?? null));
+            } else {
+                $processedItem["INV"] = 0;
+                $processedItem["L30"] = 0;
+                // Fallback to product master for image
+                $processedItem["image_path"] = $values["image_path"] ?? ($productMaster->image_path ?? null);
+            }
+
+            // Add data from reverb_products if available
+            if (isset($reverbData[$sku])) {
+                $reverbItem = $reverbData[$sku];
+                $reverbPrice = $reverbItem->price ?? 0;
+
+                $processedItem["RV Price"] = $reverbPrice;
+                $processedItem["Views"] = $reverbItem->views ?? 0;
+                $processedItem["RV L30"] = $reverbItem->r_l30 ?? 0;
+                $processedItem["RV L60"] = $reverbItem->r_l60 ?? 0;
+                $processedItem["R Stock"] = $reverbItem->remaining_inventory ?? 0;
+                $processedItem["Missing"] = ''; // SKU exists in Reverb
+            } else {
+                $processedItem["RV Price"] = 0;
+                $processedItem["Views"] = 0;
+                $processedItem["RV L30"] = 0;
+                $processedItem["RV L60"] = 0;
+                $processedItem["R Stock"] = 0;
+                $processedItem["Missing"] = 'M'; // SKU NOT in Reverb - mark as Missing
+            }
+
+            // Calculate MAP (INV vs R Stock comparison)
+            $inv = $processedItem["INV"];
+            $rStock = $processedItem["R Stock"];
+            
+            if ($inv == $rStock) {
+                $processedItem["MAP"] = 'Map';
+            } elseif ($rStock > $inv) {
+                // R Stock is more than INV - show N Map with qty
+                $diff = $rStock - $inv;
+                $processedItem["MAP"] = "N Map|$diff"; // Using | as separator
+            } else {
+                // INV is more than R Stock - show only the difference number
+                $diff = $inv - $rStock;
+                $processedItem["MAP"] = "Diff|$diff"; // Using | as separator
+            }
+
+            // Calculate CVR percentage (L30 / Views * 100)
+            $views = $processedItem["Views"];
+            $rvL30 = $processedItem["RV L30"];
+            $processedItem["CVR"] = $views > 0 ? round(($rvL30 / $views) * 100, 2) : 0;
+
+            // Amazon Price
+            if (isset($amazonData[$sku])) {
+                $processedItem["A Price"] = $amazonData[$sku]->price ?? 0;
+            } else {
+                $processedItem["A Price"] = 0;
+            }
+
+            // Get NR/REQ from reverb_listing_statuses (same table as listing page)
+            $processedItem["nr_req"] = 'REQ'; // Default value
+            
+            if (isset($reverbListingStatus[$sku])) {
+                $listingStatus = $reverbListingStatus[$sku];
+                $statusValue = is_array($listingStatus->value) 
+                    ? $listingStatus->value 
+                    : (json_decode($listingStatus->value, true) ?? []);
+                
+                // Get rl_nrl from listing status and convert to REQ/NR for tabulator
+                $rlNrl = $statusValue['rl_nrl'] ?? null;
+                
+                // If old nr_req field exists and no rl_nrl, convert it
+                if (!$rlNrl && isset($statusValue['nr_req'])) {
+                    $rlNrl = ($statusValue['nr_req'] === 'REQ') ? 'RL' : (($statusValue['nr_req'] === 'NR') ? 'NRL' : 'RL');
+                }
+                
+                // Convert RL/NRL to REQ/NR for display
+                if ($rlNrl === 'RL') {
+                    $processedItem["nr_req"] = 'REQ';
+                } else if ($rlNrl === 'NRL') {
+                    $processedItem["nr_req"] = 'NR';
+                } else {
+                    $processedItem["nr_req"] = 'REQ'; // Default
+                }
+            }
+
+            // Get SPRICE from reverb_view_data
+            $processedItem["SPRICE"] = 0;
+            $processedItem["SGPFT"] = 0;
+            $processedItem["SPFT"] = 0;
+            $processedItem["SROI"] = 0;
+
+            if (isset($reverbViewData[$sku])) {
+                $viewData = $reverbViewData[$sku];
+                $valuesArr = $viewData->values ?: [];
+                
+                $processedItem["SPRICE"] = isset($valuesArr["SPRICE"]) ? floatval($valuesArr["SPRICE"]) : 0;
+                $processedItem["SGPFT"] = isset($valuesArr["SGPFT"]) ? floatval($valuesArr["SGPFT"]) : 0;
+                $processedItem["SPFT"] = isset($valuesArr["SPFT"]) ? floatval(str_replace("%", "", $valuesArr["SPFT"])) : 0;
+                $processedItem["SROI"] = isset($valuesArr["SROI"]) ? floatval(str_replace("%", "", $valuesArr["SROI"])) : 0;
+            }
+
+            // Calculate profit metrics
+            $processedItem["percentage"] = $percentageValue;
+
+            $price = floatval($processedItem["RV Price"]);
+            $lp = floatval($processedItem["LP_productmaster"]);
+            $ship = floatval($processedItem["Ship_productmaster"]);
+
+            // GPFT%
+            if ($price > 0) {
+                $gpft_percentage = (($price * $percentageValue - $lp - $ship) / $price) * 100;
+                $processedItem["GPFT%"] = round($gpft_percentage, 2);
+            } else {
+                $processedItem["GPFT%"] = 0;
+            }
+
+            // PFT%
+            $processedItem["PFT %"] = $processedItem["GPFT%"];
+
+            // ROI%
+            if ($lp > 0) {
+                $roi_percentage = (($price * $percentageValue - $lp - $ship) / $lp) * 100;
+                $processedItem["ROI%"] = round($roi_percentage, 2);
+            } else {
+                $processedItem["ROI%"] = 0;
+            }
+
+            // Profit
+            $processedItem["Profit"] = ($price * $percentageValue) - $lp - $ship;
+
+            // Sales L30
+            $processedItem["Sales L30"] = $price * $processedItem["RV L30"];
+
+            // Dil%
+            $inv = $processedItem["INV"];
+            $l30 = $processedItem["L30"];
+            $processedItem["RV Dil%"] = $inv > 0 ? round(($l30 / $inv) * 100, 2) : 0;
+
+            $processedData[] = $processedItem;
+        }
+
+        return response()->json([
+            "message" => "Data fetched successfully",
+            "data" => $processedData,
+            "status" => 200,
+        ]);
+    }
+
+    public function saveSpriceUpdates(Request $request)
+    {
+        try {
+            // Handle both single SKU and batch updates
+            $updates = [];
+            
+            if ($request->has('updates')) {
+                // Batch update format
+                $updates = $request->input('updates', []);
+            } elseif ($request->has('sku') && $request->has('sprice')) {
+                // Single SKU format (from cellEdited)
+                $updates = [[
+                    'sku' => $request->input('sku'),
+                    'sprice' => $request->input('sprice')
+                ]];
+            }
+
+            $updatedCount = 0;
+            $errors = [];
+
+            foreach ($updates as $update) {
+                $sku = $update['sku'] ?? null;
+                $sprice = $update['sprice'] ?? null;
+
+                if (!$sku || $sprice === null) {
+                    $errors[] = "Invalid update data for SKU: " . ($sku ?? 'unknown');
+                    continue;
+                }
+
+                // Find or create reverb view data
+                $reverbViewData = ReverbViewData::firstOrNew(['sku' => $sku]);
+                
+                // Get existing values
+                $values = is_array($reverbViewData->values) 
+                    ? $reverbViewData->values 
+                    : (json_decode($reverbViewData->values, true) ?: []);
+
+                // Update SPRICE
+                $values['SPRICE'] = floatval($sprice);
+
+                // Get product master data for calculations
+                $productMaster = ProductMaster::where('sku', $sku)->first();
+                if ($productMaster) {
+                    $pmValues = $productMaster->Values ?: [];
+                    $lp = $pmValues['lp'] ?? 0;
+                    $ship = $pmValues['ship'] ?? 0;
+                    $percentage = 0.85; // 85% margin for Reverb
+
+                    // Calculate SGPFT
+                    if ($sprice > 0) {
+                        $sgpft = (($sprice * $percentage - $lp - $ship) / $sprice) * 100;
+                        $values['SGPFT'] = round($sgpft, 2);
+                    } else {
+                        $values['SGPFT'] = 0;
+                    }
+
+                    // Calculate SPFT (same as SGPFT for now)
+                    $values['SPFT'] = $values['SGPFT'] . '%';
+
+                    // Calculate SROI
+                    if ($lp > 0) {
+                        $sroi = (($sprice * $percentage - $lp - $ship) / $lp) * 100;
+                        $values['SROI'] = round($sroi, 2) . '%';
+                    } else {
+                        $values['SROI'] = '0%';
+                    }
+                }
+
+                // Save values
+                $reverbViewData->values = $values;
+                $reverbViewData->save();
+
+                $updatedCount++;
+            }
+
+            // Return response based on request format
+            if ($request->has('sku') && !$request->has('updates')) {
+                // Single SKU response (for cellEdited)
+                if ($updatedCount > 0 && count($updates) > 0) {
+                    $update = $updates[0];
+                    $sku = $update['sku'];
+                    
+                    // Get calculated values
+                    $reverbViewData = ReverbViewData::where('sku', $sku)->first();
+                    $values = $reverbViewData ? ($reverbViewData->values ?: []) : [];
+                    
+                    return response()->json([
+                        'success' => true,
+                        'sgpft_percent' => $values['SGPFT'] ?? 0,
+                        'spft_percent' => floatval(str_replace('%', '', $values['SPFT'] ?? '0')),
+                        'sroi_percent' => floatval(str_replace('%', '', $values['SROI'] ?? '0'))
+                    ]);
+                } else {
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'Failed to save SPRICE'
+                    ], 400);
+                }
+            } else {
+                // Batch update response
+                return response()->json([
+                    'success' => true,
+                    'updated' => $updatedCount,
+                    'errors' => $errors
+                ]);
+            }
+
+        } catch (\Exception $e) {
+            Log::error('Error saving Reverb SPRICE updates: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function updateReverbListedLive(Request $request)
+    {
+        $request->validate([
+            'sku' => 'required|string',
+            'nr_req' => 'required|in:REQ,NR'
+        ]);
+
+        try {
+            $sku = trim($request->sku);
+            $nrReq = $request->nr_req;
+
+            // Convert REQ/NR to RL/NRL for storage in reverb_listing_statuses
+            $rlNrl = ($nrReq === 'REQ') ? 'RL' : 'NRL';
+
+            // Get the most recent record or create new
+            $listingStatus = ReverbListingStatus::where('sku', $sku)
+                ->orderBy('updated_at', 'desc')
+                ->first();
+
+            if ($listingStatus) {
+                $existing = is_array($listingStatus->value) 
+                    ? $listingStatus->value 
+                    : (json_decode($listingStatus->value, true) ?? []);
+                
+                if (empty($existing)) {
+                    $existing = [];
+                }
+            } else {
+                $existing = [];
+            }
+
+            // Update rl_nrl field
+            $existing['rl_nrl'] = $rlNrl;
+
+            // Clean up duplicates before creating/updating
+            ReverbListingStatus::where('sku', $sku)->delete();
+
+            // Create a single clean record
+            ReverbListingStatus::create([
+                'sku' => $sku,
+                'value' => $existing
+            ]);
+
+            return response()->json(['success' => true]);
+
+        } catch (\Exception $e) {
+            Log::error('Error updating Reverb NR/REQ: ' . $e->getMessage());
+            return response()->json(['success' => false, 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function getColumnVisibility(Request $request)
+    {
+        $userId = auth()->id() ?? 'guest';
+        $key = "reverb_tabulator_column_visibility_{$userId}";
+        
+        $visibility = Cache::get($key, []);
+        
+        return response()->json($visibility);
+    }
+
+    public function setColumnVisibility(Request $request)
+    {
+        $userId = auth()->id() ?? 'guest';
+        $key = "reverb_tabulator_column_visibility_{$userId}";
+        
+        $visibility = $request->input('visibility', []);
+        
+        Cache::put($key, $visibility, now()->addDays(365));
+        
+        return response()->json(['success' => true]);
     }
 }

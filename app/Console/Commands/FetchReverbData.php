@@ -38,7 +38,8 @@ class FetchReverbData extends Command
         $this->info('Fetching Reverb Listings...');
         $listings = $this->fetchAllListings();
 
-        $today = Carbon::today();
+        // Use California timezone for date calculations
+        $today = Carbon::now('America/Los_Angeles')->startOfDay();
         
         // Calculate L30 range (last 30 days from today)
         $l30End = $today->copy();
@@ -50,11 +51,7 @@ class FetchReverbData extends Command
 
         $this->info("Date ranges - L30: {$l30Start->toDateString()} to {$l30End->toDateString()}, L60: {$l60Start->toDateString()} to {$l60End->toDateString()}");
 
-        // Get all SKUs with orders
-        $orderSkus = ReverbOrderMetric::distinct('sku')->whereNotNull('sku')->pluck('sku')->toArray();
-        $this->info('Found ' . count($orderSkus) . ' unique SKUs with orders.');
-
-        // Create map of SKU to listing data
+        // Create map of SKU to listing data - THIS IS THE SOURCE OF ALL SKUs
         $listingMap = [];
         foreach ($listings as $item) {
             $sku = $item['sku'] ?? null;
@@ -62,21 +59,21 @@ class FetchReverbData extends Command
                 $listingMap[$sku] = $item;
             }
         }
-        $this->info('Mapped ' . count($listingMap) . ' listings to SKUs.');
+        $this->info('Found ' . count($listingMap) . ' total listings with SKUs.');
 
         // Calculate quantities for each SKU (optimized single query)
         $rL30 = $this->calculateQuantitiesFromMetrics($l30Start, $l30End);
         $rL60 = $this->calculateQuantitiesFromMetrics($l60Start, $l60End);
 
-        // Prepare bulk update data
+        // Prepare bulk update data - Process ALL listed SKUs (not just those with orders)
         $bulkData = [];
-        foreach ($orderSkus as $sku) {
+        foreach ($listingMap as $sku => $listing) {
             $r30 = $rL30[$sku] ?? 0;
             $r60 = $rL60[$sku] ?? 0;
-
-            $listing = $listingMap[$sku] ?? null;
-            $price = $listing ? ($listing['price']['amount'] ?? null) : null;
-            $views = $listing ? ($listing['stats']['views'] ?? null) : null;
+            
+            $price = $listing['price']['amount'] ?? null;
+            $views = $listing['stats']['views'] ?? null;
+            $remainingInventory = $listing['inventory'] ?? null;
 
             $bulkData[] = [
                 'sku' => $sku,
@@ -84,6 +81,7 @@ class FetchReverbData extends Command
                 'r_l60' => $r60,
                 'price' => $price,
                 'views' => $views,
+                'remaining_inventory' => $remainingInventory,
                 'updated_at' => now(),
                 'created_at' => now(),
             ];
@@ -156,7 +154,7 @@ class FetchReverbData extends Command
 
                 $bulkOrders[] = [
                     'order_number' => $order['order_number'],
-                    'order_date' => Carbon::parse($paidAt)->toDateString(),
+                    'order_date' => Carbon::parse($paidAt, 'America/Los_Angeles')->toDateString(),
                     'status' => $order['status'] ?? null,
                     'amount' => ($order['total']['amount_cents'] ?? 0) / 100,
                     'display_sku' => $order['title'] ?? null,

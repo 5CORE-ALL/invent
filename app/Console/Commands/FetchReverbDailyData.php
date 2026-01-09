@@ -34,7 +34,11 @@ class FetchReverbDailyData extends Command
         
         $this->info("Fetching Reverb Daily Orders Data (Last {$days} days)...");
         
-        $cutoffDate = Carbon::today()->subDays($days);
+        // Use California timezone for date calculations
+        $cutoffDate = Carbon::now('America/Los_Angeles')->subDays($days)->startOfDay();
+        $californiaToday = Carbon::now('America/Los_Angeles')->format('Y-m-d H:i:s T');
+        
+        $this->info("California current time: {$californiaToday}");
         $this->info("Cutoff date: {$cutoffDate->toDateString()}");
         
         $this->fetchAndStoreOrders($cutoffDate);
@@ -121,9 +125,9 @@ class FetchReverbDailyData extends Command
         $orderDate = $paidAt ?? $createdAt;
         if (!$orderDate) return null;
 
-        // Calculate period based on order date
-        $orderDateCarbon = Carbon::parse($orderDate);
-        $today = Carbon::today();
+        // Calculate period based on order date (using California timezone)
+        $orderDateCarbon = Carbon::parse($orderDate, 'America/Los_Angeles');
+        $today = Carbon::now('America/Los_Angeles')->startOfDay();
         $daysDiff = $today->diffInDays($orderDateCarbon);
         $period = $daysDiff <= 30 ? 'l30' : 'l60';
 
