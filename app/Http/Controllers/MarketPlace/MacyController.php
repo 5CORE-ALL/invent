@@ -39,7 +39,7 @@ class MacyController extends Controller
         $demo = $request->query("demo");
 
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Macys')->first();
-        $percentage = $marketplaceData ? $marketplaceData->percentage : 76;
+        $percentage = $marketplaceData ? $marketplaceData->percentage : 80;
 
         return view("market-places.macys_tabulator_view", [
             "mode" => $mode,
@@ -121,9 +121,9 @@ class MacyController extends Controller
             ->groupBy('sku_lower')
             ->pluck('total_qty', 'sku_lower');
 
-        // 4. Marketplace percentage (76% for Macys)
+        // 4. Marketplace percentage (80% for Macys)
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Macys')->first();
-        $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.76;
+        $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.80;
 
         // 5. Build Result
         $result = [];
@@ -342,7 +342,7 @@ class MacyController extends Controller
         }
 
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Macys')->first();
-        $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.76;
+        $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.80;
 
         $pm = ProductMaster::where('sku', $sku)->first();
         if (!$pm) {
@@ -586,9 +586,9 @@ class MacyController extends Controller
 
                 $ship = isset($values["ship"]) ? floatval($values["ship"]) : (isset($pm->ship) ? floatval($pm->ship) : 0);
 
-                // Get marketplace percentage (76%)
+                // Get marketplace percentage (80%)
                 $marketplaceData = MarketplacePercentage::where('marketplace', 'Macys')->first();
-                $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.76;
+                $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 0.80;
 
                 // Calculate SGPFT
                 $sgpft = $sprice > 0 ? round((($sprice * $percentage - $ship - $lp) / $sprice) * 100, 2) : 0;
