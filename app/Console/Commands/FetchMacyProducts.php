@@ -504,7 +504,7 @@ class FetchMacyProducts extends Command
         $pageToken = null;
         $sales = [];
 
-        $now = now('America/New_York');
+        $now = now('America/Los_Angeles');
         $startDate = $now->copy()->subDays(29)->startOfDay()->toIso8601String();
 
         $startL30 = $now->copy()->subDays(29)->startOfDay();
@@ -543,7 +543,7 @@ class FetchMacyProducts extends Command
 
             foreach ($orders as $order) {
                 $channel = $order['origin']['channel_name'] ?? 'UNKNOWN';
-                $created = Carbon::parse($order['created_at'], 'America/New_York');
+                $created = Carbon::parse($order['created_at'], 'America/Los_Angeles');
 
                 foreach ($order['order_lines'] ?? [] as $line) {
                     $sku = $line['product']['id'] ?? null;
