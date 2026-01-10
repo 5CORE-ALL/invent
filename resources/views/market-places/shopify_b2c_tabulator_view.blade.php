@@ -161,7 +161,7 @@
                         <option value="60plus">60%+</option>
                     </select>
 
-                    <select id="cvr-filter" class="form-select form-select-sm"
+                    {{-- <select id="cvr-filter" class="form-select form-select-sm"
                         style="width: 130px;">
                         <option value="all">CVR%</option>
                         <option value="0-5">0-5%</option>
@@ -169,7 +169,7 @@
                         <option value="10-15">10-15%</option>
                         <option value="15-20">15-20%</option>
                         <option value="20plus">20%+</option>
-                    </select>
+                    </select> --}}
 
                     <!-- DIL Filter (Walmart-style dropdown) -->
                     <div class="dropdown manual-dropdown-container">
@@ -689,6 +689,8 @@
 
         // Save SPRICE updates to backend (unified function for all SPRICE updates)
         function saveSpriceUpdates(updates) {
+            console.log('Saving SPRICE updates:', updates.length, 'SKUs');
+            
             $.ajax({
                 url: '/shopify/save-sprice',
                 method: 'POST',
@@ -699,16 +701,20 @@
                     updates: updates
                 },
                 success: function(response) {
+                    console.log('Backend response:', response);
                     if (response.success) {
-                        console.log('SPRICE updates saved successfully:', response.updated, 'records');
-                        // Show subtle success notification
+                        showToast(`SPRICE saved for ${response.updated} SKU(s)`, 'success');
                         if (response.errors && response.errors.length > 0) {
                             console.warn('Some updates had errors:', response.errors);
+                            showToast(`${response.errors.length} SKU(s) had errors`, 'warning');
                         }
+                    } else if (response.message) {
+                        showToast(response.message, 'success');
                     }
                 },
                 error: function(xhr) {
                     console.error('Error saving SPRICE updates:', xhr);
+                    console.error('Response:', xhr.responseText);
                     let errorMessage = 'Error saving SPRICE updates to database';
                     if (xhr.responseJSON && xhr.responseJSON.error) {
                         errorMessage += ': ' + xhr.responseJSON.error;
@@ -975,37 +981,37 @@
                         return '';
                     }
                 },
-                {
-                    title: "Views",
-                    field: "Views",
-                    hozAlign: "center",
-                    width: 50,
-                    sorter: "number"
-                },
-                {
-                    title: "CVR%",
-                    field: "CVR%",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const l30 = parseFloat(rowData['L30']) || 0;
-                        const views = parseFloat(rowData['Views']) || 0;
+                // {
+                //     title: "Views",
+                //     field: "Views",
+                //     hozAlign: "center",
+                //     width: 50,
+                //     sorter: "number"
+                // },
+                // {
+                //     title: "CVR%",
+                //     field: "CVR%",
+                //     hozAlign: "center",
+                //     sorter: "number",
+                //     formatter: function(cell) {
+                //         const rowData = cell.getRow().getData();
+                //         const l30 = parseFloat(rowData['L30']) || 0;
+                //         const views = parseFloat(rowData['Views']) || 0;
                         
-                        if (views === 0) return '<span style="color: #6c757d;">0%</span>';
+                //         if (views === 0) return '<span style="color: #6c757d;">0%</span>';
                         
-                        const cvr = (l30 / views) * 100;
-                        let color = '';
+                //         const cvr = (l30 / views) * 100;
+                //         let color = '';
                         
-                        if (cvr < 1) color = '#a00211';
-                        else if (cvr >= 1 && cvr < 3) color = '#ffc107';
-                        else if (cvr >= 3 && cvr < 5) color = '#28a745';
-                        else color = '#e83e8c';
+                //         if (cvr < 1) color = '#a00211';
+                //         else if (cvr >= 1 && cvr < 3) color = '#ffc107';
+                //         else if (cvr >= 3 && cvr < 5) color = '#28a745';
+                //         else color = '#e83e8c';
                         
-                        return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
-                    },
-                    width: 50
-                },
+                //         return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
+                //     },
+                //     width: 50
+                // },
                 {
                     title: "NR/REQ",
                     field: "nr_req",

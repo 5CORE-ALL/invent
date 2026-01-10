@@ -15,6 +15,7 @@ use App\Models\AmazonDatasheet;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -375,17 +376,87 @@ class Shopifyb2cController extends Controller
 
     public function saveSpriceToDatabase(Request $request)
     {
+        // Check if bulk updates or single update
+        $updates = $request->input('updates');
+        
+        Log::info('saveSpriceToDatabase called', [
+            'has_updates' => !empty($updates),
+            'updates_count' => is_array($updates) ? count($updates) : 0,
+            'raw_input' => $request->all()
+        ]);
+        
+        if ($updates && is_array($updates)) {
+            // Bulk update mode
+            return $this->saveBulkSpriceUpdates($updates);
+        }
+        
+        // Single update mode
         $sku = $request->input('sku');
         $sprice = $request->input('sprice');
 
-        if (!$sku || !$sprice) {
+        if (!$sku || $sprice === null) {
             return response()->json(['error' => 'SKU and sprice are required.'], 400);
         }
 
+        $result = $this->calculateAndSaveSprice($sku, $sprice);
+        
+        if ($result['success']) {
+            return response()->json([
+                'message' => 'Data saved successfully.',
+                'sgpft_percent' => $result['sgpft'],
+                'snpft_percent' => $result['snpft'],
+                'sroi_percent' => $result['sroi'],
+                'snroi_percent' => $result['snroi'],
+            ]);
+        } else {
+            return response()->json(['error' => $result['error']], 400);
+        }
+    }
+
+    private function saveBulkSpriceUpdates($updates)
+    {
+        Log::info('Bulk SPRICE update started', ['count' => count($updates)]);
+        
+        $successCount = 0;
+        $errors = [];
+
+        foreach ($updates as $update) {
+            $sku = $update['sku'] ?? null;
+            $sprice = $update['sprice'] ?? null;
+
+            if (!$sku || $sprice === null) {
+                $errors[] = ['sku' => $sku, 'error' => 'SKU or sprice missing'];
+                continue;
+            }
+
+            $result = $this->calculateAndSaveSprice($sku, $sprice);
+            
+            if ($result['success']) {
+                $successCount++;
+            } else {
+                $errors[] = ['sku' => $sku, 'error' => $result['error']];
+            }
+        }
+
+        Log::info('Bulk SPRICE update completed', [
+            'success' => $successCount,
+            'errors' => count($errors)
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'updated' => $successCount,
+            'errors' => $errors,
+            'message' => "Updated $successCount SKU(s)"
+        ]);
+    }
+
+    private function calculateAndSaveSprice($sku, $sprice)
+    {
         // Get product master data for LP and Ship
         $productMaster = ProductMaster::where('sku', $sku)->first();
         if (!$productMaster) {
-            return response()->json(['error' => 'Product not found.'], 404);
+            return ['success' => false, 'error' => 'Product not found'];
         }
 
         $values = is_array($productMaster->Values)
@@ -443,15 +514,23 @@ class Shopifyb2cController extends Controller
         ]);
 
         $shopifyDataView->value = $merged;
-        $shopifyDataView->save();
-
-        return response()->json([
-            'message' => 'Data saved successfully.',
-            'sgpft_percent' => $sgpft,
-            'snpft_percent' => $snpft,
-            'sroi_percent' => $sroi,
-            'snroi_percent' => $snroi,
+        $saved = $shopifyDataView->save();
+        
+        Log::info('SPRICE saved to shopifyb2c_data_view', [
+            'sku' => $sku,
+            'sprice' => $sprice,
+            'saved' => $saved,
+            'id' => $shopifyDataView->id,
+            'value' => $merged
         ]);
+
+        return [
+            'success' => true,
+            'sgpft' => $sgpft,
+            'snpft' => $snpft,
+            'sroi' => $sroi,
+            'snroi' => $snroi,
+        ];
     }
 
     public function saveLowProfit(Request $request)
@@ -707,6 +786,11 @@ class Shopifyb2cController extends Controller
             ->get()
             ->keyBy('sku');
 
+        // Fetch SPRICE data from shopifyb2c_data_view
+        $shopifyB2cViewData = Shopifyb2cDataView::whereIn('sku', $skus)
+            ->get()
+            ->keyBy('sku');
+
         // Fetch Google Ads spend per SKU (L30 - last 30 days)
         $yesterday = \Carbon\Carbon::yesterday();
         $startDate = $yesterday->copy()->subDays(29);
@@ -839,6 +923,26 @@ class Shopifyb2cController extends Controller
             // Calculate ADS% = (googleSpent / Sales L30) * 100
             $salesL30 = $processedItem["Sales L30"];
             $processedItem["ADS%"] = $salesL30 > 0 ? (($googleSpentBySku[$sku] ?? 0) / $salesL30) * 100 : 0;
+
+            // Get SPRICE from shopifyb2c_data_view
+            $processedItem["SPRICE"] = 0;
+            $processedItem["SGPFT"] = 0;
+            $processedItem["SNPFT"] = 0;
+            $processedItem["SROI"] = 0;
+            $processedItem["SNROI"] = 0;
+
+            if (isset($shopifyB2cViewData[$sku])) {
+                $viewData = $shopifyB2cViewData[$sku];
+                $valuesArr = is_array($viewData->value)
+                    ? $viewData->value
+                    : (json_decode($viewData->value, true) ?: []);
+                
+                $processedItem["SPRICE"] = isset($valuesArr["SPRICE"]) ? floatval($valuesArr["SPRICE"]) : 0;
+                $processedItem["SGPFT"] = isset($valuesArr["SGPFT"]) ? floatval($valuesArr["SGPFT"]) : 0;
+                $processedItem["SNPFT"] = isset($valuesArr["SNPFT"]) ? floatval($valuesArr["SNPFT"]) : 0;
+                $processedItem["SROI"] = isset($valuesArr["SROI"]) ? floatval($valuesArr["SROI"]) : 0;
+                $processedItem["SNROI"] = isset($valuesArr["SNROI"]) ? floatval($valuesArr["SNROI"]) : 0;
+            }
 
             $processedItems[] = $processedItem;
         }

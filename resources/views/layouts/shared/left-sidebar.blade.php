@@ -2186,6 +2186,13 @@
                                                     <a href="{{ route('shopifyB2C') }}">Shopify B2C
                                                         Analytics</a>
                                                 </li>
+
+                                                 <li>
+                                                    <a href="{{ url('/shopify-b2c-pricing') }}">Shopify B2C
+                                                        price</a>
+                                                </li>
+
+                                                
                                                 <li>
                                                     <a href="{{ route('shopifyB2C.zero.view') }}">Shopify
                                                         B2C 0 view</a>
