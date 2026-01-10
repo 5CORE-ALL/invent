@@ -1277,6 +1277,12 @@
                 }
             }
 
+            // Helper: round to retail (.99 endings)
+            function roundToRetailPrice(price) {
+                const roundedDollar = Math.ceil(price);
+                return +(roundedDollar - 0.01).toFixed(2);
+            }
+
             // Apply Discount/Increase Button
             $('#apply-discount-btn').on('click', function() {
                 const inputValue = parseFloat($('#discount-percentage-input').val());
@@ -1339,6 +1345,9 @@
                                     newPrice = originalPrice + inputValue;
                                 }
                             }
+
+                            // Round to retail .99 endings
+                            newPrice = roundToRetailPrice(newPrice);
                             
                             // Update SPRICE via AJAX
                             $.ajax({
