@@ -34,7 +34,25 @@ class EbayThreeController extends Controller
 
     public function ebay3TabulatorView(Request $request)
     {
-        return view("market-places.ebay3_tabulator_view");
+        // Calculate total KW and PMT spent for header display
+        // Note: Use L30 report_range directly without date filtering for accuracy
+        
+        // KW Spent from priority reports (L30 range)
+        $kwSpent = DB::table('ebay_3_priority_reports')
+            ->where('report_range', 'L30')
+            ->selectRaw('SUM(CAST(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "") AS DECIMAL(10,2))) as total_spend')
+            ->value('total_spend') ?? 0;
+        
+        // PMT Spent from general reports (L30 range)
+        $pmtSpent = DB::table('ebay_3_general_reports')
+            ->where('report_range', 'L30')
+            ->selectRaw('SUM(CAST(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "") AS DECIMAL(10,2))) as total_spend')
+            ->value('total_spend') ?? 0;
+        
+        return view("market-places.ebay3_tabulator_view", [
+            'kwSpent' => (float) $kwSpent,
+            'pmtSpent' => (float) $pmtSpent,
+        ]);
     }
 
     public function ebay3DataJson(Request $request)
@@ -66,10 +84,13 @@ class EbayThreeController extends Controller
         });
         $skus = array_values($nonParentSkus);
 
-        $ebayMetrics = Ebay3Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'views', 'item_id', 'lmp_data', 'lmp_link')->whereIn('sku', $skus)->get()->keyBy('sku');
+        $ebayMetrics = Ebay3Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'ebay_stock', 'views', 'item_id', 'lmp_data', 'lmp_link')->whereIn('sku', $skus)->get()->keyBy('sku');
 
         // Fetch shopify data for these SKUs
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        // Fetch Amazon data for price comparison
+        $amazonData = \App\Models\AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
 
         // Fetch NR values for these SKUs from EbayThreeDataView
         $ebayDataViews = EbayThreeDataView::whereIn('sku', $skus)->get()->keyBy('sku');
@@ -140,6 +161,7 @@ class EbayThreeController extends Controller
                             'L30' => 0, 
                             'eBay L30' => 0, 
                             'eBay L60' => 0,
+                            'eBay Stock' => 0,
                             'views' => 0,
                             'totalPrice' => 0,
                             'priceCount' => 0,
@@ -160,10 +182,11 @@ class EbayThreeController extends Controller
                         $parentSums[$parentValue]['L30'] += floatval($shopifyData[$sku]->quantity ?? 0);
                     }
                     
-                    // Add eBay L30, L60, views and price from metrics
+                    // Add eBay L30, L60, Stock, views and price from metrics
                     if (isset($ebayMetrics[$sku])) {
                         $parentSums[$parentValue]['eBay L30'] += floatval($ebayMetrics[$sku]->ebay_l30 ?? 0);
                         $parentSums[$parentValue]['eBay L60'] += floatval($ebayMetrics[$sku]->ebay_l60 ?? 0);
+                        $parentSums[$parentValue]['eBay Stock'] += floatval($ebayMetrics[$sku]->ebay_stock ?? 0);
                         $parentSums[$parentValue]['views'] += floatval($ebayMetrics[$sku]->views ?? 0);
                         
                         // Track price for average calculation (only count non-zero prices)
@@ -222,7 +245,7 @@ class EbayThreeController extends Controller
                 // Get parent identifier from the SKU (e.g., "PARENT 5C DS CHRM" -> "5C DS CHRM")
                 $parentKey = $row['Parent'] ?? preg_replace('/^PARENT\s*/i', '', $sku);
                 $sums = $parentSums[$parentKey] ?? [
-                    'INV' => 0, 'L30' => 0, 'eBay L30' => 0, 'eBay L60' => 0, 'views' => 0, 
+                    'INV' => 0, 'L30' => 0, 'eBay L30' => 0, 'eBay L60' => 0, 'eBay Stock' => 0, 'views' => 0, 
                     'totalPrice' => 0, 'priceCount' => 0,
                     'totalLP' => 0, 'totalShip' => 0, 'lpCount' => 0,
                     'Total_pft' => 0, 'T_Sale_l30' => 0,
@@ -233,6 +256,7 @@ class EbayThreeController extends Controller
                 $row['L30'] = $sums['L30'];
                 $row['eBay L30'] = $sums['eBay L30'];
                 $row['eBay L60'] = $sums['eBay L60'] ?? 0;
+                $row['eBay Stock'] = $sums['eBay Stock'] ?? 0;
                 $row['views'] = $sums['views'];
                 
                 // Calculate average price for parent
@@ -332,6 +356,9 @@ class EbayThreeController extends Controller
                 $row['lmp_link'] = null;
                 $row['lmp_entries'] = [];
                 
+                // Amazon Price - set to 0 for parent rows
+                $row['A Price'] = 0;
+                
             } else {
                 // Shopify data for child SKUs
                 if (isset($shopifyData[$sku])) {
@@ -350,6 +377,7 @@ class EbayThreeController extends Controller
             
                 // eBay3 Metrics (common fields)
                 $row['eBay L60'] = $ebayMetric->ebay_l60 ?? 0;
+                $row['eBay Stock'] = $ebayMetric->ebay_stock ?? 0;
                 $row['eBay_item_id'] = $ebayMetric->item_id ?? null;
                 
                 // LMP Data from ebay_3_metrics table
@@ -534,6 +562,9 @@ class EbayThreeController extends Controller
 
                 // Image
                 $row['image_path'] = $shopifyData[$sku]->image_src ?? ($values['image_path'] ?? ($productMaster->image_path ?? null));
+                
+                // Amazon Price
+                $row['A Price'] = isset($amazonData[$sku]) ? ($amazonData[$sku]->price ?? 0) : 0;
             }
 
             $processedData[] = (object) $row;
@@ -690,6 +721,7 @@ class EbayThreeController extends Controller
                 $syntheticParent['percentage'] = $percentage;
                 $syntheticParent['ad_updates'] = $adUpdates;
                 $syntheticParent['image_path'] = null;
+                $syntheticParent['A Price'] = 0; // Amazon price for synthetic parent
                 
                 // Remove temp fields
                 unset($syntheticParent['totalPrice'], $syntheticParent['priceCount'], $syntheticParent['totalLP'], $syntheticParent['totalShip'], $syntheticParent['lpCount']);
@@ -849,11 +881,14 @@ class EbayThreeController extends Controller
         // Get all unique SKUs from product master
         $skus = $productMasterRows->pluck('sku')->toArray();
 
-        $ebayMetrics = Ebay3Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'views', 'item_id', 'lmp_data', 'lmp_link')->whereIn('sku', $skus)->get()->keyBy('sku');
+        $ebayMetrics = Ebay3Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'ebay_stock', 'views', 'item_id', 'lmp_data', 'lmp_link')->whereIn('sku', $skus)->get()->keyBy('sku');
 
 
         // Fetch shopify data for these SKUs
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        // Fetch Amazon data for price comparison
+        $amazonData = \App\Models\AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
 
         // Fetch NR values for these SKUs from EbayThreeDataView
         $ebayDataViews = EbayThreeDataView::whereIn('sku', $skus)->get()->keyBy('sku');
@@ -958,6 +993,9 @@ class EbayThreeController extends Controller
             } elseif (isset($productMaster->image_path)) {
                 $processedItem['image_path'] = $productMaster->image_path;
             }
+            
+            // Amazon Price
+            $processedItem['A Price'] = isset($amazonData[$sku]) ? ($amazonData[$sku]->price ?? 0) : 0;
 
             // Fetch NR value if available
             $processedItem['NR'] = $nrValues[$sku] ?? null;

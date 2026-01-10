@@ -2519,6 +2519,9 @@
                                     <li>
                                         <a href="{{ route('ebay2.missing.ads') }}">Missing Ads</a>
                                     </li>
+                                    <li>
+                                        <a href="{{ route('ebay2.utilized') }}">Ebay 2 Utilized's</a>
+                                    </li>
                                 </ul>
                             </div>
                         </li>

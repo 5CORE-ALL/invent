@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Ebay3Metric;
+use App\Models\Ebay3DailyData;
 use App\Models\EbayTask;
 use App\Services\EbayThreeApiService;
 use Carbon\Carbon;
@@ -92,6 +93,7 @@ class FetchEbay3Metrics extends Command
                 ['item_id' => $itemId, 'sku' => $sku],
                 [
                     'ebay_price' => $row['price'] ?? null,
+                    'ebay_stock' => $row['quantity'] ?? null,
                     'report_range' => now()->toDateString(),
                 ]
             );
@@ -117,34 +119,69 @@ class FetchEbay3Metrics extends Command
         // Update L7 views (last 7 days)
         $this->updateL7Views($token, $itemIdToSku);
 
-        // L7 / L30 / L60
+        // Get SKU-wise sales from Order API (accurate and real-time!)
+        $this->info('📊 Fetching L7/L30/L60 from Order API...');
         $existingItemIds = array_keys($itemIdToSku);
         $dateRanges = $this->dateRanges();
 
-        $l7 = $this->orderQty($token, $dateRanges['l7'], $existingItemIds);
-        $l30 = $this->orderQty($token, $dateRanges['l30'], $existingItemIds);
-        $l60 = $this->orderQty($token, $dateRanges['l60'], $existingItemIds);
+        $l7Data = $this->orderQty($token, $dateRanges['l7'], $existingItemIds);
+        $l30Data = $this->orderQty($token, $dateRanges['l30'], $existingItemIds);
+        $l60Data = $this->orderQty($token, $dateRanges['l60'], $existingItemIds);
+        
+        $skuL7 = $l7Data['skus'] ?? [];
+        $skuL30 = $l30Data['skus'] ?? [];
+        $itemL60 = $l60Data['items'] ?? [];  // L60 keep item-wise for now
+        
+        $this->info('✅ Found L7 sales for ' . count($skuL7) . ' SKUs');
+        $this->info('✅ Found L30 sales for ' . count($skuL30) . ' SKUs');
+        $this->info('✅ Found L60 sales for ' . count($itemL60) . ' items');
 
-            // Save L7/L30/L60 for each SKU under the item in chunks
-            $chunks = array_chunk($existingItemIds, 100, true);
-            foreach ($chunks as $chunk) {
-                foreach ($chunk as $itemId) {
-                    $skus = $itemIdToSku[$itemId] ?? [];
-                    if (!empty($skus)) {
-                        foreach ($skus as $sku) {
-                            Ebay3Metric::where('item_id', $itemId)
-                                ->where('sku', $sku)
-                                ->update([
-                                    'ebay_l7' => $l7[$itemId] ?? 0,
-                                    'ebay_l30' => $l30[$itemId] ?? 0,
-                                    'ebay_l60' => $l60[$itemId] ?? 0,
-                                ]);
+            // Save L7/L30/L60 for each SKU
+            $this->info('💾 Saving SKU-wise metrics...');
+            $updateCount = 0;
+            foreach ($itemIdToSku as $itemId => $skus) {
+                if (!empty($skus)) {
+                    foreach ($skus as $sku) {
+                        $isParent = (stripos($sku, 'PARENT') !== false);
+                        
+                        // Get actual sales for this SKU from API
+                        $skuL7Val = $skuL7[$sku] ?? 0;
+                        $skuL30Val = $skuL30[$sku] ?? 0;
+                        
+                        // For parents: sum all children's sales
+                        if ($isParent) {
+                            $childrenL7 = 0;
+                            $childrenL30 = 0;
+                            foreach ($skus as $childSku) {
+                                if (!stripos($childSku, 'PARENT')) { // Skip self
+                                    $childrenL7 += $skuL7[$childSku] ?? 0;
+                                    $childrenL30 += $skuL30[$childSku] ?? 0;
+                                }
+                            }
+                            
+                            $skuL7Val = $childrenL7;
+                            $skuL30Val = $childrenL30;
                         }
+                        
+                        Ebay3Metric::where('item_id', $itemId)
+                            ->where('sku', $sku)
+                            ->update([
+                                'ebay_l7' => $skuL7Val,
+                                'ebay_l30' => $skuL30Val,
+                                'ebay_l60' => $itemL60[$itemId] ?? 0, // L60 item-wise for now
+                            ]);
+                        
+                        $updateCount++;
                     }
                 }
-                DB::connection()->disconnect();
+                
+                // Disconnect every 100 items to prevent connection buildup
+                if ($updateCount % 100 == 0) {
+                    DB::connection()->disconnect();
+                }
             }
-
+            
+            $this->info("✅ Updated {$updateCount} SKU metrics");
             $this->info('✅ eBay Metrics updated');
             return 0;
         } catch (\Exception $e) {
@@ -160,21 +197,21 @@ class FetchEbay3Metrics extends Command
 
     private function dateRanges()
     {
-        // Use California timezone to match FetchEbay3DailyData
+        // Use California timezone to match FetchEbay3DailyData EXACTLY
         $today = Carbon::now('America/Los_Angeles')->startOfDay();
 
         return [
             'l7' => [
-                'start' => $today->copy()->subDays(6),
-                'end' => $today->copy()->subDay()->endOfDay(),
+                'start' => $today->copy()->subDays(7),   // Last 7 days
+                'end' => $today->copy(),                  // Until today
             ],
             'l30' => [
-                'start' => $today->copy()->subDays(29),
-                'end' => $today->copy()->subDay()->endOfDay(),
+                'start' => $today->copy()->subDays(30),  // Last 30 days (matches daily sales!)
+                'end' => $today->copy(),                  // Until today
             ],
             'l60' => [
-                'start' => $today->copy()->subDays(59),
-                'end' => $today->copy()->subDays(30)->endOfDay(),
+                'start' => $today->copy()->subDays(60),  // 60 days ago
+                'end' => $today->copy()->subDays(31),    // 31 days ago (previous 30 days)
             ],
         ];
     }
@@ -469,17 +506,20 @@ class FetchEbay3Metrics extends Command
             // capture primary SKU (if present) and variations
             $primarySku = trim((string) ($item->SKU ?? ''));
             $price = isset($item->Price) ? (float) $item->Price : null;
+            $quantity = isset($item->Quantity) ? (int) $item->Quantity : null;
 
-            // Process variations first to collect SKUs with prices
+            // Process variations first to collect SKUs with prices and quantities
             $variationData = [];
             foreach ($item->Variations->Variation ?? [] as $v) {
                 $varSku = (string) $v->SKU;
                 $varPrice = isset($v->Price) ? (float) $v->Price : $price;
+                $varQuantity = isset($v->Quantity) ? (int) $v->Quantity : $quantity;
                 
                 $variationData[$varSku] = [
                     'item_id' => $itemId,
                     'sku' => $varSku,
                     'price' => $varPrice,
+                    'quantity' => $varQuantity,
                 ];
             }
 
@@ -492,6 +532,7 @@ class FetchEbay3Metrics extends Command
                         'item_id' => $itemId,
                         'sku' => $primarySku,
                         'price' => $price,
+                        'quantity' => $quantity,
                     ];
                     $seen[$key] = true;
                 }
@@ -551,6 +592,7 @@ class FetchEbay3Metrics extends Command
                 'item_id' => $itemId,
                 'sku' => $sku,
                 'price' => $d['price'] ?? null,
+                'quantity' => isset($d['availableQuantity']) ? (int) $d['availableQuantity'] : null,
             ];
         }
 
@@ -742,6 +784,7 @@ class FetchEbay3Metrics extends Command
     private function orderQty($token, $range, $validIds)
     {
         $qty = [];
+        $skuQty = [];  // Track SKU-wise quantities
         $from = $range['start']->format('Y-m-d\TH:i:s.000\Z');
         $to = $range['end']->format('Y-m-d\TH:i:s.000\Z');
 
@@ -793,16 +836,25 @@ class FetchEbay3Metrics extends Command
             foreach ($r['orders'] ?? [] as $o) {
                 foreach ($o['lineItems'] ?? [] as $li) {
                     $id = $li['legacyItemId'] ?? null;
-                    $q = (int) $li['quantity'];
+                    $sku = $li['sku'] ?? null;  // Get SKU from order
+                    $q = (int) ($li['quantity'] ?? 0);
+                    
                     if (! $id || ! in_array($id, $validIds)) {
                         continue;
                     }
+                    
+                    // Item-wise quantity (legacy, for L60)
                     $qty[$id] = ($qty[$id] ?? 0) + $q;
+                    
+                    // SKU-wise quantity (accurate!)
+                    if ($sku) {
+                        $skuQty[$sku] = ($skuQty[$sku] ?? 0) + $q;
+                    }
                 }
             }
             $url = $r['next'] ?? null;
         } while ($url);
 
-        return $qty;
+        return ['items' => $qty, 'skus' => $skuQty];
     }
 }
