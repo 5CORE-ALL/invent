@@ -97,6 +97,14 @@
                         <option value="10plus">10%+</option>
                     </select>
 
+                    <select id="dil-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
+                        <option value="all">DIL%</option>
+                        <option value="red">Red &lt;16.7%</option>
+                        <option value="yellow">Yellow 16.7-25%</option>
+                        <option value="green">Green 25-50%</option>
+                        <option value="pink">Pink 50%+</option>
+                    </select>
+
                     <select id="parent-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="show">Show Parent</option>
@@ -151,6 +159,10 @@
                     
                     <button id="increase-btn" class="btn btn-sm btn-success">
                         <i class="fas fa-percent"></i> Increase
+                    </button>
+
+                    <button id="clear-sprice-btn" class="btn btn-sm btn-danger">
+                        <i class="fas fa-eraser"></i> Clear SPRICE
                     </button>
                                         
                     <button id="toggle-chart-btn" class="btn btn-sm btn-secondary" style="display: none;">
@@ -1203,6 +1215,67 @@
                 
                 updateSelectedCount();
             });
+
+            // Clear SPRICE button
+            $('#clear-sprice-btn').on('click', function() {
+                clearSpriceForSelected();
+            });
+
+            // Clear SPRICE for selected SKUs
+            function clearSpriceForSelected() {
+                if (selectedSkus.size === 0) {
+                    showToast('error', 'Please select SKUs first');
+                    return;
+                }
+
+                if (!confirm(`Are you sure you want to clear SPRICE for ${selectedSkus.size} selected SKU(s)?`)) {
+                    return;
+                }
+
+                let clearedCount = 0;
+                const updates = [];
+
+                // Iterate rows and clear SPRICE where selected
+                table.getRows().forEach(row => {
+                    const rowData = row.getData();
+                    const sku = rowData['(Child) sku'];
+                    if (selectedSkus.has(sku)) {
+                        // Clear in table
+                        row.update({
+                            SPRICE: 0,
+                            SGPFT: 0,
+                            'Spft%': 0,
+                            SROI: 0,
+                            SPRICE_STATUS: null,
+                            has_custom_sprice: false
+                        });
+
+                        updates.push({ sku: sku, sprice: 0 });
+                        clearedCount++;
+                    }
+                });
+
+                if (updates.length > 0) {
+                    // Send to server to persist
+                    $.ajax({
+                        url: '/amazon-clear-sprice',
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                        },
+                        data: { updates: updates },
+                        success: function(response) {
+                            showToast('success', `SPRICE cleared for ${clearedCount} SKU(s)`);
+                        },
+                        error: function(xhr) {
+                            console.error('Failed to clear SPRICE:', xhr);
+                            showToast('error', 'Failed to clear SPRICE data');
+                        }
+                    });
+                } else {
+                    showToast('warning', 'No SPRICE values to clear for selected SKUs');
+                }
+            }
 
             // Apply Discount/Increase Button
             $('#apply-discount-btn').on('click', function() {
@@ -2391,6 +2464,7 @@
                 const nrlFilter = $('#nrl-filter').val();
                 const gpftFilter = $('#gpft-filter').val();
                 const cvrFilter = $('#cvr-filter').val();
+                const dilFilter = $('#dil-filter').val();
                 const parentFilter = $('#parent-filter').val();
                 const statusFilter = $('#status-filter').val();
 
@@ -2443,6 +2517,21 @@
                     });
                 }
 
+                // DIL filter (sales velocity = L30 / INV * 100)
+                if (dilFilter !== 'all') {
+                    table.addFilter(function(data) {
+                        const inv = parseFloat(data['INV']) || 0;
+                        const l30 = parseFloat(data['L30']) || 0;
+                        const dil = inv === 0 ? 0 : (l30 / inv) * 100;
+
+                        if (dilFilter === 'red') return dil < 16.66;
+                        if (dilFilter === 'yellow') return dil >= 16.66 && dil < 25;
+                        if (dilFilter === 'green') return dil >= 25 && dil < 50;
+                        if (dilFilter === 'pink') return dil >= 50;
+                        return true;
+                    });
+                }
+
                 if (parentFilter === 'hide') {
                     table.addFilter(function(data) {
                         return data.is_parent_summary !== true;
@@ -2481,7 +2570,7 @@
                 }, 100);
             }
 
-            $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #parent-filter, #status-filter').on('change', function() {
+            $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #dil-filter, #parent-filter, #status-filter').on('change', function() {
                 applyFilters();
             });
 
