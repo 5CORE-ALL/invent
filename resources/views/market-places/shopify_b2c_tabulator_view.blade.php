@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Reverb Pricing', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Shopify B2C Pricing', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -125,27 +125,20 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Reverb Pricing',
-        'sub_title' => 'Reverb Pricing',
+        'page_title' => 'Shopify B2C Pricing',
+        'sub_title' => 'Shopify B2C Pricing',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>Reverb Data</h4>
+                <h4>Shopify B2C Data</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: 130px;">
                         <option value="all">All Inventory</option>
                         <option value="zero">0 Inventory</option>
                         <option value="more" selected>More than 0</option>
-                    </select>
-
-                    <select id="reverb-stock-filter" class="form-select form-select-sm"
-                        style="width: 130px;">
-                        <option value="all">R Stock</option>
-                        <option value="zero">0 R Stock</option>
-                        <option value="more">More than 0</option>
                     </select>
 
                     <select id="nrl-filter" class="form-select form-select-sm"
@@ -168,17 +161,14 @@
                         <option value="60plus">60%+</option>
                     </select>
 
-                    <select id="cvr-filter" class="form-select form-select-sm" style="width: 120px;">
-                        <option value="all">All CVR%</option>
-                        <option value="0-0">0%</option>
-                        <option value="0.01-1">0.01-1%</option>
-                        <option value="1-2">1-2%</option>
-                        <option value="2-3">2-3%</option>
-                        <option value="3-4">3-4%</option>
-                        <option value="0-4">0-4%</option>
-                        <option value="4-7">4-7%</option>
-                        <option value="7-10">7-10%</option>
-                        <option value="10plus">10%+</option>
+                    <select id="cvr-filter" class="form-select form-select-sm"
+                        style="width: 130px;">
+                        <option value="all">CVR%</option>
+                        <option value="0-5">0-5%</option>
+                        <option value="5-10">5-10%</option>
+                        <option value="10-15">10-15%</option>
+                        <option value="15-20">15-20%</option>
+                        <option value="20plus">20%+</option>
                     </select>
 
                     <!-- DIL Filter (Walmart-style dropdown) -->
@@ -230,24 +220,27 @@
 
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary (85% Margin)</h6>
+                    <h6 class="mb-3">Summary (95% Margin)</h6>
                     <div class="d-flex flex-wrap gap-2">
                         <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold;">Total PFT: $0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total Sales: $0</span>
-                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">AVG GPFT: 0%</span>
+                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">GPFT %: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color: black; font-weight: bold;">Total INV: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color: black; font-weight: bold;">Total RV L30: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
-                        <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales">&gt; 0 Sold: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="total-l30-badge" style="color: black; font-weight: bold;">Total L30: 0</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-b2b-l30-badge" style="color: black; font-weight: bold;">Total B2B L30: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter B2B L30 = 0">0 Sold: 0</span>
+                        <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter B2B L30 > 0">&gt; 0 Sold: 0</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-dil-badge" style="color: black; font-weight: bold;">DIL%: 0%</span>
                         <span class="badge bg-info fs-6 p-2" id="total-cogs-badge" style="color: black; font-weight: bold;">COGS: $0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI%: 0%</span>
+                        <span class="badge fs-6 p-2" id="nroi-percent-badge" style="background-color: #e83e8c; color: white; font-weight: bold;">NROI%: 0%</span>
                         <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz: 0</span>
                         <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing SKUs">Missing: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="map-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter mapped SKUs">Map: 0</span>
-                        <span class="badge bg-warning fs-6 p-2" id="inv-r-stock-badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter INV > R Stock">INV > R Stock: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="total-tcos-badge" style="color: black; font-weight: bold;">Total TCOS: 0%</span>
+                        <span class="badge bg-warning fs-6 p-2" id="total-spend-badge" style="color: black; font-weight: bold;">Total Spend: $0.00</span>
+                        <span class="badge fs-6 p-2" id="avg-npft-badge" style="background-color: #fd7e14; color: white; font-weight: bold;">NPFT %: 0%</span>
                     </div>
                 </div>
             </div>
@@ -286,7 +279,7 @@
 
 @section('script-bottom')
 <script>
-    const COLUMN_VIS_KEY = "reverb_tabulator_column_visibility";
+    const COLUMN_VIS_KEY = "shopify_b2c_tabulator_column_visibility";
     let table = null;
     let decreaseModeActive = false;
     let increaseModeActive = false;
@@ -416,7 +409,7 @@
             clearSpriceForSelected();
         });
 
-        // 0 Sold badge click handler - filter to show only 0 sold items
+        // 0 Sold badge click handler - filter to show B2B L30 = 0
         let zeroSoldFilterActive = false;
         $('#zero-sold-count-badge').on('click', function() {
             zeroSoldFilterActive = !zeroSoldFilterActive;
@@ -424,7 +417,7 @@
             applyFilters();
         });
 
-        // > 0 Sold badge click handler - filter to show items with sales > 0
+        // > 0 Sold badge click handler - filter to show B2B L30 > 0
         let moreSoldFilterActive = false;
         $('#more-sold-count-badge').on('click', function() {
             moreSoldFilterActive = !moreSoldFilterActive;
@@ -448,30 +441,10 @@
             applyFilters();
         });
 
-        // Missing badge click handler - filter SKUs missing in Reverb
+        // Missing badge click handler - filter SKUs missing in Shopify B2C
         let missingFilterActive = false;
         $('#missing-count-badge').on('click', function() {
             missingFilterActive = !missingFilterActive;
-            mapFilterActive = false; // Deactivate other filters
-            invRStockFilterActive = false;
-            applyFilters();
-        });
-
-        // Map badge click handler - filter SKUs where INV = R Stock
-        let mapFilterActive = false;
-        $('#map-count-badge').on('click', function() {
-            mapFilterActive = !mapFilterActive;
-            missingFilterActive = false; // Deactivate other filters
-            invRStockFilterActive = false;
-            applyFilters();
-        });
-
-        // INV > R Stock badge click handler - filter SKUs where INV > R Stock
-        let invRStockFilterActive = false;
-        $('#inv-r-stock-badge').on('click', function() {
-            invRStockFilterActive = !invRStockFilterActive;
-            missingFilterActive = false; // Deactivate other filters
-            mapFilterActive = false;
             applyFilters();
         });
 
@@ -551,7 +524,7 @@
             return roundedDollar - 0.01;
         }
 
-        // Apply discount to selected SKUs (based on RV Price)
+        // Apply discount to selected SKUs (based on Price)
         function applyDiscount() {
             const discountType = $('#discount-type-select').val();
             const discountValue = parseFloat($('#discount-percentage-input').val());
@@ -576,7 +549,7 @@
                 if (rows.length > 0) {
                     const row = rows[0];
                     const rowData = row.getData();
-                    const currentPrice = parseFloat(rowData['RV Price']) || 0;
+                    const currentPrice = parseFloat(rowData['Price']) || 0;
                     
                     if (currentPrice > 0) {
                         let newSprice;
@@ -601,21 +574,25 @@
                         // Ensure minimum price
                         newSprice = Math.max(0.99, newSprice);
                         
-                        // Calculate SGPFT, SPFT, SROI
-                        const percentage = rowData['percentage'] || 0.85;
-                        const lp = rowData['LP_productmaster'] || 0;
-                        const ship = rowData['Ship_productmaster'] || 0;
+                        // Calculate SGPFT, SNPFT, SROI, SNROI (95% margin for Shopify B2C)
+                        const percentage = 0.95; // Shopify B2C margin
+                        const lp = parseFloat(rowData['LP_productmaster']) || 0;
+                        const ship = parseFloat(rowData['Ship_productmaster']) || 0;
+                        const ads = parseFloat(rowData['ADS%']) || 0;
                         
-                        const sgpft = newSprice > 0 ? Math.round(((newSprice * percentage - ship - lp) / newSprice) * 100 * 100) / 100 : 0;
-                        const spft = sgpft;
-                        const sroi = lp > 0 ? Math.round(((newSprice * percentage - lp - ship) / lp) * 100 * 100) / 100 : 0;
+                        const grossProfit = (newSprice * percentage) - lp - ship;
+                        const sgpft = newSprice > 0 ? (grossProfit / newSprice) * 100 : 0;
+                        const snpft = sgpft - ads;
+                        const sroi = lp > 0 ? (grossProfit / lp) * 100 : 0;
+                        const snroi = sroi - ads;
                         
                         // Update SPRICE and calculated values in table
                         row.update({
                             SPRICE: newSprice,
                             SGPFT: sgpft,
-                            SPFT: spft,
+                            SNPFT: snpft,
                             SROI: sroi,
+                            SNROI: snroi,
                             has_custom_sprice: true
                         });
                         
@@ -635,7 +612,7 @@
                 saveSpriceUpdates(updates);
             }
             
-            showToast(`${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s) based on RV Price`, 'success');
+            showToast(`${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s) based on Price`, 'success');
             $('#discount-percentage-input').val('');
         }
 
@@ -660,21 +637,25 @@
                     const amazonPrice = parseFloat(rowData['A Price']);
                     
                     if (amazonPrice && amazonPrice > 0) {
-                        // Calculate SGPFT, SPFT, SROI
-                        const percentage = rowData['percentage'] || 0.85;
-                        const lp = rowData['LP_productmaster'] || 0;
-                        const ship = rowData['Ship_productmaster'] || 0;
+                        // Calculate SGPFT, SNPFT, SROI, SNROI (95% margin for Shopify B2C)
+                        const percentage = 0.95; // Shopify B2C margin
+                        const lp = parseFloat(rowData['LP_productmaster']) || 0;
+                        const ship = parseFloat(rowData['Ship_productmaster']) || 0;
+                        const ads = parseFloat(rowData['ADS%']) || 0;
                         
-                        const sgpft = amazonPrice > 0 ? Math.round(((amazonPrice * percentage - ship - lp) / amazonPrice) * 100 * 100) / 100 : 0;
-                        const spft = sgpft;
-                        const sroi = lp > 0 ? Math.round(((amazonPrice * percentage - lp - ship) / lp) * 100 * 100) / 100 : 0;
+                        const grossProfit = (amazonPrice * percentage) - lp - ship;
+                        const sgpft = amazonPrice > 0 ? (grossProfit / amazonPrice) * 100 : 0;
+                        const snpft = sgpft - ads;
+                        const sroi = lp > 0 ? (grossProfit / lp) * 100 : 0;
+                        const snroi = sroi - ads;
                         
                         // Update the row with SPRICE and calculated values
                         row.update({
                             SPRICE: amazonPrice,
                             SGPFT: sgpft,
-                            SPFT: spft,
+                            SNPFT: snpft,
                             SROI: sroi,
+                            SNROI: snroi,
                             has_custom_sprice: true
                         });
                         
@@ -709,7 +690,7 @@
         // Save SPRICE updates to backend (unified function for all SPRICE updates)
         function saveSpriceUpdates(updates) {
             $.ajax({
-                url: '/reverb-save-sprice',
+                url: '/shopify/save-sprice',
                 method: 'POST',
                 headers: {
                     'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
@@ -788,7 +769,7 @@
             const maxRetries = 3;
             
             $.ajax({
-                url: '/reverb-save-sprice',
+                url: '/shopify/save-sprice',
                 method: 'POST',
                 data: {
                     sku: sku,
@@ -797,14 +778,18 @@
                 },
                 success: function(response) {
                     showToast(`SPRICE saved for ${sku}`, 'success');
-                    if (response.spft_percent !== undefined) {
-                        row.update({ SPFT: response.spft_percent });
+                    // Response from backend will have calculated values
+                    if (response.sgpft_percent !== undefined) {
+                        row.update({ SGPFT: response.sgpft_percent });
+                    }
+                    if (response.snpft_percent !== undefined) {
+                        row.update({ SNPFT: response.snpft_percent });
                     }
                     if (response.sroi_percent !== undefined) {
                         row.update({ SROI: response.sroi_percent });
                     }
-                    if (response.sgpft_percent !== undefined) {
-                        row.update({ SGPFT: response.sgpft_percent });
+                    if (response.snroi_percent !== undefined) {
+                        row.update({ SNROI: response.snroi_percent });
                     }
                 },
                 error: function(xhr) {
@@ -819,7 +804,7 @@
 
         // Initialize Tabulator
         table = new Tabulator("#reverb-table", {
-            ajaxURL: "/reverb-data-json",
+            ajaxURL: "/shopify-b2c-data-json",
             ajaxSorting: false,
             layout: "fitDataStretch",
             pagination: true,
@@ -835,7 +820,7 @@
                 }
             },
             initialSort: [{
-                column: "RV L30",
+                column: "L30",
                 dir: "desc"
             }],
             rowFormatter: function(row) {
@@ -941,7 +926,7 @@
                 },
                 {
                     title: "Dil",
-                    field: "RV Dil%",
+                    field: "DIL%",
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
@@ -964,22 +949,15 @@
                     width: 50
                 },
                 {
-                    title: "RV L30",
-                    field: "RV L30",
+                    title: "B2B L30",
+                    field: "B2B L30",
                     hozAlign: "center",
-                    width: 50,
-                    sorter: "number"
-                },
-                {
-                    title: "R Stock",
-                    field: "R Stock",
-                    hozAlign: "center",
-                    width: 60,
+                    width: 70,
                     sorter: "number",
                     formatter: function(cell) {
-                        const value = parseFloat(cell.getValue() || 0);
+                        const value = parseInt(cell.getValue() || 0);
                         if (value === 0) {
-                            return '<span style="color: #dc3545; font-weight: 600;">0</span>';
+                            return '<span style="color: #6c757d;">0</span>';
                         }
                         return `<span style="font-weight: 600;">${value}</span>`;
                     }
@@ -998,26 +976,6 @@
                     }
                 },
                 {
-                    title: "MAP",
-                    field: "MAP",
-                    hozAlign: "center",
-                    width: 90,
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        
-                        if (value === 'Map') {
-                            return '<span style="color: #28a745; font-weight: bold;">Map</span>';
-                        } else if (value && value.startsWith('N Map|')) {
-                            const diff = value.split('|')[1];
-                            return `<span style="color: #dc3545; font-weight: bold;">N Map (${diff})</span>`;
-                        } else if (value && value.startsWith('Diff|')) {
-                            const diff = value.split('|')[1];
-                            return `<span style="color: #ffc107; font-weight: bold;">${diff}<br>(INV > R Stock)</span>`;
-                        }
-                        return '';
-                    }
-                },
-                {
                     title: "Views",
                     field: "Views",
                     hozAlign: "center",
@@ -1026,12 +984,12 @@
                 },
                 {
                     title: "CVR%",
-                    field: "CVR",
+                    field: "CVR%",
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        const l30 = parseFloat(rowData['RV L30']) || 0;
+                        const l30 = parseFloat(rowData['L30']) || 0;
                         const views = parseFloat(rowData['Views']) || 0;
                         
                         if (views === 0) return '<span style="color: #6c757d;">0%</span>';
@@ -1072,7 +1030,7 @@
                 },
                 {
                     title: "Prc",
-                    field: "RV Price",
+                    field: "Price",
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
@@ -1084,12 +1042,12 @@
                             return `<span style="color: #a00211; font-weight: 600;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
                         }
                         
-                        // Show red if RV Price is less than Amazon Price
+                        // Show red if Price is less than Amazon Price
                         if (amazonPrice > 0 && value < amazonPrice) {
                             return `<span style="color: #a00211; font-weight: 600;">$${value.toFixed(2)}</span>`;
                         }
                         
-                        // Show green if RV Price is greater than Amazon Price
+                        // Show green if Price is greater than Amazon Price
                         if (amazonPrice > 0 && value > amazonPrice) {
                             return `<span style="color: #28a745; font-weight: 600;">$${value.toFixed(2)}</span>`;
                         }
@@ -1134,23 +1092,26 @@
                     width: 50
                 },
                 {
-                    title: "PFT%",
-                    field: "PFT %",
+                    title: "NPFT%",
+                    field: "NPFT%",
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value);
-                        let color = '';
+                        const rowData = cell.getRow().getData();
+                        const gpft = parseFloat(rowData['GPFT%']) || 0;
+                        const ads = parseFloat(rowData['ADS%']) || 0;
                         
-                        if (percent < 10) color = '#a00211';
-                        else if (percent >= 10 && percent < 15) color = '#ffc107';
-                        else if (percent >= 15 && percent < 20) color = '#3591dc';
-                        else if (percent >= 20 && percent <= 40) color = '#28a745';
+                        // NPFT% = GPFT% - ADS%
+                        const npft = gpft - ads;
+                        
+                        let color = '';
+                        if (npft < 10) color = '#a00211';
+                        else if (npft >= 10 && npft < 15) color = '#ffc107';
+                        else if (npft >= 15 && npft < 20) color = '#3591dc';
+                        else if (npft >= 20 && npft <= 40) color = '#28a745';
                         else color = '#e83e8c';
                         
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        return `<span style="color: ${color}; font-weight: 600;">${npft.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },
@@ -1171,6 +1132,29 @@
                         else color = '#e83e8c';
                         
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                    },
+                    width: 50
+                },
+                {
+                    title: "NROI%",
+                    field: "NROI%",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const roi = parseFloat(rowData['ROI%']) || 0;
+                        const ads = parseFloat(rowData['ADS%']) || 0;
+                        
+                        // NROI% = ROI% - ADS%
+                        const nroi = roi - ads;
+                        
+                        let color = '';
+                        if (nroi < 50) color = '#a00211';
+                        else if (nroi >= 50 && nroi < 100) color = '#ffc107';
+                        else if (nroi >= 100 && nroi < 150) color = '#28a745';
+                        else color = '#e83e8c';
+                        
+                        return `<span style="color: ${color}; font-weight: 600;">${nroi.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },
@@ -1285,23 +1269,26 @@
                     width: 50
                 },
                 {
-                    title: "SPFT",
-                    field: "SPFT",
+                    title: "SNPFT",
+                    field: "SNPFT",
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
-                        const percent = parseFloat(value);
-                        let color = '';
+                        const rowData = cell.getRow().getData();
+                        const sgpft = parseFloat(rowData['SGPFT']) || 0;
+                        const ads = parseFloat(rowData['ADS%']) || 0;
                         
-                        if (percent < 10) color = '#a00211';
-                        else if (percent >= 10 && percent < 15) color = '#ffc107';
-                        else if (percent >= 15 && percent < 20) color = '#3591dc';
-                        else if (percent >= 20 && percent <= 40) color = '#28a745';
+                        // SNPFT = SGPFT - ADS
+                        const snpft = sgpft - ads;
+                        
+                        let color = '';
+                        if (snpft < 10) color = '#a00211';
+                        else if (snpft >= 10 && snpft < 15) color = '#ffc107';
+                        else if (snpft >= 15 && snpft < 20) color = '#3591dc';
+                        else if (snpft >= 20 && snpft <= 40) color = '#28a745';
                         else color = '#e83e8c';
                         
-                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        return `<span style="color: ${color}; font-weight: 600;">${snpft.toFixed(0)}%</span>`;
                     },
                     width: 50
                 },
@@ -1324,6 +1311,68 @@
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
+                },
+                {
+                    title: "SNROI",
+                    field: "SNROI",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const sroi = parseFloat(rowData['SROI']) || 0;
+                        const ads = parseFloat(rowData['ADS%']) || 0;
+                        
+                        // SNROI = SROI - ADS
+                        const snroi = sroi - ads;
+                        
+                        let color = '';
+                        if (snroi < 50) color = '#a00211';
+                        else if (snroi >= 50 && snroi < 100) color = '#ffc107';
+                        else if (snroi >= 100 && snroi < 150) color = '#28a745';
+                        else color = '#e83e8c';
+                        
+                        return `<span style="color: ${color}; font-weight: 600;">${snroi.toFixed(0)}%</span>`;
+                    },
+                    width: 50
+                },
+                {
+                    title: "Spend",
+                    field: "googleSpent",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        if (value === 0) return '<span style="color: #6c757d;">$0.00</span>';
+                        return `<span style="font-weight: 600;">$${value.toFixed(2)}</span>`;
+                    },
+                    width: 70
+                },
+                {
+                    title: "ADS%",
+                    field: "ADS%",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        const rowData = cell.getRow().getData();
+                        const googleSpent = parseFloat(rowData['googleSpent']) || 0;
+                        const salesL30 = parseFloat(rowData['Sales L30']) || 0;
+                        
+                        // If there is ad spend but no sales, show 100%
+                        if (googleSpent > 0 && salesL30 === 0) {
+                            return `<span style="color: #a00211; font-weight: 600;">100%</span>`;
+                        }
+                        
+                        if (value === 0) return '<span style="color: #6c757d;">0%</span>';
+                        
+                        let color = '';
+                        if (value < 10) color = '#28a745'; // green
+                        else if (value >= 10 && value < 20) color = '#ffc107'; // yellow
+                        else color = '#a00211'; // red
+                        
+                        return `<span style="color: ${color}; font-weight: 600;">${value.toFixed(1)}%</span>`;
+                    },
+                    width: 60
                 }
             ]
         });
@@ -1344,7 +1393,7 @@
             const newValue = $(this).val();
             
             $.ajax({
-                url: '{{ url("/reverb-update-listed-live") }}',
+                url: '{{ url("/shopify-b2c-update-listed-live") }}',
                 method: 'POST',
                 data: {
                     sku: sku,
@@ -1369,19 +1418,30 @@
                 const sku = rowData['(Child) sku'];
                 const newSprice = parseFloat(cell.getValue()) || 0;
                 
-                // Recalculate SGPFT, SPFT, SROI
-                const percentage = rowData['percentage'] || 0.85;
-                const lp = rowData['LP_productmaster'] || 0;
-                const ship = rowData['Ship_productmaster'] || 0;
+                // Recalculate SGPFT, SNPFT, SROI, SNROI (95% margin for Shopify B2C)
+                const percentage = 0.95; // Shopify B2C margin
+                const lp = parseFloat(rowData['LP_productmaster']) || 0;
+                const ship = parseFloat(rowData['Ship_productmaster']) || 0;
+                const ads = parseFloat(rowData['ADS%']) || 0;
                 
-                const sgpft = newSprice > 0 ? Math.round(((newSprice * percentage - ship - lp) / newSprice) * 100 * 100) / 100 : 0;
-                const spft = sgpft;
-                const sroi = lp > 0 ? Math.round(((newSprice * percentage - lp - ship) / lp) * 100 * 100) / 100 : 0;
+                // SGPFT = ((SPRICE × 95%) - LP - Ship) / SPRICE × 100
+                const grossProfit = (newSprice * percentage) - lp - ship;
+                const sgpft = newSprice > 0 ? (grossProfit / newSprice) * 100 : 0;
+                
+                // SNPFT = SGPFT - ADS
+                const snpft = sgpft - ads;
+                
+                // SROI = Gross Profit / LP × 100
+                const sroi = lp > 0 ? (grossProfit / lp) * 100 : 0;
+                
+                // SNROI = SROI - ADS
+                const snroi = sroi - ads;
                 
                 row.update({
                     SGPFT: sgpft,
-                    SPFT: spft,
+                    SNPFT: snpft,
                     SROI: sroi,
+                    SNROI: snroi,
                     has_custom_sprice: true
                 });
                 
@@ -1423,14 +1483,6 @@
                 table.addFilter("nr_req", "=", "NR");
             }
 
-            // Reverb Stock filter
-            const reverbStockFilter = $('#reverb-stock-filter').val();
-            if (reverbStockFilter === 'zero') {
-                table.addFilter("R Stock", "=", 0);
-            } else if (reverbStockFilter === 'more') {
-                table.addFilter("R Stock", ">", 0);
-            }
-
             // GPFT filter
             if (gpftFilter !== 'all') {
                 if (gpftFilter === 'negative') {
@@ -1444,24 +1496,19 @@
                 }
             }
 
-            // CVR filter (Walmart slab ranges)
+            // CVR filter
             const cvrFilter = $('#cvr-filter').val();
             if (cvrFilter !== 'all') {
                 table.addFilter(function(data) {
-                    // Use Reverb fields: RV L30 and Views
-                    const wl30 = parseFloat(data['RV L30']) || 0;
+                    const l30 = parseFloat(data['L30']) || 0;
                     const views = parseFloat(data['Views']) || 0;
-                    const cvrPercent = views > 0 ? (wl30 / views) * 100 : 0;
-
-                    if (cvrFilter === '0-0') return cvrPercent === 0;
-                    if (cvrFilter === '0.01-1') return cvrPercent >= 0.01 && cvrPercent <= 1;
-                    if (cvrFilter === '1-2') return cvrPercent > 1 && cvrPercent <= 2;
-                    if (cvrFilter === '2-3') return cvrPercent > 2 && cvrPercent <= 3;
-                    if (cvrFilter === '3-4') return cvrPercent > 3 && cvrPercent <= 4;
-                    if (cvrFilter === '0-4') return cvrPercent >= 0 && cvrPercent <= 4;
-                    if (cvrFilter === '4-7') return cvrPercent > 4 && cvrPercent <= 7;
-                    if (cvrFilter === '7-10') return cvrPercent > 7 && cvrPercent <= 10;
-                    if (cvrFilter === '10plus') return cvrPercent > 10;
+                    const cvr = views === 0 ? 0 : (l30 / views) * 100;
+                    
+                    if (cvrFilter === '0-5') return cvr >= 0 && cvr < 5;
+                    if (cvrFilter === '5-10') return cvr >= 5 && cvr < 10;
+                    if (cvrFilter === '10-15') return cvr >= 10 && cvr < 15;
+                    if (cvrFilter === '15-20') return cvr >= 15 && cvr < 20;
+                    if (cvrFilter === '20plus') return cvr >= 20;
                     return true;
                 });
             }
@@ -1481,56 +1528,43 @@
                 });
             }
 
-            // 0 Sold filter (based on RV L30) - triggered by badge click
+            // 0 Sold filter (based on B2B L30) - triggered by badge click
             if (zeroSoldFilterActive) {
-                table.addFilter("RV L30", "=", 0);
+                table.addFilter("B2B L30", "=", 0);
             }
 
-            // > 0 Sold filter (based on RV L30) - triggered by badge click
+            // > 0 Sold filter (based on B2B L30) - triggered by badge click
             if (moreSoldFilterActive) {
-                table.addFilter("RV L30", ">", 0);
+                table.addFilter("B2B L30", ">", 0);
             }
 
             // < Amz filter - show prices less than Amazon price
             if (lessAmzFilterActive) {
                 table.addFilter(function(data) {
-                    const rvPrice = parseFloat(data['RV Price']) || 0;
-                    const amazonPrice = parseFloat(data['A Price']) || 0;
-                    return amazonPrice > 0 && rvPrice > 0 && rvPrice < amazonPrice;
+                const price = parseFloat(data['Price']) || 0;
+                const amazonPrice = parseFloat(data['A Price']) || 0;
+                return amazonPrice > 0 && price > 0 && price < amazonPrice;
                 });
             }
 
             // > Amz filter - show prices greater than Amazon price
             if (moreAmzFilterActive) {
                 table.addFilter(function(data) {
-                    const rvPrice = parseFloat(data['RV Price']) || 0;
-                    const amazonPrice = parseFloat(data['A Price']) || 0;
-                    return amazonPrice > 0 && rvPrice > 0 && rvPrice > amazonPrice;
+                const price = parseFloat(data['Price']) || 0;
+                const amazonPrice = parseFloat(data['A Price']) || 0;
+                return amazonPrice > 0 && price > 0 && price > amazonPrice;
                 });
             }
 
-            // Missing filter - show SKUs missing in Reverb
+            // Missing filter - show SKUs missing in Shopify B2C
             if (missingFilterActive) {
                 table.addFilter("Missing", "=", "M");
-            }
-
-            // Map filter - show SKUs where INV = R Stock
-            if (mapFilterActive) {
-                table.addFilter("MAP", "=", "Map");
-            }
-
-            // INV > R Stock filter - show SKUs where INV > R Stock
-            if (invRStockFilterActive) {
-                table.addFilter(function(data) {
-                    const mapValue = data['MAP'];
-                    return mapValue && mapValue.startsWith('Diff|');
-                });
             }
 
             updateSummary();
         }
 
-        $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #reverb-stock-filter').on('change', function() {
+        $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter').on('change', function() {
             applyFilters();
         });
 
@@ -1541,41 +1575,46 @@
                 // Don't filter by INV for summary - respect the dropdown filter instead
                 return !(row.Parent && row.Parent.startsWith('PARENT'));
             });
+            
+            console.log('UpdateSummary - Total rows:', data.length);
 
             let totalPft = 0, totalSales = 0, totalGpft = 0, totalPrice = 0, priceCount = 0;
-            let totalInv = 0, totalL30 = 0, zeroSoldCount = 0, moreSoldCount = 0, totalDil = 0, dilCount = 0;
+            let totalInv = 0, totalL30 = 0, totalB2BL30 = 0, zeroSoldCount = 0, moreSoldCount = 0, totalDil = 0, dilCount = 0;
             let totalCogs = 0, totalRoi = 0, roiCount = 0, lessAmzCount = 0, moreAmzCount = 0;
-            let missingCount = 0, mapCount = 0, invRStockCount = 0;
+            let missingCount = 0;
 
             data.forEach(row => {
                 totalPft += parseFloat(row.Profit) || 0;
                 totalSales += parseFloat(row['Sales L30']) || 0;
                 totalGpft += parseFloat(row['GPFT%']) || 0;
                 
-                const price = parseFloat(row['RV Price']) || 0;
+                const price = parseFloat(row['Price']) || 0;
                 if (price > 0) {
                     totalPrice += price;
                     priceCount++;
                 }
                 
                 totalInv += parseFloat(row.INV) || 0;
-                totalL30 += parseFloat(row['RV L30']) || 0;
+                totalL30 += parseFloat(row['L30']) || 0;
+                totalB2BL30 += parseFloat(row['B2B L30']) || 0;
                 
-                const l30 = parseFloat(row['RV L30']) || 0;
-                if (l30 === 0) {
+                // Count based on B2B L30 (not OV L30)
+                const b2bL30 = parseFloat(row['B2B L30']) || 0;
+                if (b2bL30 === 0) {
                     zeroSoldCount++;
                 } else {
                     moreSoldCount++;
                 }
                 
-                const dil = parseFloat(row['RV Dil%']) || 0;
+                const dil = parseFloat(row['DIL%']) || 0;
                 if (dil > 0) {
                     totalDil += dil;
                     dilCount++;
                 }
                 
+                // COGS = LP × B2B L30 (not OV L30)
                 const lp = parseFloat(row['LP_productmaster']) || 0;
-                totalCogs += lp * l30;
+                totalCogs += lp * b2bL30;
                 
                 const roi = parseFloat(row['ROI%']) || 0;
                 if (roi !== 0) {
@@ -1583,17 +1622,16 @@
                     roiCount++;
                 }
                 
-                // Compare RV Price with Amazon Price (must match filter logic exactly)
-                const rvPrice = parseFloat(row['RV Price']) || 0;
+                // Compare Price with Amazon Price (must match filter logic exactly)
                 const amzPrice = parseFloat(row['A Price']) || 0;
                 
-                // Count for < Amz
-                if (amzPrice > 0 && rvPrice > 0 && rvPrice < amzPrice) {
+                // Count for < Amz (reuse price variable from above)
+                if (amzPrice > 0 && price > 0 && price < amzPrice) {
                     lessAmzCount++;
                 }
                 
-                // Count for > Amz
-                if (amzPrice > 0 && rvPrice > 0 && rvPrice > amzPrice) {
+                // Count for > Amz (reuse price variable from above)
+                if (amzPrice > 0 && price > 0 && price > amzPrice) {
                     moreAmzCount++;
                 }
                 
@@ -1601,30 +1639,21 @@
                 if (row['Missing'] === 'M') {
                     missingCount++;
                 }
-                
-                // Count Map
-                const mapValue = row['MAP'];
-                if (mapValue === 'Map') {
-                    mapCount++;
-                }
-                
-                // Count INV > R Stock
-                if (mapValue && mapValue.startsWith('Diff|')) {
-                    invRStockCount++;
-                }
             });
 
-            const avgGpft = data.length > 0 ? totalGpft / data.length : 0;
+            // Calculate GPFT % = (Total PFT / Total Sales) * 100 (same as Sales page)
+            const avgGpft = totalSales > 0 ? (totalPft / totalSales) * 100 : 0;
             const avgPrice = priceCount > 0 ? totalPrice / priceCount : 0;
             const avgDil = dilCount > 0 ? totalDil / dilCount : 0;
             const avgRoi = roiCount > 0 ? totalRoi / roiCount : 0;
 
             $('#total-pft-amt-badge').text(`Total PFT: $${Math.round(totalPft).toLocaleString()}`);
             $('#total-sales-amt-badge').text(`Total Sales: $${Math.round(totalSales).toLocaleString()}`);
-            $('#avg-gpft-badge').text(`AVG GPFT: ${avgGpft.toFixed(1)}%`);
+            $('#avg-gpft-badge').text(`GPFT %: ${avgGpft.toFixed(1)}%`);
             $('#avg-price-badge').text(`Avg Price: $${avgPrice.toFixed(2)}`);
             $('#total-inv-badge').text(`Total INV: ${totalInv.toLocaleString()}`);
-            $('#total-l30-badge').text(`Total RV L30: ${totalL30.toLocaleString()}`);
+            $('#total-l30-badge').text(`Total L30: ${totalL30.toLocaleString()}`);
+            $('#total-b2b-l30-badge').text(`Total B2B L30: ${totalB2BL30.toLocaleString()}`);
             $('#zero-sold-count-badge').text(`0 Sold: ${zeroSoldCount}`);
             $('#more-sold-count-badge').text(`> 0 Sold: ${moreSoldCount}`);
             $('#avg-dil-badge').text(`DIL%: ${(avgDil * 100).toFixed(1)}%`);
@@ -1633,8 +1662,33 @@
             $('#less-amz-badge').text(`< Amz: ${lessAmzCount}`);
             $('#more-amz-badge').text(`> Amz: ${moreAmzCount}`);
             $('#missing-count-badge').text(`Missing: ${missingCount}`);
-            $('#map-count-badge').text(`Map: ${mapCount}`);
-            $('#inv-r-stock-badge').text(`INV > R Stock: ${invRStockCount}`);
+            
+            // Calculate TCOS and Spend from ALL data (unfiltered) - table.getData('all')
+            const allData = table.getData('all');
+            let totalSpendAll = 0;
+            let totalSalesAll = 0;
+            
+            allData.forEach(row => {
+                // Total Spend from googleSpent
+                totalSpendAll += parseFloat(row.googleSpent) || 0;
+                
+                // Total Sales from Sales L30
+                totalSalesAll += parseFloat(row['Sales L30']) || 0;
+            });
+            
+            // TCOS% = (Total Spend / Total Sales) × 100
+            const tcosPercent = totalSalesAll > 0 ? (totalSpendAll / totalSalesAll) * 100 : 0;
+            
+            // NPFT% = GPFT% - TCOS%
+            const npftPercent = avgGpft - tcosPercent;
+            
+            // NROI% = ROI% - TCOS%
+            const nroiPercent = avgRoi - tcosPercent;
+            
+            $('#total-tcos-badge').text(`Total TCOS: ${tcosPercent.toFixed(1)}%`);
+            $('#total-spend-badge').text(`Total Spend: $${totalSpendAll.toFixed(2)}`);
+            $('#avg-npft-badge').text(`NPFT %: ${npftPercent.toFixed(1)}%`);
+            $('#nroi-percent-badge').text(`NROI%: ${nroiPercent.toFixed(1)}%`);
         }
 
         // Build Column Visibility Dropdown
@@ -1669,7 +1723,7 @@
             });
             
             $.ajax({
-                url: '/reverb-pricing-column-visibility',
+                url: '/shopify-b2c-pricing-column-visibility',
                 method: 'POST',
                 data: {
                     visibility: visibility,
@@ -1680,7 +1734,7 @@
 
         function applyColumnVisibilityFromServer() {
             $.ajax({
-                url: '/reverb-pricing-column-visibility',
+                url: '/shopify-b2c-pricing-column-visibility',
                 method: 'GET',
                 success: function(visibility) {
                     if (visibility && Object.keys(visibility).length > 0) {
