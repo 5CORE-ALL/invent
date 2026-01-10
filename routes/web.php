@@ -1111,6 +1111,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/listing_amazon/export', [ListingAmazonController::class, 'export'])->name('listing_amazon.export');
 
 
+// Listing Mirror Routes - Multi-channel listing sync
+    Route::get('/listing-mirror', [\App\Http\Controllers\ListingMirrorController::class, 'index'])->name('listing-mirror.index');
+    Route::post('/listing-mirror/sync-inventory', [\App\Http\Controllers\ListingMirrorController::class, 'syncInventory'])->name('listing-mirror.sync-inventory');
+    Route::post('/listing-mirror/sync-price', [\App\Http\Controllers\ListingMirrorController::class, 'syncPrice'])->name('listing-mirror.sync-price');
+    Route::post('/listing-mirror/bulk-sync', [\App\Http\Controllers\ListingMirrorController::class, 'bulkSync'])->name('listing-mirror.bulk-sync');
+    Route::get('/listing-mirror/sync-history', [\App\Http\Controllers\ListingMirrorController::class, 'getSyncHistory'])->name('listing-mirror.sync-history');
     Route::get('/listing-audit-ebay', [ListingAuditEbayController::class, 'listingAuditEbay'])->name('listing.audit.ebay');
     Route::get('/listing-ebay', [ListingEbayController::class, 'listingEbay'])->name('listing.ebay');
     Route::post('/listing_ebay/import', [ListingEbayController::class, 'import'])->name('listing_ebay.import');
