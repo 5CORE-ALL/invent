@@ -3368,7 +3368,7 @@
 
                 // Build export URL with selected columns
                 const columnsParam = encodeURIComponent(JSON.stringify(selectedColumns));
-                const exportUrl = `/ebay-export?columns=${columnsParam}`;
+                const exportUrl = `/export-ebay2-pricing-data?columns=${columnsParam}`;
                 
                 // Close modal and trigger download
                 $('#exportModal').modal('hide');
