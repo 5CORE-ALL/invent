@@ -835,6 +835,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/reverb-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'getColumnVisibility'])->name('reverb.pricing.column.get');
     Route::post('/reverb-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'setColumnVisibility'])->name('reverb.pricing.column.set');
 
+    // Shopify B2C Tabulator Routes
+    Route::get('/shopify-b2c-pricing', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'shopifyB2cTabulatorView'])->name('shopify.b2c.pricing');
+    Route::get('/shopify-b2c-data-json', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'shopifyB2cDataJson'])->name('shopify.b2c.data.json');
+    Route::post('/shopify-b2c-update-listed-live', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'updateShopifyB2cListedLive'])->name('shopify.b2c.update.listed.live');
+    Route::get('/shopify-b2c-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'getColumnVisibility'])->name('shopify.b2c.pricing.column.get');
+    Route::post('/shopify-b2c-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'setColumnVisibility'])->name('shopify.b2c.pricing.column.set');
+
     
     // eBay 2 Sales Routes
     Route::get('/ebay2/daily-sales-data', [\App\Http\Controllers\Sales\Ebay2SalesController::class, 'getData'])->name('ebay2.daily.sales.data');
@@ -882,7 +889,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/mercari-without-ship-column-visibility', [MercariController::class, 'getMercariWithoutShipColumnVisibility'])->name('mercari.get.without.ship.column.visibility');
     
     // Shopify B2C Sales Routes
-
     Route::get('/shopify-b2c/daily-sales-data', [\App\Http\Controllers\Sales\ShopifyB2CSalesController::class, 'getData'])->name('shopify-b2c.daily.sales.data');
     Route::get('/shopify-b2c/daily-sales', [\App\Http\Controllers\Sales\ShopifyB2CSalesController::class, 'index'])->name('shopify-b2c.daily.sales');
     Route::get('/shopify-b2c-column-visibility', [\App\Http\Controllers\Sales\ShopifyB2CSalesController::class, 'getColumnVisibility']);

@@ -554,9 +554,6 @@
                         <i class="fas fa-plus-circle me-2"></i> Add Channel
                     </button>
 
-                    <button id="showSalesGraph" class="btn btn-success" style="background: linear-gradient(135deg, #06d6a0, #118ab2); border: none;"> 📈 Show Daily Sales Graph</button>
-                    <button type="button" id="toggleBtn" class="badge bg-primary text-white px-3 py-2" style="font-size: 1rem; border-radius: 8px;" onclick="showBarGraph()">Show Daily Sales Bar Graph</button>
-
                     <div class="d-inline-flex align-items-center ms-2">
                         <div class="badge bg-primary text-white px-3 py-2 me-2"
                             style="font-size: 1rem; border-radius: 8px;">
@@ -581,55 +578,7 @@
             </div>
         </div>
 
-         <div id="chartWrap" style="display:none">
-            <div class="row">
-                <div class="col-md-3">
-                    <div class="controls">
-                         <button id="toggleL30" class="btn" style="background-color: #53afed;">L30</button>
-                         <button id="toggleL60" class="btn" style="background-color: #feac5b;">L60</button>
-                    </div>
-                </div>
-                <!-- <div class="col-md-3">
-                    <input type="date" class="form-control" name="from_date">
-                </div>
-                <div class="col-md-3">
-                    <input type="date" class="form-control" name="to_date">
-                </div>
-                <div class="col-md-2">
-                    <button class="badge bg-primary text-white px-3 py-2" style="font-size: 1rem; border-radius: 8px;">Sales Graph</button>
-                </div> -->
-            </div>
-            <!-- top chart summary calculation -->
-             <div class="row text-center">
-                            <div class="col">
-                                <p class="text-muted mt-3">Sales</p>
-                                <h3 class=" mb-0">
-                                    <span id="total_sales">0</span>
-                                </h3>
-                            </div>
-                            <div class="col">
-                                <p class="text-muted mt-3">Profit Margin</p>
-                                <h3 class=" mb-0">
-                                    <span id="profit_margin">0% </span>
-                                </h3>
-                            </div>
-                            <div class="col">
-                                <p class="text-muted mt-3">ROI</p>
-                                <h3 class=" mb-0">
-                                    <span id="sales_roi">0%</span>
-                                </h3>
-                            </div>
-                            <!-- <div class="col">
-                                <p class="text-muted mt-3">Customers</p>
-                                <h3 class=" mb-0">
-                                    <span>3k</span>
-                                </h3>
-                            </div> -->
-                        </div>
-                        <br>
-         <canvas id="barChart"></canvas>
-        <div id="status" class="status">Loading data…</div>
-        </div>
+
 
         <!-- Add Channel Modal (Left to Right Slide-in) -->
         <div class="modal fade right-to-left" id="addChannelModal" tabindex="-1" aria-hidden="true">
@@ -2022,13 +1971,17 @@
                         render: function (v, type, row) {
                             const l30Sales = toNum(row['L30 Sales']);
                             const achieved = toNum(row['Achieved']);
-                            const growth = l30Sales - achieved;
-                            if (type === 'sort' || type === 'type') return growth;
+                            const growthValue = l30Sales - achieved;
+                            const growthPercent = achieved > 0 ? ((l30Sales - achieved) / achieved) * 100 : 0;
+                            
+                            if (type === 'sort' || type === 'type') return growthPercent;
+                            
                             let bg = '', color = 'white';
-                            if (growth < 0) { bg = '#ff0000'; } // Red: negative
-                            else if (growth === 0) { bg = '#ffff00'; color = 'black'; } // Yellow: zero
+                            if (growthPercent < 0) { bg = '#ff0000'; color = 'white'; } // Red: negative (white text)
+                            else if (growthPercent === 0) { bg = '#ffff00'; color = 'black'; } // Yellow: zero
                             else { bg = '#00ff00'; color = 'black'; } // Green: positive
-                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${Math.round(growth).toLocaleString('en-US')}</span>`;
+                            
+                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;font-weight:bold;">${growthPercent < 0 ? '' : '+'}${Math.round(growthPercent)}%</span>`;
                         }
                     },
                     // Growth column hidden
@@ -2069,9 +2022,9 @@
                             let bg = '', color = 'white';
                             if (n === 0) { bg = '#00ff00'; color = 'black'; } // Green: no issues
                             else if (n <= 20) { bg = '#ffff00'; color = 'black'; } // Yellow: 1-20
-                            else if (n <= 50) { bg = '#ffa500'; } // Orange: 21-50
-                            else { bg = '#ff0000'; } // Red: above 50
-                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${n}</span>`;
+                            else if (n <= 50) { bg = '#ffa500'; color = 'white'; } // Orange: 21-50
+                            else { bg = '#ff0000'; color = '#ff0000'; } // Red: above 50 (red text on red bg)
+                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;font-weight:bold;">${n}</span>`;
                         }
                     },
                     {
@@ -2401,18 +2354,6 @@
                 })
                 .catch(err => console.error('Error fetching chart data:', err));
         }
-
-
-        document.getElementById('showSalesGraph').addEventListener('click', function() {
-            const chartDiv = document.getElementById('salesTrendChart');
-            if (chartDiv.style.display === 'none') {
-                drawSalesTrendChart();
-                this.textContent = " 📈 Hide Daily Sales Graph";
-            } else {
-                chartDiv.style.display = 'none';
-                this.textContent = "📈 Show Daily Sales Graph";
-            }
-        });
 
 
         function updatePlayButtonColor() {
@@ -3114,182 +3055,6 @@
             }
         });
     </script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script>
-(async function(){
-  const fetchUrl = '/sales-trend-data';
-  const statusEl = document.getElementById('status');
-  const ctx = document.getElementById('barChart').getContext('2d');
-  const btnL30 = document.getElementById('toggleL30');
-  const btnL60 = document.getElementById('toggleL60');
 
-  let enabled = { l30: true, l60: false };
-  let rawChartData = [];
-  let chart = null;
-
-  function setStatus(msg, isError = false) {
-    statusEl.textContent = msg;
-    statusEl.style.color = isError ? '#b00020' : '#666';
-  }
-
-  function updateButtons() {
-    btnL30.classList.toggle('off', !enabled.l30);
-    btnL60.classList.toggle('off', !enabled.l60);
-  }
-
-  function renderChart() {
-    // Filter to show only rows where at least one enabled series has data
-    const filtered = rawChartData.filter(row => {
-      const hasL30 = enabled.l30 && Number(row.l30_sales) > 0;
-      const hasL60 = enabled.l60 && Number(row.l60_sales) > 0;
-      return hasL30 || hasL60;
-    });
-
-    if (filtered.length === 0) {
-      if (chart) chart.destroy();
-      setStatus('No data to display with current filters.');
-      return;
-    }
-
-    const labels = filtered.map(r => r.date);
-    const l30Data = filtered.map(r => Number(r.l30_sales ?? 0));
-    const l60Data = filtered.map(r => Number(r.l60_sales ?? 0));
-
-    const datasets = [];
-    
-    if (enabled.l30) {
-      datasets.push({
-        label: 'L30',
-        data: l30Data,
-        backgroundColor: 'rgba(54, 162, 235, 0.85)',
-        borderColor: 'rgba(54, 162, 235, 1)',
-        borderWidth: 1,
-        borderRadius: 4
-      });
-    }
-    
-    if (enabled.l60) {
-      datasets.push({
-        label: 'L60',
-        data: l60Data,
-        backgroundColor: 'rgba(255, 159, 64, 0.85)',
-        borderColor: 'rgba(255, 159, 64, 1)',
-        borderWidth: 1,
-        borderRadius: 4
-      });
-    }
-
-    if (chart) chart.destroy();
-
-    chart = new Chart(ctx, {
-      type: 'bar',
-      data: { labels, datasets },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: { 
-          mode: 'index', 
-          intersect: false 
-        },
-        plugins: {
-          legend: { 
-            position: 'top',
-            labels: {
-              padding: 15,
-              font: { size: 12 }
-            }
-          },
-          tooltip: {
-            callbacks: {
-              label: (context) => {
-                const value = context.parsed.y ?? context.parsed;
-                return context.dataset.label + ': $' + Number(value).toLocaleString('en-US', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2
-                });
-              }
-            }
-          }
-        },
-        scales: {
-          x: {
-            title: { 
-              display: true, 
-              text: 'Date',
-              font: { size: 12, weight: 'bold' }
-            },
-            grid: { display: false },
-            ticks: { 
-              maxRotation: 45,
-              minRotation: 45,
-              autoSkip: true, 
-              maxTicksLimit: 30,
-              font: { size: 10 }
-            }
-          },
-          y: {
-            title: { 
-              display: true, 
-              text: 'Sales ($)',
-              font: { size: 12, weight: 'bold' }
-            },
-            beginAtZero: true,
-            grid: { color: 'rgba(0, 0, 0, 0.05)' },
-            ticks: { 
-              callback: (value) => '$' + Number(value).toLocaleString()
-            }
-          }
-        }
-      }
-    });
-
-    setStatus(`Showing ${filtered.length} dates — L30: ${enabled.l30 ? 'ON' : 'OFF'}, L60: ${enabled.l60 ? 'ON' : 'OFF'}`);
-  }
-
-  try {
-    const res = await fetch(fetchUrl, { credentials: 'same-origin' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const payload = await res.json();
-    rawChartData = Array.isArray(payload.chartData) ? payload.chartData : [];
-
-    if (rawChartData.length === 0) {
-      setStatus('No data available for the selected period.');
-      return;
-    }
-
-    updateButtons();
-    renderChart();
-  } catch (err) {
-    console.error(err);
-    setStatus('Failed to load chart data — check console and API route.', true);
-    return;
-  }
-
-  btnL30.addEventListener('click', () => {
-    enabled.l30 = !enabled.l30;
-    updateButtons();
-    renderChart();
-  });
-
-  btnL60.addEventListener('click', () => {
-    enabled.l60 = !enabled.l60;
-    updateButtons();
-    renderChart();
-  });
-})();
-
-function showBarGraph() {
-    const chart = $("#chartWrap");
-    const button = $("#toggleBtn");
-
-    chart.toggle(); // show/hide chart
-
-    if (chart.is(":visible")) {
-        button.text("Hide Daily Sales Bar Graph");
-    } else {
-        button.text("Show Daily Sales Bar Graph");
-    }
-}
-</script>
 
 @endsection

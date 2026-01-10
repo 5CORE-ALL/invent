@@ -7,6 +7,7 @@ use App\Models\ShopifyB2CDailyData;
 use App\Models\ProductMaster;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class ShopifyB2CSalesController extends Controller
 {
@@ -29,7 +30,10 @@ class ShopifyB2CSalesController extends Controller
 
     public function getData(Request $request)
     {
-        \Log::info('ShopifyB2CSalesController getData called');
+        Log::info('ShopifyB2CSalesController getData called');
+
+        // Hardcoded 95% margin for Shopify B2C
+        $percentageValue = 0.95;
 
         // Calculate date range
         $yesterday = \Carbon\Carbon::yesterday();
@@ -40,9 +44,13 @@ class ShopifyB2CSalesController extends Controller
         $orders = ShopifyB2CDailyData::where('period', 'l30')
             ->where('financial_status', '!=', 'refunded')
             ->orderBy('order_date', 'desc')
-            ->get();
+            ->get()
+            ->filter(function ($order) {
+                // Filter out PARENT SKUs
+                return stripos($order->sku, 'PARENT') === false;
+            });
 
-        \Log::info('Found ' . $orders->count() . ' Shopify B2C orders');
+        Log::info('Found ' . $orders->count() . ' Shopify B2C orders (excluding PARENT SKUs)');
 
         // Get unique SKUs
         $skus = $orders->pluck('sku')->unique()->toArray();
@@ -115,8 +123,8 @@ class ShopifyB2CSalesController extends Controller
             // COGS = LP * quantity
             $cogs = $lp * $quantity;
 
-            // PFT Each = (price * 0.95) - lp - ship_cost (Shopify B2C uses 95% margin)
-            $pftEach = ($price * 0.95) - $lp - $shipCost;
+            // PFT Each = (price * percentageValue) - lp - ship_cost (Shopify B2C margin from database)
+            $pftEach = ($price * $percentageValue) - $lp - $shipCost;
 
             // PFT Each % = (pft_each / price) * 100
             $pftEachPct = $price > 0 ? ($pftEach / $price) * 100 : 0;
@@ -163,7 +171,7 @@ class ShopifyB2CSalesController extends Controller
             ];
         }
 
-        \Log::info('Returning ' . count($data) . ' data items');
+        Log::info('Returning ' . count($data) . ' data items');
 
         return response()->json($data);
     }
