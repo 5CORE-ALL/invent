@@ -150,13 +150,20 @@ class ForecastAnalysisController extends Controller
             ->groupBy(fn($item) => strtoupper(trim($item->our_sku)))
             ->map(function ($group) {
                 $transitSum = 0;
+                $transitValueSum = 0; // Sum of (qty * rate) for each row (like transit-container-details page)
                 $rate = 0;
                 foreach ($group as $row) {
-                    $no_of_units = (float) $row->no_of_units;
-                    $total_ctn = (float) $row->total_ctn;
-                    $transitSum += $no_of_units * $total_ctn;
+                    $no_of_units = (float) ($row->no_of_units ?? 0);
+                    $total_ctn = (float) ($row->total_ctn ?? 0);
+                    $rowRate = (float) ($row->rate ?? 0);
+                    $qty = $no_of_units * $total_ctn;
+                    $transitSum += $qty;
+                    // Calculate value as qty * rate for each row (like transit-container-details page: amount = qty * rate)
+                    if ($qty > 0 && $rowRate > 0) {
+                        $transitValueSum += ($qty * $rowRate);
+                    }
                     if (!empty($row->rate)) {
-                        $rate = (float) $row->rate;
+                        $rate = $rowRate; // Keep last rate (for backward compatibility)
                     }
                 }
 
@@ -164,6 +171,7 @@ class ForecastAnalysisController extends Controller
                     'tab_name' => $group->pluck('tab_name')->unique()->implode(', '),
                     'transit' => $transitSum,
                     'rate' => $rate,
+                    'transit_value' => $transitValueSum, // Total value as sum of (qty * rate) for all rows
                 ];
             })
             ->keyBy(fn($item, $key) => $key);
@@ -300,24 +308,36 @@ class ForecastAnalysisController extends Controller
 
             $item->containerName = $transitContainer[$normalizeSku($prodData->sku)]->tab_name ?? '';
             $item->transit = $transitContainer[$normalizeSku($prodData->sku)]->transit ?? 0;
+            $item->transit_rate = (float)($transitContainer[$normalizeSku($prodData->sku)]->rate ?? 0);
+            $item->transit_value_calculated = (float)($transitContainer[$normalizeSku($prodData->sku)]->transit_value ?? 0); // Pre-calculated value from transit_container_details
 
 
             $readyToShipQty = 0;
+            $r2sRate = 0;
             if($readyToShipMap->has($sheetSku)){
-                $readyToShipQty = $readyToShipMap->get($sheetSku)->qty ?? 0;
+                $readyToShipData = $readyToShipMap->get($sheetSku);
+                $readyToShipQty = $readyToShipData->qty ?? 0;
+                $r2sRate = (float) ($readyToShipData->rate ?? 0);
                 $item->readyToShipQty = $readyToShipQty;
             }
+            $item->r2s_rate = $r2sRate; // Store rate for R2S Value calculation
 
             // MIP column should ONLY come from mfrg_progress table, no fallback to purchases
             $order_given = 0;
+            $mipRate = 0;
+            $mfrgReadyToShip = 'No'; // Default to 'No'
             if($mfrg->has($sheetSku)){
-                $isReadyToShip = $mfrg->get($sheetSku)->ready_to_ship ?? 'No';
-                if($isReadyToShip === 'No' || $isReadyToShip === ''){
-                    $order_given = (float) ($mfrg->get($sheetSku)->qty ?? 0);
+                $mfrgData = $mfrg->get($sheetSku);
+                $mfrgReadyToShip = $mfrgData->ready_to_ship ?? 'No';
+                if($mfrgReadyToShip === 'No' || $mfrgReadyToShip === ''){
+                    $order_given = (float) ($mfrgData->qty ?? 0);
+                    $mipRate = (float) ($mfrgData->rate ?? 0);
                 }
             }
             // Removed purchases table fallback - MIP should only show mfrg_progress data
             $item->order_given = $order_given;
+            $item->mip_rate = $mipRate; // Store rate for MIP Value calculation
+            $item->mfrg_ready_to_ship = $mfrgReadyToShip; // Store ready_to_ship status from mfrg_progress table
 
             if ($movementMap->has($sheetSku)) {
                 $months = json_decode($movementMap->get($sheetSku)->months ?? '{}', true);
@@ -355,10 +375,40 @@ class ForecastAnalysisController extends Controller
             $orderQty = (float)($item->order_given ?? 0);
             $readyToShipQty = (float)($item->readyToShipQty ?? 0);
             $transit = (float)($transitContainer[$normalizeSku($prodData->sku)]->transit ?? 0);
+            $transitRate = (float)($transitContainer[$normalizeSku($prodData->sku)]->rate ?? 0);
+            $transitValueCalculated = (float)($transitContainer[$normalizeSku($prodData->sku)]->transit_value ?? 0);
 
-            $item->MIP_Value = round($cp * $orderQty, 2);
-            $item->R2S_Value = round($cp * $readyToShipQty, 2);
-            $item->Transit_Value = round($cp * $transit, 2);
+            // MIP Value: Use qty * rate from mfrg_progress (like mfrg-in-progress page), fallback to CP * order_given if rate not available
+            // For items with stage === 'mip', use rate * qty (matching mfrg-in-progress page calculation)
+            if ($mipRate > 0 && $orderQty > 0) {
+                $item->MIP_Value = round($mipRate * $orderQty, 2);
+            } else {
+                // Fallback to CP * order_given if rate not available
+                $item->MIP_Value = round($cp * $orderQty, 2);
+            }
+            
+            // R2S Value: Use qty * rate from ready_to_ship table (like ready-to-ship page), fallback to CP * readyToShipQty if rate not available
+            // For items with stage === 'r2s', use rate * qty (matching ready-to-ship page calculation)
+            if ($r2sRate > 0 && $readyToShipQty > 0) {
+                $item->R2S_Value = round($r2sRate * $readyToShipQty, 2);
+            } else {
+                // Fallback to CP * readyToShipQty if rate not available
+                $item->R2S_Value = round($cp * $readyToShipQty, 2);
+            }
+            
+            // Transit Value: Use qty * rate from transit_container_details (like transit-container-details page), fallback to CP * transit if rate not available
+            // In transit-container-details page: amount = (no_of_units * total_ctn) * rate for each row, then sum all rows
+            // We've pre-calculated transit_value as sum of (qty * rate) for all rows with same SKU
+            if ($transitValueCalculated > 0) {
+                // Use pre-calculated value (sum of all (qty * rate) for this SKU from transit_container_details)
+                $item->Transit_Value = round($transitValueCalculated, 2);
+            } else if ($transit > 0 && $transitRate > 0) {
+                // Fallback: if we have qty and rate, calculate directly
+                $item->Transit_Value = round($transit * $transitRate, 2);
+            } else {
+                // Final fallback: CP * transit (for backward compatibility)
+                $item->Transit_Value = round($cp * $transit, 2);
+            }
 
             $processedData[] = $item;
         }
@@ -379,10 +429,27 @@ class ForecastAnalysisController extends Controller
                     return floatval($item->{'MSL_C'} ?? 0);
                 });
 
+            // Calculate total Transit Value from ALL transit_container_details records (like transit-container-details page)
+            // This matches the transit-container-details page calculation: sum of (qty * rate) for ALL rows across ALL tabs
+            $totalTransitValue = TransitContainerDetail::whereNull('deleted_at')
+                ->where(function ($q) {
+                    $q->whereNull('status')
+                    ->orWhere('status', '');
+                })
+                ->get()
+                ->sum(function ($row) {
+                    $no_of_units = (float) ($row->no_of_units ?? 0);
+                    $total_ctn = (float) ($row->total_ctn ?? 0);
+                    $rate = (float) ($row->rate ?? 0);
+                    $qty = $no_of_units * $total_ctn;
+                    return $qty * $rate; // Calculate qty * rate for each row (like transit-container-details page)
+                });
+
             return response()->json([
                 'message' => 'Data fetched successfully',
                 'data' => $processedData,
                 'total_msl_c' => round($totalMslC, 2),
+                'total_transit_value' => round($totalTransitValue, 2), // Total Transit Value from ALL transit_container_details records
                 'status' => 200,
             ]);
 
