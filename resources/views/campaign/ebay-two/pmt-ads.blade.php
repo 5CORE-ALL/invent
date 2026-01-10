@@ -2687,23 +2687,28 @@
                     if (scvr < 0.01) {
                         sbidValue = parseFloat(item.ESBID) || 0; // Use ESBID for SCVR < 0.01%
                     } 
-                    // Priority 2: Check SCVR ranges first (higher priority)
-                    else if (scvr >= 1.01 && scvr <= 2) {
-                        sbidValue = 7; // Flat 7
+                    // Priority 2: Check SCVR ranges and apply "whichever is higher" rule with views < 100
+                    else if (scvr >= 0.01 && scvr <= 1) {
+                        // Between 0.01-1%: SBID 8% or views < 100 then 8% (always 8%)
+                        sbidValue = 8;
+                    } else if (scvr >= 1.01 && scvr <= 2) {
+                        // Between 1.01-2%: SBID 7% or views < 100 then 8% (whichever is higher)
+                        sbidValue = views < 100 ? 8 : 7;
                     } else if (scvr >= 2.01 && scvr <= 3) {
-                        sbidValue = 6; // Flat 6
+                        // Between 2.01-3%: SBID 6% or views < 100 then 8% (whichever is higher)
+                        sbidValue = views < 100 ? 8 : 6;
                     } else if (scvr >= 3.01 && scvr <= 5) {
-                        sbidValue = 6; // Flat 6
+                        // Between 3.01-5%: SBID 6% or views < 100 then 8% (whichever is higher)
+                        sbidValue = views < 100 ? 8 : 6;
                     } else if (scvr >= 5.01 && scvr <= 7) {
-                        sbidValue = 5; // Flat 5
+                        // Between 5.01-7%: SBID 5% or views < 100 then 8% (whichever is higher)
+                        sbidValue = views < 100 ? 8 : 5;
                     } else if (scvr >= 7.01 && scvr <= 13) {
-                        sbidValue = 4; // Flat 4
+                        // Between 7.01-13%: SBID 4% or views < 100 then 8% (whichever is higher)
+                        sbidValue = views < 100 ? 8 : 4;
                     } else if (scvr > 13) {
-                        sbidValue = 3; // Flat 3
-                    } 
-                    // Priority 3: If SCVR between 0.01-1% OR views < 100, set to 8%
-                    else if ((scvr >= 0.01 && scvr <= 1) || views < 100) {
-                        sbidValue = 8; // Flat 8
+                        // Greater than 13%: SBID 3% or views < 100 then 8% (whichever is higher)
+                        sbidValue = views < 100 ? 8 : 3;
                     } else {
                         // Fallback: default to 8
                         sbidValue = 8;
@@ -4572,27 +4577,33 @@
                     function calculateSBID(item) {
                         const scvr = calculateSCVR(item);
                         const views = Number(item.VIEWS) || 0;
-                        const dilPercent = (parseFloat(item.ov_dil || 0) * 100) || 0;
-                        const isDilRed = dilPercent < 16.66;
                         
                         let sbidValue;
                         if (scvr < 0.01) {
                             sbidValue = parseFloat(item.ESBID || 0) || 0;
-                        } else if (scvr >= 1.01 && scvr <= 2) {
-                            sbidValue = 7;
-                        } else if (scvr >= 2.01 && scvr <= 3) {
-                            sbidValue = 6;
-                        } else if (scvr >= 3.01 && scvr <= 5) {
-                            sbidValue = 6;
-                        } else if (scvr >= 5.01 && scvr <= 7) {
-                            sbidValue = 5;
-                        } else if (scvr >= 7.01 && scvr <= 13) {
-                            sbidValue = 4;
-                        } else if (scvr > 13) {
-                            sbidValue = 3;
-                        } else if ((scvr >= 0.01 && scvr <= 1) || isDilRed || views < 100) {
+                        } else if (scvr >= 0.01 && scvr <= 1) {
+                            // Between 0.01-1%: SBID 8% or views < 100 then 8% (always 8%)
                             sbidValue = 8;
+                        } else if (scvr >= 1.01 && scvr <= 2) {
+                            // Between 1.01-2%: SBID 7% or views < 100 then 8% (whichever is higher)
+                            sbidValue = views < 100 ? 8 : 7;
+                        } else if (scvr >= 2.01 && scvr <= 3) {
+                            // Between 2.01-3%: SBID 6% or views < 100 then 8% (whichever is higher)
+                            sbidValue = views < 100 ? 8 : 6;
+                        } else if (scvr >= 3.01 && scvr <= 5) {
+                            // Between 3.01-5%: SBID 6% or views < 100 then 8% (whichever is higher)
+                            sbidValue = views < 100 ? 8 : 6;
+                        } else if (scvr >= 5.01 && scvr <= 7) {
+                            // Between 5.01-7%: SBID 5% or views < 100 then 8% (whichever is higher)
+                            sbidValue = views < 100 ? 8 : 5;
+                        } else if (scvr >= 7.01 && scvr <= 13) {
+                            // Between 7.01-13%: SBID 4% or views < 100 then 8% (whichever is higher)
+                            sbidValue = views < 100 ? 8 : 4;
+                        } else if (scvr > 13) {
+                            // Greater than 13%: SBID 3% or views < 100 then 8% (whichever is higher)
+                            sbidValue = views < 100 ? 8 : 3;
                         } else {
+                            // Fallback: default to 8
                             sbidValue = 8;
                         }
                         return Math.min(sbidValue, 15);

@@ -182,31 +182,36 @@ class UpdateEbayTwoSuggestedBid extends Command
                     $dilPercent = $ov_dil * 100;
                     $isDilRed = $dilPercent < 16.66;
                     
-                    // Determine new bid based on SCVR ranges - flat values
-                    $newBid = 2; // Default minimum
+                    // Determine new bid based on SCVR ranges with "whichever is higher" rule for views < 100
+                    $newBid = 3; // Default minimum
                     
                     // Priority 1: If SCVR < 0.01% (including 0.00%), use ESBID
                     if ($cvr < 0.01) {
                         // For very low SCVR, keep current ESBID (matches frontend logic)
                         $newBid = $esbid;
                     } 
-                    // Priority 2: Check SCVR ranges first (higher priority)
-                    elseif ($cvr >= 1.01 && $cvr <= 2) {
-                        $newBid = 7; // Flat 7%
+                    // Priority 2: Check SCVR ranges and apply "whichever is higher" rule with views < 100
+                    elseif ($cvr >= 0.01 && $cvr <= 1) {
+                        // Between 0.01-1%: SBID 8% or views < 100 then 8% (always 8%)
+                        $newBid = 8;
+                    } elseif ($cvr >= 1.01 && $cvr <= 2) {
+                        // Between 1.01-2%: SBID 7% or views < 100 then 8% (whichever is higher)
+                        $newBid = $views < 100 ? 8 : 7;
                     } elseif ($cvr >= 2.01 && $cvr <= 3) {
-                        $newBid = 6; // Flat 6%
+                        // Between 2.01-3%: SBID 6% or views < 100 then 8% (whichever is higher)
+                        $newBid = $views < 100 ? 8 : 6;
                     } elseif ($cvr >= 3.01 && $cvr <= 5) {
-                        $newBid = 6; // Flat 6%
+                        // Between 3.01-5%: SBID 6% or views < 100 then 8% (whichever is higher)
+                        $newBid = $views < 100 ? 8 : 6;
                     } elseif ($cvr >= 5.01 && $cvr <= 7) {
-                        $newBid = 5; // Flat 5%
+                        // Between 5.01-7%: SBID 5% or views < 100 then 8% (whichever is higher)
+                        $newBid = $views < 100 ? 8 : 5;
                     } elseif ($cvr >= 7.01 && $cvr <= 13) {
-                        $newBid = 4; // Flat 4%
+                        // Between 7.01-13%: SBID 4% or views < 100 then 8% (whichever is higher)
+                        $newBid = $views < 100 ? 8 : 4;
                     } elseif ($cvr > 13) {
-                        $newBid = 3; // Flat 3%
-                    } 
-                    // Priority 3: If SCVR between 0.01-1% OR views < 100 OR DIL red, set to 8%
-                    elseif (($cvr >= 0.01 && $cvr <= 1) || $views < 100 || $isDilRed) {
-                        $newBid = 8; // Flat 8%
+                        // Greater than 13%: SBID 3% or views < 100 then 8% (whichever is higher)
+                        $newBid = $views < 100 ? 8 : 3;
                     } else {
                         // Fallback: default to 8
                         $newBid = 8;

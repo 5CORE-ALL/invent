@@ -489,6 +489,12 @@
                 const processedSkusForMissing = new Set(); // Track SKUs for missing counting
                 const processedSkusForNraMissing = new Set(); // Track SKUs for NRA missing counting
                 const processedSkusForZeroInv = new Set(); // Track SKUs for zero INV counting
+                const processedSkusForOver = new Set(); // Track SKUs for over-utilized counting
+                const processedSkusForUnder = new Set(); // Track SKUs for under-utilized counting
+                const processedSkusForCorrectly = new Set(); // Track SKUs for correctly-utilized counting
+                const processedSkusForValid = new Set(); // Track SKUs for valid SKU counting
+                const processedSkusFor7Ub = new Set(); // Track SKUs for 7UB counting
+                const processedSkusFor7Ub1Ub = new Set(); // Track SKUs for 7UB+1UB counting
 
                     allData.forEach(function(row) {
                     // Count valid SKUs (only Parent SKUs, exclude empty SKUs)
@@ -503,8 +509,20 @@
                         zeroInvCount++;
                     }
 
-                    // Count campaigns and missing BEFORE filters - count all campaigns regardless of filters
+                    // Count campaigns, missing, and NRA BEFORE filters - count all regardless of filters
                     if (isValidSku) {
+                        // Count NRA only for valid SKUs and only once per SKU - BEFORE filters
+                        // RA will be calculated as Total - NRA later
+                        if (!processedSkusForNra.has(sku)) {
+                            processedSkusForNra.add(sku);
+                            // Count only NRA (explicitly marked as 'NRA')
+                            let rowNra = row.NR ? row.NR.trim() : "";
+                            if (rowNra === 'NRA') {
+                                nraCount++;
+                            }
+                            // Note: We don't increment raCount here - it will be calculated as Total - NRA
+                        }
+
                         const hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row
                             .campaign_id && row.campaignName);
 
@@ -564,19 +582,6 @@
                         if (inv <= 0) return;
                     }
 
-                    // Count NRA and RA only for valid SKUs and only once per SKU (after filters)
-                    if (isValidSku && !processedSkusForNra.has(sku)) {
-                        processedSkusForNra.add(sku);
-                        // Note: Empty/null NRA defaults to "RA" in the display
-                        let rowNra = row.NR ? row.NR.trim() : "";
-                        if (rowNra === 'NRA') {
-                            nraCount++;
-                        } else {
-                            // If NRA is empty, null, or "RA", it shows as "RA" by default
-                            raCount++;
-                        }
-                    }
-
                     // NRA filter
                     let nraFilterVal = $("#nra-filter").val();
                     if (nraFilterVal) {
@@ -598,54 +603,62 @@
                         if (!hasCampaign) return;
                     }
 
-                    // Count valid SKUs that pass all filters
+                    // Calculate utilization and count BEFORE applying filters
+                    // This ensures counts match total SKU count logic (count all SKUs with campaigns, not just filtered ones)
                     if (isValidSku) {
-                        validSkuCount++;
-                    }
+                        // Only count SKUs that have campaigns (have campaign_id and campaignName)
+                        const hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                        if (hasCampaign) {
+                            let budget = parseFloat(row.campaignBudgetAmount) || 0;
+                            let l7_spend = parseFloat(row.l7_spend || 0);
+                            let l1_spend = parseFloat(row.l1_spend || 0);
 
-                    // Now calculate utilization and count (ebay3 specific logic)
-                        let budget = parseFloat(row.campaignBudgetAmount) || 0;
-                        let l7_spend = parseFloat(row.l7_spend || 0);
-                        let l1_spend = parseFloat(row.l1_spend || 0);
+                            // Only count if budget > 0 (need valid budget to calculate utilization)
+                            if (budget > 0) {
+                                let ub7 = (l7_spend / (budget * 7)) * 100;
+                                let ub1 = (l1_spend / budget) * 100;
 
-                        let ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
-                        let ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
+                                // Count 7UB (ub7 >= 70 && ub7 <= 90) - independent of utilization type (only once per SKU)
+                                if (ub7 >= 70 && ub7 <= 90 && !processedSkusFor7Ub.has(sku)) {
+                                    processedSkusFor7Ub.add(sku);
+                                    ub7Count++;
+                                }
 
-                    let rowAcos = parseFloat(row.acos || 0);
-                        if (isNaN(rowAcos) || rowAcos === 0) {
-                            rowAcos = 100;
-                        }
+                                // Count 7UB + 1UB (both ub7 and ub1 >= 70 && <= 90) - independent of utilization type (only once per SKU)
+                                if (ub7 >= 70 && ub7 <= 90 && ub1 >= 70 && ub1 <= 90 && !processedSkusFor7Ub1Ub.has(sku)) {
+                                    processedSkusFor7Ub1Ub.add(sku);
+                                    ub7Ub1Count++;
+                                }
 
-                        // Mutually exclusive categorization (same as controller for eBay3)
-                        let categorized = false;
-
-                    // Over-utilized check (priority 1) - Double condition: both UB7 AND UB1 must be > 99
-                    if (!categorized) {
-                        if (ub7 > 99 && ub1 > 99) {
-                                overCount++;
-                                categorized = true;
+                                // Skip if this SKU has already been categorized for utilization type
+                                if (!processedSkusForOver.has(sku) && !processedSkusForUnder.has(sku) && !processedSkusForCorrectly.has(sku)) {
+                                    // Mutually exclusive categorization (same as controller for eBay3)
+                                    // Count each SKU only once, based on priority order
+                                    
+                                    // Over-utilized check (priority 1) - Double condition: both UB7 AND UB1 must be > 99
+                                    if (ub7 > 99 && ub1 > 99) {
+                                        processedSkusForOver.add(sku);
+                                        overCount++;
+                                    }
+                                    // Under-utilized check (priority 2: only if not over-utilized) - Double condition: both UB7 AND UB1 must be < 66
+                                    else if (ub7 < 66 && ub1 < 66) {
+                                        processedSkusForUnder.add(sku);
+                                        underCount++;
+                                    }
+                                    // Correctly-utilized check (priority 3: only if not already categorized) - Double condition: both UB7 AND UB1 must be between 66-99
+                                    else if (ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99) {
+                                        processedSkusForCorrectly.add(sku);
+                                        correctlyCount++;
+                                    }
+                                }
                             }
                         }
-
-                    // Under-utilized check (priority 2: only if not over-utilized) - Double condition: both UB7 AND UB1 must be < 66
-                    if (!categorized && ub7 < 66 && ub1 < 66) {
-                            underCount++;
-                            categorized = true;
-                        }
-
-                    // Correctly-utilized check (priority 3: only if not already categorized) - Double condition: both UB7 AND UB1 must be between 66-99
-                    if (!categorized && ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99) {
-                            correctlyCount++;
-                        }
-
-                    // Count 7UB (ub7 >= 70 && ub7 <= 90) - but for ebay3 it's 70-90
-                    if (ub7 >= 70 && ub7 <= 90) {
-                        ub7Count++;
                     }
 
-                    // Count 7UB + 1UB (both ub7 and ub1 >= 70 && <= 90)
-                    if (ub7 >= 70 && ub7 <= 90 && ub1 >= 70 && ub1 <= 90) {
-                        ub7Ub1Count++;
+                    // Count valid SKUs that pass all filters (only once per SKU)
+                    if (isValidSku && !processedSkusForValid.has(sku)) {
+                        processedSkusForValid.add(sku);
+                        validSkuCount++;
                     }
                 });
 
@@ -677,10 +690,15 @@
                     nraCountEl.textContent = nraCount;
                 }
 
-                // Update RA count
+                // Update RA count - RA = Total SKUs - NRA
                 const raCountEl = document.getElementById('ra-count');
                 if (raCountEl) {
-                    raCountEl.textContent = raCount;
+                    // Use backend total count (255) as base, subtract NRA count
+                    var totalCount = totalSkuCountFromBackend > 0 ? totalSkuCountFromBackend : (nraCount + raCount);
+                    var calculatedRaCount = totalCount - nraCount;
+                    // Ensure RA count is not negative
+                    calculatedRaCount = calculatedRaCount >= 0 ? calculatedRaCount : 0;
+                    raCountEl.textContent = calculatedRaCount;
                 }
 
                 // Update zero INV count
@@ -701,17 +719,20 @@
                     ub7Ub1CountEl.textContent = ub7Ub1Count;
                 }
 
-                // Update total SKU count
+                // Update total SKU count - Always use backend count (255) if available
                 const totalSkuCountEl = document.getElementById('total-sku-count');
                 if (totalSkuCountEl) {
-                    totalSkuCountEl.textContent = totalSkuCountFromBackend || validSkuCount;
+                    // Use backend count (255) as primary source
+                    totalSkuCountEl.textContent = totalSkuCountFromBackend > 0 ? totalSkuCountFromBackend : validSkuCount;
                 }
 
                 // Update dropdown option texts with counts
-                // Use totalSkuCountFromBackend to match backend count exactly
+                // Use totalSkuCountFromBackend (255) to match backend count exactly
                 const utilizationSelect = document.getElementById('utilization-type-select');
                 if (utilizationSelect) {
-                    utilizationSelect.options[0].text = `All (${totalSkuCountFromBackend || validSkuCount})`;
+                    // Always use backend count (255) for "All" option
+                    var totalCount = totalSkuCountFromBackend > 0 ? totalSkuCountFromBackend : validSkuCount;
+                    utilizationSelect.options[0].text = `All (${totalCount})`;
                     utilizationSelect.options[1].text = `Over Utilized (${overCount})`;
                     utilizationSelect.options[2].text = `Under Utilized (${underCount})`;
                     utilizationSelect.options[3].text = `Correctly Utilized (${correctlyCount})`;
@@ -1016,7 +1037,37 @@
                 paginationMode: "local",
                 paginationSize: 25,
                 paginationSizeSelector: [10, 25, 50, 100, 200, 500],
-                paginationCounter: "rows",
+                paginationCounter: function(pageSize, currentRow, currentPage, totalRows, totalPages) {
+                    // Always use backend total count (255) when available, otherwise count unique SKUs from filtered data
+                    // This function will be called within table scope, so we can access global variables
+                    var uniqueSkuCount;
+                    
+                    // Check if filters are applied
+                    var searchVal = $("#global-search").val() || "";
+                    var statusVal = $("#status-filter").val();
+                    var invFilterVal = $("#inv-filter").val();
+                    var nraFilterVal = $("#nra-filter").val();
+                    var hasFilters = searchVal || statusVal || (invFilterVal && invFilterVal !== '' && invFilterVal !== 'ALL') || nraFilterVal || showEbaySkuOnly || (currentUtilizationType !== 'all');
+                    
+                    if (!hasFilters && totalSkuCountFromBackend > 0) {
+                        // No filters applied - use backend count (255)
+                        uniqueSkuCount = totalSkuCountFromBackend;
+                    } else {
+                        // Filters applied - count unique SKUs from filtered data
+                        var filteredData = table.getData('active');
+                        var uniqueSkus = new Set();
+                        filteredData.forEach(function(row) {
+                            var sku = row.sku || '';
+                            if (sku && sku.toUpperCase().includes('PARENT')) {
+                                uniqueSkus.add(sku);
+                            }
+                        });
+                        uniqueSkuCount = uniqueSkus.size;
+                    }
+                    
+                    var endRow = Math.min(currentRow + pageSize - 1, totalRows);
+                    return "Showing " + currentRow + " to " + endRow + " of " + uniqueSkuCount;
+                },
                 rowFormatter: function(row) {
                     const data = row.getData();
                     const sku = data["sku"] || '';
