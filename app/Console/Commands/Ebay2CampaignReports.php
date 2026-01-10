@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Ebay2GeneralReport;
+use App\Models\Ebay2PriorityReport;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
@@ -47,33 +48,44 @@ class Ebay2CampaignReports extends Command
                 return 1;
             }
 
+        // Step 1: Fetch all campaigns once (campaigns don't change across date ranges)
+        $this->info("Fetching all campaigns from eBay2...");
+        $campaignsMap = $this->getAllCampaigns($accessToken);
+        if (empty($campaignsMap)) {
+            $this->error("No campaigns fetched from eBay2!");
+            return 1;
+        }
+        $this->info("✅ Successfully fetched " . count($campaignsMap) . " campaigns. Will use for all date ranges.");
+        
         // Fetch only yesterday's data for charts
         $yesterday = Carbon::yesterday()->toDateString();
         
         // Check if yesterday's data already exists
-        $yesterdayExists = Ebay2GeneralReport::where('report_range', $yesterday)
+        $yesterdayExists = Ebay2PriorityReport::where('report_range', $yesterday)
             ->exists();
             
         if (!$yesterdayExists) {
             $this->info("📊 Yesterday's data not found. Fetching for charts: {$yesterday}");
-            $this->fetchAndStoreListingReport($accessToken, Carbon::yesterday()->startOfDay(), Carbon::yesterday()->endOfDay(), $yesterday);
+            $this->fetchAndStoreCampaignReport($accessToken, $campaignsMap, Carbon::yesterday()->startOfDay(), Carbon::yesterday()->endOfDay(), $yesterday);
             $this->info("✅ Yesterday's data fetched: {$yesterday}");
         } else {
             $this->info("ℹ️  Yesterday's data already exists: {$yesterday}");
         }
 
         // Always fetch summary ranges for backward compatibility with table data
-        $ranges = [
+        $summaryRanges = [
             'L60' => [Carbon::today()->subDays(60), Carbon::today()->subDays(31)->endOfDay()],
-            'L30' => [Carbon::today()->subDays(30), Carbon::today()->subDays(1)->endOfDay()],
-            'L15' => [Carbon::today()->subDays(15), Carbon::today()->subDays(1)->endOfDay()],
-            'L7' => [Carbon::today()->subDays(7), Carbon::today()->subDays(1)->endOfDay()],
-            'L1' => [Carbon::yesterday()->startOfDay(), Carbon::yesterday()->endOfDay()],
+            'L30' => [Carbon::today()->subDays(29), Carbon::today()->subDay()->endOfDay()],
+            'L15' => [Carbon::today()->subDays(14), Carbon::today()->subDay()->endOfDay()],
+            'L7' => [Carbon::today()->subDays(6), Carbon::today()->subDay()->endOfDay()],
+            'L1' => [Carbon::yesterday()->startOfDay(), Carbon::yesterday()->endOfDay()]
         ];
-        
-        foreach ($ranges as $rangeKey => [$from, $to]) {
-            $this->fetchAndStoreListingReport($accessToken, $from, $to, $rangeKey);
+
+        // Loop through summary ranges
+        foreach ($summaryRanges as $rangeKey => [$from, $to]) {
+            $this->fetchAndStoreCampaignReport($accessToken, $campaignsMap, $from, $to, $rangeKey);
         }
+
             $this->info("✅ All campaign data processed.");
             return 0;
         } catch (\Exception $e) {
@@ -85,13 +97,141 @@ class Ebay2CampaignReports extends Command
         }
     }
 
+    private function fetchAndStoreCampaignReport($accessToken, $campaignsMap, $from, $to, $rangeKey)
+    {
+        $this->info("Processing ALL_CAMPAIGN_PERFORMANCE_SUMMARY_REPORT: {$rangeKey} ({$from->toDateString()} → {$to->toDateString()})");
+
+            // Use UTC timezone for eBay API compatibility
+            $dateFrom = $from->copy()->startOfDay()->utc()->format('Y-m-d\TH:i:s.000\Z');
+            $dateTo = $to->copy()->endOfDay()->utc()->format('Y-m-d\TH:i:s.000\Z');
+
+            $body = ["reportType" => "ALL_CAMPAIGN_PERFORMANCE_SUMMARY_REPORT",
+                "dateFrom" => $dateFrom,
+                "dateTo" => $dateTo,
+                "marketplaceId" => "EBAY_US",
+                "reportFormat" => "TSV_GZIP",
+                "fundingModels" => ["COST_PER_CLICK"],
+                "dimensions" => [
+                    ["dimensionKey" => "campaign_id"],
+                ],
+                "metricKeys" => [
+                    "cpc_impressions",
+                    "cpc_clicks",
+                    "cpc_attributed_sales",
+                    "cpc_ctr",
+                    "cpc_ad_fees_listingsite_currency",
+                    "cpc_sale_amount_listingsite_currency",
+                    "cpc_avg_cost_per_sale",
+                    "cpc_return_on_ad_spend",
+                    "cpc_conversion_rate",
+                    "cpc_sale_amount_payout_currency",
+                    "cost_per_click",
+                    "cpc_ad_fees_payout_currency",
+                ]
+            ];
+
+            $taskId = $this->submitReportTask($accessToken, $body);
+        if (!$taskId) return;
+
+        $reportId = $this->pollReportStatus($accessToken, $taskId);
+        if (!$reportId) return;
+
+        $items = $this->downloadParseAndStoreReport($accessToken, $reportId, $rangeKey);
+        
+        if (!is_array($items)) {
+            $this->warn("Report data is not an array for range {$rangeKey}. Skipping.");
+            $items = [];
+        }
+        
+        // Create a map of report items by campaign_id for quick lookup
+        $reportDataMap = [];
+        foreach($items as $item){
+            if (!$item || empty($item['campaign_id'])) continue;
+            $reportDataMap[$item['campaign_id']] = $item;
+        }
+        
+        $this->info("Report contains " . count($reportDataMap) . " campaigns with performance data");
+        $this->info("Storing all " . count($campaignsMap) . " campaigns for range: {$rangeKey}");
+        
+        $storedCount = 0;
+        $skippedCount = 0;
+        
+        // Store ALL campaigns from campaignsMap, not just those in report
+        // Process in chunks to avoid too many connections
+        $campaignsArray = array_chunk($campaignsMap, 100, true);
+        
+        foreach($campaignsArray as $chunkIndex => $campaignsChunk) {
+            foreach($campaignsChunk as $campaignId => $campaignData){
+            $campaignName = $campaignData['name'];
+            $campaignStatus = $campaignData['status'];
+            $campaignBudget = $campaignData['daily_budget'];
+
+            if (!$campaignName) {
+                $this->warn("Missing campaignName for ID: {$campaignId}");
+                $skippedCount++;
+                continue;
+            }
+            
+            // Get report data if available, otherwise use zero values
+            $reportItem = $reportDataMap[$campaignId] ?? null;
+        
+            // Safely extract report data - if reportItem exists, use its values, otherwise use defaults
+            $hasReportData = !empty($reportItem);
+        
+            Ebay2PriorityReport::updateOrCreate(
+                ['campaign_id' => $campaignId, 'report_range' => $rangeKey],
+                [
+                    'campaign_name' => $campaignName,
+                    'campaignBudgetAmount' => $campaignBudget,
+                    'campaignStatus' => $campaignStatus,
+                    'start_date' => $from->toDateString(),
+                    'end_date' => $to->toDateString(),
+                    'cpc_impressions' => $hasReportData ? ($reportItem['cpc_impressions'] ?? 0) : 0,
+                    'cpc_clicks' => $hasReportData ? ($reportItem['cpc_clicks'] ?? 0) : 0,
+                    'cpc_attributed_sales' => $hasReportData ? ($reportItem['cpc_attributed_sales'] ?? 0) : 0,
+                    'cpc_ctr' => $hasReportData && is_numeric($reportItem['cpc_ctr'] ?? null) ? (float)$reportItem['cpc_ctr'] : 0,
+                    'cpc_ad_fees_listingsite_currency' => $hasReportData ? ($reportItem['cpc_ad_fees_listingsite_currency'] ?? null) : null,
+                    'cpc_sale_amount_listingsite_currency' => $hasReportData ? ($reportItem['cpc_sale_amount_listingsite_currency'] ?? null) : null,
+                    'cpc_avg_cost_per_sale' => $hasReportData ? ($reportItem['cpc_avg_cost_per_sale'] ?? null) : null,
+                    'cpc_return_on_ad_spend' => $hasReportData && is_numeric($reportItem['cpc_return_on_ad_spend'] ?? null) 
+                        ? (float)$reportItem['cpc_return_on_ad_spend'] 
+                        : 0,
+                    'cpc_conversion_rate' => $hasReportData && is_numeric($reportItem['cpc_conversion_rate'] ?? null) 
+                        ? (float)$reportItem['cpc_conversion_rate'] 
+                        : 0,
+                    'cpc_sale_amount_payout_currency' => $hasReportData ? ($reportItem['cpc_sale_amount_payout_currency'] ?? null) : null,
+                    'cost_per_click' => $hasReportData ? ($reportItem['cost_per_click'] ?? null) : null,
+                    'cpc_ad_fees_payout_currency' => $hasReportData ? ($reportItem['cpc_ad_fees_payout_currency'] ?? null) : null,
+                    'channels' => $hasReportData ? ($reportItem['channels'] ?? null) : null,
+                ]
+            );
+                $storedCount++;
+            }
+            
+            // Disconnect after each chunk
+            DB::connection()->disconnect();
+        }
+        
+        $this->info("✅ ALL_CAMPAIGN_PERFORMANCE_SUMMARY_REPORT Data stored for range: {$rangeKey}");
+        $this->info("   - Total campaigns stored: {$storedCount}");
+        $this->info("   - Campaigns with performance data: " . count($reportDataMap));
+        $this->info("   - Campaigns skipped (no name): {$skippedCount}");
+        
+        // Also fetch CAMPAIGN_PERFORMANCE_REPORT for listing-level data
+        $this->fetchAndStoreListingReport($accessToken, $from, $to, $rangeKey);
+    }
+
     private function fetchAndStoreListingReport($accessToken, $from, $to, $rangeKey)
     {
         $this->info("Processing CAMPAIGN_PERFORMANCE_REPORT: {$rangeKey} ({$from->toDateString()} → {$to->toDateString()})");
 
+        // Use UTC timezone for eBay API compatibility
+        $dateFrom = $from->copy()->startOfDay()->utc()->format('Y-m-d\TH:i:s.000\Z');
+        $dateTo = $to->copy()->endOfDay()->utc()->format('Y-m-d\TH:i:s.000\Z');
+
         $body = ["reportType" => "CAMPAIGN_PERFORMANCE_REPORT",
-            "dateFrom" => $from,
-            "dateTo" => $to,
+            "dateFrom" => $dateFrom,
+            "dateTo" => $dateTo,
             "marketplaceId" => "EBAY_US",
             "reportFormat" => "TSV_GZIP",
             "fundingModels" => ["COST_PER_SALE"],
@@ -129,7 +269,7 @@ class Ebay2CampaignReports extends Command
         foreach($chunks as $chunkIndex => $chunk) {
             foreach($chunk as $item){
                 if (!$item || empty($item['listing_id'])) continue;
-                
+            
                 Ebay2GeneralReport::updateOrCreate(
                 ['listing_id' => $item['listing_id'], 'report_range' => $rangeKey],
                 [
@@ -362,7 +502,18 @@ class Ebay2CampaignReports extends Command
         // Extract TSV
         $tsvPath = str_replace('.gz', '', $gzPath);
         $gz = gzopen($gzPath, 'rb');
+        if (!$gz) {
+            $this->error("Unable to open gzip file.");
+            return [];
+        }
+        
         $tsv = fopen($tsvPath, 'wb');
+        if (!$tsv) {
+            $this->error("Unable to create TSV file.");
+            gzclose($gz);
+            return [];
+        }
+        
         while (!gzeof($gz)) fwrite($tsv, gzread($gz, 4096));
         fclose($tsv); 
         gzclose($gz);
@@ -383,49 +534,179 @@ class Ebay2CampaignReports extends Command
             @unlink($tsvPath);
             return [];
         }
+        
         $allData = [];
+        $rowCount = 0;
         
         while (($line = fgetcsv($handle, 0, "\t")) !== false) {
             if (count($line) !== count($headers)) continue;
             $item = array_combine($headers, $line);
             if ($item) {
                 $allData[] = $item;
+                $rowCount++;
             }
         }
         
         fclose($handle);
+        
+        $this->info("Parsed {$rowCount} rows from report {$reportId} for range {$rangeKey}");
 
         @unlink($gzPath); 
         @unlink($tsvPath);
-        
+
         return $allData;
     }
 
     private function getAccessToken()
     {
-        $clientId = env('EBAY2_APP_ID');
-        $clientSecret = env('EBAY2_CERT_ID');
+        $clientId = env('EBAY_2_APP_ID');
+        $clientSecret = env('EBAY_2_CERT_ID');
+
+        $scope = 'https://api.ebay.com/oauth/api_scope/sell.marketing.readonly https://api.ebay.com/oauth/api_scope/sell.marketing';
 
         try {
-            // Note: Don't send scope parameter when refreshing token
-            // Scope is only used during initial authorization
             $response = Http::asForm()
                 ->withBasicAuth($clientId, $clientSecret)
                 ->post('https://api.ebay.com/identity/v1/oauth2/token', [
                     'grant_type' => 'refresh_token',
-                    'refresh_token' => env('EBAY2_REFRESH_TOKEN'),
+                    'refresh_token' => env('EBAY_2_REFRESH_TOKEN'),
+                    'scope' => $scope,
                 ]);
 
             if ($response->successful()) {
-                $this->info('✅ eBay2 token generated successfully');
+                $this->info('eBay2 token generated successfully');
                 return $response->json()['access_token'];
             }
 
-            $this->error('❌ eBay2 token refresh error: ' . json_encode($response->json()));
+            $errorData = $response->json();
+            $this->error('eBay2 token refresh error: ' . json_encode($errorData));
+            $this->error('eBay API Error: ' . ($errorData['error_description'] ?? $errorData['error'] ?? $response->body()));
         } catch (\Exception $e) {
-            $this->error('❌ eBay2 token refresh exception: ' . $e->getMessage());
+            $this->error('eBay2 token refresh exception: ' . $e->getMessage());
         }
 
         return null;
+    }
+
+    private function getAllCampaigns($token)
+    {
+        $campaigns = [];
+        $limit = 200;
+        $offset = 0;
+
+        while (true) {
+            $maxRetries = 3;
+            $retryAttempt = 0;
+            $res = null;
+            
+            while ($retryAttempt < $maxRetries) {
+                $retryAttempt++;
+                
+                try {
+                    $res = Http::withToken($token)
+                        ->timeout(120)
+                        ->connectTimeout(30)
+                        ->retry(2, 5000)
+                        ->get('https://api.ebay.com/sell/marketing/v1/ad_campaign', [
+                            'limit' => $limit,
+                            'offset' => $offset,
+                        ]);
+                    
+                    if ($res->ok() || $res->status() === 401) {
+                        break;
+                    }
+                    
+                    if ($retryAttempt < $maxRetries) {
+                        $this->warn("Failed to fetch campaigns (attempt {$retryAttempt}/{$maxRetries}), retrying in 5 seconds...");
+                        sleep(5);
+                        continue;
+                    }
+                } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                    if ($retryAttempt < $maxRetries) {
+                        $this->warn("Connection timeout (attempt {$retryAttempt}/{$maxRetries}), retrying in 10 seconds...");
+                        sleep(10);
+                        continue;
+                    }
+                    $this->error("Connection timeout after {$maxRetries} attempts: " . $e->getMessage());
+                    break 2; // Break out of both loops
+                } catch (\Exception $e) {
+                    if ($retryAttempt < $maxRetries) {
+                        $this->warn("Request failed (attempt {$retryAttempt}/{$maxRetries}): " . $e->getMessage() . ", retrying...");
+                        sleep(5);
+                        continue;
+                    }
+                    $this->error("Request failed after {$maxRetries} attempts: " . $e->getMessage());
+                    break 2; // Break out of both loops
+                }
+            }
+            
+            if (!$res) {
+                $this->error("Failed to fetch campaigns after retries at offset {$offset}");
+                break;
+            }
+
+            if (!$res->ok()) {
+                $statusCode = $res->status();
+                $errorBody = $res->body();
+                
+                // If token expired, try to refresh
+                if ($statusCode === 401) {
+                    $this->warn("Access token expired while fetching campaigns, refreshing...");
+                    $token = $this->getAccessToken();
+                    if (!$token) {
+                        $this->error("Failed to refresh access token.");
+                        break;
+                    }
+                    // Retry the same request with new token
+                    continue;
+                }
+                
+                $this->error("Failed to fetch campaigns at offset {$offset}. Status: {$statusCode}, Response: {$errorBody}");
+                break;
+            }
+
+            $data = $res->json();
+            $pageCampaigns = $data['campaigns'] ?? [];
+
+            if (empty($pageCampaigns)) {
+                $this->info("No campaigns found at offset {$offset}. Stopping pagination.");
+                break;
+            }
+
+            foreach ($pageCampaigns as $c) {
+                // Safely access budget structure
+                $budgetValue = null;
+                $budgetCurrency = null;
+                
+                if (isset($c['budget']['daily']['amount']['value'])) {
+                    $budgetValue = $c['budget']['daily']['amount']['value'];
+                }
+                if (isset($c['budget']['daily']['amount']['currency'])) {
+                    $budgetCurrency = $c['budget']['daily']['amount']['currency'];
+                }
+                
+                $campaigns[$c['campaignId']] = [
+                    'name' => $c['campaignName'] ?? null,
+                    'status' => $c['campaignStatus'] ?? null,
+                    'daily_budget' => $budgetValue,
+                    'currency' => $budgetCurrency,
+                ];
+            }
+
+            $count = count($pageCampaigns);
+            $this->info("Fetched {$count} campaigns at offset {$offset}. Total so far: " . count($campaigns));
+            
+            if ($count < $limit) {
+                $this->info("Last page reached. Total campaigns fetched: " . count($campaigns));
+                break;
+            }
+
+            $offset += $limit;
+        }
+
+        $totalCampaigns = count($campaigns);
+        $this->info("✅ Total campaigns fetched: {$totalCampaigns}");
+
+        return $campaigns;
     }
 }
