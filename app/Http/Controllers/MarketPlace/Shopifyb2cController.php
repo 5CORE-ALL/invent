@@ -9,8 +9,12 @@ use App\Models\MarketplacePercentage;
 use App\Models\Shopifyb2cDataView;
 use App\Models\ShopifySku;
 use App\Models\ProductMaster;
+use App\Models\ShopifyB2CDailyData;
+use App\Models\ShopifyB2CListingStatus;
+use App\Models\AmazonDatasheet;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -371,31 +375,83 @@ class Shopifyb2cController extends Controller
 
     public function saveSpriceToDatabase(Request $request)
     {
-        // LOG::info('Saving Shopify pricing data', $request->all());
         $sku = $request->input('sku');
-        $spriceData = $request->only(['sprice', 'spft_percent', 'sroi_percent']);
+        $sprice = $request->input('sprice');
 
-        if (!$sku || !$spriceData['sprice']) {
+        if (!$sku || !$sprice) {
             return response()->json(['error' => 'SKU and sprice are required.'], 400);
         }
 
+        // Get product master data for LP and Ship
+        $productMaster = ProductMaster::where('sku', $sku)->first();
+        if (!$productMaster) {
+            return response()->json(['error' => 'Product not found.'], 404);
+        }
+
+        $values = is_array($productMaster->Values)
+            ? $productMaster->Values
+            : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
+        
+        $lp = $values['lp'] ?? ($productMaster->lp ?? 0);
+        $ship = $values['ship'] ?? ($productMaster->ship ?? 0);
+
+        // Calculate metrics with 95% margin
+        $percentage = 0.95;
+        $grossProfit = ($sprice * $percentage) - $lp - $ship;
+        
+        $sgpft = $sprice > 0 ? ($grossProfit / $sprice) * 100 : 0;
+        $sroi = $lp > 0 ? ($grossProfit / $lp) * 100 : 0;
+
+        // Get ADS% from shopify_b2c_daily_data
+        $shopifyB2COrders = \App\Models\ShopifyB2CDailyData::where('sku', $sku)
+            ->where('period', 'l30')
+            ->where('financial_status', '!=', 'refunded')
+            ->selectRaw('SUM(quantity) as total_quantity, SUM(price * quantity) as total_sales')
+            ->first();
+
+        $salesL30 = $shopifyB2COrders->total_sales ?? 0;
+
+        // Get Google Ads spend
+        $yesterday = \Carbon\Carbon::yesterday();
+        $startDate = $yesterday->copy()->subDays(29);
+        
+        $googleSpent = \DB::table('google_ads_campaigns')
+            ->whereDate('date', '>=', $startDate->format('Y-m-d'))
+            ->whereDate('date', '<=', $yesterday->format('Y-m-d'))
+            ->where('advertising_channel_type', 'SHOPPING')
+            ->whereRaw('UPPER(TRIM(campaign_name)) = ?', [strtoupper(trim($sku))])
+            ->sum('metrics_cost_micros') / 1000000;
+
+        $ads = $salesL30 > 0 ? ($googleSpent / $salesL30) * 100 : 0;
+
+        // Calculate net values
+        $snpft = $sgpft - $ads;
+        $snroi = $sroi - $ads;
+
+        // Save to database
         $shopifyDataView = Shopifyb2cDataView::firstOrNew(['sku' => $sku]);
-        // Decode value column safely
         $existing = is_array($shopifyDataView->value)
             ? $shopifyDataView->value
             : (json_decode($shopifyDataView->value, true) ?: []);
 
-        // Merge new sprice data
         $merged = array_merge($existing, [
-            'SPRICE' => $spriceData['sprice'],
-            'SPFT' => $spriceData['spft_percent'],
-            'SROI' => $spriceData['sroi_percent'],
+            'SPRICE' => $sprice,
+            'SGPFT' => $sgpft,
+            'SNPFT' => $snpft,
+            'SROI' => $sroi,
+            'SNROI' => $snroi,
         ]);
 
         $shopifyDataView->value = $merged;
         $shopifyDataView->save();
 
-        return response()->json(['message' => 'Data saved successfully.']);
+        return response()->json([
+            'message' => 'Data saved successfully.',
+            'sgpft_percent' => $sgpft,
+            'snpft_percent' => $snpft,
+            'sroi_percent' => $sroi,
+            'snroi_percent' => $snroi,
+        ]);
     }
 
     public function saveLowProfit(Request $request)
@@ -599,5 +655,249 @@ class Shopifyb2cController extends Controller
         $writer = new Xlsx($spreadsheet);
         $writer->save('php://output');
         exit;
+    }
+
+    // ========== SHOPIFY B2C TABULATOR VIEW ==========
+    
+    public function shopifyB2cTabulatorView()
+    {
+        return view('market-places.shopify_b2c_tabulator_view');
+    }
+
+    public function shopifyB2cDataJson()
+    {
+        $data = $this->getViewShopifyB2cTabularData();
+        return response()->json($data);
+    }
+
+    public function getViewShopifyB2cTabularData()
+    {
+        // Hardcoded 95% margin for Shopify B2C
+        $percentage = 95;
+        $percentageValue = 0.95;
+
+        // Fetch all product master records (excluding parent rows)
+        $productMasterRows = ProductMaster::all()
+            ->filter(function ($item) {
+                return stripos($item->sku, 'PARENT') === false;
+            })
+            ->keyBy("sku");
+
+        // Get all unique SKUs from product master
+        $skus = $productMasterRows->pluck("sku")->toArray();
+
+        // Fetch shopify data for these SKUs
+        $shopifyData = ShopifySku::whereIn("sku", $skus)->get()->keyBy("sku");
+
+        // Fetch L30 orders from shopify_b2c_daily_data (period = 'l30')
+        $shopifyB2COrders = ShopifyB2CDailyData::whereIn('sku', $skus)
+            ->where('period', 'l30')
+            ->where('financial_status', '!=', 'refunded')
+            ->selectRaw('sku, SUM(quantity) as total_quantity')
+            ->groupBy('sku')
+            ->get()
+            ->keyBy('sku');
+
+        // Fetch Amazon prices
+        $amazonData = AmazonDatasheet::whereIn("sku", $skus)->get()->keyBy("sku");
+
+        // Fetch listing status data
+        $listingStatusData = ShopifyB2CListingStatus::whereIn('sku', $skus)
+            ->orderBy('updated_at', 'desc')
+            ->get()
+            ->keyBy('sku');
+
+        // Fetch Google Ads spend per SKU (L30 - last 30 days)
+        $yesterday = \Carbon\Carbon::yesterday();
+        $startDate = $yesterday->copy()->subDays(29);
+        $startDateStr = $startDate->format('Y-m-d');
+        $yesterdayStr = $yesterday->format('Y-m-d');
+
+        $googleSpentData = DB::table('google_ads_campaigns')
+            ->whereDate('date', '>=', $startDateStr)
+            ->whereDate('date', '<=', $yesterdayStr)
+            ->where('advertising_channel_type', 'SHOPPING')
+            ->whereNotNull('campaign_name')
+            ->where('campaign_name', '!=', '')
+            ->selectRaw('UPPER(TRIM(campaign_name)) as sku_key, SUM(metrics_cost_micros) / 1000000 as total_spend')
+            ->groupByRaw('UPPER(TRIM(campaign_name))')
+            ->pluck('total_spend', 'sku_key')
+            ->toArray();
+
+        // Build Google spend lookup by SKU
+        $googleSpentBySku = [];
+        foreach ($skus as $sku) {
+            $skuUpper = strtoupper(trim($sku));
+            $googleSpentBySku[$sku] = $googleSpentData[$skuUpper] ?? 0;
+        }
+
+        $processedItems = [];
+
+        foreach ($productMasterRows as $sku => $productMaster) {
+            $processedItem = [];
+            $processedItem["(Child) sku"] = $sku;
+            $processedItem["Parent"] = $productMaster->parent ?? null;
+
+            // Get Values field
+            $values = is_array($productMaster->Values)
+                ? $productMaster->Values
+                : (is_string($productMaster->Values) ? json_decode($productMaster->Values, true) : []);
+
+            $lp = $values["lp"] ?? ($productMaster->lp ?? 0);
+            $ship = $values["ship"] ?? ($productMaster->ship ?? 0);
+
+            $processedItem["LP_productmaster"] = $lp;
+            $processedItem["Ship_productmaster"] = $ship;
+
+            // Add shopify SKU data if available
+            $shopifyItem = $shopifyData[$sku] ?? null;
+            if ($shopifyItem) {
+                $processedItem["INV"] = $shopifyItem->inv ?? 0;
+                $processedItem["L30"] = $shopifyItem->quantity ?? 0; // OV L30 - Overall sales from shopify_skus
+                $processedItem["Price"] = $shopifyItem->price ?? 0;
+                $processedItem["Views"] = $shopifyItem->views ?? 0;
+                $processedItem["image_path"] = $shopifyItem->image_src ?? ($values["image_path"] ?? ($productMaster->image_path ?? null));
+            } else {
+                $processedItem["INV"] = 0;
+                $processedItem["L30"] = 0;
+                $processedItem["Price"] = 0;
+                $processedItem["Views"] = 0;
+                $processedItem["image_path"] = $values["image_path"] ?? ($productMaster->image_path ?? null);
+            }
+
+            // Get B2C L30 orders from shopify_b2c_daily_data (B2C sales only)
+            $b2cOrder = $shopifyB2COrders[$sku] ?? null;
+            $processedItem["L30"] = $processedItem["L30"]; // Keep OV L30 from shopify_skus
+            $processedItem["B2B L30"] = $b2cOrder ? $b2cOrder->total_quantity : 0;
+
+            // Check if SKU exists in Shopify (Missing column)
+            if ($shopifyItem) {
+                $processedItem["Missing"] = ''; // SKU exists
+            } else {
+                $processedItem["Missing"] = 'M'; // SKU missing
+            }
+
+            // Amazon Price
+            if (isset($amazonData[$sku])) {
+                $processedItem["A Price"] = $amazonData[$sku]->price ?? 0;
+            } else {
+                $processedItem["A Price"] = 0;
+            }
+
+            // Get NR/REQ from shopify_b2c_listing_statuses
+            $processedItem["nr_req"] = 'REQ'; // Default value
+            
+            if (isset($listingStatusData[$sku])) {
+                $listingStatus = $listingStatusData[$sku];
+                $statusValue = is_array($listingStatus->value) 
+                    ? $listingStatus->value 
+                    : (json_decode($listingStatus->value, true) ?? []);
+                
+                $rlNrl = $statusValue['rl_nrl'] ?? null;
+                
+                if (!$rlNrl && isset($statusValue['nr_req'])) {
+                    $rlNrl = ($statusValue['nr_req'] === 'REQ') ? 'RL' : (($statusValue['nr_req'] === 'NR') ? 'NRL' : 'RL');
+                }
+                
+                if ($rlNrl === 'RL') {
+                    $processedItem['nr_req'] = 'REQ';
+                } elseif ($rlNrl === 'NRL') {
+                    $processedItem['nr_req'] = 'NR';
+                }
+            }
+
+            // Calculate profit metrics with 95% margin
+            // All profit calculations use B2B L30 (actually B2C L30 from shopify_b2c_daily_data)
+            $price = $processedItem["Price"];
+            $b2cL30 = $processedItem["B2B L30"]; // Rename for clarity: it's from shopify_b2c_daily_data
+            $ovL30 = $processedItem["L30"];
+            
+            if ($price > 0 && $b2cL30 > 0) {
+                $grossProfit = ($price * $percentageValue) - $lp - $ship;
+                $processedItem["GPFT%"] = ($grossProfit / $price) * 100;
+                $processedItem["ROI%"] = $lp > 0 ? ($grossProfit / $lp) * 100 : 0;
+                $processedItem["Profit"] = $grossProfit * $b2cL30;
+                $processedItem["Sales L30"] = $price * $b2cL30;
+            } else {
+                $processedItem["GPFT%"] = 0;
+                $processedItem["ROI%"] = 0;
+                $processedItem["Profit"] = 0;
+                $processedItem["Sales L30"] = 0;
+            }
+
+            // Calculate DIL% = (OV L30 / INV) * 100 (overall inventory turnover)
+            $inv = $processedItem["INV"];
+            $processedItem["DIL%"] = $inv > 0 ? ($ovL30 / $inv) * 100 : 0;
+
+            // Calculate CVR% = (OV L30 / Views) * 100 (overall conversion rate)
+            $views = $processedItem["Views"];
+            $processedItem["CVR%"] = $views > 0 ? ($ovL30 / $views) * 100 : 0;
+
+            // Add Google Ads Spend for this SKU
+            $processedItem["googleSpent"] = $googleSpentBySku[$sku] ?? 0;
+
+            // Calculate ADS% = (googleSpent / Sales L30) * 100
+            $salesL30 = $processedItem["Sales L30"];
+            $processedItem["ADS%"] = $salesL30 > 0 ? (($googleSpentBySku[$sku] ?? 0) / $salesL30) * 100 : 0;
+
+            $processedItems[] = $processedItem;
+        }
+
+        return $processedItems;
+    }
+
+    public function updateShopifyB2cListedLive(Request $request)
+    {
+        $sku = $request->input('sku');
+        $nrReq = $request->input('nr_req');
+
+        if (!$sku) {
+            return response()->json(['error' => 'SKU is required'], 400);
+        }
+
+        // Convert REQ/NR to RL/NRL for storage
+        $rlNrlValue = ($nrReq === 'REQ') ? 'RL' : 'NRL';
+
+        // Get existing listing status
+        $listingStatus = ShopifyB2CListingStatus::where('sku', $sku)->first();
+
+        if ($listingStatus) {
+            $currentValue = is_array($listingStatus->value) 
+                ? $listingStatus->value 
+                : (json_decode($listingStatus->value, true) ?? []);
+            
+            $currentValue['rl_nrl'] = $rlNrlValue;
+            
+            $listingStatus->value = $currentValue;
+            $listingStatus->save();
+        } else {
+            ShopifyB2CListingStatus::create([
+                'sku' => $sku,
+                'value' => ['rl_nrl' => $rlNrlValue]
+            ]);
+        }
+
+        return response()->json(['success' => true, 'message' => 'Status updated successfully']);
+    }
+
+    public function getColumnVisibility(Request $request)
+    {
+        $userId = auth()->id();
+        $cacheKey = "shopify_b2c_tabulator_column_visibility_{$userId}";
+        
+        $visibility = Cache::get($cacheKey, []);
+        
+        return response()->json(['visibility' => $visibility]);
+    }
+
+    public function setColumnVisibility(Request $request)
+    {
+        $userId = auth()->id();
+        $visibility = $request->input('visibility', []);
+        $cacheKey = "shopify_b2c_tabulator_column_visibility_{$userId}";
+        
+        Cache::put($cacheKey, $visibility, now()->addDays(30));
+        
+        return response()->json(['success' => true]);
     }
 }
