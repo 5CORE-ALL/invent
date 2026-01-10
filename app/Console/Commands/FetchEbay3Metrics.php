@@ -92,6 +92,7 @@ class FetchEbay3Metrics extends Command
                 ['item_id' => $itemId, 'sku' => $sku],
                 [
                     'ebay_price' => $row['price'] ?? null,
+                    'ebay_stock' => $row['quantity'] ?? null,
                     'report_range' => now()->toDateString(),
                 ]
             );
@@ -469,17 +470,20 @@ class FetchEbay3Metrics extends Command
             // capture primary SKU (if present) and variations
             $primarySku = trim((string) ($item->SKU ?? ''));
             $price = isset($item->Price) ? (float) $item->Price : null;
+            $quantity = isset($item->Quantity) ? (int) $item->Quantity : null;
 
-            // Process variations first to collect SKUs with prices
+            // Process variations first to collect SKUs with prices and quantities
             $variationData = [];
             foreach ($item->Variations->Variation ?? [] as $v) {
                 $varSku = (string) $v->SKU;
                 $varPrice = isset($v->Price) ? (float) $v->Price : $price;
+                $varQuantity = isset($v->Quantity) ? (int) $v->Quantity : $quantity;
                 
                 $variationData[$varSku] = [
                     'item_id' => $itemId,
                     'sku' => $varSku,
                     'price' => $varPrice,
+                    'quantity' => $varQuantity,
                 ];
             }
 
@@ -492,6 +496,7 @@ class FetchEbay3Metrics extends Command
                         'item_id' => $itemId,
                         'sku' => $primarySku,
                         'price' => $price,
+                        'quantity' => $quantity,
                     ];
                     $seen[$key] = true;
                 }
@@ -551,6 +556,7 @@ class FetchEbay3Metrics extends Command
                 'item_id' => $itemId,
                 'sku' => $sku,
                 'price' => $d['price'] ?? null,
+                'quantity' => isset($d['availableQuantity']) ? (int) $d['availableQuantity'] : null,
             ];
         }
 
