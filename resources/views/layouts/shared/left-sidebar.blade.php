@@ -1664,6 +1664,13 @@
                 </div>
             </li>
 
+            {{-- Listing Mirror --}}
+            <li class="side-nav-item">
+                <a href="{{ route('listing-mirror.index') }}" class="side-nav-link">
+                    <i class="ri-refresh-line"></i>
+                    <span>Listing Mirror</span>
+                </a>
+            </li>
 
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#sidebarLayouts" aria-expanded="false"
