@@ -183,6 +183,7 @@ use App\Http\Controllers\Campaigns\Ebay3PinkDilAdController;
 use App\Http\Controllers\Campaigns\Ebay3PmtAdsController;
 use App\Http\Controllers\Campaigns\Ebay3RunningAdsController;
 use App\Http\Controllers\Campaigns\Ebay3UtilizedAdsController;
+use App\Http\Controllers\Campaigns\Ebay2UtilizedAdsController;
 use App\Http\Controllers\Campaigns\EbayKwAdsController;
 use App\Http\Controllers\Campaigns\TemuPmtAdsController;
 use App\Http\Controllers\Campaigns\EbayOverUtilizedBgtController;
@@ -2811,6 +2812,19 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/update-ebay3-nr-data', 'updateEbay3NrData');
         Route::post('/update-ebay3-sbid-m', 'updateEbay3SbidM');
         Route::post('/bulk-update-ebay3-sbid-m', 'bulkUpdateEbay3SbidM');
+    });
+
+    Route::controller(Ebay2UtilizedAdsController::class)->group(function () {
+        Route::get('/ebay-2/utilized', 'ebay2UtilizedView')->name('ebay2.utilized');
+        Route::get('/ebay-2/get-utilization-counts', 'getEbay2UtilizationCounts');
+        Route::get('/ebay-2/get-utilization-chart-data', 'getEbay2UtilizationChartData');
+        Route::get('/ebay-2/utilized/ads/data', 'getEbay2UtilizedAdsData');
+        Route::get('/ebay-2/over-utilized/filter', 'filterOverUtilizedAds')->name('ebay2.over.utilized.filter');
+        Route::get('/ebay-2/over-utilized/campaign-chart', 'getCampaignChartData')->name('ebay2.over.utilized.campaign-chart');
+        Route::put('/update-ebay2-keywords-bid-price', 'updateKeywordsBidDynamic');
+        Route::post('/update-ebay2-nr-data', 'updateEbay2NrData');
+        Route::post('/update-ebay2-sbid-m', 'updateEbay2SbidM');
+        Route::post('/bulk-update-ebay2-sbid-m', 'bulkUpdateEbay2SbidM');
     });
 
     Route::controller(Ebay3KeywordAdsController::class)->group(function () {

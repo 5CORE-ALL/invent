@@ -1,0 +1,1891 @@
+<?php
+
+namespace App\Http\Controllers\Campaigns;
+
+use App\Http\Controllers\Controller;
+use App\Models\Ebay2Metric;
+use App\Models\Ebay2PriorityReport;
+use App\Models\EbayTwoDataView;
+use App\Models\EbayTwoListingStatus;
+use App\Models\ProductMaster;
+use App\Models\ShopifySku;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
+
+class Ebay2UtilizedAdsController extends Controller
+{
+
+    public function getEbay2UtilizedAdsData()
+    {
+        // SKU normalization function to handle spaces and whitespace
+        $normalizeSku = function ($sku) {
+            if (empty($sku)) return '';
+            $sku = strtoupper(trim($sku));
+            $sku = preg_replace('/\s+/u', ' ', $sku);         // collapse multiple spaces to single space
+            $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);  // remove hidden whitespace characters
+            return trim($sku);
+        };
+        
+        // Get ALL SKUs (not just parent) - same as /ebay/utilized
+        $productMasters = ProductMaster::whereNull('deleted_at')
+            ->orderBy('parent', 'asc')
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
+            ->orderBy('sku', 'asc')
+            ->get();
+
+        $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+        
+        // Fetch ALL SKUs from Ebay2Metric table (excluding parent) to ensure all eBay SKUs are included
+        $allEbaySkus = Ebay2Metric::select('sku')
+            ->distinct()
+            ->whereRaw("UPPER(sku) NOT LIKE 'PARENT %'")
+            ->pluck('sku')
+            ->filter()
+            ->map($normalizeSku)
+            ->unique()
+            ->values()
+            ->all();
+        
+        // Merge ProductMaster SKUs with Ebay2Metric SKUs to ensure all eBay SKUs are included
+        $allSkus = array_unique(array_merge($skus, $allEbaySkus));
+        
+        // Fetch Shopify data with normalized SKU matching
+        $shopifyDataRaw = ShopifySku::whereIn('sku', $allSkus)->get();
+        $shopifyData = [];
+        foreach ($shopifyDataRaw as $shopify) {
+            // Store with normalized key for matching
+            $normalizedKey = $normalizeSku($shopify->sku);
+            $shopifyData[$normalizedKey] = $shopify;
+            // Also store with original SKU for backward compatibility
+            $shopifyData[$shopify->sku] = $shopify;
+        }
+        
+        // Fetch eBay metric data with normalized SKU matching (for all SKUs)
+        $ebayMetricDataRaw = Ebay2Metric::whereIn('sku', $allSkus)->get();
+        $ebayMetricData = [];
+        foreach ($ebayMetricDataRaw as $ebay) {
+            // Store with normalized key for matching
+            $normalizedKey = $normalizeSku($ebay->sku);
+            $ebayMetricData[$normalizedKey] = $ebay;
+            // Also store with original SKU for backward compatibility
+            $ebayMetricData[$ebay->sku] = $ebay;
+        }
+        
+        $nrValues = EbayTwoDataView::whereIn('sku', $allSkus)->pluck('value', 'sku');
+        // Get NRL values from ebay_two_listing_statuses table
+        $nrlValues = EbayTwoListingStatus::whereIn('sku', $allSkus)->pluck('value', 'sku');
+
+            $reports = Ebay2PriorityReport::whereIn('report_range', ['L7', 'L1', 'L30'])
+                ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+                ->where('campaign_name', 'NOT LIKE', 'General - %')
+                ->where('campaign_name', 'NOT LIKE', 'Default%')
+                ->orderBy('report_range', 'asc')
+                ->get();
+
+        $result = [];
+        $campaignMap = []; // Group by campaign_id to avoid duplicates
+
+        foreach ($productMasters as $pm) {
+            $originalSku = $pm->sku;
+            $sku = $normalizeSku($originalSku);
+            $parent = $pm->parent;
+            $isParent = stripos($sku, 'PARENT') !== false;
+            
+            // Get shopify and ebay data using normalized SKU
+            $shopify = $shopifyData[$sku] ?? $shopifyData[$originalSku] ?? null;
+            $ebay = $ebayMetricData[$sku] ?? $ebayMetricData[$originalSku] ?? null;
+
+            $nrValue = '';
+            $nrlValue = '';
+            // Get NR value from EbayTwoDataView
+            if (isset($nrValues[$originalSku])) {
+                $raw = $nrValues[$originalSku];
+                if (!is_array($raw)) {
+                    $raw = json_decode($raw, true);
+                }
+                if (is_array($raw)) {
+                    $nrValue = $raw['NR'] ?? null;
+                }
+            }
+            // Get NRL value from ebay_two_listing_statuses table
+            if (isset($nrlValues[$originalSku])) {
+                $raw = $nrlValues[$originalSku];
+                if (!is_array($raw)) {
+                    $raw = json_decode($raw, true);
+                }
+                if (is_array($raw)) {
+                    $nrlValue = $raw['nr_req'] ?? null;
+                    // Normalize: if value is "NRL", convert to "NR" for consistency
+                    if ($nrlValue === 'NRL') {
+                        $nrlValue = 'NR';
+                    }
+                }
+            }
+
+            $matchedReports = $reports->filter(function ($item) use ($sku, $normalizeSku) {
+                $campaignName = $item->campaign_name ?? '';
+                $campaignSku = $normalizeSku($campaignName);
+                return $campaignSku === $sku;
+            });
+
+            // Check if campaign exists
+            $hasCampaign = false;
+            $matchedCampaignL7 = null;
+            $matchedCampaignL1 = null;
+            $matchedCampaignL30 = null;
+            $campaignId = '';
+            $campaignName = '';
+            $campaignBudgetAmount = 0;
+            $campaignStatus = '';
+
+            if (!$matchedReports->isEmpty()) {
+                foreach ($matchedReports as $campaign) {
+                    $tempCampaignId = $campaign->campaign_id ?? '';
+                    if (!empty($tempCampaignId)) {
+                        $hasCampaign = true;
+                        $campaignId = $tempCampaignId;
+                        $campaignName = $campaign->campaign_name ?? '';
+                        $campaignBudgetAmount = $campaign->campaignBudgetAmount ?? 0;
+                        $campaignStatus = $campaign->campaignStatus ?? '';
+
+                        $reportRange = $campaign->report_range ?? '';
+                        if ($reportRange == 'L7') {
+                            $matchedCampaignL7 = $campaign;
+                        }
+                        if ($reportRange == 'L1') {
+                            $matchedCampaignL1 = $campaign;
+                        }
+                        if ($reportRange == 'L30') {
+                            $matchedCampaignL30 = $campaign;
+                        }
+                    }
+                }
+            }
+
+            // Use SKU as key if no campaign, otherwise use campaignId
+            $mapKey = !empty($campaignId) ? $campaignId : 'SKU_' . $sku;
+
+            // Create or get existing row
+            if (!isset($campaignMap[$mapKey])) {
+                // Check if SKU exists in Ebay2Metric table (for Ebay SKU filter)
+                $hasEbaySku = $ebay !== null;
+                $ebayL30 = $hasEbaySku ? ($ebay->ebay_l30 ?? 0) : 0;
+                
+                // Get INV and L30 from shopify data for this SKU
+                $invValue = ($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0;
+                $l30Value = ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0;
+                
+                // Get sbid_m from L30 report if available
+                $sbidM = null;
+                if ($matchedCampaignL30 && isset($matchedCampaignL30->sbid_m)) {
+                    $sbidM = $matchedCampaignL30->sbid_m;
+                } elseif ($matchedCampaignL7 && isset($matchedCampaignL7->sbid_m)) {
+                    $sbidM = $matchedCampaignL7->sbid_m;
+                } elseif ($matchedCampaignL1 && isset($matchedCampaignL1->sbid_m)) {
+                    $sbidM = $matchedCampaignL1->sbid_m;
+                }
+                
+                $campaignMap[$mapKey] = [
+                    'parent' => $parent,
+                    'sku' => $originalSku,
+                    'campaign_id' => $campaignId,
+                    'campaignName' => $campaignName,
+                    'campaignBudgetAmount' => $campaignBudgetAmount,
+                    'campaignStatus' => $campaignStatus,
+                    'INV' => $invValue,
+                    'L30' => $l30Value,
+                    'ebay_l30' => $ebayL30,
+                    'l7_spend' => 0,
+                    'l7_cpc' => 0,
+                    'l1_spend' => 0,
+                    'l1_cpc' => 0,
+                    'acos' => 0,
+                    'adFees' => 0,
+                    'sales' => 0,
+                    'views' => 0,
+                    'clicks' => 0,
+                    'ad_sold' => 0,
+                    'cvr' => 0,
+                    'NR' => $nrValue,
+                    'NRL' => $nrlValue,
+                    'hasCampaign' => $hasCampaign,
+                    'hasEbaySku' => $hasEbaySku,
+                    'sbid_m' => $sbidM,
+                ];
+            }
+
+            // Add campaign data if exists
+            if ($matchedCampaignL7) {
+                $adFees = (float) str_replace(['USD ', ','], '', $matchedCampaignL7->cpc_ad_fees_payout_currency ?? '0');
+                $cpc = (float) str_replace(['USD ', ','], '', $matchedCampaignL7->cost_per_click ?? '0');
+                $campaignMap[$mapKey]['l7_spend'] = $adFees;
+                $campaignMap[$mapKey]['l7_cpc'] = $cpc;
+            }
+
+            if ($matchedCampaignL1) {
+                $adFees = (float) str_replace(['USD ', ','], '', $matchedCampaignL1->cpc_ad_fees_payout_currency ?? '0');
+                $cpc = (float) str_replace(['USD ', ','], '', $matchedCampaignL1->cost_per_click ?? '0');
+                $campaignMap[$mapKey]['l1_spend'] = $adFees;
+                $campaignMap[$mapKey]['l1_cpc'] = $cpc;
+            }
+
+            if ($matchedCampaignL30) {
+                $adFees = (float) str_replace(['USD ', ','], '', $matchedCampaignL30->cpc_ad_fees_payout_currency ?? '0');
+                $sales = (float) str_replace(['USD ', ','], '', $matchedCampaignL30->cpc_sale_amount_payout_currency ?? '0');
+                $views = (int) ($matchedCampaignL30->cpc_clicks ?? 0);
+                $attributedSales = (int) ($matchedCampaignL30->cpc_attributed_sales ?? 0);
+                $campaignMap[$mapKey]['adFees'] = $adFees;
+                $campaignMap[$mapKey]['sales'] = $sales;
+                $campaignMap[$mapKey]['views'] = $views;
+                $campaignMap[$mapKey]['clicks'] = $views;
+                $campaignMap[$mapKey]['ad_sold'] = $attributedSales;
+                
+                // Calculate CVR: (attributed_sales / clicks) * 100
+                if ($views > 0) {
+                    $campaignMap[$mapKey]['cvr'] = round(($attributedSales / $views) * 100, 2);
+                } else {
+                    $campaignMap[$mapKey]['cvr'] = 0;
+                }
+                
+                if ($sales > 0) {
+                    $campaignMap[$mapKey]['acos'] = round(($adFees / $sales) * 100, 2);
+                } else if ($adFees > 0 && $sales == 0) {
+                    $campaignMap[$mapKey]['acos'] = 100;
+                }
+            }
+        }
+
+        // Process campaigns that don't match ProductMaster SKUs (additional campaigns)
+        $allCampaignIds = $reports->pluck('campaign_id')->unique();
+        $processedCampaignIds = array_keys($campaignMap);
+        
+        foreach ($allCampaignIds as $campaignId) {
+            if (in_array($campaignId, $processedCampaignIds)) {
+                continue; // Already processed
+            }
+
+            $campaignReports = $reports->where('campaign_id', $campaignId);
+            if ($campaignReports->isEmpty()) {
+                continue;
+            }
+
+            $firstCampaign = $campaignReports->first();
+            $campaignName = $firstCampaign->campaign_name ?? '';
+            
+            // Try to find matching SKU in ProductMaster for INV/L30 data
+            $matchedSku = null;
+            $normalizedCampaignName = $normalizeSku($campaignName);
+            foreach ($productMasters as $pm) {
+                $normalizedPmSku = $normalizeSku($pm->sku);
+                if ($normalizedPmSku === $normalizedCampaignName) {
+                    $matchedSku = $pm->sku;
+                    break;
+                }
+            }
+
+            // Get NR value for unmatched campaign
+            $nrValue = '';
+            if ($matchedSku && isset($nrValues[$matchedSku])) {
+                $raw = $nrValues[$matchedSku];
+                if (!is_array($raw)) {
+                    $raw = json_decode($raw, true);
+                }
+                if (is_array($raw)) {
+                    $nrValue = $raw['NR'] ?? null;
+                }
+            }
+            
+            // Get NRL value for unmatched campaign from ebay_two_listing_statuses table
+            $nrlValue = '';
+            if ($matchedSku && isset($nrlValues[$matchedSku])) {
+                $raw = $nrlValues[$matchedSku];
+                if (!is_array($raw)) {
+                    $raw = json_decode($raw, true);
+                }
+                if (is_array($raw)) {
+                    $nrlValue = $raw['nr_req'] ?? null;
+                    // Normalize: if value is "NRL", convert to "NR" for consistency
+                    if ($nrlValue === 'NRL') {
+                        $nrlValue = 'NR';
+                    }
+                }
+            }
+
+            // Skip if NRA
+            
+
+            $matchedEbayNormalized = null;
+            if ($matchedSku) {
+                $normalizedMatchedSku = $normalizeSku($matchedSku);
+                $matchedEbayNormalized = $ebayMetricData[$normalizedMatchedSku] ?? $ebayMetricData[$matchedSku] ?? null;
+            }
+            $ebayL30 = $matchedEbayNormalized ? ($matchedEbayNormalized->ebay_l30 ?? 0) : 0;
+            
+            // Get sbid_m from any report
+            $sbidM = null;
+            $l30Report = $campaignReports->where('report_range', 'L30')->first();
+            $l7Report = $campaignReports->where('report_range', 'L7')->first();
+            $l1Report = $campaignReports->where('report_range', 'L1')->first();
+            
+            if ($l30Report && isset($l30Report->sbid_m)) {
+                $sbidM = $l30Report->sbid_m;
+            } elseif ($l7Report && isset($l7Report->sbid_m)) {
+                $sbidM = $l7Report->sbid_m;
+            } elseif ($l1Report && isset($l1Report->sbid_m)) {
+                $sbidM = $l1Report->sbid_m;
+            }
+            
+            // Get shopify data for matched SKU (using normalized key)
+            $matchedShopify = null;
+            if ($matchedSku) {
+                $normalizedMatchedSku = $normalizeSku($matchedSku);
+                $matchedShopify = $shopifyData[$normalizedMatchedSku] ?? $shopifyData[$matchedSku] ?? null;
+            }
+            
+            // Check if matched SKU exists in Ebay2Metric table
+            $hasEbaySku = $matchedEbayNormalized !== null;
+            
+            $campaignMap[$campaignId] = [
+                'parent' => '',
+                'sku' => $campaignName,
+                'campaign_id' => $campaignId,
+                'campaignName' => $campaignName,
+                'campaignBudgetAmount' => $firstCampaign->campaignBudgetAmount ?? 0,
+                'campaignStatus' => $firstCampaign->campaignStatus ?? '',
+                'INV' => $matchedShopify ? (int)($matchedShopify->inv ?? 0) : 0,
+                'L30' => $matchedShopify ? (int)($matchedShopify->quantity ?? 0) : 0,
+                'ebay_l30' => $ebayL30,
+                'l7_spend' => 0,
+                'l7_cpc' => 0,
+                'l1_spend' => 0,
+                'l1_cpc' => 0,
+                'acos' => 0,
+                'adFees' => 0,
+                'sales' => 0,
+                'views' => 0,
+                'clicks' => 0,
+                'ad_sold' => 0,
+                'cvr' => 0,
+                'NR' => $nrValue,
+                'NRL' => $nrlValue,
+                'hasCampaign' => true,
+                'hasEbaySku' => $hasEbaySku,
+                'sbid_m' => $sbidM,
+            ];
+
+            foreach ($campaignReports as $campaign) {
+                $reportRange = $campaign->report_range ?? '';
+                $adFees = (float) str_replace(['USD ', ','], '', $campaign->cpc_ad_fees_payout_currency ?? '0');
+                $sales = (float) str_replace(['USD ', ','], '', $campaign->cpc_sale_amount_payout_currency ?? '0');
+                $cpc = (float) str_replace(['USD ', ','], '', $campaign->cost_per_click ?? '0');
+
+                if ($reportRange == 'L7') {
+                    $campaignMap[$campaignId]['l7_spend'] = $adFees;
+                    $campaignMap[$campaignId]['l7_cpc'] = $cpc;
+                }
+
+                if ($reportRange == 'L1') {
+                    $campaignMap[$campaignId]['l1_spend'] = $adFees;
+                    $campaignMap[$campaignId]['l1_cpc'] = $cpc;
+                }
+
+                if ($reportRange == 'L30') {
+                    $views = (int) ($campaign->cpc_clicks ?? 0);
+                    $attributedSales = (int) ($campaign->cpc_attributed_sales ?? 0);
+                    $campaignMap[$campaignId]['adFees'] = $adFees;
+                    $campaignMap[$campaignId]['sales'] = $sales;
+                    $campaignMap[$campaignId]['views'] = $views;
+                    $campaignMap[$campaignId]['clicks'] = $views;
+                    $campaignMap[$campaignId]['ad_sold'] = $attributedSales;
+                    
+                    // Calculate CVR: (attributed_sales / clicks) * 100
+                    if ($views > 0) {
+                        $campaignMap[$campaignId]['cvr'] = round(($attributedSales / $views) * 100, 2);
+                    } else {
+                        $campaignMap[$campaignId]['cvr'] = 0;
+                    }
+                    
+                    if ($sales > 0) {
+                        $campaignMap[$campaignId]['acos'] = round(($adFees / $sales) * 100, 2);
+                    } else if ($adFees > 0 && $sales == 0) {
+                        $campaignMap[$campaignId]['acos'] = 100;
+                    }
+                }
+            }
+        }
+
+        // Add rows for SKUs that exist in Ebay2Metric but not in ProductMaster (to match ebay_sku_count)
+        // These SKUs should appear in the table when "Ebay SKU" filter is active
+        foreach ($allEbaySkus as $ebaySku) {
+            $normalizedEbaySku = $normalizeSku($ebaySku);
+            
+            // Check if this SKU is already in campaignMap (either from ProductMaster or campaigns)
+            $alreadyExists = false;
+            foreach ($campaignMap as $existingRow) {
+                $existingSku = $normalizeSku($existingRow['sku'] ?? '');
+                if ($existingSku === $normalizedEbaySku) {
+                    $alreadyExists = true;
+                    break;
+                }
+            }
+            
+            // If SKU doesn't exist in campaignMap, create a row for it
+            if (!$alreadyExists) {
+                $ebay = $ebayMetricData[$normalizedEbaySku] ?? $ebayMetricData[$ebaySku] ?? null;
+                $shopify = $shopifyData[$normalizedEbaySku] ?? $shopifyData[$ebaySku] ?? null;
+                
+                // Get NR and NRL values
+                $nrValue = '';
+                if (isset($nrValues[$ebaySku])) {
+                    $raw = $nrValues[$ebaySku];
+                    if (!is_array($raw)) {
+                        $raw = json_decode($raw, true);
+                    }
+                    if (is_array($raw)) {
+                        $nrValue = $raw['NR'] ?? null;
+                    }
+                }
+                
+                $nrlValue = '';
+                if (isset($nrlValues[$ebaySku])) {
+                    $raw = $nrlValues[$ebaySku];
+                    if (!is_array($raw)) {
+                        $raw = json_decode($raw, true);
+                    }
+                    if (is_array($raw)) {
+                        $nrlValue = $raw['nr_req'] ?? null;
+                        if ($nrlValue === 'NRL') {
+                            $nrlValue = 'NR';
+                        }
+                    }
+                }
+                
+                $mapKey = 'EBAY_SKU_' . $normalizedEbaySku;
+                $campaignMap[$mapKey] = [
+                    'parent' => '',
+                    'sku' => $ebaySku,
+                    'campaign_id' => '',
+                    'campaignName' => '',
+                    'campaignBudgetAmount' => 0,
+                    'campaignStatus' => '',
+                    'INV' => ($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0,
+                    'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
+                    'ebay_l30' => $ebay ? ($ebay->ebay_l30 ?? 0) : 0,
+                    'l7_spend' => 0,
+                    'l7_cpc' => 0,
+                    'l1_spend' => 0,
+                    'l1_cpc' => 0,
+                    'acos' => 0,
+                    'adFees' => 0,
+                    'sales' => 0,
+                    'views' => 0,
+                    'clicks' => 0,
+                    'ad_sold' => 0,
+                    'cvr' => 0,
+                    'NR' => $nrValue,
+                    'NRL' => $nrlValue,
+                    'hasCampaign' => false,
+                    'hasEbaySku' => true, // This SKU exists in Ebay2Metric
+                    'sbid_m' => null,
+                ];
+            }
+        }
+
+        // Convert map to array
+        foreach ($campaignMap as $campaignId => $row) {
+            $result[] = (object) $row;
+        }
+
+        // Calculate total ACOS from ALL campaigns (L30 data)
+        $allL30Campaigns = Ebay2PriorityReport::where('report_range', 'L30')
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->get();
+
+        $totalSpendAll = 0;
+        $totalSalesAll = 0;
+
+        foreach ($allL30Campaigns as $campaign) {
+            $adFees = (float) str_replace(['USD ', ','], '', $campaign->cpc_ad_fees_payout_currency ?? '0');
+            $sales = (float) str_replace(['USD ', ','], '', $campaign->cpc_sale_amount_payout_currency ?? '0');
+            $totalSpendAll += $adFees;
+            $totalSalesAll += $sales;
+        }
+
+        $totalACOSAll = $totalSalesAll > 0 ? ($totalSpendAll / $totalSalesAll) * 100 : 0;
+
+        // Calculate total SKU count - ALL SKUs EXCLUDING parent SKUs (same as /ebay/utilized)
+        $totalSkuCount = ProductMaster::whereNull('deleted_at')
+            ->whereRaw("UPPER(sku) NOT LIKE 'PARENT %'")
+            ->count();
+
+        // Calculate zero INV count - count all SKUs (excluding parent) with INV <= 0 (excluding deleted)
+        $productMastersForCount = ProductMaster::whereNull('deleted_at')
+            ->whereRaw("UPPER(sku) NOT LIKE 'PARENT %'")
+            ->get();
+        $zeroInvCount = 0;
+        $processedZeroInvSkus = [];
+        foreach ($productMastersForCount as $pm) {
+            $sku = $normalizeSku($pm->sku);
+            $nrValue = '';
+            if (isset($nrValues[$pm->sku])) {
+                $raw = $nrValues[$pm->sku];
+                if (!is_array($raw)) {
+                    $raw = json_decode($raw, true);
+                }
+                if (is_array($raw)) {
+                    $nrValue = $raw['NR'] ?? null;
+                }
+            }
+            
+            $shopify = $shopifyData[$sku] ?? $shopifyData[$pm->sku] ?? null;
+            $inv = ($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0;
+            if ($inv <= 0 && !in_array($sku, $processedZeroInvSkus)) {
+                $processedZeroInvSkus[] = $sku;
+                $zeroInvCount++;
+            }
+        }
+
+        // Calculate eBay SKU count - count all unique SKUs EXCLUDING parent SKUs from Ebay2Metric table
+        $ebaySkuCount = Ebay2Metric::select('sku')
+            ->distinct()
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->whereRaw("UPPER(sku) NOT LIKE 'PARENT %'")
+            ->count();
+
+        // Calculate total campaign count - count all distinct campaign names (without filtering by Parent SKUs)
+        // This should match: SELECT COUNT(DISTINCT campaign_name) FROM ebay_2_priority_reports
+        $totalCampaignCount = Ebay2PriorityReport::where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->distinct()
+            ->count('campaign_name');
+
+        return response()->json([
+            'message' => 'fetched successfully',
+            'data' => $result,
+            'total_l30_spend' => round($totalSpendAll, 2),
+            'total_l30_sales' => round($totalSalesAll, 2),
+            'total_acos' => round($totalACOSAll, 2),
+            'total_sku_count' => $totalSkuCount,
+            'ebay_sku_count' => $ebaySkuCount,
+            'total_campaign_count' => $totalCampaignCount,
+            'zero_inv_count' => $zeroInvCount,
+            'status' => 200,
+        ]);
+    }
+
+    public function updateEbay2NrData(Request $request)
+    {
+        $sku   = $request->input('sku');
+        $field = $request->input('field');
+        $value = $request->input('value');
+
+        // If field is NRL, update ebay_two_listing_statuses table
+        if ($field === 'NRL') {
+            $ebayListingStatus = EbayTwoListingStatus::firstOrNew(['sku' => $sku]);
+            
+            $jsonData = $ebayListingStatus->value ?? [];
+            if (!is_array($jsonData)) {
+                $jsonData = json_decode($jsonData, true) ?? [];
+            }
+            
+            // Map field to nr_req for NRL (as per ebay listing statuses structure)
+            $jsonData['nr_req'] = $value;
+            
+            $ebayListingStatus->value = $jsonData;
+            $ebayListingStatus->save();
+            
+            // If NRL is set to "NR", automatically set NR to "NRA" in ebay_two_data_views
+            // If NRL is set to "REQ", keep NR as is (don't auto-change)
+            if ($value === 'NR' || $value === 'NRL') {
+                $ebayDataView = EbayTwoDataView::firstOrNew(['sku' => $sku]);
+                $nrJsonData = $ebayDataView->value ?? [];
+                if (!is_array($nrJsonData)) {
+                    $nrJsonData = json_decode($nrJsonData, true) ?? [];
+                }
+                // Only set NR to NRA if it's not already set to something else
+                // This ensures we don't override user's explicit NRA selection
+                if (!isset($nrJsonData['NR']) || $nrJsonData['NR'] === '' || $nrJsonData['NR'] === 'RA') {
+                    $nrJsonData['NR'] = 'NRA';
+                    $ebayDataView->value = $nrJsonData;
+                    $ebayDataView->save();
+                }
+            }
+            
+            return response()->json([
+                'status' => 200,
+                'message' => "NRL field updated successfully",
+                'updated_json' => $jsonData,
+                'nra_auto_set' => ($value === 'NR' || $value === 'NRL') ? true : false
+            ]);
+        }
+        
+        // For other fields (NR), update ebay_two_data_views table
+        $ebayDataView = EbayTwoDataView::firstOrNew(['sku' => $sku]);
+
+        $jsonData = $ebayDataView->value ?? [];
+        if (!is_array($jsonData)) {
+            $jsonData = json_decode($jsonData, true) ?? [];
+        }
+
+        $jsonData[$field] = $value;
+
+        $ebayDataView->value = $jsonData;
+        $ebayDataView->save();
+
+        return response()->json([
+            'status' => 200,
+            'message' => "Field updated successfully",
+            'updated_json' => $jsonData
+        ]);
+    }
+
+    public function updateEbay2SbidM(Request $request)
+    {
+        $campaignId = $request->input('campaign_id');
+        $sbidM = $request->input('sbid_m');
+
+        if (empty($campaignId)) {
+            return response()->json([
+                'status' => 400,
+                'message' => "Campaign ID is required"
+            ]);
+        }
+
+        // Update sbid_m for all reports with this campaign_id (L7, L1, L30)
+        $updated = Ebay2PriorityReport::where('campaign_id', $campaignId)
+            ->update(['sbid_m' => $sbidM !== null && $sbidM !== '' ? (float)$sbidM : null]);
+
+        return response()->json([
+            'status' => 200,
+            'message' => "SBID M updated successfully",
+            'updated_count' => $updated
+        ]);
+    }
+
+    public function bulkUpdateEbay2SbidM(Request $request)
+    {
+        $campaignIds = $request->input('campaign_ids', []);
+        $sbidMValues = $request->input('sbid_m_values', []);
+
+        if (empty($campaignIds) || empty($sbidMValues)) {
+            return response()->json([
+                'status' => 400,
+                'message' => "Campaign IDs and SBID M values are required"
+            ]);
+        }
+
+        if (count($campaignIds) !== count($sbidMValues)) {
+            return response()->json([
+                'status' => 400,
+                'message' => "Campaign IDs and SBID M values count mismatch"
+            ]);
+        }
+
+        $updatedCount = 0;
+        foreach ($campaignIds as $index => $campaignId) {
+            $sbidM = $sbidMValues[$index];
+            $updated = Ebay2PriorityReport::where('campaign_id', $campaignId)
+                ->update(['sbid_m' => $sbidM !== null && $sbidM !== '' ? (float)$sbidM : null]);
+            $updatedCount += $updated;
+        }
+
+        return response()->json([
+            'status' => 200,
+            'message' => "SBID M bulk updated successfully",
+            'updated_count' => $updatedCount,
+            'total_campaigns' => count($campaignIds)
+        ]);
+    }
+
+    public function getCampaignChartData(Request $request)
+    {
+        $campaignName = $request->input('campaignName');
+
+        $data = DB::table('ebay_2_priority_reports')
+            ->selectRaw('
+                DATE(updated_at) as report_date,
+                SUM(cpc_clicks) as clicks,
+                SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")) as spend,
+                SUM(REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")) as ad_sales,
+                SUM(cpc_attributed_sales) as ad_sold
+            ')
+            ->where('campaign_name', $campaignName)
+            ->where('report_range', 'L30')
+            ->whereDate('updated_at', '>=', \Carbon\Carbon::now()->subDays(30))
+            ->groupBy(DB::raw('DATE(updated_at)'))
+            ->orderBy('report_date', 'asc')
+            ->get()
+            ->keyBy('report_date');
+
+        $dates = [];
+        $clicks = [];
+        $spend = [];
+        $adSales = [];
+        $adSold = [];
+        $acos = [];
+        $cvr = [];
+
+        // Fill all 30 days with data or zeros
+        for ($i = 30; $i >= 0; $i--) {
+            $date = \Carbon\Carbon::now()->subDays($i)->format('Y-m-d');
+            $dates[] = $date;
+
+            if (isset($data[$date])) {
+                $row = $data[$date];
+                $clicksVal = (int) $row->clicks;
+                $spendVal = (float) $row->spend;
+                $salesVal = (float) $row->ad_sales;
+                $soldVal = (int) $row->ad_sold;
+
+                $clicks[] = $clicksVal;
+                $spend[] = $spendVal;
+                $adSales[] = $salesVal;
+                $adSold[] = $soldVal;
+
+                $acosVal = $salesVal > 0 ? ($spendVal / $salesVal) * 100 : 0;
+                $acos[] = round($acosVal, 2);
+
+                $cvrVal = $clicksVal > 0 ? ($soldVal / $clicksVal) * 100 : 0;
+                $cvr[] = round($cvrVal, 2);
+            } else {
+                $clicks[] = 0;
+                $spend[] = 0;
+                $adSales[] = 0;
+                $adSold[] = 0;
+                $acos[] = 0;
+                $cvr[] = 0;
+            }
+        }
+
+        return response()->json([
+            'dates' => $dates,
+            'clicks' => $clicks,
+            'spend' => $spend,
+            'ad_sales' => $adSales,
+            'ad_sold' => $adSold,
+            'acos' => $acos,
+            'cvr' => $cvr
+        ]);
+    }
+
+    /**
+     * Get eBay2 access token
+     */
+    private function getEbay2AccessToken()
+    {
+        if (Cache::has('ebay2_access_token')) {
+            return Cache::get('ebay2_access_token');
+        }
+
+        $clientId = env('EBAY2_APP_ID');
+        $clientSecret = env('EBAY2_CERT_ID');
+
+        $scope = implode(' ', [
+            'https://api.ebay.com/oauth/api_scope',
+            'https://api.ebay.com/oauth/api_scope/sell.account',
+            'https://api.ebay.com/oauth/api_scope/sell.inventory',
+            'https://api.ebay.com/oauth/api_scope/sell.fulfillment',
+            'https://api.ebay.com/oauth/api_scope/sell.analytics.readonly',
+            'https://api.ebay.com/oauth/api_scope/sell.stores',
+            'https://api.ebay.com/oauth/api_scope/sell.finances',
+            'https://api.ebay.com/oauth/api_scope/sell.marketing',
+            'https://api.ebay.com/oauth/api_scope/sell.marketing.readonly'
+        ]);
+
+        try {
+            $response = Http::asForm()
+                ->withBasicAuth($clientId, $clientSecret)
+                ->post('https://api.ebay.com/identity/v1/oauth2/token', [
+                    'grant_type' => 'refresh_token',
+                    'refresh_token' => env('EBAY2_REFRESH_TOKEN'),
+                    'scope' => $scope,
+                ]);
+
+            if ($response->successful()) {
+                $accessToken = $response->json()['access_token'];
+                $expiresIn = $response->json()['expires_in'] ?? 7200;
+                
+                Cache::put('ebay2_access_token', $accessToken, $expiresIn - 60);
+                Log::info('eBay2 token', ['response' => 'Token generated!']);
+                
+                return $accessToken;
+            }
+
+            Log::error('eBay2 token refresh error', ['response' => $response->json()]);
+        } catch (\Exception $e) {
+            Log::error('eBay2 token refresh exception: ' . $e->getMessage());
+        }
+
+        return null;
+    }
+
+    /**
+     * Get ad groups for a campaign
+     */
+    private function getAdGroups($campaignId)
+    {
+        $accessToken = $this->getEbay2AccessToken();
+        if (!$accessToken) {
+            Log::error("No access token available for fetching ad groups");
+            return ['adGroups' => []];
+        }
+
+        try {
+            $response = Http::withToken($accessToken)
+                ->timeout(120)
+                ->retry(3, 5000)
+                ->get("https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/ad_group");
+
+            if ($response->successful()) {
+                $data = $response->json();
+                Log::info("Successfully fetched ad groups for campaign {$campaignId}", [
+                    'ad_groups_count' => count($data['adGroups'] ?? [])
+                ]);
+                return $data;
+            }
+
+            // If token expired, try refreshing
+            if ($response->status() === 401) {
+                Log::info("Token expired, refreshing for campaign {$campaignId}");
+                Cache::forget('ebay2_access_token');
+                $accessToken = $this->getEbay2AccessToken();
+                if ($accessToken) {
+                    $response = Http::withToken($accessToken)
+                        ->timeout(120)
+                        ->retry(3, 5000)
+                        ->get("https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/ad_group");
+                    if ($response->successful()) {
+                        $data = $response->json();
+                        Log::info("Successfully fetched ad groups after token refresh for campaign {$campaignId}");
+                        return $data;
+                    }
+                }
+            }
+
+            Log::error("Failed to fetch ad groups for campaign {$campaignId}", [
+                'status' => $response->status(),
+                'response' => $response->body()
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Exception fetching ad groups for campaign {$campaignId}: " . $e->getMessage());
+        }
+
+        return ['adGroups' => []];
+    }
+
+    /**
+     * Get keywords for an ad group
+     */
+    private function getKeywords($campaignId, $adGroupId)
+    {
+        $accessToken = $this->getEbay2AccessToken();
+        if (!$accessToken) {
+            return [];
+        }
+
+        $keywords = [];
+        $offset = 0;
+        $limit = 200;
+
+        do {
+            try {
+                $endpoint = "https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/keyword?ad_group_ids={$adGroupId}&keyword_status=ACTIVE&limit={$limit}&offset={$offset}";
+                
+                $response = Http::withToken($accessToken)
+                    ->timeout(120)
+                    ->retry(3, 5000)
+                    ->get($endpoint);
+
+                if ($response->successful()) {
+                    $data = $response->json();
+                    if (isset($data['keywords']) && is_array($data['keywords'])) {
+                        foreach ($data['keywords'] as $k) {
+                            $keywords[] = $k['keywordId'] ?? $k['id'] ?? null;
+                        }
+                    }
+
+                    $total = $data['total'] ?? count($keywords);
+                    $offset += $limit;
+                    
+                    Log::debug("Fetched keywords for campaign {$campaignId}, ad group {$adGroupId}", [
+                        'offset' => $offset - $limit,
+                        'count' => count($data['keywords'] ?? []),
+                        'total' => $total
+                    ]);
+                } else {
+                    // If token expired, try refreshing
+                    if ($response->status() === 401) {
+                        Cache::forget('ebay2_access_token');
+                        $accessToken = $this->getEbay2AccessToken();
+                        if (!$accessToken) {
+                            break;
+                        }
+                        continue;
+                    }
+                    break;
+                }
+            } catch (\Exception $e) {
+                Log::error("Exception fetching keywords for campaign {$campaignId}, ad group {$adGroupId}: " . $e->getMessage());
+                break;
+            }
+        } while ($offset < ($data['total'] ?? 0));
+
+        return array_filter($keywords);
+    }
+
+    /**
+     * Update keyword bids for eBay2 campaigns (for automated command)
+     */
+    public function updateAutoKeywordsBidDynamic(array $campaignIds, array $newBids)
+    {
+        // Set longer timeout for API operations (10 minutes per batch)
+        ini_set('max_execution_time', 600);
+        ini_set('memory_limit', '1024M');
+
+        if (empty($campaignIds) || empty($newBids)) {
+            return response()->json([
+                'message' => 'Campaign IDs and new bids are required',
+                'status' => 400
+            ]);
+        }
+
+        $accessToken = $this->getEbay2AccessToken();
+        if (!$accessToken) {
+            return response()->json([
+                'message' => 'Failed to retrieve eBay2 access token',
+                'status' => 500
+            ]);
+        }
+
+        $results = [];
+        $hasError = false;
+
+        foreach ($campaignIds as $index => $campaignId) {
+            $newBid = floatval($newBids[$index] ?? 0);
+
+            Log::info("Processing campaign {$campaignId} with bid {$newBid}");
+
+            $adGroups = $this->getAdGroups($campaignId);
+            if (!isset($adGroups['adGroups']) || empty($adGroups['adGroups'])) {
+                Log::warning("No ad groups found for campaign {$campaignId}");
+                $results[] = [
+                    "campaign_id" => $campaignId,
+                    "status"      => "error",
+                    "message"     => "No ad groups found",
+                ];
+                continue;
+            }
+
+            Log::info("Found " . count($adGroups['adGroups']) . " ad groups for campaign {$campaignId}");
+
+            foreach ($adGroups['adGroups'] as $adGroup) {
+                $adGroupId = $adGroup['adGroupId'];
+                $keywords = $this->getKeywords($campaignId, $adGroupId);
+
+                if (empty($keywords)) {
+                    Log::warning("No keywords found for campaign {$campaignId}, ad group {$adGroupId}");
+                    continue;
+                }
+
+                Log::info("Found " . count($keywords) . " keywords for campaign {$campaignId}, ad group {$adGroupId}");
+
+                foreach (array_chunk($keywords, 100) as $keywordChunk) {
+                    $payload = [
+                        "requests" => []
+                    ];
+
+                    foreach ($keywordChunk as $keywordId) {
+                        $payload["requests"][] = [
+                            "bid" => [
+                                "currency" => "USD",
+                                "value"    => $newBid,
+                            ],
+                            "keywordId" => $keywordId,
+                            "keywordStatus" => "ACTIVE"
+                        ];
+                    }
+
+                    $endpoint = "https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_keyword";
+
+                    Log::info("Updating " . count($keywordChunk) . " keywords for campaign {$campaignId}, ad group {$adGroupId} with bid {$newBid}");
+
+                    try {
+                        $response = Http::timeout(120) // 2 minute timeout per request
+                            ->withHeaders([
+                                'Authorization' => "Bearer {$accessToken}",
+                                'Content-Type'  => 'application/json',
+                            ])->post($endpoint, $payload);
+
+                        Log::info("API Response for campaign {$campaignId}: Status " . $response->status(), [
+                            'response_body' => $response->body()
+                        ]);
+
+                        if ($response->successful()) {
+                            $respData = $response->json();
+                            
+                            // Log the response structure
+                            Log::info("Successful response structure", ['response' => $respData]);
+                            
+                            // Handle different response structures
+                            if (isset($respData['responses']) && is_array($respData['responses'])) {
+                                // Response has individual keyword responses
+                                foreach ($respData['responses'] as $r) {
+                                    $results[] = [
+                                        "campaign_id" => $campaignId,
+                                        "ad_group_id" => $adGroupId,
+                                        "keyword_id"  => $r['keywordId'] ?? null,
+                                        "status"      => $r['status'] ?? "success",
+                                        "message"     => $r['message'] ?? "Updated",
+                                    ];
+                                }
+                            } elseif (isset($respData['status']) && $respData['status'] === 'SUCCESS') {
+                                // Response indicates success but no individual responses
+                                // This means all keywords were updated successfully
+                                foreach ($keywordChunk as $keywordId) {
+                                    $results[] = [
+                                        "campaign_id" => $campaignId,
+                                        "ad_group_id" => $adGroupId,
+                                        "keyword_id"  => $keywordId,
+                                        "status"      => "success",
+                                        "message"     => "Updated",
+                                    ];
+                                }
+                                Log::info("Bulk update successful for " . count($keywordChunk) . " keywords");
+                            } else {
+                                // If response structure is different, assume success and log it
+                                Log::warning("Unexpected response structure, assuming success", ['response' => $respData]);
+                                foreach ($keywordChunk as $keywordId) {
+                                    $results[] = [
+                                        "campaign_id" => $campaignId,
+                                        "ad_group_id" => $adGroupId,
+                                        "keyword_id"  => $keywordId,
+                                        "status"      => "success",
+                                        "message"     => "Bulk update completed",
+                                    ];
+                                }
+                            }
+                        } else {
+                            // If token expired, try refreshing
+                            if ($response->status() === 401) {
+                                Cache::forget('ebay2_access_token');
+                                $accessToken = $this->getEbay2AccessToken();
+                                if ($accessToken) {
+                                    $response = Http::withHeaders([
+                                        'Authorization' => "Bearer {$accessToken}",
+                                        'Content-Type'  => 'application/json',
+                                    ])->post($endpoint, $payload);
+                                    
+                                    if ($response->successful()) {
+                                        $respData = $response->json();
+                                        foreach ($respData['responses'] ?? [] as $r) {
+                                            $results[] = [
+                                                "campaign_id" => $campaignId,
+                                                "ad_group_id" => $adGroupId,
+                                                "keyword_id"  => $r['keywordId'] ?? null,
+                                                "status"      => $r['status'] ?? "unknown",
+                                                "message"     => $r['message'] ?? "Updated",
+                                            ];
+                                        }
+                                        continue;
+                                    }
+                                }
+                            }
+
+                            $hasError = true;
+                            $errorBody = $response->json();
+                            $errorMessage = "Unknown error";
+                            $statusCode = $response->status();
+                            
+                            if (isset($errorBody['errors']) && is_array($errorBody['errors']) && !empty($errorBody['errors'])) {
+                                $errorMessage = $errorBody['errors'][0]['message'] ?? $errorBody['errors'][0]['longMessage'] ?? "Unknown error";
+                            } elseif (isset($errorBody['message'])) {
+                                $errorMessage = $errorBody['message'];
+                            }
+                            
+                            // Special handling for premium ads campaigns (409 error)
+                            if ($statusCode === 409 && str_contains(strtolower($errorMessage), 'premium ads')) {
+                                $errorMessage = "Campaign uses Premium Ads (beta feature). Bid updates are not available for this campaign type.";
+                                Log::warning("Premium ads campaign detected - bid updates not supported", [
+                                    'campaign_id' => $campaignId,
+                                    'error' => $errorMessage
+                                ]);
+                            }
+                            
+                            Log::error("Failed to update keywords for campaign {$campaignId}", [
+                                'status' => $statusCode,
+                                'error' => $errorMessage,
+                                'response' => $errorBody
+                            ]);
+                            
+                            $results[] = [
+                                "campaign_id" => $campaignId,
+                                "ad_group_id" => $adGroupId,
+                                "status"      => "error",
+                                "message"     => $errorMessage,
+                                "http_code"   => $statusCode,
+                            ];
+                        }
+
+                    } catch (\Exception $e) {
+                        $hasError = true;
+                        Log::error("Exception updating keywords for campaign {$campaignId}", [
+                            'exception' => $e->getMessage(),
+                            'trace' => $e->getTraceAsString()
+                        ]);
+                        $results[] = [
+                            "campaign_id" => $campaignId,
+                            "ad_group_id" => $adGroupId,
+                            "status"      => "error",
+                            "message"     => $e->getMessage(),
+                        ];
+                    }
+                }
+            }
+        }
+
+        return response()->json([
+            "status" => $hasError ? 207 : 200,
+            "message" => $hasError ? "Some keywords failed to update" : "All keyword bids updated successfully",
+            "data" => $results
+        ]);
+    }
+
+    /**
+     * Update keyword bids for eBay2 campaigns (for frontend requests)
+     */
+    public function updateKeywordsBidDynamic(Request $request)
+    {
+        ini_set('max_execution_time', 300);
+        ini_set('memory_limit', '512M');
+        
+        $campaignIds = $request->input('campaign_ids', []);
+        $newBids = $request->input('bids', []);
+
+        if (empty($campaignIds) || empty($newBids)) {
+            return response()->json([
+                'message' => 'Campaign IDs and new bids are required',
+                'status' => 400
+            ]);
+        }
+
+        $accessToken = $this->getEbay2AccessToken();
+        if (!$accessToken) {
+            return response()->json([
+                'message' => 'Failed to retrieve eBay2 access token',
+                'status' => 500
+            ]);
+        }
+
+        $results = [];
+        $hasError = false;
+
+        foreach ($campaignIds as $index => $campaignId) {
+            $newBid = floatval($newBids[$index] ?? 0);
+
+            Log::info("Processing campaign {$campaignId} with bid {$newBid}");
+
+            $adGroups = $this->getAdGroups($campaignId);
+            if (!isset($adGroups['adGroups']) || empty($adGroups['adGroups'])) {
+                Log::warning("No ad groups found for campaign {$campaignId}");
+                $results[] = [
+                    "campaign_id" => $campaignId,
+                    "status"      => "error",
+                    "message"     => "No ad groups found",
+                ];
+                continue;
+            }
+
+            Log::info("Found " . count($adGroups['adGroups']) . " ad groups for campaign {$campaignId}");
+
+            foreach ($adGroups['adGroups'] as $adGroup) {
+                $adGroupId = $adGroup['adGroupId'];
+                $keywords = $this->getKeywords($campaignId, $adGroupId);
+
+                if (empty($keywords)) {
+                    Log::warning("No keywords found for campaign {$campaignId}, ad group {$adGroupId}");
+                    continue;
+                }
+
+                Log::info("Found " . count($keywords) . " keywords for campaign {$campaignId}, ad group {$adGroupId}");
+
+                foreach (array_chunk($keywords, 100) as $keywordChunk) {
+                    $payload = [
+                        "requests" => []
+                    ];
+
+                    foreach ($keywordChunk as $keywordId) {
+                        $payload["requests"][] = [
+                            "bid" => [
+                                "currency" => "USD",
+                                "value"    => $newBid,
+                            ],
+                            "keywordId" => $keywordId,
+                            "keywordStatus" => "ACTIVE"
+                        ];
+                    }
+
+                    $endpoint = "https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_keyword";
+
+                    Log::info("Updating " . count($keywordChunk) . " keywords for campaign {$campaignId}, ad group {$adGroupId} with bid {$newBid}");
+
+                    try {
+                        $response = Http::timeout(120) // 2 minute timeout per request
+                            ->withHeaders([
+                                'Authorization' => "Bearer {$accessToken}",
+                                'Content-Type'  => 'application/json',
+                            ])->post($endpoint, $payload);
+
+                        Log::info("API Response for campaign {$campaignId}: Status " . $response->status(), [
+                            'response_body' => $response->body()
+                        ]);
+
+                        if ($response->successful()) {
+                            $respData = $response->json();
+                            
+                            // Log the response structure
+                            Log::info("Successful response structure", ['response' => $respData]);
+                            
+                            // Handle different response structures
+                            if (isset($respData['responses']) && is_array($respData['responses'])) {
+                                // Response has individual keyword responses
+                                foreach ($respData['responses'] as $r) {
+                                    $results[] = [
+                                        "campaign_id" => $campaignId,
+                                        "ad_group_id" => $adGroupId,
+                                        "keyword_id"  => $r['keywordId'] ?? null,
+                                        "status"      => $r['status'] ?? "success",
+                                        "message"     => $r['message'] ?? "Updated",
+                                    ];
+                                }
+                            } elseif (isset($respData['status']) && $respData['status'] === 'SUCCESS') {
+                                // Response indicates success but no individual responses
+                                // This means all keywords were updated successfully
+                                foreach ($keywordChunk as $keywordId) {
+                                    $results[] = [
+                                        "campaign_id" => $campaignId,
+                                        "ad_group_id" => $adGroupId,
+                                        "keyword_id"  => $keywordId,
+                                        "status"      => "success",
+                                        "message"     => "Updated",
+                                    ];
+                                }
+                                Log::info("Bulk update successful for " . count($keywordChunk) . " keywords");
+                            } else {
+                                // If response structure is different, assume success and log it
+                                Log::warning("Unexpected response structure, assuming success", ['response' => $respData]);
+                                foreach ($keywordChunk as $keywordId) {
+                                    $results[] = [
+                                        "campaign_id" => $campaignId,
+                                        "ad_group_id" => $adGroupId,
+                                        "keyword_id"  => $keywordId,
+                                        "status"      => "success",
+                                        "message"     => "Bulk update completed",
+                                    ];
+                                }
+                            }
+                        } else {
+                            // If token expired, try refreshing
+                            if ($response->status() === 401) {
+                                Cache::forget('ebay2_access_token');
+                                $accessToken = $this->getEbay2AccessToken();
+                                if ($accessToken) {
+                                    $response = Http::withHeaders([
+                                        'Authorization' => "Bearer {$accessToken}",
+                                        'Content-Type'  => 'application/json',
+                                    ])->post($endpoint, $payload);
+                                    
+                                    if ($response->successful()) {
+                                        $respData = $response->json();
+                                        if (isset($respData['responses']) && is_array($respData['responses'])) {
+                                            foreach ($respData['responses'] as $r) {
+                                                $results[] = [
+                                                    "campaign_id" => $campaignId,
+                                                    "ad_group_id" => $adGroupId,
+                                                    "keyword_id"  => $r['keywordId'] ?? null,
+                                                    "status"      => $r['status'] ?? "success",
+                                                    "message"     => $r['message'] ?? "Updated",
+                                                ];
+                                            }
+                                        } else {
+                                            foreach ($keywordChunk as $keywordId) {
+                                                $results[] = [
+                                                    "campaign_id" => $campaignId,
+                                                    "ad_group_id" => $adGroupId,
+                                                    "keyword_id"  => $keywordId,
+                                                    "status"      => "success",
+                                                    "message"     => "Updated",
+                                                ];
+                                            }
+                                        }
+                                        continue;
+                                    }
+                                }
+                            }
+
+                            $hasError = true;
+                            $errorBody = $response->json();
+                            $errorMessage = "Unknown error";
+                            $statusCode = $response->status();
+                            
+                            if (isset($errorBody['errors']) && is_array($errorBody['errors']) && !empty($errorBody['errors'])) {
+                                $errorMessage = $errorBody['errors'][0]['message'] ?? $errorBody['errors'][0]['longMessage'] ?? "Unknown error";
+                            } elseif (isset($errorBody['message'])) {
+                                $errorMessage = $errorBody['message'];
+                            }
+                            
+                            // Special handling for premium ads campaigns (409 error)
+                            if ($statusCode === 409 && str_contains(strtolower($errorMessage), 'premium ads')) {
+                                $errorMessage = "Campaign uses Premium Ads (beta feature). Bid updates are not available for this campaign type.";
+                                Log::warning("Premium ads campaign detected - bid updates not supported", [
+                                    'campaign_id' => $campaignId,
+                                    'error' => $errorMessage
+                                ]);
+                            }
+                            
+                            Log::error("Failed to update keywords for campaign {$campaignId}", [
+                                'status' => $statusCode,
+                                'error' => $errorMessage,
+                                'response' => $errorBody
+                            ]);
+                            
+                            $results[] = [
+                                "campaign_id" => $campaignId,
+                                "ad_group_id" => $adGroupId,
+                                "status"      => "error",
+                                "message"     => $errorMessage,
+                                "http_code"   => $statusCode,
+                            ];
+                        }
+
+                    } catch (\Exception $e) {
+                        $hasError = true;
+                        Log::error("Exception updating keywords for campaign {$campaignId}", [
+                            'exception' => $e->getMessage(),
+                            'trace' => $e->getTraceAsString()
+                        ]);
+                        $results[] = [
+                            "campaign_id" => $campaignId,
+                            "ad_group_id" => $adGroupId,
+                            "status"      => "error",
+                            "message"     => $e->getMessage(),
+                        ];
+                    }
+                }
+            }
+        }
+
+        return response()->json([
+            "status" => $hasError ? 207 : 200,
+            "message" => $hasError ? "Some keywords failed to update" : "All keyword bids updated successfully",
+            "data" => $results
+        ]);
+    }
+
+    /**
+     * Test method to check bid update for a specific campaign
+     */
+    public function testBidUpdate($campaignId, $bid)
+    {
+        Log::info("Testing bid update for campaign {$campaignId} with bid {$bid}");
+        
+        // Get access token
+        $accessToken = $this->getEbay2AccessToken();
+        if (!$accessToken) {
+            return [
+                'success' => false,
+                'message' => 'Failed to retrieve eBay2 access token'
+            ];
+        }
+        
+        // Get ad groups
+        $adGroups = $this->getAdGroups($campaignId);
+        Log::info("Ad groups for campaign {$campaignId}:", ['ad_groups' => $adGroups]);
+        
+        if (!isset($adGroups['adGroups']) || empty($adGroups['adGroups'])) {
+            return [
+                'success' => false,
+                'message' => 'No ad groups found for this campaign',
+                'campaign_id' => $campaignId
+            ];
+        }
+        
+        $allKeywords = [];
+        $adGroupDetails = [];
+        
+        // Get keywords for each ad group
+        foreach ($adGroups['adGroups'] as $adGroup) {
+            $adGroupId = $adGroup['adGroupId'];
+            $keywords = $this->getKeywords($campaignId, $adGroupId);
+            
+            $adGroupDetails[] = [
+                'ad_group_id' => $adGroupId,
+                'ad_group_name' => $adGroup['adGroupName'] ?? 'N/A',
+                'keyword_count' => count($keywords)
+            ];
+            
+            $allKeywords = array_merge($allKeywords, $keywords);
+        }
+        
+        Log::info("Total keywords found: " . count($allKeywords));
+        
+        if (empty($allKeywords)) {
+            return [
+                'success' => false,
+                'message' => 'No keywords found for this campaign',
+                'campaign_id' => $campaignId,
+                'ad_groups' => $adGroupDetails
+            ];
+        }
+        
+        // Test update with first 5 keywords only (for testing)
+        $testKeywords = array_slice($allKeywords, 0, 5);
+        
+        $payload = [
+            "requests" => []
+        ];
+        
+        foreach ($testKeywords as $keywordId) {
+            $payload["requests"][] = [
+                "bid" => [
+                    "currency" => "USD",
+                    "value"    => floatval($bid),
+                ],
+                "keywordId" => $keywordId,
+                "keywordStatus" => "ACTIVE"
+            ];
+        }
+        
+        $endpoint = "https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_keyword";
+        
+        Log::info("Testing bid update with payload:", ['endpoint' => $endpoint, 'payload' => $payload]);
+        
+        try {
+            $response = Http::withHeaders([
+                'Authorization' => "Bearer {$accessToken}",
+                'Content-Type'  => 'application/json',
+            ])->post($endpoint, $payload);
+            
+            $responseData = $response->json();
+            $statusCode = $response->status();
+            
+            Log::info("API Response:", [
+                'status_code' => $statusCode,
+                'response' => $responseData
+            ]);
+            
+            if ($response->successful()) {
+                return [
+                    'success' => true,
+                    'message' => 'Bid update test successful',
+                    'campaign_id' => $campaignId,
+                    'bid' => $bid,
+                    'keywords_tested' => count($testKeywords),
+                    'total_keywords' => count($allKeywords),
+                    'ad_groups' => $adGroupDetails,
+                    'response' => $responseData
+                ];
+            } else {
+                return [
+                    'success' => false,
+                    'message' => 'Bid update failed',
+                    'campaign_id' => $campaignId,
+                    'status_code' => $statusCode,
+                    'error' => $responseData['errors'][0]['message'] ?? 'Unknown error',
+                    'response' => $responseData
+                ];
+            }
+        } catch (\Exception $e) {
+            Log::error("Exception during bid update test: " . $e->getMessage());
+            return [
+                'success' => false,
+                'message' => 'Exception occurred',
+                'error' => $e->getMessage()
+            ];
+        }
+    }
+
+    public function ebay2UtilizedView()
+    {
+        return view('campaign.ebay-two.ebay2-utilized');
+    }
+
+    public function getEbay2UtilizationCounts(Request $request)
+    {
+        try {
+            $today = now()->format('Y-m-d');
+            $skuKey = 'EBAY2_UTILIZATION_' . $today;
+
+            // Check if data exists for today (stored by command)
+            $record = EbayTwoDataView::where('sku', $skuKey)->first();
+
+            if ($record) {
+                $value = is_array($record->value) ? $record->value : json_decode($record->value, true);
+                return response()->json([
+                    'over_utilized' => $value['over_utilized'] ?? 0,
+                    'under_utilized' => $value['under_utilized'] ?? 0,
+                    'correctly_utilized' => $value['correctly_utilized'] ?? 0,
+                    'status' => 200,
+                ]);
+            }
+
+            // If not found, calculate on the fly - only Parent SKUs
+            $productMasters = ProductMaster::whereRaw("UPPER(sku) LIKE 'PARENT %'")
+                ->orderBy('parent', 'asc')
+                ->orderBy('sku', 'asc')
+                ->get();
+
+            $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
+            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            $nrValues = EbayTwoDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+
+            $reports = Ebay2PriorityReport::whereIn('report_range', ['L7', 'L1', 'L30'])
+                ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+                ->where('campaign_name', 'NOT LIKE', 'General - %')
+                ->where('campaign_name', 'NOT LIKE', 'Default%')
+                ->orderBy('report_range', 'asc')
+                ->get();
+
+            $campaignMap = [];
+
+            // Process campaigns matching ProductMaster SKUs
+            foreach ($productMasters as $pm) {
+                $sku = strtoupper($pm->sku);
+                $nrValue = '';
+                if (isset($nrValues[$pm->sku])) {
+                    $raw = $nrValues[$pm->sku];
+                    if (!is_array($raw)) {
+                        $raw = json_decode($raw, true);
+                    }
+                    if (is_array($raw)) {
+                        $nrValue = $raw['NR'] ?? null;
+                    }
+                }
+
+                if ($nrValue == 'NRA') {
+                    continue;
+                }
+
+                $matchedReports = $reports->filter(function ($item) use ($sku) {
+                    $campaignSku = strtoupper(trim($item->campaign_name ?? ''));
+                    return $campaignSku === $sku;
+                });
+
+                if ($matchedReports->isEmpty()) {
+                    continue;
+                }
+
+                foreach ($matchedReports as $campaign) {
+                    $campaignId = $campaign->campaign_id ?? '';
+                    if (empty($campaignId)) {
+                        continue;
+                    }
+
+                    if (!isset($campaignMap[$campaignId])) {
+                        $campaignMap[$campaignId] = [
+                            'campaign_id' => $campaignId,
+                            'campaignBudgetAmount' => $campaign->campaignBudgetAmount ?? 0,
+                            'l7_spend' => 0,
+                            'l1_spend' => 0,
+                            'acos' => 0,
+                            'INV' => ($shopifyData[$pm->sku] ?? null) ? (int)($shopifyData[$pm->sku]->inv ?? 0) : 0,
+                            'L30' => ($shopifyData[$pm->sku] ?? null) ? (int)($shopifyData[$pm->sku]->quantity ?? 0) : 0,
+                        ];
+                    }
+
+                    $reportRange = $campaign->report_range ?? '';
+                    $adFees = (float) str_replace(['USD ', ','], '', $campaign->cpc_ad_fees_payout_currency ?? '0');
+                    $sales = (float) str_replace(['USD ', ','], '', $campaign->cpc_sale_amount_payout_currency ?? '0');
+
+                    if ($reportRange == 'L7') {
+                        $campaignMap[$campaignId]['l7_spend'] = $adFees;
+                    }
+
+                    if ($reportRange == 'L1') {
+                        $campaignMap[$campaignId]['l1_spend'] = $adFees;
+                    }
+
+                    if ($reportRange == 'L30') {
+                        if ($sales > 0) {
+                            $campaignMap[$campaignId]['acos'] = round(($adFees / $sales) * 100, 2);
+                        } else if ($adFees > 0 && $sales == 0) {
+                            $campaignMap[$campaignId]['acos'] = 100;
+                        }
+                    }
+                }
+            }
+
+            // Process campaigns that don't match ProductMaster SKUs (additional campaigns)
+            $allCampaignIds = $reports->pluck('campaign_id')->unique();
+            $processedCampaignIds = array_keys($campaignMap);
+            
+            foreach ($allCampaignIds as $campaignId) {
+                if (in_array($campaignId, $processedCampaignIds)) {
+                    continue; // Already processed
+                }
+
+                $campaignReports = $reports->where('campaign_id', $campaignId);
+                if ($campaignReports->isEmpty()) {
+                    continue;
+                }
+
+                $firstCampaign = $campaignReports->first();
+                $campaignName = $firstCampaign->campaign_name ?? '';
+                
+                // Try to find matching SKU in ProductMaster for INV/L30 data
+                $matchedSku = null;
+                foreach ($productMasters as $pm) {
+                    if (strtoupper(trim($pm->sku)) === strtoupper(trim($campaignName))) {
+                        $matchedSku = $pm->sku;
+                        break;
+                    }
+                }
+
+                $campaignMap[$campaignId] = [
+                    'campaign_id' => $campaignId,
+                    'campaignBudgetAmount' => $firstCampaign->campaignBudgetAmount ?? 0,
+                    'l7_spend' => 0,
+                    'l1_spend' => 0,
+                    'acos' => 0,
+                    'INV' => ($matchedSku && isset($shopifyData[$matchedSku])) ? (int)($shopifyData[$matchedSku]->inv ?? 0) : 0,
+                    'L30' => ($matchedSku && isset($shopifyData[$matchedSku])) ? (int)($shopifyData[$matchedSku]->quantity ?? 0) : 0,
+                ];
+
+                foreach ($campaignReports as $campaign) {
+                    $reportRange = $campaign->report_range ?? '';
+                    $adFees = (float) str_replace(['USD ', ','], '', $campaign->cpc_ad_fees_payout_currency ?? '0');
+                    $sales = (float) str_replace(['USD ', ','], '', $campaign->cpc_sale_amount_payout_currency ?? '0');
+
+                    if ($reportRange == 'L7') {
+                        $campaignMap[$campaignId]['l7_spend'] = $adFees;
+                    }
+
+                    if ($reportRange == 'L1') {
+                        $campaignMap[$campaignId]['l1_spend'] = $adFees;
+                    }
+
+                    if ($reportRange == 'L30') {
+                        if ($sales > 0) {
+                            $campaignMap[$campaignId]['acos'] = round(($adFees / $sales) * 100, 2);
+                        } else if ($adFees > 0 && $sales == 0) {
+                            $campaignMap[$campaignId]['acos'] = 100;
+                        }
+                    }
+                }
+            }
+
+            // Process campaigns that don't match ProductMaster SKUs (additional campaigns)
+            $allCampaignIds = $reports->pluck('campaign_id')->unique();
+            $processedCampaignIds = array_keys($campaignMap);
+            
+            foreach ($allCampaignIds as $campaignId) {
+                if (in_array($campaignId, $processedCampaignIds)) {
+                    continue; // Already processed
+                }
+
+                $campaignReports = $reports->where('campaign_id', $campaignId);
+                if ($campaignReports->isEmpty()) {
+                    continue;
+                }
+
+                $firstCampaign = $campaignReports->first();
+                $campaignName = $firstCampaign->campaign_name ?? '';
+                
+                // Try to find matching SKU in ProductMaster for INV/L30 data
+                $matchedSku = null;
+                foreach ($productMasters as $pm) {
+                    if (strtoupper(trim($pm->sku)) === strtoupper(trim($campaignName))) {
+                        $matchedSku = $pm->sku;
+                        break;
+                    }
+                }
+
+                $campaignMap[$campaignId] = [
+                    'campaign_id' => $campaignId,
+                    'campaignBudgetAmount' => $firstCampaign->campaignBudgetAmount ?? 0,
+                    'l7_spend' => 0,
+                    'l1_spend' => 0,
+                    'acos' => 0,
+                    'INV' => ($matchedSku && isset($shopifyData[$matchedSku])) ? (int)($shopifyData[$matchedSku]->inv ?? 0) : 0,
+                    'L30' => ($matchedSku && isset($shopifyData[$matchedSku])) ? (int)($shopifyData[$matchedSku]->quantity ?? 0) : 0,
+                ];
+
+                foreach ($campaignReports as $campaign) {
+                    $reportRange = $campaign->report_range ?? '';
+                    $adFees = (float) str_replace(['USD ', ','], '', $campaign->cpc_ad_fees_payout_currency ?? '0');
+                    $sales = (float) str_replace(['USD ', ','], '', $campaign->cpc_sale_amount_payout_currency ?? '0');
+
+                    if ($reportRange == 'L7') {
+                        $campaignMap[$campaignId]['l7_spend'] = $adFees;
+                    }
+
+                    if ($reportRange == 'L1') {
+                        $campaignMap[$campaignId]['l1_spend'] = $adFees;
+                    }
+
+                    if ($reportRange == 'L30') {
+                        if ($sales > 0) {
+                            $campaignMap[$campaignId]['acos'] = round(($adFees / $sales) * 100, 2);
+                        } else if ($adFees > 0 && $sales == 0) {
+                            $campaignMap[$campaignId]['acos'] = 100;
+                        }
+                    }
+                }
+            }
+
+            // Calculate total ACOS from ALL campaigns
+            $allL30Campaigns = Ebay2PriorityReport::where('report_range', 'L30')
+                ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+                ->where('campaign_name', 'NOT LIKE', 'General - %')
+                ->where('campaign_name', 'NOT LIKE', 'Default%')
+                ->get();
+
+            $totalSpendAll = 0;
+            $totalSalesAll = 0;
+
+            foreach ($allL30Campaigns as $campaign) {
+                $adFees = (float) str_replace(['USD ', ','], '', $campaign->cpc_ad_fees_payout_currency ?? '0');
+                $sales = (float) str_replace(['USD ', ','], '', $campaign->cpc_sale_amount_payout_currency ?? '0');
+                $totalSpendAll += $adFees;
+                $totalSalesAll += $sales;
+            }
+
+            $totalACOSAll = $totalSalesAll > 0 ? ($totalSpendAll / $totalSalesAll) * 100 : 0;
+
+            // Count campaigns by utilization type (mutually exclusive with priority)
+            $overUtilizedCount = 0;
+            $underUtilizedCount = 0;
+            $correctlyUtilizedCount = 0;
+
+            foreach ($campaignMap as $campaign) {
+                $budget = $campaign['campaignBudgetAmount'] ?? 0;
+                $l7_spend = $campaign['l7_spend'] ?? 0;
+                $l1_spend = $campaign['l1_spend'] ?? 0;
+                $acos = $campaign['acos'] ?? 0;
+                $l30 = $campaign['L30'] ?? 0;
+                $inv = $campaign['INV'] ?? 0;
+
+                $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
+                $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
+
+                $rowAcos = $acos;
+                if ($rowAcos == 0) {
+                    $rowAcos = 100;
+                }
+
+                // Check DIL color (exclude pink for over and under)
+                $dilDecimal = (is_numeric($l30) && is_numeric($inv) && $inv !== 0) ? ($l30 / $inv) : 0;
+                $dilPercent = $dilDecimal * 100;
+                $isPink = ($dilPercent >= 50);
+
+                // Categorize campaigns with priority: Over > Under > Correctly (mutually exclusive)
+                $categorized = false;
+                
+                // Over-utilized: (rowAcos > totalACOSAll && ub7 > 33) || (rowAcos <= totalACOSAll && ub7 > 90)
+                if ($totalACOSAll > 0 && !$isPink) {
+                    $condition1 = ($rowAcos > $totalACOSAll && $ub7 > 33);
+                    $condition2 = ($rowAcos <= $totalACOSAll && $ub7 > 90);
+                    if ($condition1 || $condition2) {
+                        $overUtilizedCount++;
+                        $categorized = true;
+                    }
+                }
+
+                // Under-utilized: ub7 < 70 && ub1 < 70 (only if not already over-utilized)
+                if (!$categorized && $ub7 < 70 && $ub1 < 70 && !$isPink) {
+                    $underUtilizedCount++;
+                    $categorized = true;
+                }
+
+                // Correctly-utilized: (ub7 >= 70 && ub7 <= 90) && (ub1 >= 70 && ub1 <= 90) (only if not already categorized)
+                if (!$categorized && (($ub7 >= 70 && $ub7 <= 90) && ($ub1 >= 70 && $ub1 <= 90))) {
+                    $correctlyUtilizedCount++;
+                    $categorized = true;
+                }
+            }
+
+            return response()->json([
+                'over_utilized' => $overUtilizedCount,
+                'under_utilized' => $underUtilizedCount,
+                'correctly_utilized' => $correctlyUtilizedCount,
+                'status' => 200,
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Error getting Ebay2 utilization counts: " . $e->getMessage());
+            return response()->json([
+                'over_utilized' => 0,
+                'under_utilized' => 0,
+                'correctly_utilized' => 0,
+                'status' => 500,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    public function getEbay2UtilizationChartData(Request $request)
+    {
+        try {
+            // Get data from ebay2_data_view table (stored by command)
+            $data = EbayTwoDataView::where('sku', 'LIKE', 'EBAY2_UTILIZATION_%')
+                ->orderBy('sku', 'desc')
+                ->limit(30)
+                ->get();
+            
+            $data = $data->map(function ($item) {
+                $value = is_array($item->value) ? $item->value : json_decode($item->value, true);
+                
+                // Extract date from SKU format: EBAY2_UTILIZATION_YYYY-MM-DD
+                $date = str_replace('EBAY2_UTILIZATION_', '', $item->sku);
+                
+                return [
+                    'date' => $date,
+                    'over_utilized' => $value['over_utilized'] ?? 0,
+                    'under_utilized' => $value['under_utilized'] ?? 0,
+                    'correctly_utilized' => $value['correctly_utilized'] ?? 0,
+                ];
+            })
+            ->reverse()
+            ->values();
+
+            // Fill in missing dates with zeros (last 30 days)
+            $today = \Carbon\Carbon::today();
+            $filledData = [];
+            $dataByDate = $data->keyBy('date');
+            
+            for ($i = 29; $i >= 0; $i--) {
+                $date = $today->copy()->subDays($i)->format('Y-m-d');
+                
+                if (isset($dataByDate[$date])) {
+                    $filledData[] = $dataByDate[$date];
+                } else {
+                    $filledData[] = [
+                        'date' => $date,
+                        'over_utilized' => 0,
+                        'under_utilized' => 0,
+                        'correctly_utilized' => 0,
+                    ];
+                }
+            }
+
+            return response()->json([
+                'message' => 'Data fetched successfully',
+                'data' => $filledData,
+                'status' => 200,
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Error getting Ebay2 utilization chart data: " . $e->getMessage());
+            return response()->json([
+                'status' => 500,
+                'error' => $e->getMessage(),
+                'data' => []
+            ]);
+        }
+    }
+
+}
