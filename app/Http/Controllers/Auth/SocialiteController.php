@@ -40,6 +40,12 @@ class SocialiteController extends Controller
                     $user->update(['google_id' => $googleUser->id]);
                 }
 
+                // Reset require_google_login flag and update last activity
+                $user->update([
+                    'require_google_login' => 0,
+                    'last_activity_at' => now(),
+                ]);
+
                 Auth::login($user, true);
                 PermissionHelper::cacheUserPermissions($user->id);
                 return redirect()->intended(RouteServiceProvider::HOME);
@@ -52,6 +58,8 @@ class SocialiteController extends Controller
                 'google_id' => $googleUser->id,
                 'password' => bcrypt(Str::random(24)),
                 'email_verified_at' => now(), // Google emails are verified
+                'last_activity_at' => now(),
+                'require_google_login' => 0,
             ]);
 
             Auth::login($userData, true);

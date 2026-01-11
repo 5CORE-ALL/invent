@@ -4,12 +4,10 @@ namespace App\Http\Controllers\ProductMaster;
 
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\Controller;
-use App\Models\LinkedProductData;
 use App\Models\Permission;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\User;
-use App\Models\Warehouse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -1096,145 +1094,6 @@ class ProductMasterController extends Controller
         }
     }
 
-    public function linkedProductsView(){
-
-        $warehouses = Warehouse::select('id', 'name')->get();
-
-        $skus = ProductMaster::select('product_master.id', 'product_master.parent', 'product_master.sku', 'shopify_skus.inv as available_quantity', 'shopify_skus.quantity as l30')
-            ->leftJoin('shopify_skus', 'product_master.sku', '=', 'shopify_skus.sku')
-            ->get()
-            ->map(function ($item) {
-            $inv = $item->available_quantity ?? 0;
-            $l30 = $item->l30 ?? 0;
-            $item->dil = $inv != 0 ? round(($l30 / $inv) * 100) : 0;
-            return $item;
-        });
-
-        return view('inventory-management.linked-products-view', compact('warehouses', 'skus'));
-    }
-
-    public function linkedProductStore(Request $request)
-    {
-        $request->validate([
-            'group_id' => 'required|numeric',
-            'from_sku' => 'required|string|different:to_sku',
-            'to_sku' => 'required|string|different:from_sku',
-        ]);
-
-        DB::beginTransaction();
-        try {
-            // Get the current products
-            $fromProduct = ProductMaster::where('sku', $request->from_sku)->first();
-            $toProduct = ProductMaster::where('sku', $request->to_sku)->first();
-
-            if (!$fromProduct || !$toProduct) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'One or both SKUs not found',
-                ], 404);
-            }
-
-            $fromGroupId = $fromProduct->group_id;
-            $toGroupId = $toProduct->group_id;
-
-            // Only assign group_id to SKUs that don't have one (don't overwrite existing)
-            $updatedCount = 0;
-            
-            if (!$fromGroupId) {
-                $fromProduct->group_id = $request->group_id;
-                $fromProduct->save();
-                $updatedCount++;
-            }
-            
-            if (!$toGroupId) {
-                $toProduct->group_id = $request->group_id;
-                $toProduct->save();
-                $updatedCount++;
-            }
-
-            DB::commit();
-
-            $message = $updatedCount > 0 
-                ? "Products linked successfully. {$updatedCount} SKU(s) assigned to group {$request->group_id}."
-                : "Both SKUs already have group IDs assigned. No changes made.";
-
-            return response()->json([
-                'success' => true,
-                'message' => $message,
-                'group_id' => $request->group_id,
-            ]);
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Link products failed: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to link products: ' . $e->getMessage(),
-            ], 500);
-        }
-    }
-
-    public function linkedProductsList()
-    {
-         $data = ProductMaster::whereNotNull('group_id')
-        ->orderBy('group_id')
-        ->get()
-        ->groupBy('group_id') // group all SKUs under the same group_id
-        ->map(function ($group, $groupId) {
-            return [
-                'group_id' => $groupId,
-                'skus'     => $group->pluck('sku')->toArray(),
-                'parents'  => $group->pluck('parent')->unique()->toArray(),
-            ];
-        })
-        ->values(); // reset keys for JSON
-
-        return response()->json(['data' => $data]);
-    }
-
-    public function linkedProductDelink(Request $request)
-    {
-        $request->validate([
-            'group_id' => 'required|numeric',
-        ]);
-
-        try {
-            $count = ProductMaster::where('group_id', $request->group_id)->count();
-            
-            if ($count === 0) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No products found with this group ID.',
-                ], 404);
-            }
-
-            ProductMaster::where('group_id', $request->group_id)->update(['group_id' => null]);
-
-            return response()->json([
-                'success' => true,
-                'message' => "Successfully delinked {$count} products from group {$request->group_id}.",
-                'count' => $count,
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Delink products failed: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to delink products: ' . $e->getMessage(),
-            ], 500);
-        }
-    }
-
-    public function showUpdatedQty()
-    {
-        return view('inventory-management.auto-updated-qty');
-    }
-
-    // Data for DataTable / AJAX
-    public function showUpdatedQtyList(Request $request)
-    {
-        $data = LinkedProductData::latest()->get(['group_id', 'sku', 'old_qty', 'new_qty']);
-
-        return response()->json($data);
-    }
 
 
     public function getArchived()

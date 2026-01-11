@@ -173,6 +173,7 @@ return [
 
     ['value' => 'tiktokshop', 'text' => 'Tiktok Shop', 'group' => 'Marketplace'],
     ['value' => 'listing_tiktokshop', 'text' => 'Listing Tiktok Shop', 'group' => 'Marketplace'],
+    ['value' => 'tiktok_pricing', 'text' => 'TikTok Pricing', 'group' => 'Marketplace'],
 
     ['value' => 'mercariwship', 'text' => 'Mercari w Ship', 'group' => 'Marketplace'],
     ['value' => 'listing_mercariwship', 'text' => 'Listing Mercari w Ship', 'group' => 'Marketplace'],

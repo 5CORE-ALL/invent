@@ -84,6 +84,7 @@ class Kernel extends ConsoleKernel
         FetchShopifyB2CMetrics::class,
         \App\Console\Commands\RunAdvMastersCron::class,
         \App\Console\Commands\CollectWalmartMetrics::class,
+        \App\Console\Commands\CheckInactiveUsersCommand::class,
 
     ];
 
@@ -607,6 +608,19 @@ class Kernel extends ConsoleKernel
             ->twiceDaily(2, 14)
             ->withoutOverlapping()
             ->name('shopify-b2c-metrics');
+
+        /*
+    |--------------------------------------------------------------------------
+    | AUTO LOGOUT INACTIVE USERS (Every Hour)
+    |--------------------------------------------------------------------------
+    */
+
+        // Check for inactive users every hour using Artisan command (NO QUEUE)
+        $schedule->command('users:check-inactive --hours=6')
+            ->hourly()
+            ->timezone('UTC')
+            ->name('auto-logout-inactive-users')
+            ->withoutOverlapping();
     }
 
     /**
