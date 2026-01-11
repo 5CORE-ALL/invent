@@ -494,12 +494,62 @@ class Ebay2UtilizedAdsController extends Controller
             }
         }
 
+        // Fetch last 30 days daily data from ebay_2_priority_reports
+        // Daily data is stored with report_range as date (format: Y-m-d)
+        $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30)->format('Y-m-d');
+        $today = \Carbon\Carbon::now()->format('Y-m-d');
+        
+        // Get all unique campaign IDs from campaignMap for efficient filtering
+        $allCampaignIds = [];
+        foreach ($campaignMap as $row) {
+            if (!empty($row['campaign_id'])) {
+                $allCampaignIds[] = $row['campaign_id'];
+            }
+        }
+        $allCampaignIds = array_unique($allCampaignIds);
+        
+        $dailyDataLast30Days = collect();
+        if (!empty($allCampaignIds)) {
+            $dailyDataLast30Days = DB::table('ebay_2_priority_reports')
+                ->select(
+                    'campaign_id',
+                    'campaign_name',
+                    DB::raw('SUM(cpc_clicks) as total_clicks'),
+                    DB::raw('SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")) as total_spend'),
+                    DB::raw('SUM(cpc_attributed_sales) as total_ad_sold')
+                )
+                ->whereRaw("report_range >= ? AND report_range <= ? AND report_range NOT IN ('L7', 'L1', 'L30')", [$thirtyDaysAgo, $today])
+                ->where('campaignStatus', 'RUNNING')
+                ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+                ->where('campaign_name', 'NOT LIKE', 'General - %')
+                ->where('campaign_name', 'NOT LIKE', 'Default%')
+                ->whereIn('campaign_id', $allCampaignIds)
+                ->groupBy('campaign_id', 'campaign_name')
+                ->get()
+                ->keyBy('campaign_id');
+        }
+        
+        // Add last 30 days data to each campaign in campaignMap
+        foreach ($campaignMap as $key => $row) {
+            $campaignId = $row['campaign_id'] ?? '';
+            if (!empty($campaignId) && $dailyDataLast30Days->has($campaignId)) {
+                $dailyData = $dailyDataLast30Days[$campaignId];
+                $campaignMap[$key]['l30_daily_clicks'] = (int) ($dailyData->total_clicks ?? 0);
+                $campaignMap[$key]['l30_daily_spend'] = (float) ($dailyData->total_spend ?? 0);
+                $campaignMap[$key]['l30_daily_ad_sold'] = (int) ($dailyData->total_ad_sold ?? 0);
+            } else {
+                $campaignMap[$key]['l30_daily_clicks'] = 0;
+                $campaignMap[$key]['l30_daily_spend'] = 0;
+                $campaignMap[$key]['l30_daily_ad_sold'] = 0;
+            }
+        }
+
         // Convert map to array
         foreach ($campaignMap as $campaignId => $row) {
             $result[] = (object) $row;
         }
 
-        // Calculate total ACOS from ALL campaigns (L30 data)
+        // Calculate total ACOS from ALL campaigns (L30 report_range data)
         $allL30Campaigns = Ebay2PriorityReport::where('report_range', 'L30')
             ->where('campaign_name', 'NOT LIKE', 'Campaign %')
             ->where('campaign_name', 'NOT LIKE', 'General - %')
@@ -508,15 +558,42 @@ class Ebay2UtilizedAdsController extends Controller
 
         $totalSpendAll = 0;
         $totalSalesAll = 0;
+        $totalClicksAll = 0;
+        $totalAdSoldAll = 0;
 
         foreach ($allL30Campaigns as $campaign) {
             $adFees = (float) str_replace(['USD ', ','], '', $campaign->cpc_ad_fees_payout_currency ?? '0');
             $sales = (float) str_replace(['USD ', ','], '', $campaign->cpc_sale_amount_payout_currency ?? '0');
+            $clicks = (int) ($campaign->cpc_clicks ?? 0);
+            $adSold = (int) ($campaign->cpc_attributed_sales ?? 0);
             $totalSpendAll += $adFees;
             $totalSalesAll += $sales;
+            $totalClicksAll += $clicks;
+            $totalAdSoldAll += $adSold;
         }
 
         $totalACOSAll = $totalSalesAll > 0 ? ($totalSpendAll / $totalSalesAll) * 100 : 0;
+
+        // Calculate average ACOS and CVR from campaignMap
+        $totalAcos = 0;
+        $totalCvr = 0;
+        $acosCount = 0;
+        $cvrCount = 0;
+        
+        foreach ($campaignMap as $row) {
+            if (isset($row['acos']) && $row['acos'] !== null) {
+                $totalAcos += (float) $row['acos'];
+                $acosCount++;
+            }
+            // Only count CVR for campaigns with clicks > 0 (CVR is meaningful only when clicks exist)
+            if (isset($row['cvr']) && $row['cvr'] !== null && isset($row['clicks']) && $row['clicks'] > 0) {
+                $totalCvr += (float) $row['cvr'];
+                $cvrCount++;
+            }
+        }
+        
+        $avgAcos = $acosCount > 0 ? round($totalAcos / $acosCount, 2) : 0;
+        $avgCvr = $cvrCount > 0 ? round($totalCvr / $cvrCount, 2) : 0;
 
         // Calculate total SKU count - ALL SKUs EXCLUDING parent SKUs (same as /ebay/utilized)
         $totalSkuCount = ProductMaster::whereNull('deleted_at')
@@ -571,7 +648,11 @@ class Ebay2UtilizedAdsController extends Controller
             'data' => $result,
             'total_l30_spend' => round($totalSpendAll, 2),
             'total_l30_sales' => round($totalSalesAll, 2),
+            'total_l30_clicks' => $totalClicksAll,
+            'total_l30_ad_sold' => $totalAdSoldAll,
             'total_acos' => round($totalACOSAll, 2),
+            'avg_acos' => $avgAcos,
+            'avg_cvr' => $avgCvr,
             'total_sku_count' => $totalSkuCount,
             'ebay_sku_count' => $ebaySkuCount,
             'total_campaign_count' => $totalCampaignCount,
