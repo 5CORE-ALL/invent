@@ -301,6 +301,36 @@
                                                 <span class="fw-bold" id="7ub-1ub-count"
                                                     style="font-size: 1.1rem;">0</span>
                                 </div>
+                                            <div class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">L30 CLICKS</span>
+                                                <span class="fw-bold" id="l30-total-clicks"
+                                                    style="font-size: 1.1rem;">0</span>
+                                </div>
+                                            <div class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">L30 SPEND</span>
+                                                <span class="fw-bold" id="l30-total-spend"
+                                                    style="font-size: 1.1rem;">0</span>
+                                </div>
+                                            <div class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">L30 AD SOLD</span>
+                                                <span class="fw-bold" id="l30-total-ad-sold"
+                                                    style="font-size: 1.1rem;">0</span>
+                                </div>
+                                            <div class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">AVG ACOS</span>
+                                                <span class="fw-bold" id="avg-acos"
+                                                    style="font-size: 1.1rem;">0</span>
+                                </div>
+                                            <div class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">AVG CVR</span>
+                                                <span class="fw-bold" id="avg-cvr"
+                                                    style="font-size: 1.1rem;">0</span>
+                                </div>
                             </div>
                             </div>
                         </div>
@@ -686,6 +716,32 @@
                 }
             }
 
+            // Function to calculate and update L30 totals (clicks, spend, ad_sold)
+            // Variables to store L30 totals from backend
+            let totalL30ClicksFromBackend = 0;
+            let totalL30SpendFromBackend = 0;
+            let totalL30AdSoldFromBackend = 0;
+
+            function updateL30Totals() {
+                // Update L30 CLICKS total from backend
+                const l30ClicksEl = document.getElementById('l30-total-clicks');
+                if (l30ClicksEl) {
+                    l30ClicksEl.textContent = totalL30ClicksFromBackend.toLocaleString();
+                }
+
+                // Update L30 SPEND total from backend
+                const l30SpendEl = document.getElementById('l30-total-spend');
+                if (l30SpendEl) {
+                    l30SpendEl.textContent = Math.round(totalL30SpendFromBackend).toLocaleString();
+                }
+
+                // Update L30 AD SOLD total from backend
+                const l30AdSoldEl = document.getElementById('l30-total-ad-sold');
+                if (l30AdSoldEl) {
+                    l30AdSoldEl.textContent = totalL30AdSoldFromBackend.toLocaleString();
+                }
+            }
+
             // Utilization type dropdown handler
             const utilizationTypeSelect = document.getElementById('utilization-type-select');
             if (utilizationTypeSelect) {
@@ -701,6 +757,7 @@
                         table.setFilter(combinedFilter);
                         table.redraw(true);
                         updateButtonCounts();
+                        updateL30Totals();
                     }
                 });
             }
@@ -850,6 +907,7 @@
                         table.setFilter(combinedFilter);
                         table.redraw(true);
                         updateButtonCounts();
+                        updateL30Totals();
                     }
                 });
 
@@ -2162,6 +2220,27 @@
                     totalSkuCountFromBackend = parseFloat(response.total_sku_count) || 0;
                     ebaySkuCountFromBackend = parseFloat(response.ebay_sku_count) || 0;
 
+                    // Get L30 totals from backend (L30 report_range data)
+                    totalL30ClicksFromBackend = parseInt(response.total_l30_clicks || 0);
+                    totalL30SpendFromBackend = parseFloat(response.total_l30_spend || 0);
+                    totalL30AdSoldFromBackend = parseInt(response.total_l30_ad_sold || 0);
+
+                    // Update average ACOS and CVR from backend
+                    const avgAcosEl = document.getElementById('avg-acos');
+                    if (avgAcosEl) {
+                        avgAcosEl.textContent = (parseFloat(response.avg_acos) || 0).toFixed(2) + '%';
+                    }
+                    
+                    const avgCvrEl = document.getElementById('avg-cvr');
+                    if (avgCvrEl) {
+                        avgCvrEl.textContent = (parseFloat(response.avg_cvr) || 0).toFixed(2) + '%';
+                    }
+
+                    // Update L30 totals after data is loaded
+                    setTimeout(function() {
+                        updateL30Totals();
+                    }, 100);
+
                     // Update eBay SKU count
                     const ebaySkuCountEl = document.getElementById('ebay-sku-count');
                     if (ebaySkuCountEl) {
@@ -2294,6 +2373,7 @@
             }
 
             table.on("tableBuilt", function() {
+                updateL30Totals();
                 table.setFilter(combinedFilter);
 
                 // Set initial column visibility based on current utilization type
@@ -2333,9 +2413,10 @@
                 table.on("dataFiltered", function(filteredRows) {
                     if (filterTimeout) clearTimeout(filterTimeout);
                     filterTimeout = setTimeout(function() {
-                updateButtonCounts();
+                        updateButtonCounts();
+                        updateL30Totals();
                     }, 200);
-            });
+                });
 
             // Debounced search
             let searchTimeout = null;
@@ -2351,6 +2432,7 @@
                     // Update counts when filter changes - use longer timeout to ensure filter is applied
                     setTimeout(function() {
                         updateButtonCounts();
+                        updateL30Totals();
                     }, 300);
                 });
 

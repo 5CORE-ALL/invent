@@ -1057,10 +1057,41 @@
                     sumRestockShopifyPriceElement.textContent = wholeNumber.toLocaleString('en-US');
                 }
 
-                // Calculate and update total MIP Value
+                // Calculate and update total MIP Value - only for items with stage === 'mip' (like mfrg-in-progress page)
+                // Filter criteria: stage === 'mip', ready_to_ship !== 'Yes', nr !== 'NR' (same as mfrg-in-progress page)
+                // Calculate directly as qty * rate (like mfrg-in-progress page calculates from DOM)
                 const totalMipValue = response.data.reduce((sum, item) => {
                     if (!item.is_parent) {
-                        return sum + (parseFloat(item.MIP_Value) || 0);
+                        // Check stage field - only count if stage is 'mip'
+                        const stage = item.stage || '';
+                        const stageValue = String(stage || '').trim().toLowerCase();
+                        
+                        // Check ready_to_ship from mfrg_progress table (exclude if 'Yes', like mfrg-in-progress page)
+                        const mfrgReadyToShip = item.mfrg_ready_to_ship || 'No';
+                        const readyToShipValue = String(mfrgReadyToShip || '').trim();
+                        
+                        // Check nr field (exclude if 'NR', like mfrg-in-progress page)
+                        const nr = item.nr || '';
+                        const nrValue = String(nr || '').trim().toUpperCase();
+                        
+                        // Only count if stage is 'mip', ready_to_ship !== 'Yes', and nr !== 'NR' (matching mfrg-in-progress page logic)
+                        if (stageValue === 'mip' && readyToShipValue !== 'Yes' && nrValue !== 'NR') {
+                            // Calculate directly as qty * rate (same as mfrg-in-progress page)
+                            // In mfrg-in-progress: $item->qty * $item->rate (directly from mfrg_progress table)
+                            // In forecastAnalysis: order_given (qty) and mip_rate (rate) from mfrg_progress table
+                            // But ONLY if ready_to_ship === 'No' (controller already sets order_given=0 if ready_to_ship='Yes')
+                            
+                            // Only calculate if both qty and rate are available (matching mfrg-in-progress template logic)
+                            // mfrg-in-progress template: is_numeric($item->qty) && is_numeric($item->rate)
+                            const qty = parseFloat(item.order_given || 0) || 0;
+                            const rate = parseFloat(item.mip_rate || 0) || 0;
+                            
+                            // Only calculate if both qty and rate are available (matching mfrg-in-progress template logic)
+                            if (qty > 0 && rate > 0) {
+                                return sum + (qty * rate);
+                            }
+                            // Note: We don't use fallback to MIP_Value here because mfrg-in-progress page doesn't show items without qty*rate
+                        }
                     }
                     return sum;
                 }, 0);
@@ -1070,10 +1101,38 @@
                     totalMipValueElement.textContent = roundedTotal.toLocaleString('en-US');
                 }
 
-                // Calculate and update total R2S Value
+                // Calculate and update total R2S Value - only for items with stage === 'r2s' (like ready-to-ship page)
+                // Filter criteria: stage === 'r2s', transit_inv_status === 0 (already filtered in controller), nr !== 'NR' (same as ready-to-ship page)
+                // Calculate directly as qty * rate (like ready-to-ship page calculates from DOM)
                 const totalR2sValue = response.data.reduce((sum, item) => {
                     if (!item.is_parent) {
-                        return sum + (parseFloat(item.R2S_Value) || 0);
+                        // Check stage field - only count if stage is 'r2s'
+                        const stage = item.stage || '';
+                        const stageValue = String(stage || '').trim().toLowerCase();
+                        
+                        // Check nr field (exclude if 'NR', like ready-to-ship page)
+                        const nr = item.nr || '';
+                        const nrValue = String(nr || '').trim().toUpperCase();
+                        
+                        // Only count if stage is 'r2s' and nr !== 'NR' (matching ready-to-ship page logic)
+                        // IMPORTANT: ready-to-ship page calculates from items that are already filtered in template (using continue directive in Blade)
+                        // Controller already filters: transit_inv_status = 0 and stage === 'r2s'
+                        if (stageValue === 'r2s' && nrValue !== 'NR') {
+                            // Calculate directly as qty * rate (same as ready-to-ship page)
+                            // In ready-to-ship: $item->qty * $item->rate (directly from ready_to_ship table)
+                            // In forecastAnalysis: readyToShipQty (qty) and r2s_rate (rate) from ready_to_ship table
+                            
+                            // Only calculate if both qty and rate are available (matching ready-to-ship template logic)
+                            // ready-to-ship template: is_numeric($item->qty) && is_numeric($item->rate)
+                            const qty = parseFloat(item.readyToShipQty || 0) || 0;
+                            const rate = parseFloat(item.r2s_rate || 0) || 0;
+                            
+                            // Only calculate if both qty and rate are available (matching ready-to-ship template logic)
+                            if (qty > 0 && rate > 0) {
+                                return sum + (qty * rate);
+                            }
+                            // Note: We don't use fallback to R2S_Value here because ready-to-ship page doesn't show items without qty*rate
+                        }
                     }
                     return sum;
                 }, 0);
@@ -1083,13 +1142,35 @@
                     totalR2sValueElement.textContent = roundedTotal.toLocaleString('en-US');
                 }
 
-                // Calculate and update total Transit Value
-                const totalTransitValue = response.data.reduce((sum, item) => {
-                    if (!item.is_parent) {
-                        return sum + (parseFloat(item.Transit_Value) || 0);
-                    }
-                    return sum;
-                }, 0);
+                // Calculate and update total Transit Value - use pre-calculated total from controller (from ALL transit_container_details records)
+                // In transit-container-details page: totalAmount += qty * rate for each row (where qty = no_of_units * total_ctn)
+                // Controller calculates total_transit_value from ALL transit_container_details records (like transit-container-details page)
+                // This matches transit-container-details page calculation: sum of (qty * rate) for ALL rows across ALL tabs
+                let totalTransitValue = 0;
+                if (response.total_transit_value !== undefined) {
+                    // Use pre-calculated total from controller (sum of ALL transit_container_details records)
+                    totalTransitValue = parseFloat(response.total_transit_value || 0) || 0;
+                } else {
+                    // Fallback: calculate from response data (for backward compatibility)
+                    totalTransitValue = response.data.reduce((sum, item) => {
+                        if (!item.is_parent) {
+                            // Use pre-calculated transit_value_calculated if available (sum of all (qty * rate) for this SKU)
+                            const transitValueCalculated = parseFloat(item.transit_value_calculated || 0) || 0;
+                            if (transitValueCalculated > 0) {
+                                return sum + transitValueCalculated;
+                            }
+                            // Fallback: calculate directly if we have transit qty and rate
+                            const transitQty = parseFloat(item.transit || 0) || 0;
+                            const transitRate = parseFloat(item.transit_rate || 0) || 0;
+                            if (transitQty > 0 && transitRate > 0) {
+                                return sum + (transitQty * transitRate);
+                            }
+                            // Final fallback: use Transit_Value field (which might be calculated as CP * transit)
+                            return sum + (parseFloat(item.Transit_Value) || 0);
+                        }
+                        return sum;
+                    }, 0);
+                }
                 const totalTransitValueElement = document.getElementById('total_transit_value_display');
                 if (totalTransitValueElement) {
                     const roundedTotal = Math.round(totalTransitValue);
@@ -1484,12 +1565,47 @@
                 const visibleAverageLp = visibleRestockCount > 0 ? visibleTotalLp / visibleRestockCount : 0;
                 const totalRestockMslLp = visibleRestockCount * (visibleAverageLp / 4);
 
-                // Calculate total MIP Value for visible rows
+                // Calculate total MIP Value - from ALL rows (not filtered), only for rows with stage === 'mip' (like mfrg-in-progress page)
+                // Get all rows regardless of filters to calculate MIP Value
+                // Filter criteria: stage === 'mip', ready_to_ship !== 'Yes', nr !== 'NR' (same as mfrg-in-progress page)
+                // Calculate directly as qty * rate (like mfrg-in-progress page calculates from DOM)
+                const allRowsForMip = table.getRows();
                 let totalMipValue = 0;
-                visibleRows.forEach(row => {
+                
+                allRowsForMip.forEach(row => {
                     const data = row.getData();
                     if (!data.is_parent) {
-                        totalMipValue += parseFloat(data.MIP_Value) || 0;
+                        // Check stage field - both direct and from raw_data
+                        const stage = data.stage || (data.raw_data && data.raw_data.stage) || '';
+                        const stageValue = String(stage || '').trim().toLowerCase();
+                        
+                        // Check ready_to_ship from mfrg_progress table (exclude if 'Yes', like mfrg-in-progress page)
+                        const mfrgReadyToShip = data.mfrg_ready_to_ship || (data.raw_data && data.raw_data.mfrg_ready_to_ship) || 'No';
+                        const readyToShipValue = String(mfrgReadyToShip || '').trim();
+                        
+                        // Check nr field (exclude if 'NR', like mfrg-in-progress page)
+                        const nr = data.nr || (data.raw_data && data.raw_data.nr) || '';
+                        const nrValue = String(nr || '').trim().toUpperCase();
+                        
+                        // Only count if stage is 'mip', ready_to_ship !== 'Yes', and nr !== 'NR' (matching mfrg-in-progress page logic)
+                        // IMPORTANT: mfrg-in-progress page calculates from items that are already filtered in template (using continue directive in Blade)
+                        // So we need to match the exact same filtering logic here
+                        if (stageValue === 'mip' && readyToShipValue !== 'Yes' && nrValue !== 'NR') {
+                            // Calculate directly as qty * rate (like mfrg-in-progress page calculates from DOM)
+                            // In mfrg-in-progress: $item->qty * $item->rate (directly from mfrg_progress table)
+                            // In forecastAnalysis: order_given (qty) and mip_rate (rate) from mfrg_progress table
+                            // But ONLY if ready_to_ship === 'No' (controller already sets order_given=0 if ready_to_ship='Yes')
+                            
+                            // Check if item has mfrg_progress data (order_given > 0 means ready_to_ship was 'No')
+                            const qty = parseFloat(data.order_given || data["order_given"] || (data.raw_data && data.raw_data["order_given"]) || 0) || 0;
+                            const rate = parseFloat(data.mip_rate || data["mip_rate"] || (data.raw_data && data.raw_data["mip_rate"]) || 0) || 0;
+                            
+                            // Only calculate if both qty and rate are available (matching mfrg-in-progress template logic)
+                            // mfrg-in-progress template: is_numeric($item->qty) && is_numeric($item->rate)
+                            if (qty > 0 && rate > 0) {
+                                totalMipValue += (qty * rate);
+                            }
+                        }
                     }
                 });
 
@@ -1500,12 +1616,43 @@
                     totalMipValueElement.textContent = roundedTotal.toLocaleString('en-US');
                 }
 
-                // Calculate total R2S Value for visible rows
+                // Calculate total R2S Value - from ALL rows (not filtered), only for rows with stage === 'r2s' (like ready-to-ship page)
+                // Get all rows regardless of filters to calculate R2S Value
+                // Filter criteria: stage === 'r2s', transit_inv_status === 0, nr !== 'NR' (same as ready-to-ship page)
+                // Calculate directly as qty * rate (like ready-to-ship page calculates from DOM)
+                const allRowsForR2s = table.getRows();
                 let totalR2sValue = 0;
-                visibleRows.forEach(row => {
+                
+                allRowsForR2s.forEach(row => {
                     const data = row.getData();
                     if (!data.is_parent) {
-                        totalR2sValue += parseFloat(data.R2S_Value) || 0;
+                        // Check stage field - both direct and from raw_data
+                        const stage = data.stage || (data.raw_data && data.raw_data.stage) || '';
+                        const stageValue = String(stage || '').trim().toLowerCase();
+                        
+                        // Check nr field (exclude if 'NR', like ready-to-ship page)
+                        const nr = data.nr || (data.raw_data && data.raw_data.nr) || '';
+                        const nrValue = String(nr || '').trim().toUpperCase();
+                        
+                        // Only count if stage is 'r2s' and nr !== 'NR' (matching ready-to-ship page logic)
+                        // IMPORTANT: ready-to-ship page calculates from items that are already filtered in template (using continue directive in Blade)
+                        // Controller already filters: transit_inv_status = 0 and stage === 'r2s'
+                        if (stageValue === 'r2s' && nrValue !== 'NR') {
+                            // Calculate directly as qty * rate (same as ready-to-ship page)
+                            // In ready-to-ship: $item->qty * $item->rate (directly from ready_to_ship table)
+                            // In forecastAnalysis: readyToShipQty (qty) and r2s_rate (rate) from ready_to_ship table
+                            
+                            // Only calculate if both qty and rate are available (matching ready-to-ship template logic)
+                            // ready-to-ship template: is_numeric($item->qty) && is_numeric($item->rate)
+                            const qty = parseFloat(data.readyToShipQty || data["readyToShipQty"] || (data.raw_data && data.raw_data["readyToShipQty"]) || 0) || 0;
+                            const rate = parseFloat(data.r2s_rate || data["r2s_rate"] || (data.raw_data && data.raw_data["r2s_rate"]) || 0) || 0;
+                            
+                            // Only calculate if both qty and rate are available (matching ready-to-ship template logic)
+                            if (qty > 0 && rate > 0) {
+                                totalR2sValue += (qty * rate);
+                            }
+                            // Note: We don't use fallback to R2S_Value here because ready-to-ship page doesn't show items without qty*rate
+                        }
                     }
                 });
 
@@ -1516,21 +1663,10 @@
                     totalR2sValueElement.textContent = roundedTotal.toLocaleString('en-US');
                 }
 
-                // Calculate total Transit Value for visible rows
-                let totalTransitValue = 0;
-                visibleRows.forEach(row => {
-                    const data = row.getData();
-                    if (!data.is_parent) {
-                        totalTransitValue += parseFloat(data.Transit_Value) || 0;
-                    }
-                });
-
-                // Update total Transit Value display
-                const totalTransitValueElement = document.getElementById('total_transit_value_display');
-                if (totalTransitValueElement) {
-                    const roundedTotal = Math.round(totalTransitValue);
-                    totalTransitValueElement.textContent = roundedTotal.toLocaleString('en-US');
-                }
+                // Note: Transit Value is calculated from ALL transit_container_details records (like transit-container-details page)
+                // It should remain constant regardless of filters, so we don't recalculate it here
+                // The value is set in ajaxResponse from the pre-calculated total_transit_value from controller
+                // Transit Value total is from ALL transit_container_details records across ALL tabs, not just filtered table rows
             }, 50);
 
             const visibleRows = table.getRows(true).map(r => r.getData());

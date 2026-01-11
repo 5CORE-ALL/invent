@@ -137,14 +137,15 @@
 
                             <!-- Stage Filter -->
                             <select id="stage-filter" class="form-select-sm border border-primary" style="width: 150px;">
-                                <option value="appr_req">Appr Req</option>
+                                <option value="appr_req" selected>Appr Req (0)</option>
+                                <option value="to_order_analysis">2Order (0)</option>
                             </select>
 
                             <!-- NRP Filter -->
                             <select id="nrp-filter" class="form-select-sm border border-primary" style="width: 150px;">
                                 <option value="">All NRP</option>
                                 <option value="NR">2BDC</option>
-                                <option value="REQ">REQ</option>
+                                <option value="REQ" selected>REQ</option>
                                 <option value="LATER">LATER</option>
                             </select>
 
@@ -791,23 +792,24 @@
                     formatter: function(cell) {
                         const value = cell.getValue() ?? '';
                         const rowData = cell.getRow().getData();
+                        const sku = rowData["SKU"] || '';
+                        const parent = rowData["Parent"] || '';
+                        
+                        // Show "2Order" if stage is 'to_order_analysis', otherwise show "APR"
+                        const buttonText = value === 'to_order_analysis' ? '2Order' : 'APR';
+                        const buttonClass = value === 'to_order_analysis' ? 'btn-warning' : 'btn-primary';
+                        const textColor = value === 'to_order_analysis' ? 'color: #000000 !important;' : '';
 
                         return `
-                        <select class="form-select form-select-sm editable-select"
+                        <button class="btn btn-sm ${buttonClass} stage-apr-btn"
                             data-type="Stage"
-                            data-sku='${rowData["SKU"]}'
-                            data-parent='${rowData["Parent"]}'
-                            style="width: auto; min-width: 100px; padding: 4px 24px 4px 8px;
-                                font-size: 0.875rem; border-radius: 4px; border: 1px solid #dee2e6;
-                                background-color: #fff;">
-                            <option value="">Select</option>
-                            <option value="appr_req" ${value === 'appr_req' ? 'selected' : ''}>Appr. Req</option>
-                            <option value="mip" ${value === 'mip' ? 'selected' : ''}>MIP</option>
-                            <option value="r2s" ${value === 'r2s' ? 'selected' : ''}>R2S</option>
-                            <option value="transit" ${value === 'transit' ? 'selected' : ''}>Transit</option>
-                            <option value="all_good" ${value === 'all_good' ? 'selected' : ''}>😊 All Good</option>
-                            <option value="to_order_analysis" ${value === 'to_order_analysis' ? 'selected' : ''}>2 Order</option>
-                        </select>
+                            data-sku='${sku}'
+                            data-parent='${parent}'
+                            data-current-stage='${value}'
+                            style="width: auto; min-width: 80px; padding: 4px 12px;
+                                font-size: 0.875rem; border-radius: 4px; font-weight: 500; ${textColor}">
+                            ${buttonText}
+                        </button>
                     `;
                     }
                 },
@@ -998,10 +1000,43 @@
                     sumRestockShopifyPriceElement.textContent = wholeNumber.toLocaleString('en-US');
                 }
 
-                // Calculate and update total MIP Value
+                // Calculate and update total MIP Value - only for items with stage === 'mip' (like mfrg-in-progress page)
+                // Filter criteria: stage === 'mip', ready_to_ship !== 'Yes', nr !== 'NR' (same as mfrg-in-progress page)
+                // Calculate directly as qty * rate (like mfrg-in-progress page calculates from DOM)
                 const totalMipValue = response.data.reduce((sum, item) => {
                     if (!item.is_parent) {
-                        return sum + (parseFloat(item.MIP_Value) || 0);
+                        // Check stage field - only count if stage is 'mip'
+                        const stage = item.stage || '';
+                        const stageValue = String(stage || '').trim().toLowerCase();
+                        
+                        // Check ready_to_ship from mfrg_progress table (exclude if 'Yes', like mfrg-in-progress page)
+                        const mfrgReadyToShip = item.mfrg_ready_to_ship || 'No';
+                        const readyToShipValue = String(mfrgReadyToShip || '').trim();
+                        
+                        // Check nr field (exclude if 'NR', like mfrg-in-progress page)
+                        const nr = item.nr || '';
+                        const nrValue = String(nr || '').trim().toUpperCase();
+                        
+                        // Only count if stage is 'mip', ready_to_ship !== 'Yes', and nr !== 'NR' (matching mfrg-in-progress page logic)
+                        // IMPORTANT: mfrg-in-progress page calculates from items that are already filtered in template (using continue directive in Blade)
+                        // So we need to match the exact same filtering logic here
+                        if (stageValue === 'mip' && readyToShipValue !== 'Yes' && nrValue !== 'NR') {
+                            // Calculate directly as qty * rate (same as mfrg-in-progress page)
+                            // In mfrg-in-progress: $item->qty * $item->rate (directly from mfrg_progress table)
+                            // In approvalRequired: order_given (qty) and mip_rate (rate) from mfrg_progress table
+                            // But ONLY if ready_to_ship === 'No' (controller already sets order_given=0 if ready_to_ship='Yes')
+                            
+                            // Only calculate if both qty and rate are available (matching mfrg-in-progress template logic)
+                            // mfrg-in-progress template: is_numeric($item->qty) && is_numeric($item->rate)
+                            const qty = parseFloat(item.order_given || 0) || 0;
+                            const rate = parseFloat(item.mip_rate || 0) || 0;
+                            
+                            // Only calculate if both qty and rate are available (matching mfrg-in-progress template logic)
+                            if (qty > 0 && rate > 0) {
+                                return sum + (qty * rate);
+                            }
+                            // Note: We don't use fallback to MIP_Value here because mfrg-in-progress page doesn't show items without qty*rate
+                        }
                     }
                     return sum;
                 }, 0);
@@ -1011,10 +1046,38 @@
                     totalMipValueElement.textContent = roundedTotal.toLocaleString('en-US');
                 }
 
-                // Calculate and update total R2S Value
+                // Calculate and update total R2S Value - only for items with stage === 'r2s' (like ready-to-ship page)
+                // Filter criteria: stage === 'r2s', transit_inv_status === 0 (already filtered in controller), nr !== 'NR' (same as ready-to-ship page)
+                // Calculate directly as qty * rate (like ready-to-ship page calculates from DOM)
                 const totalR2sValue = response.data.reduce((sum, item) => {
                     if (!item.is_parent) {
-                        return sum + (parseFloat(item.R2S_Value) || 0);
+                        // Check stage field - only count if stage is 'r2s'
+                        const stage = item.stage || '';
+                        const stageValue = String(stage || '').trim().toLowerCase();
+                        
+                        // Check nr field (exclude if 'NR', like ready-to-ship page)
+                        const nr = item.nr || '';
+                        const nrValue = String(nr || '').trim().toUpperCase();
+                        
+                        // Only count if stage is 'r2s' and nr !== 'NR' (matching ready-to-ship page logic)
+                        // IMPORTANT: ready-to-ship page calculates from items that are already filtered in template (using continue directive in Blade)
+                        // Controller already filters: transit_inv_status = 0 and stage === 'r2s'
+                        if (stageValue === 'r2s' && nrValue !== 'NR') {
+                            // Calculate directly as qty * rate (same as ready-to-ship page)
+                            // In ready-to-ship: $item->qty * $item->rate (directly from ready_to_ship table)
+                            // In approvalRequired: readyToShipQty (qty) and r2s_rate (rate) from ready_to_ship table
+                            
+                            // Only calculate if both qty and rate are available (matching ready-to-ship template logic)
+                            // ready-to-ship template: is_numeric($item->qty) && is_numeric($item->rate)
+                            const qty = parseFloat(item.readyToShipQty || 0) || 0;
+                            const rate = parseFloat(item.r2s_rate || 0) || 0;
+                            
+                            // Only calculate if both qty and rate are available (matching ready-to-ship template logic)
+                            if (qty > 0 && rate > 0) {
+                                return sum + (qty * rate);
+                            }
+                            // Note: We don't use fallback to R2S_Value here because ready-to-ship page doesn't show items without qty*rate
+                        }
                     }
                     return sum;
                 }, 0);
@@ -1024,13 +1087,35 @@
                     totalR2sValueElement.textContent = roundedTotal.toLocaleString('en-US');
                 }
 
-                // Calculate and update total Transit Value
-                const totalTransitValue = response.data.reduce((sum, item) => {
-                    if (!item.is_parent) {
-                        return sum + (parseFloat(item.Transit_Value) || 0);
-                    }
-                    return sum;
-                }, 0);
+                // Calculate and update total Transit Value - use pre-calculated total from controller (from ALL transit_container_details records)
+                // In transit-container-details page: totalAmount += qty * rate for each row (where qty = no_of_units * total_ctn)
+                // Controller calculates total_transit_value from ALL transit_container_details records (like transit-container-details page)
+                // This matches transit-container-details page calculation: sum of (qty * rate) for ALL rows across ALL tabs
+                let totalTransitValue = 0;
+                if (response.total_transit_value !== undefined) {
+                    // Use pre-calculated total from controller (sum of ALL transit_container_details records)
+                    totalTransitValue = parseFloat(response.total_transit_value || 0) || 0;
+                } else {
+                    // Fallback: calculate from response data (for backward compatibility)
+                    totalTransitValue = response.data.reduce((sum, item) => {
+                        if (!item.is_parent) {
+                            // Use pre-calculated transit_value_calculated if available (sum of all (qty * rate) for this SKU)
+                            const transitValueCalculated = parseFloat(item.transit_value_calculated || 0) || 0;
+                            if (transitValueCalculated > 0) {
+                                return sum + transitValueCalculated;
+                            }
+                            // Fallback: calculate directly if we have transit qty and rate
+                            const transitQty = parseFloat(item.transit || 0) || 0;
+                            const transitRate = parseFloat(item.transit_rate || 0) || 0;
+                            if (transitQty > 0 && transitRate > 0) {
+                                return sum + (transitQty * transitRate);
+                            }
+                            // Final fallback: use Transit_Value field (which might be calculated as CP * transit)
+                            return sum + (parseFloat(item.Transit_Value) || 0);
+                        }
+                        return sum;
+                    }, 0);
+                }
                 const totalTransitValueElement = document.getElementById('total_transit_value_display');
                 if (totalTransitValueElement) {
                     const roundedTotal = Math.round(totalTransitValue);
@@ -1135,7 +1220,7 @@
         let currentRestockFilter = false;
         let currentZeroInvFilter = false;
         let currentStageFilter = 'appr_req'; // Default to Appr Req
-        let currentNRPFilter = '';
+        let currentNRPFilter = 'REQ'; // Default to REQ to show only REQ items
 
         function setCombinedFilters() {
             const allData = table.getData();
@@ -1186,13 +1271,14 @@
                             const transit = parseFloat(transitValue) || 0;
                             stageMatch = transit > 0;
                         } else if (currentStageFilter === 'appr_req') {
-                            // Appr Req: items with stage 'to_order_analysis' and yellow filter (to_order >= 0)
+                            // Appr Req: items with empty stage (not 'to_order_analysis'), and yellow filter (to_order >= 0)
+                            // Exclude items already in 2Order - show only items that need approval
                             const toOrderValue = child.raw_data ? child.raw_data["to_order"] : child["to_order"];
                             const toOrder = parseFloat(toOrderValue) || 0;
-                            stageMatch = (childStage === 'to_order_analysis' || childStage === '') && toOrder >= 0;
+                            stageMatch = (childStage === '' || childStage === null || childStage === undefined) && toOrder >= 0;
                         } else if (currentStageFilter === 'to_order_analysis') {
-                            // For 2 Order: include items with stage 'to_order_analysis' OR empty stage (items needing approval)
-                            stageMatch = (childStage === 'to_order_analysis' || childStage === '');
+                            // For 2 Order: include only items with stage 'to_order_analysis'
+                            stageMatch = childStage === 'to_order_analysis';
                         } else {
                             stageMatch = childStage === currentStageFilter;
                         }
@@ -1214,9 +1300,8 @@
                             child.to_order >= 0 :
                             true;
                     }
-                    // Exclude rows with stage 'to_order_analysis'
-                    const excludeToOrderAnalysis = childStage !== 'to_order_analysis';
-                    return nrMatch && nrpMatch && stageMatch && filterMatch && excludeToOrderAnalysis;
+                    // Don't exclude rows with stage 'to_order_analysis' - they should be visible with "2Order" button
+                    return nrMatch && nrpMatch && stageMatch && filterMatch;
                 });
 
                 if (matchingChildren.length > 0) {
@@ -1267,32 +1352,32 @@
                         const transit = parseFloat(transitValue) || 0;
                         stageMatch = transit > 0;
                     } else if (currentStageFilter === 'appr_req') {
-                        // Appr Req: items with stage 'to_order_analysis' and yellow filter (to_order >= 0)
+                        // Appr Req: items with empty stage (not 'to_order_analysis'), and yellow filter (to_order >= 0)
+                        // Exclude items already in 2Order - show only items that need approval
                         const toOrderValue = data.raw_data ? data.raw_data["to_order"] : data["to_order"];
                         const toOrder = parseFloat(toOrderValue) || 0;
-                        stageMatch = (dataStage === 'to_order_analysis' || dataStage === '') && toOrder >= 0;
+                        stageMatch = (dataStage === '' || dataStage === null || dataStage === undefined) && toOrder >= 0;
                     } else if (currentStageFilter === 'to_order_analysis') {
-                        // For 2 Order: include items with stage 'to_order_analysis' OR empty stage (items needing approval)
-                        stageMatch = (dataStage === 'to_order_analysis' || dataStage === '');
+                        // For 2 Order: include only items with stage 'to_order_analysis'
+                        stageMatch = dataStage === 'to_order_analysis';
                     } else {
                         stageMatch = dataStage === currentStageFilter;
                     }
                 }
 
-                // Exclude rows with stage 'to_order_analysis'
-                const excludeToOrderAnalysis = dataStage !== 'to_order_analysis';
+                // Don't exclude rows with stage 'to_order_analysis' - they should be visible with "2Order" button
 
                 // 🎯 Force filter to one parent group if play mode is active
                 if (currentParentFilter) {
                     if (isParent) {
                         return data.Parent === currentParentFilter;
                     } else {
-                        return data.Parent === currentParentFilter && matchesFilter && matchesNR && nrpMatch && stageMatch && excludeToOrderAnalysis;
+                        return data.Parent === currentParentFilter && matchesFilter && matchesNR && nrpMatch && stageMatch;
                     }
                 }
                 
                 if (isChild) {
-                    const showChild = matchesFilter && matchesNR && nrpMatch && stageMatch && excludeToOrderAnalysis;
+                    const showChild = matchesFilter && matchesNR && nrpMatch && stageMatch;
                     if (currentRowTypeFilter === 'parent') return false;
                     if (currentRowTypeFilter === 'sku') return showChild;
                     return showChild;
@@ -1402,12 +1487,48 @@
                 const visibleAverageLp = visibleRestockCount > 0 ? visibleTotalLp / visibleRestockCount : 0;
                 const totalRestockMslLp = visibleRestockCount * (visibleAverageLp / 4);
 
-                // Calculate total MIP Value for visible rows
+                // Calculate total MIP Value - from ALL rows (not filtered), only for rows with stage === 'mip' (like mfrg-in-progress page)
+                // Get all rows regardless of filters to calculate MIP Value
+                // Filter criteria: stage === 'mip', ready_to_ship !== 'Yes', nr !== 'NR' (same as mfrg-in-progress page)
+                // Calculate directly as qty * rate (like mfrg-in-progress page calculates from DOM)
+                const allRowsForMip = table.getRows();
                 let totalMipValue = 0;
-                visibleRows.forEach(row => {
+                
+                allRowsForMip.forEach(row => {
                     const data = row.getData();
                     if (!data.is_parent) {
-                        totalMipValue += parseFloat(data.MIP_Value) || 0;
+                        // Check stage field - both direct and from raw_data
+                        const stage = data.stage || (data.raw_data && data.raw_data.stage) || '';
+                        const stageValue = String(stage || '').trim().toLowerCase();
+                        
+                        // Check ready_to_ship from mfrg_progress table (exclude if 'Yes', like mfrg-in-progress page)
+                        const mfrgReadyToShip = data.mfrg_ready_to_ship || (data.raw_data && data.raw_data.mfrg_ready_to_ship) || 'No';
+                        const readyToShipValue = String(mfrgReadyToShip || '').trim();
+                        
+                        // Check nr field (exclude if 'NR', like mfrg-in-progress page)
+                        const nr = data.nr || (data.raw_data && data.raw_data.nr) || '';
+                        const nrValue = String(nr || '').trim().toUpperCase();
+                        
+                        // Only count if stage is 'mip', ready_to_ship !== 'Yes', and nr !== 'NR' (matching mfrg-in-progress page logic)
+                        // IMPORTANT: mfrg-in-progress page calculates from items that are already filtered in template (using continue directive in Blade)
+                        // So we need to match the exact same filtering logic here
+                        if (stageValue === 'mip' && readyToShipValue !== 'Yes' && nrValue !== 'NR') {
+                            // Calculate directly as qty * rate (like mfrg-in-progress page calculates from DOM)
+                            // In mfrg-in-progress: $item->qty * $item->rate (directly from mfrg_progress table)
+                            // In approvalRequired: order_given (qty) and mip_rate (rate) from mfrg_progress table
+                            // But ONLY if ready_to_ship === 'No' (controller already sets order_given=0 if ready_to_ship='Yes')
+                            
+                            // Check if item has mfrg_progress data (order_given > 0 means ready_to_ship was 'No')
+                            const qty = parseFloat(data.order_given || data["order_given"] || (data.raw_data && data.raw_data["order_given"]) || 0) || 0;
+                            const rate = parseFloat(data.mip_rate || data["mip_rate"] || (data.raw_data && data.raw_data["mip_rate"]) || 0) || 0;
+                            
+                            // Only calculate if both qty and rate are available (matching mfrg-in-progress template logic)
+                            // mfrg-in-progress template: is_numeric($item->qty) && is_numeric($item->rate)
+                            if (qty > 0 && rate > 0) {
+                                totalMipValue += (qty * rate);
+                            }
+                            // Note: We don't use fallback to MIP_Value here because mfrg-in-progress page doesn't show items without qty*rate
+                        }
                     }
                 });
 
@@ -1418,12 +1539,43 @@
                     totalMipValueElement.textContent = roundedTotal.toLocaleString('en-US');
                 }
 
-                // Calculate total R2S Value for visible rows
+                // Calculate total R2S Value - from ALL rows (not filtered), only for rows with stage === 'r2s' (like ready-to-ship page)
+                // Get all rows regardless of filters to calculate R2S Value
+                // Filter criteria: stage === 'r2s', transit_inv_status === 0, nr !== 'NR' (same as ready-to-ship page)
+                // Calculate directly as qty * rate (like ready-to-ship page calculates from DOM)
+                const allRowsForR2s = table.getRows();
                 let totalR2sValue = 0;
-                visibleRows.forEach(row => {
+                
+                allRowsForR2s.forEach(row => {
                     const data = row.getData();
                     if (!data.is_parent) {
-                        totalR2sValue += parseFloat(data.R2S_Value) || 0;
+                        // Check stage field - both direct and from raw_data
+                        const stage = data.stage || (data.raw_data && data.raw_data.stage) || '';
+                        const stageValue = String(stage || '').trim().toLowerCase();
+                        
+                        // Check nr field (exclude if 'NR', like ready-to-ship page)
+                        const nr = data.nr || (data.raw_data && data.raw_data.nr) || '';
+                        const nrValue = String(nr || '').trim().toUpperCase();
+                        
+                        // Only count if stage is 'r2s' and nr !== 'NR' (matching ready-to-ship page logic)
+                        // IMPORTANT: ready-to-ship page calculates from items that are already filtered in template (using continue directive in Blade)
+                        // Controller already filters: transit_inv_status = 0 and stage === 'r2s'
+                        if (stageValue === 'r2s' && nrValue !== 'NR') {
+                            // Calculate directly as qty * rate (same as ready-to-ship page calculates from DOM)
+                            // In ready-to-ship: $item->qty * $item->rate (directly from ready_to_ship table)
+                            // In approvalRequired: readyToShipQty (qty) and r2s_rate (rate) from ready_to_ship table
+                            
+                            // Only calculate if both qty and rate are available (matching ready-to-ship template logic)
+                            // ready-to-ship template: is_numeric($item->qty) && is_numeric($item->rate)
+                            const qty = parseFloat(data.readyToShipQty || data["readyToShipQty"] || (data.raw_data && data.raw_data["readyToShipQty"]) || 0) || 0;
+                            const rate = parseFloat(data.r2s_rate || data["r2s_rate"] || (data.raw_data && data.raw_data["r2s_rate"]) || 0) || 0;
+                            
+                            // Only calculate if both qty and rate are available (matching ready-to-ship template logic)
+                            if (qty > 0 && rate > 0) {
+                                totalR2sValue += (qty * rate);
+                            }
+                            // Note: We don't use fallback to R2S_Value here because ready-to-ship page doesn't show items without qty*rate
+                        }
                     }
                 });
 
@@ -1434,33 +1586,152 @@
                     totalR2sValueElement.textContent = roundedTotal.toLocaleString('en-US');
                 }
 
-                // Calculate total Transit Value for visible rows
-                let totalTransitValue = 0;
-                visibleRows.forEach(row => {
-                    const data = row.getData();
-                    if (!data.is_parent) {
-                        totalTransitValue += parseFloat(data.Transit_Value) || 0;
-                    }
-                });
-
-                // Update total Transit Value display
-                const totalTransitValueElement = document.getElementById('total_transit_value_display');
-                if (totalTransitValueElement) {
-                    const roundedTotal = Math.round(totalTransitValue);
-                    totalTransitValueElement.textContent = roundedTotal.toLocaleString('en-US');
-                }
+                // Note: Transit Value is calculated from ALL transit_container_details records (like transit-container-details page)
+                // It should remain constant regardless of filters, so we don't recalculate it here
+                // The value is set in ajaxResponse from the pre-calculated total_transit_value from controller
+                // Transit Value total is from ALL transit_container_details records across ALL tabs, not just filtered table rows
             }, 50);
 
+            // Calculate yellow count (Appr Req count) based on filtered rows
+            // This should match the count that would be shown if stage filter is set to 'appr_req'
             const visibleRows = table.getRows(true).map(r => r.getData());
-            const yellowCount = visibleRows.filter(r =>
-                r.to_order >= 0 &&
-                !r.is_parent &&
-                r.nr !== 'NR' &&
-                r.stage !== 'to_order_analysis'
-            ).length;
+            
+            // Get all rows to calculate proper Appr Req count with current filters
+            const allRows = table.getRows();
+            let yellowCount = 0;
+            
+            if (allRows.length > 0) {
+                const allDataForYellowCount = allRows.map(row => {
+                    const data = row.getData();
+                    const stage = data.stage || (data.raw_data && data.raw_data.stage) || '';
+                    const toOrder = data.to_order !== undefined ? data.to_order : (data.raw_data && data.raw_data.to_order !== undefined ? data.raw_data.to_order : (data.raw_data && data.raw_data["to_order"] !== undefined ? data.raw_data["to_order"] : 0));
+                    const nr = data.nr || (data.raw_data && data.raw_data.nr) || '';
+                    const nrValue = String(nr || '').trim().toUpperCase();
+                    const effectiveNr = nrValue === '' ? 'REQ' : nrValue;
+                    const isParent = data.is_parent !== undefined ? data.is_parent : (data.isParent !== undefined ? data.isParent : false);
+                    
+                    return {
+                        stage: String(stage || '').trim(),
+                        to_order: parseFloat(toOrder) || 0,
+                        nr: nr,
+                        effectiveNr: effectiveNr,
+                        is_parent: isParent
+                    };
+                });
+                
+                // Calculate Appr Req count with current filters (matching stage filter logic)
+                yellowCount = allDataForYellowCount.filter(r => {
+                    // Stage should be empty/null (Appr Req items)
+                    if (r.stage !== '' && r.stage !== null && r.stage !== undefined) return false;
+                    
+                    // Should not be parent
+                    if (r.is_parent) return false;
+                    
+                    // to_order >= 0 (yellow filter)
+                    if (r.to_order < 0) return false;
+                    
+                    // Apply NRP filter
+                    if (currentNRPFilter && r.effectiveNr !== currentNRPFilter) return false;
+                    
+                    // Apply NR toggle filter
+                    if (hideNRYes && r.nr === 'NR' && currentNRPFilter !== 'NR') return false;
+                    
+                    return true;
+                }).length;
+            } else {
+                // Fallback: use visible rows if all rows not available
+                yellowCount = visibleRows.filter(r =>
+                    r.to_order >= 0 &&
+                    !r.is_parent &&
+                    (hideNRYes ? r.nr !== 'NR' : true) &&
+                    (r.stage === '' || r.stage === null || r.stage === undefined)
+                ).length;
+            }
+
+            // Reuse allRows for dropdown counts calculation
+            // Get all rows (not filtered) to calculate counts for each stage option
+            // We'll apply current filters (NRP, etc) but calculate for each stage option separately
+            let allDataForCount = [];
+            
+            if (allRows.length > 0) {
+                // Map all rows to data with proper field access
+                allDataForCount = allRows.map(row => {
+                    const data = row.getData();
+                    // Check both direct fields and raw_data for stage, to_order, nr
+                    const stage = data.stage || (data.raw_data && data.raw_data.stage) || '';
+                    const toOrder = data.to_order !== undefined ? data.to_order : (data.raw_data && data.raw_data.to_order !== undefined ? data.raw_data.to_order : (data.raw_data && data.raw_data["to_order"] !== undefined ? data.raw_data["to_order"] : 0));
+                    const nr = data.nr || (data.raw_data && data.raw_data.nr) || '';
+                    const nrValue = String(nr || '').trim().toUpperCase();
+                    const effectiveNr = nrValue === '' ? 'REQ' : nrValue;
+                    const isParent = data.is_parent !== undefined ? data.is_parent : (data.isParent !== undefined ? data.isParent : false);
+                    
+                    return {
+                        stage: stage,
+                        to_order: toOrder,
+                        nr: nr,
+                        effectiveNr: effectiveNr,
+                        is_parent: isParent
+                    };
+                });
+            }
+            
+            // Calculate counts with current filters applied (NRP, NR toggle, color filter)
+            // For 2Order count: items with stage 'to_order_analysis' that match current filters
+            const twoOrderCount = allDataForCount.filter(r => {
+                const stage = String(r.stage || '').trim();
+                if (stage !== 'to_order_analysis' || r.is_parent) return false;
+                
+                // Apply NRP filter
+                if (currentNRPFilter && r.effectiveNr !== currentNRPFilter) return false;
+                
+                // Apply NR toggle filter
+                if (hideNRYes && r.nr === 'NR' && currentNRPFilter !== 'NR') return false;
+                
+                // Apply color filter
+                if (currentColorFilter === 'yellow' && r.to_order < 0) return false;
+                if (currentColorFilter === 'red' && r.to_order >= 0) return false;
+                
+                return true;
+            }).length;
+            
+            // For Appr Req count: items with empty stage that match current filters
+            const apprReqCount = allDataForCount.filter(r => {
+                const stage = String(r.stage || '').trim();
+                if (stage !== '' && stage !== null && stage !== undefined) return false;
+                if (r.is_parent) return false;
+                
+                const toOrder = parseFloat(r.to_order) || 0;
+                if (toOrder < 0) return false;
+                
+                // Apply NRP filter
+                if (currentNRPFilter && r.effectiveNr !== currentNRPFilter) return false;
+                
+                // Apply NR toggle filter
+                if (hideNRYes && r.nr === 'NR' && currentNRPFilter !== 'NR') return false;
+                
+                // Apply color filter
+                if (currentColorFilter === 'yellow' && r.to_order < 0) return false;
+                if (currentColorFilter === 'red' && r.to_order >= 0) return false;
+                
+                return true;
+            }).length;
 
             document.getElementById('yellow-count-box').textContent = `Appr Req: ${yellowCount}`;
             document.getElementById('toggle-nr-rows').textContent = hideNRYes ? "Show NR" : "Hide NR";
+            
+            // Update dropdown options text with counts
+            const stageFilterSelect = document.getElementById('stage-filter');
+            if (stageFilterSelect) {
+                const apprReqOption = stageFilterSelect.querySelector('option[value="appr_req"]');
+                const twoOrderOption = stageFilterSelect.querySelector('option[value="to_order_analysis"]');
+                
+                if (apprReqOption) {
+                    apprReqOption.textContent = `Appr Req (${apprReqCount})`;
+                }
+                if (twoOrderOption) {
+                    twoOrderOption.textContent = `2Order (${twoOrderCount})`;
+                }
+            }
         }
 
         function updateParentTotalsBasedOnVisibleRows() {
@@ -1936,6 +2207,58 @@
                     );
                 });
 
+            // Handle Stage APR button click
+            $(document).off('click', '.stage-apr-btn').on('click', '.stage-apr-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const $btn = $(this);
+                const sku = $btn.data('sku');
+                const parent = $btn.data('parent');
+                const currentStage = $btn.data('current-stage');
+                
+                // If already set to to_order_analysis, don't do anything
+                if (currentStage === 'to_order_analysis') {
+                    return;
+                }
+                
+                // Find the row to check MOQ
+                const row = table.getRows().find(r => {
+                    const rowData = r.getData();
+                    return rowData.SKU === sku && rowData.Parent === parent;
+                });
+                
+                if (!row) return;
+                
+                const rowData = row.getData();
+                const approvedQty = rowData["MOQ"];
+                
+                if (!approvedQty || approvedQty === "0" || parseInt(approvedQty) === 0) {
+                    alert("MOQ cannot be empty or zero.");
+                    return;
+                }
+                
+                // Update stage to to_order_analysis
+                updateForecastField({
+                        sku,
+                        parent,
+                        column: 'Stage',
+                        value: 'to_order_analysis'
+                    },
+                    function() {
+                        // Update the row data - formatter will automatically update button text to "2Order"
+                        row.update({
+                            stage: 'to_order_analysis'
+                        }, true);
+                        
+                        setCombinedFilters();
+                    },
+                    function() {
+                        alert('Failed to save Stage.');
+                    }
+                );
+            });
+
             // Handle notes edit modal save
             $('#saveNotesBtn').on('click', function() {
                 const newValue = $('#notesInput').val().trim();
@@ -2081,6 +2404,10 @@
             document.getElementById('stage-filter').value = 'appr_req';
             currentStageFilter = 'appr_req';
             
+            // Set NRP filter to 'REQ' as default to show only REQ items
+            document.getElementById('nrp-filter').value = 'REQ';
+            currentNRPFilter = 'REQ';
+            
             setCombinedFilters();
 
             document.querySelectorAll('#order-color-filter-dropdown + .dropdown-menu [data-filter]').forEach(
@@ -2107,21 +2434,8 @@
             document.getElementById('toggle-nr-rows').addEventListener('click', function() {
                 hideNRYes = !hideNRYes;
                 setCombinedFilters();
-
-                if (currentColorFilter === 'yellow') {
-                    const allData = table.getRows().map(r => r.getData());
-                    const yellowCount = allData.filter(r => 
-                        r.to_order >= 0 && 
-                        !r.is_parent && 
-                        (hideNRYes ? r.nr !== 'NR' : true) &&
-                        r.stage !== 'to_order_analysis'
-                    ).length;
-                    document.getElementById('yellow-count-box').textContent =
-                        `Appr Req: ${yellowCount}`;
-                }
-
+                // Yellow count will be updated in setCombinedFilters, so no need to update separately
                 document.getElementById('toggle-nr-rows').textContent = hideNRYes ? "Show NR" : "Hide NR";
-
             });
 
             document.getElementById('row-data-type').addEventListener('change', function(e) {
