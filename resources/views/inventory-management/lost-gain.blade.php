@@ -90,7 +90,10 @@
                                     <th>Parent</th>
                                     <th>SKU</th>
                                     <th>Verified Stock</th>
-                                    <th>Adjusted</th>
+                                    <th class="text-center">
+                                        <span id="adjustedTotal" class="badge bg-info fs-4">0</span><br>
+                                        Adjusted
+                                    </th>
                                     <th class="loss-gain-column loss-gain-header" data-sort="loss_gain">
                                         <span id="lostGainTotal" class="badge bg-primary fs-4">0</span><br>
                                         Loss/Gain <span class="sort-arrow">↓</span>
@@ -315,8 +318,12 @@
             function updateTotals() {
                 let lossGainTotal = 0;
                 let iaTotal = 0;
+                let adjustedTotal = 0;
                 
                 tableRows.forEach(row => {
+                    const toAdjust = parseFloat(row.to_adjust) || 0;
+                    adjustedTotal += toAdjust;
+                    
                     if (row.isIA) {
                         iaTotal += row.loss_gain;
                     } else {
@@ -326,6 +333,7 @@
                 
                 $('#lostGainTotal').text(`${Math.trunc(lossGainTotal)}`);
                 $('#iaTotal').text(`${Math.trunc(iaTotal)}`);
+                $('#adjustedTotal').text(`${Math.trunc(adjustedTotal)}`);
             }
 
             function updateBulkButtonState() {
@@ -399,6 +407,7 @@
                 
                 let visibleLossGainTotal = 0;
                 let visibleIATotal = 0;
+                let visibleAdjustedTotal = 0;
 
                 $('#lostGainTable tbody tr').each(function() {
                     const $row = $(this);
@@ -426,8 +435,14 @@
                     
                     $row.toggle(isVisible);
                     
-                    // Calculate totals for visible rows (Loss/Gain is now at index 5)
+                    // Calculate totals for visible rows (Adjusted is at index 4, Loss/Gain is at index 5)
                     if (isVisible) {
+                        const adjustedText = $row.find('td:eq(4)').text().trim();
+                        const adjustedValue = parseFloat(adjustedText);
+                        if (!isNaN(adjustedValue)) {
+                            visibleAdjustedTotal += adjustedValue;
+                        }
+                        
                         const lossGainText = $row.find('td:eq(5)').text().trim();
                         const lossGainValue = parseFloat(lossGainText);
                         if (!isNaN(lossGainValue)) {
@@ -443,6 +458,7 @@
                 // Update the total badges with filtered totals
                 $('#lostGainTotal').text(`${Math.trunc(visibleLossGainTotal)}`);
                 $('#iaTotal').text(`${Math.trunc(visibleIATotal)}`);
+                $('#adjustedTotal').text(`${Math.trunc(visibleAdjustedTotal)}`);
             }
 
             // Search functionality
