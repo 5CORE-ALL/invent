@@ -42,6 +42,14 @@
             margin-left: 5px;
             font-size: 0.8em;
         }
+        .filter-row th {
+            padding: 5px;
+            background-color: #f8f9fa;
+        }
+        .filter-row input {
+            border: 1px solid #ced4da;
+            font-size: 0.875rem;
+        }
     </style>
 @endsection
 
@@ -64,6 +72,11 @@
                                     I&A Total: <span id="iaTotal">0</span>
                                 </span>
                             </div>
+                            <div>
+                                <button id="bulkIABtn" class="btn btn-warning btn-sm" disabled>
+                                    <i class="fas fa-archive"></i> Mark Selected as I&A
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -71,6 +84,9 @@
                         <table class="table table-bordered" id="lostGainTable">
                             <thead>
                                 <tr>
+                                    <th>
+                                        <input type="checkbox" id="selectAllCheckbox" title="Select All">
+                                    </th>
                                     <th>Parent</th>
                                     <th>SKU</th>
                                     <th>Verified Stock</th>
@@ -84,6 +100,23 @@
                                     <th>Approved At (Ohio)</th>
                                     <th>Remarks</th>
                                     <th>Actions</th>
+                                </tr>
+                                <tr class="filter-row">
+                                    <th></th>
+                                    <th>
+                                        <input type="text" id="parentFilter" class="form-control form-control-sm" placeholder="Search Parent">
+                                    </th>
+                                    <th>
+                                        <input type="text" id="skuFilter" class="form-control form-control-sm" placeholder="Search SKU">
+                                    </th>
+                                    <th></th>
+                                    <th></th>
+                                    <th></th>
+                                    <th></th>
+                                    <th></th>
+                                    <th></th>
+                                    <th></th>
+                                    <th></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -117,7 +150,7 @@
                         tableBody.empty();
 
                         if (!res.data || res.data.length === 0) {
-                            tableBody.append('<tr><td colspan="10" class="text-center">No data found.</td></tr>');
+                            tableBody.append('<tr><td colspan="11" class="text-center">No data found.</td></tr>');
                         } else {
                             // Fetch parent and LP data for all SKUs
                             const skus = res.data.map(item => item.sku);
@@ -235,6 +268,9 @@
                     const iaClass = row.isIA ? 'btn-warning' : 'btn-outline-secondary';
                     tableBody.append(`
                         <tr data-row-index="${index}" ${row.isIA ? 'class="table-warning"' : ''}>
+                            <td class="text-center">
+                                <input type="checkbox" class="row-checkbox" data-row-index="${index}">
+                            </td>
                             <td>${row.parent}</td>
                             <td>${row.sku}</td>
                             <td>${row.verified_stock}</td>
@@ -258,6 +294,14 @@
                     const rowIndex = parseInt($(this).data('row-index'));
                     toggleIA(rowIndex);
                 });
+                
+                // Attach checkbox handlers
+                $('.row-checkbox').off('change').on('change', function() {
+                    updateBulkButtonState();
+                });
+                
+                // Update bulk button state
+                updateBulkButtonState();
             }
 
             function toggleIA(rowIndex) {
@@ -282,6 +326,39 @@
                 
                 $('#lostGainTotal').text(`${Math.trunc(lossGainTotal)}`);
                 $('#iaTotal').text(`${Math.trunc(iaTotal)}`);
+            }
+
+            function updateBulkButtonState() {
+                const checkedCount = $('.row-checkbox:checked').length;
+                $('#bulkIABtn').prop('disabled', checkedCount === 0);
+            }
+
+            function bulkMarkAsIA() {
+                const selectedRows = [];
+                $('.row-checkbox:checked').each(function() {
+                    const rowIndex = parseInt($(this).data('row-index'));
+                    selectedRows.push(rowIndex);
+                });
+
+                if (selectedRows.length === 0) {
+                    return;
+                }
+
+                // Mark all selected rows as I&A
+                selectedRows.forEach(rowIndex => {
+                    if (tableRows[rowIndex]) {
+                        tableRows[rowIndex].isIA = true;
+                    }
+                });
+
+                // Re-render table and update totals
+                renderTableRows(tableRows);
+                updateTotals();
+                
+                // Uncheck all checkboxes
+                $('.row-checkbox').prop('checked', false);
+                $('#selectAllCheckbox').prop('checked', false);
+                updateBulkButtonState();
             }
 
             function initSort() {
@@ -314,23 +391,46 @@
                 });
             }
 
-            // Search functionality
-            $('#lostGainSearch').on('keyup', function() {
-                const value = $(this).val().toLowerCase();
+            // Column filter functionality
+            function applyFilters() {
+                const parentFilter = $('#parentFilter').val().toLowerCase();
+                const skuFilter = $('#skuFilter').val().toLowerCase();
+                const generalSearch = $('#lostGainSearch').val().toLowerCase();
+                
                 let visibleLossGainTotal = 0;
                 let visibleIATotal = 0;
 
-                $('#lostGainTable tbody tr').filter(function() {
-                    const rowText = $(this).text().toLowerCase();
-                    const isVisible = rowText.indexOf(value) > -1;
-                    $(this).toggle(isVisible);
+                $('#lostGainTable tbody tr').each(function() {
+                    const $row = $(this);
+                    const rowIndex = parseInt($row.data('row-index'));
                     
-                    // Calculate total for visible rows only
+                    // Get column values (skip checkbox column, so Parent is index 1, SKU is index 2)
+                    const parentText = $row.find('td:eq(1)').text().toLowerCase();
+                    const skuText = $row.find('td:eq(2)').text().toLowerCase();
+                    const rowText = $row.text().toLowerCase();
+                    
+                    // Apply filters
+                    let isVisible = true;
+                    
+                    if (parentFilter && !parentText.includes(parentFilter)) {
+                        isVisible = false;
+                    }
+                    
+                    if (skuFilter && !skuText.includes(skuFilter)) {
+                        isVisible = false;
+                    }
+                    
+                    if (generalSearch && !rowText.includes(generalSearch)) {
+                        isVisible = false;
+                    }
+                    
+                    $row.toggle(isVisible);
+                    
+                    // Calculate totals for visible rows (Loss/Gain is now at index 5)
                     if (isVisible) {
-                        const lossGainText = $(this).find('td:eq(4)').text().trim(); // Loss/Gain column (5th column, index 4)
+                        const lossGainText = $row.find('td:eq(5)').text().trim();
                         const lossGainValue = parseFloat(lossGainText);
                         if (!isNaN(lossGainValue)) {
-                            const rowIndex = parseInt($(this).data('row-index'));
                             if (tableRows[rowIndex] && tableRows[rowIndex].isIA) {
                                 visibleIATotal += lossGainValue;
                             } else {
@@ -343,6 +443,32 @@
                 // Update the total badges with filtered totals
                 $('#lostGainTotal').text(`${Math.trunc(visibleLossGainTotal)}`);
                 $('#iaTotal').text(`${Math.trunc(visibleIATotal)}`);
+            }
+
+            // Search functionality
+            $('#lostGainSearch').on('keyup', function() {
+                applyFilters();
+            });
+
+            // Column-specific search functionality
+            $('#parentFilter').on('keyup', function() {
+                applyFilters();
+            });
+
+            $('#skuFilter').on('keyup', function() {
+                applyFilters();
+            });
+
+            // Select all checkbox functionality
+            $('#selectAllCheckbox').on('change', function() {
+                const isChecked = $(this).is(':checked');
+                $('.row-checkbox:visible').prop('checked', isChecked);
+                updateBulkButtonState();
+            });
+
+            // Bulk I&A button functionality
+            $('#bulkIABtn').on('click', function() {
+                bulkMarkAsIA();
             });
         });
     </script>
