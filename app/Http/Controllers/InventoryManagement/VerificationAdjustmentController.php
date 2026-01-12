@@ -1179,8 +1179,11 @@ class VerificationAdjustmentController extends Controller
 
         $validated = $request->validate([
             'skus' => 'required|array',
-            'is_ia' => 'required|boolean',
+            'is_ia' => 'required',
         ]);
+
+        // Convert is_ia to boolean (handles "true"/"false" strings, 1/0, true/false)
+        $isIA = filter_var($request->input('is_ia'), FILTER_VALIDATE_BOOLEAN);
 
         $updated = 0;
         foreach ($validated['skus'] as $sku) {
@@ -1191,7 +1194,7 @@ class VerificationAdjustmentController extends Controller
                 ->first();
             
             if ($inventory) {
-                $inventory->is_ia = $validated['is_ia'];
+                $inventory->is_ia = $isIA;
                 $inventory->save();
                 $updated++;
             }
