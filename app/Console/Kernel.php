@@ -614,13 +614,6 @@ class Kernel extends ConsoleKernel
     | AUTO LOGOUT INACTIVE USERS (Every Hour)
     |--------------------------------------------------------------------------
     */
-
-        // Check for inactive users every hour using Artisan command (NO QUEUE)
-        $schedule->command('users:check-inactive --hours=6')
-            ->hourly()
-            ->timezone('UTC')
-            ->name('auto-logout-inactive-users')
-            ->withoutOverlapping();
     }
 
     /**
