@@ -1127,6 +1127,47 @@ class VerificationAdjustmentController extends Controller
         return response()->json(['data' => $activityLogs]);
     }
 
+    public function lostGain()
+    {
+        $user = Auth::user();
+        
+        if (!$user || !in_array($user->email, ['inventory@5core.com', 'president@5core.com'])) {
+            abort(404, 'Page not available');
+        }
+        
+        return view('inventory-management.lost-gain');
+    }
+
+    public function getLostGainProductData(Request $request)
+    {
+        $user = Auth::user();
+        
+        if (!$user || !in_array($user->email, ['inventory@5core.com', 'president@5core.com'])) {
+            abort(404, 'Page not available');
+        }
+        
+        $skus = $request->input('skus', []);
+        
+        if (empty($skus)) {
+            return response()->json(['data' => []]);
+        }
+        
+        $productMasters = ProductMaster::whereIn('sku', $skus)->get();
+        
+        $productData = $productMasters->map(function ($product) {
+            $values = is_array($product->Values) ? $product->Values : (is_string($product->Values) ? json_decode($product->Values, true) : []);
+            $lp = $values['lp'] ?? $product->lp ?? 0;
+            
+            return [
+                'sku' => $product->sku,
+                'parent' => $product->parent ?? '(No Parent)',
+                'lp' => floatval($lp),
+            ];
+        });
+        
+        return response()->json(['data' => $productData]);
+    }
+
 
     public function viewInventory()
     {

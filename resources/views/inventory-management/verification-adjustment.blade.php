@@ -2310,19 +2310,25 @@
                     item.TO_ADJUST = toAdjust;
                     $row.append($('<td>').addClass('to-adjust').text(toAdjust));
 
+                    // Parse comma-separated reasons for multiple selection
+                    const reasonStr = item.REASON || '';
+                    const selectedReasons = reasonStr ? reasonStr.split(',').map(r => r.trim()) : [];
+                    const isReasonSelected = (reasonValue) => selectedReasons.includes(reasonValue);
+
                     $row.append($('<td>').html(`
-                        <select class="form-control reason-select" data-sku="${item.SKU}" data-index="${rowIndex}">
-                            <option value="">Select</option>
-                            <option value="Count" ${item.REASON === 'Count' ? 'selected' : ''}>Count</option>
-                            <option value="Received" ${item.REASON === 'Received' ? 'selected' : ''}>Received</option>
-                            <option value="Return Restock" ${item.REASON === 'Return Restock' ? 'selected' : ''}>Return Restock</option>
-                            <option value="Damaged" ${item.REASON === 'Damaged' ? 'selected' : ''}>Damaged</option>
-                            <option value="Theft or Loss" ${item.REASON === 'Theft or Loss' ? 'selected' : ''}>Theft or Loss</option>
-                            <option value="Promotion" ${item.REASON === 'Promotion' ? 'selected' : ''}>Promotion</option>
-                            <option value="Suspense" ${item.REASON === 'Suspense' ? 'selected' : ''}>Suspense</option>
-                            <option value="Unknown" ${item.REASON === 'Unknown' ? 'selected' : ''}>Unknown</option>
-                            <option value="Adjustment" ${item.REASON === 'Adjustment' ? 'selected' : ''}>Adjustment</option>
-                            <option value="Combo" ${item.REASON === 'Combo' ? 'selected' : ''}>Combo</option>
+                        <select class="form-control reason-select" data-sku="${item.SKU}" data-index="${rowIndex}" multiple size="3" style="min-height: 80px;">
+                            <option value="Count" ${isReasonSelected('Count') ? 'selected' : ''}>Count</option>
+                            <option value="Received" ${isReasonSelected('Received') ? 'selected' : ''}>Received</option>
+                            <option value="Return Restock" ${isReasonSelected('Return Restock') ? 'selected' : ''}>Return Restock</option>
+                            <option value="Damaged" ${isReasonSelected('Damaged') ? 'selected' : ''}>Damaged</option>
+                            <option value="Theft or Loss" ${isReasonSelected('Theft or Loss') ? 'selected' : ''}>Theft or Loss</option>
+                            <option value="Promotion" ${isReasonSelected('Promotion') ? 'selected' : ''}>Promotion</option>
+                            <option value="Suspense" ${isReasonSelected('Suspense') ? 'selected' : ''}>Suspense</option>
+                            <option value="Unknown" ${isReasonSelected('Unknown') ? 'selected' : ''}>Unknown</option>
+                            <option value="Adjustment" ${isReasonSelected('Adjustment') ? 'selected' : ''}>Adjustment</option>
+                            <option value="Combo" ${isReasonSelected('Combo') ? 'selected' : ''}>Combo</option>
+                            <option value="Maybe FBA" ${isReasonSelected('Maybe FBA') ? 'selected' : ''}>Maybe FBA</option>
+                            <option value="Need 2 Find" ${isReasonSelected('Need 2 Find') ? 'selected' : ''}>Need 2 Find</option>
                         </select>
                     `));
 
@@ -2426,7 +2432,8 @@
                 const verifiedStock = parseInt($row.find('.verified-stock-input').val().trim()) || 0;
                 const onHand = parseInt($row.find('.on-hand').text().trim()) || 0;
                 const toAdjust = verifiedStock - onHand;
-                const reason = $row.find('.reason-select').val();
+                const reasonArray = $row.find('.reason-select').val() || [];
+                const reason = Array.isArray(reasonArray) ? reasonArray.join(', ') : reasonArray;
                 const isApproved = $checkbox.is(':checked') ? 1 : 0;
                 const index = parseInt($checkbox.data('index'));
                 const remarks = $row.find('.remarks-input').val() || ''; 
@@ -2437,6 +2444,12 @@
 
                 if (isApproved && $row.find('.verified-stock-input').val().trim() === '') {
                     alert('Please enter Verified Stock before approving.');
+                    $checkbox.prop('checked', false);
+                    return;
+                }
+
+                if (isApproved && (!reasonArray || reasonArray.length === 0)) {
+                    alert('Please select at least one reason before approving.');
                     $checkbox.prop('checked', false);
                     return;
                 }
