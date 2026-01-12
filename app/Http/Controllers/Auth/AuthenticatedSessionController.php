@@ -37,11 +37,6 @@ class AuthenticatedSessionController extends Controller
 
         $user = $request->user();
         
-        // Update last activity when user logs in via password
-        $user->update([
-            'last_activity_at' => now(),
-        ]);
-        
         PermissionHelper::cacheUserPermissions($user->id);
 
         return redirect()->intended(RouteServiceProvider::HOME);

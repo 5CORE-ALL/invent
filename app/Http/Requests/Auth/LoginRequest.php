@@ -45,15 +45,6 @@ class LoginRequest extends FormRequest
     {
         $this->ensureIsNotRateLimited();
 
-        // First, check if user exists and has require_google_login flag
-        $user = \App\Models\User::where('email', $this->input('email'))->first();
-        
-        if ($user && $user->require_google_login == 1) {
-            throw ValidationException::withMessages([
-                'email' => 'Aapka account 6 hours inactive raha hai. Kripya Google se login karein.',
-            ]);
-        }
-
         if (!Auth::attempt($this->only('email', 'password'), $this->filled('remember'))) {
             RateLimiter::hit($this->throttleKey());
 
