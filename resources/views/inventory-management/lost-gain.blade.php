@@ -73,7 +73,7 @@
                                 </span>
                             </div>
                             <div>
-                                <button id="bulkIABtn" class="btn btn-warning btn-sm" disabled>
+                                <button id="bulkIABtn" class="btn btn-dark btn-sm" disabled>
                                     <i class="fas fa-archive"></i> Mark Selected as I&A
                                 </button>
                             </div>
@@ -202,7 +202,8 @@
                                             reason: item.reason ?? '-',
                                             approved_by: item.approved_by ?? '-',
                                             approved_at: item.approved_at ?? '-',
-                                            remarks: item.remarks ?? '-'
+                                            remarks: item.remarks ?? '-',
+                                            isIA: item.is_ia || false // Track I&A state from database
                                         });
                                     });
 
@@ -237,7 +238,7 @@
                                             approved_by: item.approved_by ?? '-',
                                             approved_at: item.approved_at ?? '-',
                                             remarks: item.remarks ?? '-',
-                                            isIA: false // Track I&A state
+                                            isIA: item.is_ia || false // Track I&A state from database
                                         });
                                     });
                                     
@@ -309,9 +310,29 @@
 
             function toggleIA(rowIndex) {
                 if (tableRows[rowIndex]) {
-                    tableRows[rowIndex].isIA = !tableRows[rowIndex].isIA;
-                    renderTableRows(tableRows);
-                    updateTotals();
+                    const newIAStatus = !tableRows[rowIndex].isIA;
+                    const sku = tableRows[rowIndex].sku;
+                    
+                    // Save to database
+                    $.ajax({
+                        url: '/lost-gain-update-ia',
+                        method: 'POST',
+                        data: {
+                            skus: [sku],
+                            is_ia: newIAStatus,
+                            _token: $('meta[name="csrf-token"]').attr('content')
+                        },
+                        success: function(res) {
+                            if (res.success) {
+                                tableRows[rowIndex].isIA = newIAStatus;
+                                renderTableRows(tableRows);
+                                updateTotals();
+                            }
+                        },
+                        error: function() {
+                            alert('Failed to save I&A status. Please try again.');
+                        }
+                    });
                 }
             }
 
@@ -343,30 +364,51 @@
 
             function bulkMarkAsIA() {
                 const selectedRows = [];
+                const selectedSkus = [];
                 $('.row-checkbox:checked').each(function() {
                     const rowIndex = parseInt($(this).data('row-index'));
                     selectedRows.push(rowIndex);
-                });
-
-                if (selectedRows.length === 0) {
-                    return;
-                }
-
-                // Mark all selected rows as I&A
-                selectedRows.forEach(rowIndex => {
                     if (tableRows[rowIndex]) {
-                        tableRows[rowIndex].isIA = true;
+                        selectedSkus.push(tableRows[rowIndex].sku);
                     }
                 });
 
-                // Re-render table and update totals
-                renderTableRows(tableRows);
-                updateTotals();
-                
-                // Uncheck all checkboxes
-                $('.row-checkbox').prop('checked', false);
-                $('#selectAllCheckbox').prop('checked', false);
-                updateBulkButtonState();
+                if (selectedRows.length === 0 || selectedSkus.length === 0) {
+                    return;
+                }
+
+                // Save to database
+                $.ajax({
+                    url: '/lost-gain-update-ia',
+                    method: 'POST',
+                    data: {
+                        skus: selectedSkus,
+                        is_ia: true,
+                        _token: $('meta[name="csrf-token"]').attr('content')
+                    },
+                    success: function(res) {
+                        if (res.success) {
+                            // Mark all selected rows as I&A
+                            selectedRows.forEach(rowIndex => {
+                                if (tableRows[rowIndex]) {
+                                    tableRows[rowIndex].isIA = true;
+                                }
+                            });
+
+                            // Re-render table and update totals
+                            renderTableRows(tableRows);
+                            updateTotals();
+                            
+                            // Uncheck all checkboxes
+                            $('.row-checkbox').prop('checked', false);
+                            $('#selectAllCheckbox').prop('checked', false);
+                            updateBulkButtonState();
+                        }
+                    },
+                    error: function() {
+                        alert('Failed to save I&A status. Please try again.');
+                    }
+                });
             }
 
             function initSort() {

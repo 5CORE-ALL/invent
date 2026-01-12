@@ -1121,6 +1121,7 @@ class VerificationAdjustmentController extends Controller
                     'remarks' => $item->remarks,
                     'approved_by' => $item->approved_by,
                     'approved_at' => Carbon::parse($item->created_at)->timezone('America/New_York')->format('d M Y, h:i A'),
+                    'is_ia' => (bool) $item->is_ia,
                 ];
             });
             
@@ -1166,6 +1167,41 @@ class VerificationAdjustmentController extends Controller
         });
         
         return response()->json(['data' => $productData]);
+    }
+
+    public function updateIAStatus(Request $request)
+    {
+        $user = Auth::user();
+        
+        if (!$user || !in_array($user->email, ['inventory@5core.com', 'president@5core.com'])) {
+            abort(404, 'Page not available');
+        }
+
+        $validated = $request->validate([
+            'skus' => 'required|array',
+            'is_ia' => 'required|boolean',
+        ]);
+
+        $updated = 0;
+        foreach ($validated['skus'] as $sku) {
+            $inventory = Inventory::where('sku', $sku)
+                ->where('type', null)
+                ->where('is_approved', true)
+                ->latest()
+                ->first();
+            
+            if ($inventory) {
+                $inventory->is_ia = $validated['is_ia'];
+                $inventory->save();
+                $updated++;
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => "Updated {$updated} record(s).",
+            'updated' => $updated
+        ]);
     }
 
 
