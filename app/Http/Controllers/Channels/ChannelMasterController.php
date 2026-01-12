@@ -2609,9 +2609,10 @@ class ChannelMasterController extends Controller
             ->max('order_date');
 
         if ($latestDate) {
-            $latestDateCarbon = \Carbon\Carbon::parse($latestDate);
-            $l60StartDate = $latestDateCarbon->copy()->subDays(65); // 66 days ago
-            $l60EndDate = $latestDateCarbon->copy()->subDays(33); // 34 days ago
+            // Use California timezone for consistent date calculations
+            $latestDateCarbon = \Carbon\Carbon::parse($latestDate, 'America/Los_Angeles');
+            $l60StartDate = $latestDateCarbon->copy()->subDays(59); // 60 days ago (60 days before today)
+            $l60EndDate = $latestDateCarbon->copy()->subDays(30); // 31 days ago (end of L60, start of L30)
             
             // Get L60 order items from ShipHub
             $l60OrderItems = DB::connection('shiphub')
@@ -2633,8 +2634,8 @@ class ChannelMasterController extends Controller
             $l60Orders = $l60OrderItems->order_count ?? 0;
             $l60Sales = $l60OrderItems->total_sales ?? 0;
             
-            // Get L30 data from ShipHub as well (last 33 days)
-            $l30StartDate = $latestDateCarbon->copy()->subDays(32); // 33 days total
+            // Get L30 data from ShipHub (last 30 days, California time)
+            $l30StartDate = $latestDateCarbon->copy()->subDays(29); // 30 days total (29 previous days + today)
             $l30EndDate = $latestDateCarbon->endOfDay();
             
             $l30OrderItems = DB::connection('shiphub')

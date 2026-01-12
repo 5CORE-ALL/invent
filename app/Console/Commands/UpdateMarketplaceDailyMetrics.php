@@ -1711,7 +1711,7 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateTikTokMetrics($date)
     {
-        // 33 days: Get latest TikTok order date from ShipHub and calculate 33-day range
+        // 30 days: Get latest TikTok order date from ShipHub (California time)
         $latestDate = DB::connection('shiphub')
             ->table('orders')
             ->where('marketplace', '=', 'tiktok')
@@ -1721,8 +1721,9 @@ class UpdateMarketplaceDailyMetrics extends Command
             return null;
         }
 
-        $latestDateCarbon = Carbon::parse($latestDate);
-        $startDate = $latestDateCarbon->copy()->subDays(32); // 33 days total (matches Amazon)
+        // Use California timezone for consistent date calculations
+        $latestDateCarbon = Carbon::parse($latestDate, 'America/Los_Angeles');
+        $startDate = $latestDateCarbon->copy()->subDays(29); // 30 days total (29 previous days + today)
 
         // Get order items from ShipHub (matching TikTokSalesController exactly)
         $orderItems = DB::connection('shiphub')

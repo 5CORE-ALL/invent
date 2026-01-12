@@ -140,6 +140,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\RoutingController;
 use App\Http\Controllers\MarketPlace\ReverbController;
 use App\Http\Controllers\MarketPlace\ReverbZeroController;
+use App\Http\Controllers\MarketPlace\TikTokPricingController;
 use App\Http\Controllers\PurchaseMaster\ChinaLoadController;
 use App\Http\Controllers\PurchaseMaster\MFRGInProgressController;
 use App\Http\Controllers\PurchaseMaster\OnRoadTransitController;
@@ -542,20 +543,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/outgoing-data-store', [OutgoingController::class, 'store'])->name('outgoing.store');
     Route::get('/outgoing-data-list', [OutgoingController::class, 'list']);
 
-    //Auto Stock Balance
-    Route::get('/auto-stock-balance-view', [AutoStockBalanceController::class, 'index'])->name('autostock.balance.view');
-    Route::post('/auto-stock-balance-store', [AutoStockBalanceController::class, 'store'])->name('autostock.balance.store');
-    Route::get('/auto-stock-balance-data-list', [AutoStockBalanceController::class, 'list']);
 
-    //Linked products
-    Route::get('/linked-products-view', [ProductMasterController::class, 'linkedProductsView'])->name('linked.products.view');
-    Route::post('/linked-products-store', [ProductMasterController::class, 'linkedProductStore'])->name('linked.products.store');
-    Route::get('/linked-products-data-list', [ProductMasterController::class, 'linkedProductsList']);
-    Route::post('/linked-products-delink', [ProductMasterController::class, 'linkedProductDelink'])->name('linked.products.delink');
 
     //show updated qty
-    Route::get('/show-updated-qty', [ProductMasterController::class, 'showUpdatedQty'])->name('show.updated.qty');
-    Route::get('/show-updated-qty-list', [ProductMasterController::class, 'showUpdatedQtyList']);
 
     //Stock Adjustment
     Route::get('/stock-adjustment-view', [StockAdjustmentController::class, 'index'])->name('stock.adjustment.view');
@@ -834,6 +824,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/reverb-save-sprice', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'saveSpriceUpdates'])->name('reverb.save.sprice');
     Route::get('/reverb-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'getColumnVisibility'])->name('reverb.pricing.column.get');
     Route::post('/reverb-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'setColumnVisibility'])->name('reverb.pricing.column.set');
+
+    // TikTok Pricing Routes (Tabulator)
+    Route::get('/tiktok-pricing', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktokTabulatorView'])->name('tiktok.pricing');
+    Route::get('/tiktok-data-json', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktokDataJson'])->name('tiktok.data.json');
+    Route::post('/tiktok-upload-csv', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'uploadTikTokCsv'])->name('tiktok.upload.csv');
+    Route::get('/tiktok-download-sample-csv', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'downloadSampleCsv'])->name('tiktok.download.sample');
+    Route::post('/tiktok-save-sprice', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'saveSpriceUpdates'])->name('tiktok.save.sprice');
+    Route::get('/tiktok-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'getColumnVisibility'])->name('tiktok.pricing.column.get');
+    Route::post('/tiktok-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'setColumnVisibility'])->name('tiktok.pricing.column.set');
 
     // Shopify B2C Tabulator Routes
     Route::get('/shopify-b2c-pricing', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'shopifyB2cTabulatorView'])->name('shopify.b2c.pricing');

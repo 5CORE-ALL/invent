@@ -36,7 +36,7 @@
                                             account.</p>
 
                                         <!-- form -->
-                                        <form method="POST" action="{{ route('register') }}">
+                                        {{-- <form method="POST" action="{{ route('register') }}">
                                             @csrf
 
                                             @if ($errors->any())
@@ -104,7 +104,7 @@
                                                 <button class="btn btn-primary fw-semibold" type="submit">Sign
                                                     Up</button>
                                             </div>
-                                        </form>
+                                        </form> --}}
                                         <!-- end form-->
                                     </div>
                                 </div>
@@ -114,13 +114,13 @@
                 </div>
                 <!-- end row -->
             </div>
-            <div class="row">
+            {{-- <div class="row">
                 <div class="col-12 text-center">
                     <p class="text-dark-emphasis">Already have account? <a
                             href="{{ route('second', ['auth', 'login']) }}"
                             class="text-dark fw-bold ms-1 link-offset-3 text-decoration-underline"><b>Log In</b></a></p>
                 </div> <!-- end col -->
-            </div>
+            </div> --}}
             <!-- end row -->
         </div>
         <!-- end container -->

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Sales;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use App\Models\ProductMaster;
 use App\Models\MarketplacePercentage;
 
@@ -34,9 +35,9 @@ class TikTokSalesController extends Controller
                 return response()->json([]);
             }
 
-            // Calculate date range: Latest date minus 32 days = 33 days total
-            $latestDateCarbon = \Carbon\Carbon::parse($latestDate);
-            $startDate = $latestDateCarbon->copy()->subDays(32); // 33 days total (matches Amazon)
+            // Calculate date range: 30 days total (California time)
+            $latestDateCarbon = \Carbon\Carbon::parse($latestDate, 'America/Los_Angeles');
+            $startDate = $latestDateCarbon->copy()->subDays(29); // 30 days total (29 previous days + today)
             $startDateStr = $startDate->format('Y-m-d');
             $endDateStr = $latestDateCarbon->format('Y-m-d');
 
@@ -214,7 +215,7 @@ class TikTokSalesController extends Controller
             return response()->json($data);
 
         } catch (\Exception $e) {
-            \Log::error('TikTok Sales Data Error: ' . $e->getMessage());
+            Log::error('TikTok Sales Data Error: ' . $e->getMessage());
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }

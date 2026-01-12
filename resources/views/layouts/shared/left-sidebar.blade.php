@@ -1601,15 +1601,6 @@
                         <li>
                             <a href="{{ route('incoming.orders.view') }}">Incoming Orders</a>
                         </li>
-                        <li>
-                            <a href="{{ route('autostock.balance.view') }}">Auto Stock Balance</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('linked.products.view') }}">Linked products </a>
-                        </li>
-                        <li>
-                            <a href="{{ route('show.updated.qty') }}">Auto Updated Products QTY </a>
-                        </li>
                         {{-- <li>
                             <a href="#">Trash Entries</a>
                         </li> --}}
@@ -2861,6 +2852,8 @@
                                     <li><a href="{{ route('listing.tiktokshop') }}">Listing Tiktok Shop</a>
                                     </li>
                                     <li><a href="{{ route('tiktokshop.ads') }}">Tiktok Shop Ads</a>
+                                    </li>
+                                    <li><a href="{{ route('tiktok.pricing') }}">TikTok Pricing</a>
                                     </li>
                                 </ul>
                             </div>
