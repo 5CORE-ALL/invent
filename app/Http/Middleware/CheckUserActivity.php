@@ -30,13 +30,12 @@ class CheckUserActivity
                 $lastActivity = Carbon::parse($user->last_activity_at);
                 $minutesInactive = $lastActivity->diffInMinutes(Carbon::now());
                 
-                // If inactive for more than 6 hours, logout and set flag
+                // If inactive for more than 6 hours, auto logout
                 if ($minutesInactive >= $inactivityTimeout) {
-                    // Update user record before logout
+                    // Record logout timestamp
                     DB::table('users')
                         ->where('id', $user->id)
                         ->update([
-                            'require_google_login' => 1,
                             'auto_logged_out_at' => Carbon::now(),
                         ]);
                     
@@ -49,7 +48,7 @@ class CheckUserActivity
                     
                     // Redirect to login with message
                     return redirect()->route('login')
-                        ->with('error', 'Aap 6 hours se inactive the. Kripya Google se login karein.');
+                        ->with('error', 'Aap 6 hours se inactive the. Please login again.');
                 }
             }
             

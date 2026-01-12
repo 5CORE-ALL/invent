@@ -40,7 +40,6 @@ class CheckInactiveUsersCommand extends Command
         // Find inactive users
         $inactiveUsers = DB::table('users')
             ->where('last_activity_at', '<', $inactiveTime)
-            ->where('require_google_login', 0)
             ->whereNotNull('last_activity_at')
             ->select('id', 'email', 'name', 'last_activity_at')
             ->get();
@@ -74,28 +73,26 @@ class CheckInactiveUsersCommand extends Command
         
         if ($dryRun) {
             $this->warn('🔸 DRY RUN MODE - No changes made');
-            $this->info('These users WOULD be marked for Google login only');
+            $this->info('These users WOULD be auto-logged out on next request');
             return Command::SUCCESS;
         }
         
         // Confirm before proceeding
-        if (!$this->confirm('Mark these users for Google login only?', true)) {
+        if (!$this->confirm('Record auto-logout timestamp for these users?', true)) {
             $this->info('❌ Operation cancelled');
             return Command::FAILURE;
         }
         
-        // Update users
+        // Update users - just mark when they were auto-logged out
         $affectedRows = DB::table('users')
             ->where('last_activity_at', '<', $inactiveTime)
-            ->where('require_google_login', 0)
             ->whereNotNull('last_activity_at')
             ->update([
-                'require_google_login' => 1,
                 'auto_logged_out_at' => Carbon::now(),
             ]);
         
-        $this->info("✅ Successfully marked {$affectedRows} users for Google login only");
-        $this->line('These users must now login with Google to access the system.');
+        $this->info("✅ Successfully recorded auto-logout for {$affectedRows} users");
+        $this->line('These users will be logged out on their next request.');
         
         return Command::SUCCESS;
     }
