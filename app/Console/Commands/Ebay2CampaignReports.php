@@ -44,15 +44,15 @@ class Ebay2CampaignReports extends Command
 
             $accessToken = $this->getAccessToken();
             if (!$accessToken) {
-                $this->error('Failed to retrieve eBay2 access token.');
+                $this->error('Failed to retrieve eBay access token.');
                 return 1;
             }
 
         // Step 1: Fetch all campaigns once (campaigns don't change across date ranges)
-        $this->info("Fetching all campaigns from eBay2...");
+        $this->info("Fetching all campaigns from eBay...");
         $campaignsMap = $this->getAllCampaigns($accessToken);
         if (empty($campaignsMap)) {
-            $this->error("No campaigns fetched from eBay2!");
+            $this->error("No campaigns fetched from eBay!");
             return 1;
         }
         $this->info("✅ Successfully fetched " . count($campaignsMap) . " campaigns. Will use for all date ranges.");
@@ -74,6 +74,7 @@ class Ebay2CampaignReports extends Command
 
         // Always fetch summary ranges for backward compatibility with table data
         $summaryRanges = [
+            'L90' => [Carbon::today()->subDays(90), Carbon::today()->subDays(31)->endOfDay()],
             'L60' => [Carbon::today()->subDays(60), Carbon::today()->subDays(31)->endOfDay()],
             'L30' => [Carbon::today()->subDays(29), Carbon::today()->subDay()->endOfDay()],
             'L15' => [Carbon::today()->subDays(14), Carbon::today()->subDay()->endOfDay()],
@@ -101,36 +102,36 @@ class Ebay2CampaignReports extends Command
     {
         $this->info("Processing ALL_CAMPAIGN_PERFORMANCE_SUMMARY_REPORT: {$rangeKey} ({$from->toDateString()} → {$to->toDateString()})");
 
-            // Use UTC timezone for eBay API compatibility
-            $dateFrom = $from->copy()->startOfDay()->utc()->format('Y-m-d\TH:i:s.000\Z');
-            $dateTo = $to->copy()->endOfDay()->utc()->format('Y-m-d\TH:i:s.000\Z');
+        // Use UTC timezone for eBay API compatibility
+        $dateFrom = $from->copy()->startOfDay()->utc()->format('Y-m-d\TH:i:s.000\Z');
+        $dateTo = $to->copy()->endOfDay()->utc()->format('Y-m-d\TH:i:s.000\Z');
 
-            $body = ["reportType" => "ALL_CAMPAIGN_PERFORMANCE_SUMMARY_REPORT",
-                "dateFrom" => $dateFrom,
-                "dateTo" => $dateTo,
-                "marketplaceId" => "EBAY_US",
-                "reportFormat" => "TSV_GZIP",
-                "fundingModels" => ["COST_PER_CLICK"],
-                "dimensions" => [
-                    ["dimensionKey" => "campaign_id"],
-                ],
-                "metricKeys" => [
-                    "cpc_impressions",
-                    "cpc_clicks",
-                    "cpc_attributed_sales",
-                    "cpc_ctr",
-                    "cpc_ad_fees_listingsite_currency",
-                    "cpc_sale_amount_listingsite_currency",
-                    "cpc_avg_cost_per_sale",
-                    "cpc_return_on_ad_spend",
-                    "cpc_conversion_rate",
-                    "cpc_sale_amount_payout_currency",
-                    "cost_per_click",
-                    "cpc_ad_fees_payout_currency",
-                ]
-            ];
+        $body = ["reportType" => "ALL_CAMPAIGN_PERFORMANCE_SUMMARY_REPORT",
+            "dateFrom" => $dateFrom,
+            "dateTo" => $dateTo,
+            "marketplaceId" => "EBAY_US",
+            "reportFormat" => "TSV_GZIP",
+            "fundingModels" => ["COST_PER_CLICK"],
+            "dimensions" => [
+                ["dimensionKey" => "campaign_id"],
+            ],
+            "metricKeys" => [
+                "cpc_impressions",
+                "cpc_clicks",
+                "cpc_attributed_sales",
+                "cpc_ctr",
+                "cpc_ad_fees_listingsite_currency",
+                "cpc_sale_amount_listingsite_currency",
+                "cpc_avg_cost_per_sale",
+                "cpc_return_on_ad_spend",
+                "cpc_conversion_rate",
+                "cpc_sale_amount_payout_currency",
+                "cost_per_click",
+                "cpc_ad_fees_payout_currency",
+            ]
+        ];
 
-            $taskId = $this->submitReportTask($accessToken, $body);
+        $taskId = $this->submitReportTask($accessToken, $body);
         if (!$taskId) return;
 
         $reportId = $this->pollReportStatus($accessToken, $taskId);
@@ -184,8 +185,6 @@ class Ebay2CampaignReports extends Command
                     'campaign_name' => $campaignName,
                     'campaignBudgetAmount' => $campaignBudget,
                     'campaignStatus' => $campaignStatus,
-                    'start_date' => $from->toDateString(),
-                    'end_date' => $to->toDateString(),
                     'cpc_impressions' => $hasReportData ? ($reportItem['cpc_impressions'] ?? 0) : 0,
                     'cpc_clicks' => $hasReportData ? ($reportItem['cpc_clicks'] ?? 0) : 0,
                     'cpc_attributed_sales' => $hasReportData ? ($reportItem['cpc_attributed_sales'] ?? 0) : 0,
@@ -225,13 +224,9 @@ class Ebay2CampaignReports extends Command
     {
         $this->info("Processing CAMPAIGN_PERFORMANCE_REPORT: {$rangeKey} ({$from->toDateString()} → {$to->toDateString()})");
 
-        // Use UTC timezone for eBay API compatibility
-        $dateFrom = $from->copy()->startOfDay()->utc()->format('Y-m-d\TH:i:s.000\Z');
-        $dateTo = $to->copy()->endOfDay()->utc()->format('Y-m-d\TH:i:s.000\Z');
-
         $body = ["reportType" => "CAMPAIGN_PERFORMANCE_REPORT",
-            "dateFrom" => $dateFrom,
-            "dateTo" => $dateTo,
+            "dateFrom" => $from,
+            "dateTo" => $to,
             "marketplaceId" => "EBAY_US",
             "reportFormat" => "TSV_GZIP",
             "fundingModels" => ["COST_PER_SALE"],
@@ -269,7 +264,7 @@ class Ebay2CampaignReports extends Command
         foreach($chunks as $chunkIndex => $chunk) {
             foreach($chunk as $item){
                 if (!$item || empty($item['listing_id'])) continue;
-            
+                
                 Ebay2GeneralReport::updateOrCreate(
                 ['listing_id' => $item['listing_id'], 'report_range' => $rangeKey],
                 [
@@ -559,9 +554,11 @@ class Ebay2CampaignReports extends Command
 
     private function getAccessToken()
     {
-        $clientId = env('EBAY_2_APP_ID');
-        $clientSecret = env('EBAY_2_CERT_ID');
+        $clientId = env('EBAY2_APP_ID');
+        $clientSecret = env('EBAY2_CERT_ID');
 
+        // For refresh token, scope is optional - the refresh token already contains the granted scopes
+        // Only specify scope if you want to request additional scopes
         $scope = 'https://api.ebay.com/oauth/api_scope/sell.marketing.readonly https://api.ebay.com/oauth/api_scope/sell.marketing';
 
         try {
@@ -569,20 +566,18 @@ class Ebay2CampaignReports extends Command
                 ->withBasicAuth($clientId, $clientSecret)
                 ->post('https://api.ebay.com/identity/v1/oauth2/token', [
                     'grant_type' => 'refresh_token',
-                    'refresh_token' => env('EBAY_2_REFRESH_TOKEN'),
+                    'refresh_token' => env('EBAY2_REFRESH_TOKEN'),
                     'scope' => $scope,
                 ]);
 
             if ($response->successful()) {
-                $this->info('eBay2 token generated successfully');
+                $this->info('eBay token generated successfully');
                 return $response->json()['access_token'];
             }
 
-            $errorData = $response->json();
-            $this->error('eBay2 token refresh error: ' . json_encode($errorData));
-            $this->error('eBay API Error: ' . ($errorData['error_description'] ?? $errorData['error'] ?? $response->body()));
+            $this->error('eBay token refresh error: ' . json_encode($response->json()));
         } catch (\Exception $e) {
-            $this->error('eBay2 token refresh exception: ' . $e->getMessage());
+            $this->error('eBay token refresh exception: ' . $e->getMessage());
         }
 
         return null;
@@ -591,7 +586,7 @@ class Ebay2CampaignReports extends Command
     private function getAllCampaigns($token)
     {
         $campaigns = [];
-        $limit = 200;
+        $limit = 200; // eBay allows up to 200 per page
         $offset = 0;
 
         while (true) {
@@ -698,7 +693,7 @@ class Ebay2CampaignReports extends Command
             
             if ($count < $limit) {
                 $this->info("Last page reached. Total campaigns fetched: " . count($campaigns));
-                break;
+                break; // last page reached
             }
 
             $offset += $limit;
@@ -709,4 +704,5 @@ class Ebay2CampaignReports extends Command
 
         return $campaigns;
     }
+
 }

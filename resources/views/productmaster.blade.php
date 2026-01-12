@@ -1545,21 +1545,27 @@
             // Email dropdown logic
             const input = document.getElementById('emailInput');
             const dropdown = document.getElementById('emailDropdownList');
-            input.addEventListener('focus', () => showDropdown(emails));
-            input.addEventListener('input', function() {
-                const value = this.value.toLowerCase();
-                showDropdown(emails.filter(email => email.toLowerCase().includes(value)));
-            });
-            dropdown.addEventListener('mousedown', function(e) {
-                if (e.target.classList.contains('dropdown-item')) {
-                    input.value = e.target.textContent;
-                    hideDropdown();
-                    selectedEmail = input.value;
-                    loadUserColumns(selectedEmail); // Now uses local data
-                }
-            });
+            if (input) {
+                input.addEventListener('focus', () => showDropdown(emails));
+                input.addEventListener('input', function() {
+                    const value = this.value.toLowerCase();
+                    showDropdown(emails.filter(email => email.toLowerCase().includes(value)));
+                });
+            }
+            if (dropdown) {
+                dropdown.addEventListener('mousedown', function(e) {
+                    if (e.target.classList.contains('dropdown-item')) {
+                        if (input) input.value = e.target.textContent;
+                        hideDropdown();
+                        if (input) selectedEmail = input.value;
+                        loadUserColumns(selectedEmail); // Now uses local data
+                    }
+                });
+            }
             document.addEventListener('mousedown', function(e) {
-                if (!input.contains(e.target) && !dropdown.contains(e.target)) hideDropdown();
+                if (input && dropdown && !input.contains(e.target) && !dropdown.contains(e.target)) {
+                    hideDropdown();
+                }
             });
 
             function showDropdown(list) {
@@ -1614,14 +1620,17 @@
             }
 
             // Add column to selectedColumns
-            document.getElementById('addColumnBtn').addEventListener('click', function() {
-                const col = columnInput.value.trim();
-                if (col && !selectedColumns.includes(col)) {
-                    selectedColumns.push(col);
-                    renderCurrentColumns();
-                    columnInput.value = '';
-                }
-            });
+            const addColumnBtn = document.getElementById('addColumnBtn');
+            if (addColumnBtn) {
+                addColumnBtn.addEventListener('click', function() {
+                    const col = columnInput.value.trim();
+                    if (col && !selectedColumns.includes(col)) {
+                        selectedColumns.push(col);
+                        renderCurrentColumns();
+                        columnInput.value = '';
+                    }
+                });
+            }
 
             // Render current columns with remove buttons
             function renderCurrentColumns() {
@@ -1659,12 +1668,14 @@
             // });
 
             // Save permission AJAX
-            document.getElementById('savePermissionBtn').addEventListener('click', function() {
-                if (!selectedEmail) {
-                    showToast('danger', 'Please select an email');
-                    return;
-                }
-                fetch('/auth/save-column-permission', {
+            const savePermissionBtn = document.getElementById('savePermissionBtn');
+            if (savePermissionBtn) {
+                savePermissionBtn.addEventListener('click', function() {
+                    if (!selectedEmail) {
+                        showToast('danger', 'Please select an email');
+                        return;
+                    }
+                    fetch('/auth/save-column-permission', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -1692,7 +1703,8 @@
                     .catch(() => {
                         showToast('danger', 'Error saving permission');
                     });
-            });
+                });
+            }
 
             // Toast notification function
             function showToast(type, message) {
@@ -1742,6 +1754,9 @@
 
             // Track selected items with both SKU and ID
             let selectedItems = {}; // Format: { sku: { id: 123, checked: true } }
+            
+            // Store current filter values globally to preserve them across data reloads
+            let currentFilterValues = {};
 
             // Get CSRF token from meta tag
             const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
@@ -1774,6 +1789,15 @@
 
             // Load product data from server
             function loadData(callback) {
+                // Preserve current filter values before reloading
+                currentFilterValues = {};
+                document.querySelectorAll('.missing-data-filter').forEach(filter => {
+                    const columnName = filter.getAttribute('data-column');
+                    if (columnName && filter.value !== 'all') {
+                        currentFilterValues[columnName] = filter.value;
+                    }
+                });
+                
                 // Add cache-busting parameter to ensure fresh data
                 const cacheParam = '?ts=' + new Date().getTime();
                 makeRequest('/product-master-data-view' + cacheParam, 'GET')
@@ -1796,11 +1820,30 @@
                             });
                             
                             // If callback is provided, use it for custom rendering (e.g., with filters)
-                            // Otherwise render all data normally
+                            // Otherwise check if filters are active and apply them
                             if (typeof callback === 'function') {
                                 callback();
                             } else {
-                                renderTable(tableData);
+                                // Check if any filters are active
+                                const hasActiveFilters = Object.keys(currentFilterValues).length > 0;
+                                if (hasActiveFilters) {
+                                    // Restore filter values and apply filters
+                                    renderTable(tableData);
+                                    // Restore filter dropdown values after table is rendered
+                                    setTimeout(() => {
+                                        document.querySelectorAll('.missing-data-filter').forEach(filter => {
+                                            const columnName = filter.getAttribute('data-column');
+                                            if (columnName && currentFilterValues[columnName]) {
+                                                filter.value = currentFilterValues[columnName];
+                                                updateFilterStyling(filter);
+                                            }
+                                        });
+                                        // Apply filters with restored values
+                                        applyFilters();
+                                    }, 100);
+                                } else {
+                                    renderTable(tableData);
+                                }
                             }
                             updateParentOptions();
                             initProductPlaybackControls();
@@ -2554,21 +2597,26 @@
             }
 
             // Reset button reference when modal is closed
-            document.getElementById('missingDataModal').addEventListener('hidden.bs.modal', function() {
-                currentMissingDataButton = null;
-                // Reset form inputs
-                document.getElementById('missingDataValue').value = '';
-                document.getElementById('missingDataFile').value = '';
-                document.getElementById('missingDataImagePreview').style.display = 'none';
-                document.getElementById('missingDataError').style.display = 'none';
-                document.getElementById('missingDataValue').style.display = 'block';
-                document.getElementById('missingDataFile').style.display = 'none';
-            });
+            const missingDataModal = document.getElementById('missingDataModal');
+            if (missingDataModal) {
+                missingDataModal.addEventListener('hidden.bs.modal', function() {
+                    currentMissingDataButton = null;
+                    // Reset form inputs
+                    document.getElementById('missingDataValue').value = '';
+                    document.getElementById('missingDataFile').value = '';
+                    document.getElementById('missingDataImagePreview').style.display = 'none';
+                    document.getElementById('missingDataError').style.display = 'none';
+                    document.getElementById('missingDataValue').style.display = 'block';
+                    document.getElementById('missingDataFile').style.display = 'none';
+                });
+            }
 
             // Save missing data
-            document.getElementById('saveMissingDataBtn').addEventListener('click', async function() {
-                if (!currentMissingDataButton) {
-                    showToast('danger', 'Error: Button reference lost. Please try again.');
+            const saveMissingDataBtn = document.getElementById('saveMissingDataBtn');
+            if (saveMissingDataBtn) {
+                saveMissingDataBtn.addEventListener('click', async function() {
+                    if (!currentMissingDataButton) {
+                        showToast('danger', 'Error: Button reference lost. Please try again.');
                     return;
                 }
 
@@ -2735,7 +2783,8 @@
                     this.disabled = false;
                     this.innerHTML = '<i class="fas fa-save me-1"></i>Save';
                 }
-            });
+                });
+            }
 
             //play button script
             function initProductPlaybackControls() {
@@ -2854,9 +2903,11 @@
 
 
             // Handle Missing Images / Dimensions / CP  on Button Click
-            document.getElementById('missingImagesBtn').addEventListener('click', function() {
-                if (!Array.isArray(tableData) || tableData.length === 0) {
-                    showError('No data loaded yet.');
+            const missingImagesBtn = document.getElementById('missingImagesBtn');
+            if (missingImagesBtn) {
+                missingImagesBtn.addEventListener('click', function() {
+                    if (!Array.isArray(tableData) || tableData.length === 0) {
+                        showError('No data loaded yet.');
                     return;
                 }
 
@@ -2953,7 +3004,8 @@
                 // Show the modal
                 const modal = new bootstrap.Modal(document.getElementById('missingImagesModal'));
                 modal.show();
-            });
+                });
+            }
 
 
             // Updated function to show all columns except those in the hidden list
@@ -2965,14 +3017,19 @@
                 const existingSkuVal = document.getElementById('skuSearch')?.value || '';
                 const existingCustomVal = document.getElementById('customSearch')?.value || '';
 
-                // Preserve missing data filter values
-                const existingFilterValues = {};
+                // Preserve missing data filter values - use global currentFilterValues if available, otherwise get from DOM
+                const existingFilterValues = Object.keys(currentFilterValues).length > 0 ? currentFilterValues : {};
                 document.querySelectorAll('.missing-data-filter').forEach(filter => {
                     const columnName = filter.getAttribute('data-column');
                     if (columnName) {
-                        existingFilterValues[columnName] = filter.value;
+                        // Use global value if available, otherwise use current DOM value
+                        if (!existingFilterValues[columnName]) {
+                            existingFilterValues[columnName] = filter.value;
+                        }
                     }
                 });
+                // Update global filter values
+                currentFilterValues = {...existingFilterValues};
 
                 // Preserve focus and selection so user's typing isn't interrupted
                 const activeEl = document.activeElement;
@@ -3559,6 +3616,15 @@
                 // Listen for missing data filter changes
                 document.addEventListener('change', function (e) {
                     if (e.target && e.target.classList.contains('missing-data-filter')) {
+                        const columnName = e.target.getAttribute('data-column');
+                        if (columnName) {
+                            // Update global filter values
+                            if (e.target.value === 'all') {
+                                delete currentFilterValues[columnName];
+                            } else {
+                                currentFilterValues[columnName] = e.target.value;
+                            }
+                        }
                         updateFilterStyling(e.target);
                         applyFilters();
                     }
@@ -3578,6 +3644,8 @@
                     document.querySelectorAll('.missing-data-filter').forEach(filter => {
                         filter.value = 'all';
                     });
+                    // Clear global filter values
+                    currentFilterValues = {};
                     renderTable(tableData);
                 });
             }
@@ -3610,7 +3678,9 @@
 
             // Update Excel export function to exclude hidden columns
             function setupExcelExport() {
-                document.getElementById('downloadExcel').addEventListener('click', function() {
+                const downloadExcelBtn = document.getElementById('downloadExcel');
+                if (downloadExcelBtn) {
+                    downloadExcelBtn.addEventListener('click', function() {
                     const hiddenColumns = getUserHiddenColumns();
                     const allColumns = [
                         "Parent", "SKU", "UPC", "INV", "OV L30", "STATUS", "Unit", "LP", "CP$",
@@ -3725,9 +3795,9 @@
                     };
 
                     // Show loader or indicate download is in progress
-                    document.getElementById('downloadExcel').innerHTML =
+                    downloadExcelBtn.innerHTML =
                         '<i class="fas fa-spinner fa-spin"></i> Generating...';
-                    document.getElementById('downloadExcel').disabled = true;
+                    downloadExcelBtn.disabled = true;
 
                     // Use setTimeout to avoid UI freeze for large datasets
                     setTimeout(() => {
@@ -3849,12 +3919,13 @@
                             showToast('danger', 'Failed to export Excel file.');
                         } finally {
                             // Reset button state
-                            document.getElementById('downloadExcel').innerHTML =
+                            downloadExcelBtn.innerHTML =
                                 '<i class="fas fa-file-excel me-1"></i> Download Excel';
-                            document.getElementById('downloadExcel').disabled = false;
+                            downloadExcelBtn.disabled = false;
                         }
                     }, 100); // Small timeout to allow UI to update
-                });
+                    });
+                }
             }
 
             // Setup import functionality
@@ -4093,7 +4164,9 @@
             }
 
             // Image preview on file select
-            document.getElementById('productImage').addEventListener('change', function(e) {
+            const productImage = document.getElementById('productImage');
+            if (productImage) {
+                productImage.addEventListener('change', function(e) {
                 const preview = document.getElementById('imagePreview');
                 preview.innerHTML = '';
                 if (this.files && this.files[0]) {
@@ -4104,7 +4177,8 @@
                     };
                     reader.readAsDataURL(this.files[0]);
                 }
-            });
+                });
+            }
 
             // Calculate CBM based on dimensions
             function calculateCBM() {
@@ -4368,27 +4442,99 @@
                         if (data.data) {
                             const updatedProduct = data.data;
                             
-                            // Update tableData
-                            const existingIndex = tableData.findIndex(p => p.SKU === sku);
-                            if (existingIndex !== -1) {
-                                Object.assign(tableData[existingIndex], updatedProduct);
+                            // Extract Values JSON and flatten to top level for table rendering
+                            let valuesObj = {};
+                            if (updatedProduct.Values) {
+                                if (typeof updatedProduct.Values === 'string') {
+                                    try {
+                                        valuesObj = JSON.parse(updatedProduct.Values);
+                                    } catch (e) {
+                                        valuesObj = {};
+                                    }
+                                } else if (typeof updatedProduct.Values === 'object') {
+                                    valuesObj = updatedProduct.Values;
+                                }
                             }
                             
-                            // Update productMap
-                            const existing = productMap.get(sku);
-                            if (existing) {
-                                Object.assign(existing, updatedProduct);
-                            } else {
-                                productMap.set(sku, updatedProduct);
-                            }
-                            
-                            // Update all visible cells for the updated product
-                            Object.keys(updatedProduct).forEach(fieldName => {
-                                if (fieldName !== 'SKU' && fieldName !== 'id' && fieldName !== 'Parent') {
-                                    const newValue = updatedProduct[fieldName];
-                                    updateTableCellInPlace(sku, fieldName, newValue);
+                            // Merge Values JSON fields into top level for easier access
+                            const flattenedProduct = {...updatedProduct};
+                            Object.keys(valuesObj).forEach(key => {
+                                if (valuesObj[key] !== null && valuesObj[key] !== undefined && valuesObj[key] !== '') {
+                                    flattenedProduct[key] = valuesObj[key];
                                 }
                             });
+                            
+                            // Update tableData - ensure all fields are properly updated
+                            const existingIndex = tableData.findIndex(p => {
+                                const pSku = p.SKU || p.sku || '';
+                                return pSku === sku || pSku.toLowerCase() === sku.toLowerCase();
+                            });
+                            
+                            if (existingIndex !== -1) {
+                                // Preserve SKU and Parent as they might be case-sensitive
+                                const originalSku = tableData[existingIndex].SKU || tableData[existingIndex].sku;
+                                const originalParent = tableData[existingIndex].Parent || tableData[existingIndex].parent;
+                                
+                                // Update all fields from the flattened product
+                                Object.keys(flattenedProduct).forEach(key => {
+                                    if (key !== 'SKU' && key !== 'sku' && key !== 'Parent' && key !== 'parent' && key !== 'id') {
+                                        if (key === 'Values') {
+                                            // Store Values JSON as is
+                                            tableData[existingIndex].Values = updatedProduct.Values;
+                                        } else {
+                                            // Update direct property (including flattened Values fields like cp, lp, etc.)
+                                            tableData[existingIndex][key] = flattenedProduct[key];
+                                        }
+                                    }
+                                });
+                                
+                                // Also update Values JSON structure
+                                if (updatedProduct.Values) {
+                                    tableData[existingIndex].Values = updatedProduct.Values;
+                                }
+                                
+                                // Ensure SKU and Parent are preserved with correct casing
+                                if (originalSku) {
+                                    tableData[existingIndex].SKU = originalSku;
+                                    tableData[existingIndex].sku = originalSku;
+                                }
+                                if (originalParent) {
+                                    tableData[existingIndex].Parent = originalParent;
+                                    tableData[existingIndex].parent = originalParent;
+                                }
+                            } else {
+                                // If not found, add it (shouldn't happen but handle it)
+                                tableData.push(flattenedProduct);
+                            }
+                            
+                            // Update productMap with flattened data
+                            const existing = productMap.get(sku);
+                            if (existing) {
+                                Object.keys(flattenedProduct).forEach(key => {
+                                    if (key !== 'SKU' && key !== 'sku' && key !== 'Parent' && key !== 'parent' && key !== 'id') {
+                                        if (key === 'Values') {
+                                            existing.Values = updatedProduct.Values;
+                                        } else {
+                                            existing[key] = flattenedProduct[key];
+                                        }
+                                    }
+                                });
+                            } else {
+                                productMap.set(sku, flattenedProduct);
+                            }
+                            
+                            // Force immediate re-render with updated data
+                            // Reapply filters immediately to show updated data
+                            applyFilters();
+                            
+                            // Also setup edit/delete buttons again after re-render in case table was recreated
+                            setTimeout(() => {
+                                setupEditButtons();
+                                setupDeleteButtons();
+                            }, 100);
+                        } else {
+                            // If no data returned, reload with filters preserved
+                            loadData();
                         }
                         
                         resetProductForm();
@@ -5110,12 +5256,14 @@
                 ];
 
                 // Open modal when Process Selected is clicked
-                document.getElementById('processSelected').addEventListener('click', function() {
-                    const selectedCount = Object.keys(selectedItems).length;
-                    if (selectedCount === 0) {
-                        alert('No items selected');
-                        return;
-                    }
+                const processSelectedBtn = document.getElementById('processSelected');
+                if (processSelectedBtn) {
+                    processSelectedBtn.addEventListener('click', function() {
+                        const selectedCount = Object.keys(selectedItems).length;
+                        if (selectedCount === 0) {
+                            alert('No items selected');
+                            return;
+                        }
 
                     // Reset the form
                     resetBatchForm();
@@ -5125,7 +5273,8 @@
 
                     // Show the modal
                     processSelectedModal.show();
-                });
+                    });
+                }
 
                 // Add a new field operation row
                 addFieldBtn.addEventListener('click', function() {
@@ -5350,6 +5499,9 @@
                                     }
                                 });
                             });
+                            
+                            // Reapply filters to maintain filter state and show updated data
+                            applyFilters();
                         } else {
                             // If server didn't return updated data, calculate and update from operations
                             const operations = getFieldOperations();
@@ -5384,11 +5536,17 @@
                                         // Update product data
                                         product[fieldName] = newValue;
                                         
-                                        // Update visible cell
-                                        updateTableCellInPlace(sku, fieldName, newValue);
+                                        // Update tableData as well
+                                        const existingIndex = tableData.findIndex(p => p.SKU === sku || p.sku === sku);
+                                        if (existingIndex !== -1) {
+                                            tableData[existingIndex][fieldName] = newValue;
+                                        }
                                     });
                                 }
                             });
+                            
+                            // Reapply filters to maintain filter state and show updated data
+                            applyFilters();
                         }
                         
                         // Clear selections
@@ -5537,10 +5695,12 @@
             }
 
             // Initialize import from API functionality
-            document.getElementById('importFromApiBtn').addEventListener('click', function() {
-                const importBtn = this;
-                importBtn.disabled = true;
-                importBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Importing...';
+            const importFromApiBtn = document.getElementById('importFromApiBtn');
+            if (importFromApiBtn) {
+                importFromApiBtn.addEventListener('click', function() {
+                    const importBtn = this;
+                    importBtn.disabled = true;
+                    importBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Importing...';
 
                 makeRequest('/product-master-data-view', 'GET')
                     .then(res => {
@@ -5578,7 +5738,8 @@
                         importBtn.innerHTML =
                             '<i class="fas fa-cloud-download-alt me-1"></i> Import from API Sheet';
                     });
-            });
+                });
+            }
 
             // Utility functions
             function escapeHtml(str) {
@@ -5925,6 +6086,7 @@
                                         if (data.success) {
                                             showToast('success', data.message ||
                                                 'Product archived successfully!');
+                                            // loadData() will preserve filters automatically
                                             loadData();
                                         } else {
                                             showToast('danger', data.message ||
