@@ -20,5 +20,7 @@ class Ebay2Metric extends Model
         'ebay_price',
         'views',
         'l7_views',
+        'report_range',
+        'ebay_stock'
     ];
 }
