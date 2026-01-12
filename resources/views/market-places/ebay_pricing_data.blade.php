@@ -54,13 +54,13 @@
                         style="width: auto; display: inline-block;">
                         <option value="all" selected>All Inventory</option>
                         <option value="zero">0 Inventory</option>
-                        <option value="more">More than 0</option>
+                        <option value="more" selected>More than 0</option>
                     </select>
 
                     <select id="nrl-filter" class="form-select form-select-sm me-2"
                         style="width: auto; display: inline-block;">
                         <option value="all">All Status</option>
-                        <option value="REQ">REQ Only</option>
+                        <option value="REQ" selected>REQ Only</option>
                         <option value="NR">NR Only</option>
                     </select>
 
@@ -230,6 +230,34 @@
                         sorter: "number"
                     },
                     {
+                        title: "E Stock",
+                        field: "eBay Stock",
+                        hozAlign: "center",
+                        width: 60,
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            if (value === 0) {
+                                return '<span style="color: #dc3545; font-weight: 600;">0</span>';
+                            }
+                            return `<span style="font-weight: 600;">${value}</span>`;
+                        }
+                    },
+                    {
+                        title: "Missing",
+                        field: "Missing",
+                        hozAlign: "center",
+                        width: 70,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const itemId = rowData['eBay_item_id'];
+                            if (!itemId || itemId === null || itemId === '') {
+                                return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
+                            }
+                            return '';
+                        }
+                    },
+                    {
                         title: "OV L30",
                         field: "L30",
                         hozAlign: "center",
@@ -269,7 +297,38 @@
                         width: 30,
                         sorter: "number"
                     },
-
+                    {
+                        title: "MAP",
+                        field: "MAP",
+                        hozAlign: "center",
+                        width: 90,
+                        headerFilter: "select",
+                        headerFilterParams: {
+                            values: {"": "All", "MP": "MP", "N MP": "N MP (Mismatch)"}
+                        },
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const itemId = rowData['eBay_item_id'];
+                            if (!itemId || itemId === null || itemId === '') {
+                                return '';
+                            }
+                            const ebayStock = parseFloat(rowData['eBay Stock']) || 0;
+                            const inv = parseFloat(rowData['INV']) || 0;
+                            if (inv > 0 && ebayStock === 0) {
+                                return `<span style=\"color: #dc3545; font-weight: bold;\">N MP<br>(${inv})</span>`;
+                            }
+                            if (inv > 0 && ebayStock > 0) {
+                                if (inv === ebayStock) {
+                                    return '<span style="color: #28a745; font-weight: bold;">MP</span>';
+                                } else {
+                                    const diff = inv - ebayStock;
+                                    const sign = diff > 0 ? '+' : '';
+                                    return `<span style=\"color: #dc3545; font-weight: bold;\">N MP<br>(${sign}${diff})</span>`;
+                                }
+                            }
+                            return '';
+                        }
+                    },
                     
                     // {
                     //     title: "eBay L60",
