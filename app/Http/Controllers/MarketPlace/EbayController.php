@@ -227,7 +227,8 @@ class EbayController extends Controller
                 'ebay_l7',
                 'ebay_price',
                 'views',
-                'item_id'
+                'item_id',
+                'ebay_stock'
             )
             ->whereIn('sku', $skus)
             ->get()
@@ -376,6 +377,7 @@ class EbayController extends Controller
             $row["eBay L60"] = $ebayMetric->ebay_l60 ?? 0;
             $row["eBay L7"] = $ebayMetric->ebay_l7 ?? 0;
             $row["eBay Price"] = $ebayMetric->ebay_price ?? 0;
+            $row['eBay Stock'] = $ebayMetric->ebay_stock ?? 0;
             $row['price_lmpa'] = $ebayMetric->price_lmpa ?? null;
             $row['eBay_item_id'] = $ebayMetric->item_id ?? null;
             $row['views'] = $ebayMetric->views ?? 0;
