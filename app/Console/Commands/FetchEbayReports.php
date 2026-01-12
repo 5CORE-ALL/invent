@@ -61,13 +61,26 @@ class FetchEbayReports extends Command
         $this->deleteTask($taskId);
 
         $this->info("📊 Total raw listings fetched: " . count($listingData));
+        
+        // Debug: Check if quantity data is present
+        $withQuantity = 0;
+        $withoutQuantity = 0;
+        foreach ($listingData as $row) {
+            if (isset($row['quantity']) && $row['quantity'] !== null) {
+                $withQuantity++;
+            } else {
+                $withoutQuantity++;
+            }
+        }
+        $this->info("📦 Listings with quantity: {$withQuantity}");
+        $this->info("⚠️  Listings without quantity: {$withoutQuantity}");
 
         // Save price + SKU mapping
         // Map: sku => itemId (keep latest/active item_id per SKU)
         // Note: SKU is the unique identifier to prevent duplicates.
         // Same SKU may appear in multiple eBay listings, we keep the most recent item_id
         $skuToItemId = [];
-        $skuPrices = [];
+        $skuData = []; // Store full row data per SKU
         $skipped = ['no_item_id' => 0, 'no_sku' => 0, 'duplicate_sku' => 0];
         $itemsWithoutSku = [];
 
@@ -76,7 +89,6 @@ class FetchEbayReports extends Command
         foreach ($listingData as $row) {
             $itemId = $row['item_id'] ?? null;
             $sku = trim((string)($row['sku'] ?? ''));
-            $price = $row['price'] ?? null;
 
             // skip rows with no itemId
             if (! $itemId) {
@@ -87,7 +99,7 @@ class FetchEbayReports extends Command
             if ($sku === '') {
                 $skipped['no_sku']++;
                 // Save items without SKU using item_id as fallback
-                $itemsWithoutSku[$itemId] = $price;
+                $itemsWithoutSku[$itemId] = $row;
                 continue;
             }
 
@@ -102,7 +114,7 @@ class FetchEbayReports extends Command
 
             // Keep the latest item_id for each SKU (prevent duplicates)
             $skuToItemId[$sku] = $itemId;
-            $skuPrices[$sku] = $price;
+            $skuData[$sku] = $row; // Store complete row data
         }
 
         $this->info("📝 Unique SKUs to save: " . count($skuToItemId));
@@ -129,12 +141,13 @@ class FetchEbayReports extends Command
 
         // Track all active SKUs for cleanup
         $allActiveSkus = array_keys($skuToItemId);
-        foreach ($itemsWithoutSku as $itemId => $price) {
+        foreach ($itemsWithoutSku as $itemId => $rowData) {
             $allActiveSkus[] = 'NO-SKU-' . $itemId;
         }
 
             // Save metrics with SKU as unique identifier in chunks
             $saved = 0;
+            $savedWithStock = 0;
             $skuChunks = array_chunk($skuToItemId, 100, true);
             foreach ($skuChunks as $chunk) {
                 foreach ($chunk as $sku => $itemId) {
@@ -144,11 +157,20 @@ class FetchEbayReports extends Command
                         $this->info("🔄 SKU {$sku}: Item ID changed from {$existingRecord->item_id} to {$itemId}");
                     }
                     
+                    $rowData = $skuData[$sku] ?? [];
+                    $stockValue = $rowData['quantity'] ?? null;
+                    $listedStatusValue = $rowData['listed_status'] ?? null;
+                    if ($stockValue !== null) {
+                        $savedWithStock++;
+                    }
+                    
                     EbayMetric::updateOrCreate(
                         ['sku' => $sku],
                         [
                             'item_id' => $itemId,
-                            'ebay_price' => $skuPrices[$sku],
+                            'ebay_price' => $rowData['price'] ?? null,
+                            'ebay_stock' => $stockValue,
+                            'listed_status' => $listedStatusValue,
                             'report_date' => now()->toDateString(),
                         ]
                     );
@@ -156,16 +178,20 @@ class FetchEbayReports extends Command
                 }
                 DB::connection()->disconnect();
             }
+            
+            $this->info("📦 SKUs saved with stock data: {$savedWithStock} / {$saved}");
 
             // Save items without SKU (use item_id as SKU identifier) in chunks
             $itemsWithoutSkuChunks = array_chunk($itemsWithoutSku, 100, true);
             foreach ($itemsWithoutSkuChunks as $chunk) {
-                foreach ($chunk as $itemId => $price) {
+                foreach ($chunk as $itemId => $rowData) {
                     EbayMetric::updateOrCreate(
                         ['sku' => 'NO-SKU-' . $itemId],
                         [
                             'item_id' => $itemId,
-                            'ebay_price' => $price,
+                            'ebay_price' => $rowData['price'] ?? null,
+                            'ebay_stock' => $rowData['quantity'] ?? null,
+                            'listed_status' => $rowData['listed_status'] ?? null,
                             'report_date' => now()->toDateString(),
                         ]
                     );
@@ -568,17 +594,23 @@ class FetchEbayReports extends Command
             // capture primary SKU (if present) and variations
             $primarySku = trim((string) ($item->SKU ?? ''));
             $price = isset($item->Price) ? (float) $item->Price : null;
+            $quantity = isset($item->Quantity) ? (int) $item->Quantity : null;
+            $listedStatus = isset($item->ListingStatus) ? (string) $item->ListingStatus : null;
 
-            // Process variations first to collect SKUs with prices
+            // Process variations first to collect SKUs with prices and quantities
             $variationData = [];
             foreach ($item->Variations->Variation ?? [] as $v) {
                 $varSku = (string) $v->SKU;
                 $varPrice = isset($v->Price) ? (float) $v->Price : $price;
+                $varQuantity = isset($v->Quantity) ? (int) $v->Quantity : $quantity;
+                $varListedStatus = isset($v->ListingStatus) ? (string) $v->ListingStatus : $listedStatus;
                 
                 $variationData[$varSku] = [
                     'item_id' => $itemId,
                     'sku' => $varSku,
                     'price' => $varPrice,
+                    'quantity' => $varQuantity,
+                    'listed_status' => $varListedStatus,
                 ];
             }
 
@@ -591,6 +623,8 @@ class FetchEbayReports extends Command
                         'item_id' => $itemId,
                         'sku' => $primarySku,
                         'price' => $price,
+                        'quantity' => $quantity,
+                        'listed_status' => $listedStatus,
                     ];
                     $seen[$key] = true;
                 }
@@ -671,6 +705,7 @@ class FetchEbayReports extends Command
                 'item_id' => $itemId,
                 'sku' => $sku,
                 'price' => $d['price'] ?? null,
+                'quantity' => isset($d['availableQuantity']) ? (int) $d['availableQuantity'] : null,
             ];
         }
 

@@ -62,6 +62,8 @@ class FetchEbayDataMetricServiceClass
                         'ebay_data_l30' => 0,
                         'ebay_data_l60' => 0,
                         'ebay_data_views' => 0,
+                        'stock' => $row['stock'] ?? null,
+                        'listed_status' => $row['listed_status'] ?? null,
                     ]
                 );
                 $insertedCount++;
@@ -217,6 +219,8 @@ class FetchEbayDataMetricServiceClass
                         'item_id' => $itemId,
                         'sku' => (string) ($item->SKU ?? ''),
                         'price' => (float) ($item->Price ?? 0),
+                        'stock' => isset($item->Quantity) ? (int) $item->Quantity : null,
+                        'listed_status' => isset($item->ListingStatus) ? (string) $item->ListingStatus : null,
                     ];
 
                     // Handle variations
@@ -225,6 +229,8 @@ class FetchEbayDataMetricServiceClass
                             'item_id' => $itemId,
                             'sku' => (string) ($variation->SKU ?? ''),
                             'price' => (float) ($variation->Price ?? 0),
+                            'stock' => isset($variation->Quantity) ? (int) $variation->Quantity : null,
+                            'listed_status' => isset($variation->ListingStatus) ? (string) $variation->ListingStatus : null,
                         ];
                     }
                 }
