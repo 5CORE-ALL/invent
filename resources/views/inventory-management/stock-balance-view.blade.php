@@ -604,27 +604,36 @@
                         }
                     }
                     
-                    // Validate inventory before submitting
-                    const fromQty = parseInt($('#from_adjust_qty').val()) || 0;
-                    const availableQty = parseInt($('#from_available_qty').val()) || 0;
-                    const fromSku = $('#from_sku option:selected').text();
+                    // Validate inventory before submitting - check FROM SKU (Qty Adj (From))
+                    const fromAvailableQty = parseInt($('#to_available_qty').val()) || 0;
+                    const fromSku = $('#to_sku option:selected').text();
                     
-                    if (fromQty > availableQty) {
+                    if (fromQtyAdj > fromAvailableQty) {
                         showLargeErrorAlert(
                             'Insufficient Inventory',
-                            `Cannot transfer <strong>${fromQty} units</strong> from SKU: <strong>${fromSku}</strong><br><br>` +
-                            `<strong>Available Quantity:</strong> ${availableQty} units<br>` +
-                            `<strong>Requested Transfer:</strong> ${fromQty} units<br><br>` +
-                            `You need <strong>${fromQty - availableQty} more units</strong> to complete this transfer.<br><br>` +
+                            `Cannot transfer <strong>${fromQtyAdj} units</strong> from SKU: <strong>${fromSku}</strong><br><br>` +
+                            `<strong>Available Quantity:</strong> ${fromAvailableQty} units<br>` +
+                            `<strong>Requested Transfer:</strong> ${fromQtyAdj} units<br><br>` +
+                            `You need <strong>${fromQtyAdj - fromAvailableQty} more units</strong> to complete this transfer.<br><br>` +
                             `<em>Please adjust the quantity or select a different SKU.</em>`
                         );
                         return false;
                     }
                     
-                    if (fromQty <= 0) {
+                    if (fromQtyAdj <= 0) {
                         showLargeErrorAlert(
                             'Invalid Quantity',
-                            'Transfer quantity must be greater than 0.'
+                            'Qty Adj (From) must be greater than 0.'
+                        );
+                        return false;
+                    }
+                    
+                    // Also validate TO SKU quantity
+                    const toQtyAdj = parseInt($('#from_adjust_qty').val()) || 0;
+                    if (toQtyAdj <= 0) {
+                        showLargeErrorAlert(
+                            'Invalid Quantity',
+                            'Qty Adj (To) must be greater than 0.'
                         );
                         return false;
                     }
@@ -916,6 +925,7 @@
                     },
                     error: function(xhr) {
                         console.error("Load error:", xhr.responseText);
+                        $('#rainbow-loader').hide();
                     }
                 });
             }
