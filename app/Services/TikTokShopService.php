@@ -2,819 +2,247 @@
 
 namespace App\Services;
 
-use Illuminate\Support\Facades\Http;
+use EcomPHP\TiktokShop\Client;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
 class TikTokShopService
 {
+    protected $client;
     protected $clientKey;
     protected $clientSecret;
     protected $shopId;
-    protected $apiBase;
-    protected $authBase;
+    protected $shopCipher = null;
     protected $accessToken;
     protected $refreshToken;
     protected $lastResponse = null;
     protected $lastResponseCode = null;
-    protected $signatureCallback = null;
+    protected $outputCallback = null;
 
     public function __construct()
     {
         $this->clientKey = config('services.tiktok.client_key');
         $this->clientSecret = config('services.tiktok.client_secret');
         $this->shopId = config('services.tiktok.shop_id');
-        $this->apiBase = config('services.tiktok.api_base');
-        $this->authBase = config('services.tiktok.auth_base');
         
         // Get tokens from cache first, then fallback to env
         $this->accessToken = Cache::get('tiktok_access_token') ?? env('TIKTOK_ACCESS_TOKEN');
         $this->refreshToken = Cache::get('tiktok_refresh_token') ?? env('TIKTOK_REFRESH_TOKEN');
+        
+        // Initialize the TikTok Shop client library (same as ship_hub)
+        $this->client = new Client($this->clientKey, $this->clientSecret);
+        
+        if ($this->accessToken) {
+            $this->client->setAccessToken($this->accessToken);
+        }
     }
 
     /**
-     * Generate OAuth authorization URL
+     * Get shop info using the library
      */
-    public function getAuthorizationUrl(): string
+    public function getShopInfo($outputCallback = null): ?array
     {
-        $state = bin2hex(random_bytes(16));
-        Cache::put('tiktok_oauth_state', $state, 600);
-
-        $params = [
-            'app_key' => $this->clientKey,
-            'state' => $state,
-        ];
-
-        return $this->authBase . '/oauth/authorize?' . http_build_query($params);
-    }
-
-    /**
-     * Exchange authorization code for access token
-     */
-    public function getAccessToken(string $authCode): ?array
-    {
-        $timestamp = time();
-        $path = '/api/v2/token/get';
-        
-        $params = [
-            'app_key' => $this->clientKey,
-            'app_secret' => $this->clientSecret,
-            'auth_code' => $authCode,
-            'grant_type' => 'authorized_code',
-        ];
-
-        $response = Http::get($this->authBase . $path, $params);
-
-        if ($response->successful()) {
-            $data = $response->json();
-            
-            if (isset($data['data']['access_token'])) {
-                $this->accessToken = $data['data']['access_token'];
-                $this->refreshToken = $data['data']['refresh_token'];
-                
-                // Cache tokens
-                $expiresIn = $data['data']['access_token_expire_in'] ?? 86400;
-                Cache::put('tiktok_access_token', $this->accessToken, $expiresIn - 300);
-                Cache::put('tiktok_refresh_token', $this->refreshToken, 86400 * 30);
-                
-                return $data['data'];
-            }
-        }
-
-        Log::error('TikTok getAccessToken failed', [
-            'response' => $response->json(),
-            'status' => $response->status()
-        ]);
-
-        return null;
-    }
-
-    /**
-     * Refresh access token
-     */
-    public function refreshAccessToken(): ?array
-    {
-        if (!$this->refreshToken) {
-            return null;
-        }
-
-        $path = '/api/v2/token/refresh';
-        
-        $params = [
-            'app_key' => $this->clientKey,
-            'app_secret' => $this->clientSecret,
-            'refresh_token' => $this->refreshToken,
-            'grant_type' => 'refresh_token',
-        ];
-
-        $response = Http::get($this->authBase . $path, $params);
-
-        if ($response->successful()) {
-            $data = $response->json();
-            
-            if (isset($data['data']['access_token'])) {
-                $this->accessToken = $data['data']['access_token'];
-                $this->refreshToken = $data['data']['refresh_token'];
-                
-                $expiresIn = $data['data']['access_token_expire_in'] ?? 86400;
-                Cache::put('tiktok_access_token', $this->accessToken, $expiresIn - 300);
-                Cache::put('tiktok_refresh_token', $this->refreshToken, 86400 * 30);
-                
-                return $data['data'];
-            }
-        }
-
-        Log::error('TikTok refreshAccessToken failed', [
-            'response' => $response->json()
-        ]);
-
-        return null;
-    }
-
-    /**
-     * Generate signature for API request
-     * TikTok Shop API signature format: app_secret + path + sorted_params + body + app_secret, then SHA256
-     * Based on TikTok Shop API documentation: https://m.tiktok.shop/s/AIu6dbFhs2XW
-     */
-    protected function generateSignature(string $path, array $params, string $body = ''): string
-    {
-        // Remove sign from params if exists
-        unset($params['sign']);
-        
-        // Sort parameters alphabetically by key (required by TikTok API)
-        ksort($params);
-        
-        // TikTok Shop API signature format:
-        // app_secret + path + sorted_params(key+value concatenated) + body + app_secret
-        // Then calculate SHA256 hash
-        
-        $stringToSign = $this->clientSecret . $path;
-        
-        // Concatenate sorted parameters as key+value (no separators)
-        foreach ($params as $key => $value) {
-            if ($value !== null && $value !== '') {
-                // Convert to string and ensure no extra encoding
-                $stringToSign .= $key . (string)$value;
-            }
-        }
-        
-        // Append body if present (should already be minified JSON)
-        if (!empty($body)) {
-            $stringToSign .= $body;
-        }
-        
-        // Append app_secret at the end
-        $stringToSign .= $this->clientSecret;
-        
-        // Calculate SHA256 hash
-        return hash('sha256', $stringToSign);
-    }
-
-    /**
-     * Generate signature using alternative format (HMAC-SHA256 without clientSecret wrapper)
-     */
-    protected function generateSignatureAlternative(string $path, array $params, string $body = ''): string
-    {
-        // Remove sign from params
-        unset($params['sign']);
-        
-        // Sort parameters alphabetically by key
-        ksort($params);
-        
-        // Build string: path + sorted_params + body
-        $stringToSign = $path;
-        
-        foreach ($params as $key => $value) {
-            if ($value !== null && $value !== '') {
-                $stringToSign .= $key . (string)$value;
-            }
-        }
-        
-        if (!empty($body)) {
-            $stringToSign .= $body;
-        }
-        
-        // Generate HMAC-SHA256 signature
-        return hash_hmac('sha256', $stringToSign, $this->clientSecret);
-    }
-    
-    /**
-     * Generate signature format 3: params + body only
-     */
-    protected function generateSignatureFormat3(string $path, array $params, string $body = ''): string
-    {
-        unset($params['sign']);
-        ksort($params);
-        
-        $stringToSign = '';
-        foreach ($params as $key => $value) {
-            if ($value !== null && $value !== '') {
-                $stringToSign .= $key . (string)$value;
-            }
-        }
-        $stringToSign .= $body;
-        
-        return hash_hmac('sha256', $stringToSign, $this->clientSecret);
-    }
-    
-    /**
-     * Generate signature format 4: Sign by full URL (like signByUrl method)
-     */
-    protected function generateSignatureFormat4(string $fullUrl, string $body = ''): string
-    {
-        // Extract path and query string from URL
-        $parsed = parse_url($fullUrl);
-        $path = $parsed['path'] ?? '';
-        $query = $parsed['query'] ?? '';
-        
-        // Parse query string to array, remove sign
-        parse_str($query, $params);
-        unset($params['sign']);
-        ksort($params);
-        
-        // Rebuild query string without sign
-        $queryString = http_build_query($params);
-        
-        // String to sign: path + query + body
-        $stringToSign = $path;
-        if ($queryString) {
-            $stringToSign .= '?' . $queryString;
-        }
-        $stringToSign .= $body;
-        
-        // HMAC-SHA256 with app_secret
-        return hash_hmac('sha256', $stringToSign, $this->clientSecret);
-    }
-    
-    /**
-     * Generate signature format 5: app_secret + full_url + body + app_secret, then SHA256
-     */
-    protected function generateSignatureFormat5(string $fullUrl, string $body = ''): string
-    {
-        $parsed = parse_url($fullUrl);
-        $path = $parsed['path'] ?? '';
-        $query = $parsed['query'] ?? '';
-        
-        parse_str($query, $params);
-        unset($params['sign']);
-        ksort($params);
-        $queryString = http_build_query($params);
-        
-        $urlWithoutSign = $path;
-        if ($queryString) {
-            $urlWithoutSign .= '?' . $queryString;
-        }
-        
-        $stringToSign = $this->clientSecret . $urlWithoutSign . $body . $this->clientSecret;
-        return hash('sha256', $stringToSign);
-    }
-    
-    /**
-     * Generate signature from query string directly (Format 6)
-     */
-    protected function generateSignatureFromQueryString(string $path, string $queryString, string $body = ''): string
-    {
-        // Remove sign from query string if present
-        $queryString = preg_replace('/(^|&)sign=[^&]*/', '', $queryString);
-        $queryString = ltrim($queryString, '&');
-        
-        // String to sign: path + query + body
-        $stringToSign = $path;
-        if ($queryString) {
-            $stringToSign .= '?' . $queryString;
-        }
-        $stringToSign .= $body;
-        
-        // HMAC-SHA256
-        return hash_hmac('sha256', $stringToSign, $this->clientSecret);
-    }
-    
-    /**
-     * Generate signature with app_secret wrapper and query string (Format 7)
-     */
-    protected function generateSignatureFormat7(string $path, string $queryString, string $body = ''): string
-    {
-        $queryString = preg_replace('/(^|&)sign=[^&]*/', '', $queryString);
-        $queryString = ltrim($queryString, '&');
-        
-        $urlPart = $path;
-        if ($queryString) {
-            $urlPart .= '?' . $queryString;
-        }
-        
-        $stringToSign = $this->clientSecret . $urlPart . $body . $this->clientSecret;
-        return hash('sha256', $stringToSign);
-    }
-
-    /**
-     * Make authenticated API request
-     */
-    protected function apiRequest(string $method, string $path, array $queryParams = [], array $body = [], bool $includeShopId = true): ?array
-    {
-        if (!$this->accessToken) {
-            // Try to refresh token
-            if (!$this->refreshAccessToken()) {
-                Log::error('TikTok API: No valid access token');
+        try {
+            if (!$this->accessToken) {
+                if ($outputCallback) $outputCallback('error', 'No access token available');
                 return null;
             }
-        }
-
-        // Get current timestamp in milliseconds (TikTok API might expect milliseconds)
-        // Also try seconds format
-        $timestampMs = (int)(microtime(true) * 1000);
-        $timestamp = time();
-        
-        // Required parameters for all requests (must be in alphabetical order for signature)
-        // TikTok API might require specific format for shop_id and timestamp
-        $params = [
-            'access_token' => $this->accessToken,
-            'app_key' => $this->clientKey,
-            'timestamp' => (string)$timestamp, // Try seconds first
-        ];
-        
-        // Some endpoints don't require shop_id (like get_authorized_shop)
-        if ($includeShopId && !empty($this->shopId)) {
-            $params['shop_id'] = (string)$this->shopId;
-        }
-        
-        // Verify credentials are loaded (shop_id only required if includeShopId is true)
-        if (empty($this->clientKey) || empty($this->clientSecret) || ($includeShopId && empty($this->shopId))) {
-            Log::error('TikTok API: Missing credentials', [
-                'has_client_key' => !empty($this->clientKey),
-                'has_client_secret' => !empty($this->clientSecret),
-                'has_shop_id' => !empty($this->shopId),
-                'include_shop_id' => $includeShopId,
-            ]);
-            return ['code' => 999999, 'message' => 'Missing credentials', 'data' => null];
-        }
-        
-        // Merge additional query params
-        $params = array_merge($params, $queryParams);
-        
-        // Remove any null or empty values before signature calculation
-        $params = array_filter($params, function($value) {
-            return $value !== null && $value !== '';
-        });
-
-        // Generate signature BEFORE adding sign to params
-        // TikTok API requires minified JSON (no spaces) for body in signature calculation
-        $bodyJson = !empty($body) ? json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : '';
-        // Remove any whitespace from JSON body for signature calculation (TikTok API requirement)
-        $bodyJsonForSign = !empty($bodyJson) ? preg_replace('/\s+/', '', $bodyJson) : '';
-        $sign = $this->generateSignature($path, $params, $bodyJsonForSign);
-        
-        // Add sign to params AFTER calculation
-        $params['sign'] = $sign;
-
-        // Build URL with query parameters
-        // Use the path as-is (caller should provide correct versioned path)
-        // Note: http_build_query may URL encode which could affect signature
-        // Try without encoding first for signature, then encode for URL
-        $queryString = http_build_query($params, '', '&', PHP_QUERY_RFC3986);
-        $url = $this->apiBase . $path . '?' . $queryString;
-
-        try {
-            $headers = [
-                'Content-Type' => 'application/json',
-            ];
+            
+            $this->client->setAccessToken($this->accessToken);
             
             
-            // For POST requests, send body as JSON
-            if ($method === 'GET') {
-                $response = Http::timeout(30)
-                    ->withHeaders($headers)
-                    ->get($url);
-            } else {
-                $response = Http::timeout(30)
-                    ->withHeaders($headers)
-                    ->post($url, $body);
-            }
-
-            $data = $response->json();
+            $response = $this->client->Authorization->getAuthorizedShop();
             
-            // Store response for external access
-            $this->lastResponse = $data;
-            $this->lastResponseCode = $data['code'] ?? null;
+            $this->lastResponse = $response;
             
-            // Log schema errors for debugging
-            if (isset($data['code']) && $data['code'] == 40006) {
-                Log::warning('TikTok API schema error (40006)', [
-                    'path' => $path,
-                    'method' => $method,
-                    'response' => $data,
-                ]);
-            }
-            
-            
-            // If signature error, try alternative signature formats
-            if (isset($data['code']) && ($data['code'] == 106001 || (isset($data['message']) && strpos($data['message'], 'sign') !== false))) {
-                // Ensure bodyJson is available for retry attempts (use minified version)
-                if (!isset($bodyJsonForSign)) {
-                    $bodyJsonForSign = !empty($body) ? preg_replace('/\s+/', '', json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)) : '';
+            // Extract shop_cipher from response and set it on the client for subsequent API calls
+            if (isset($response['shops']) && is_array($response['shops']) && !empty($response['shops'])) {
+                $shop = $response['shops'][0];
+                if (isset($shop['cipher'])) {
+                    $this->shopCipher = $shop['cipher'];
+                    // Set shop cipher on the client - required for all product/inventory API calls
+                    $this->client->setShopCipher($this->shopCipher);
                 }
-                
-                // Try Format 1a: With URL-encoded parameter values
-                $paramsForSign1a = [
-                    'access_token' => $this->accessToken,
-                    'app_key' => $this->clientKey,
-                    'shop_id' => (string)$this->shopId,
-                    'timestamp' => (string)$timestamp,
-                ];
-                $paramsForSign1a = array_merge($paramsForSign1a, $queryParams);
-                $paramsForSign1a = array_filter($paramsForSign1a, function($value) {
-                    return $value !== null && $value !== '';
-                });
-                ksort($paramsForSign1a);
-                $stringToSign1a = $this->clientSecret . $path;
-                foreach ($paramsForSign1a as $key => $value) {
-                    if ($value !== null && $value !== '') {
-                        $stringToSign1a .= $key . rawurlencode((string)$value);
+            }
+            
+            
+            return $response;
+        } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+            // Token expired - try to refresh
+            if ($outputCallback) {
+                $outputCallback('info', 'Token expired, attempting to refresh...');
+            }
+            
+            if ($this->refreshAccessToken()) {
+                // Retry with new token
+                $this->client->setAccessToken($this->accessToken);
+                try {
+                    $response = $this->client->Authorization->getAuthorizedShop();
+                    $this->lastResponse = $response;
+                    
+                    // Extract shop cipher from response and set it on client
+                    if (isset($response['shops']) && !empty($response['shops'][0]['cipher'])) {
+                        $shopCipher = $response['shops'][0]['cipher'];
+                        $this->client->setShopCipher($shopCipher);
+                    }
+                    
+                    if ($outputCallback) {
+                        $outputCallback('info', '✓ Token refreshed and request succeeded');
+                    }
+                    return $response;
+                } catch (\Exception $retryException) {
+                    if ($outputCallback) {
+                        $outputCallback('error', 'Retry after refresh failed: ' . $retryException->getMessage());
                     }
                 }
-                if (!empty($bodyJsonForSign)) {
-                    $stringToSign1a .= $bodyJsonForSign;
-                }
-                $stringToSign1a .= $this->clientSecret;
-                $altSign1a = hash('sha256', $stringToSign1a);
-                $paramsForSign1a['sign'] = $altSign1a;
-                $url = $this->apiBase . $path . '?' . http_build_query($paramsForSign1a);
-                
-                if ($method === 'GET') {
-                    $response = Http::timeout(30)->withHeaders($headers)->get($url);
-                } else {
-                    $response = Http::timeout(30)->withHeaders($headers)->post($url, $body);
-                }
-                $data = $response->json();
-                
-                if (!isset($data['code']) || ($data['code'] != 106001 && $data['code'] != 36009004)) {
-                    return $data;
-                }
-                
-                // Try Format 2: HMAC-SHA256 (path + params + body)
-                $altSign2 = $this->generateSignatureAlternative($path, $params, $bodyJsonForSign ?? '');
-                $params['sign'] = $altSign2;
-                $url = $this->apiBase . $path . '?' . http_build_query($params);
-                
-                if ($method === 'GET') {
-                    $response = Http::timeout(30)->withHeaders($headers)->get($url);
-                } else {
-                    $response = Http::timeout(30)->withHeaders($headers)->post($url, $body);
-                }
-                $data = $response->json();
-                
-                if (!isset($data['code']) || ($data['code'] != 106001 && $data['code'] != 36009004)) {
-                    return $data;
-                }
-                
-                // Try Format 3: params + body only
-                $altSign3 = $this->generateSignatureFormat3($path, $params, $bodyJsonForSign ?? '');
-                $params['sign'] = $altSign3;
-                $url = $this->apiBase . $path . '?' . http_build_query($params);
-                
-                if ($method === 'GET') {
-                    $response = Http::timeout(30)->withHeaders($headers)->get($url);
-                } else {
-                    $response = Http::timeout(30)->withHeaders($headers)->post($url, $body);
-                }
-                $data = $response->json();
-                
-                if (!isset($data['code']) || ($data['code'] != 106001 && $data['code'] != 36009004)) {
-                    return $data;
-                }
-                
-                // Try Format 4: Sign by full URL (signByUrl style)
-                // Rebuild params without sign for Format 4
-                $paramsForSign4 = [
-                    'access_token' => $this->accessToken,
-                    'app_key' => $this->clientKey,
-                    'shop_id' => (string)$this->shopId,
-                    'timestamp' => (string)$timestamp,
-                ];
-                $paramsForSign4 = array_merge($paramsForSign4, $queryParams);
-                $paramsForSign4 = array_filter($paramsForSign4, function($value) {
-                    return $value !== null && $value !== '';
-                });
-                $urlWithoutSign = $this->apiBase . $path . '?' . http_build_query($paramsForSign4);
-                $altSign4 = $this->generateSignatureFormat4($urlWithoutSign, $bodyJsonForSign ?? '');
-                $paramsForSign4['sign'] = $altSign4;
-                $url = $this->apiBase . $path . '?' . http_build_query($paramsForSign4);
-                $params = $paramsForSign4; // Update params for next attempts
-                
-                if ($method === 'GET') {
-                    $response = Http::timeout(30)->withHeaders($headers)->get($url);
-                } else {
-                    $response = Http::timeout(30)->withHeaders($headers)->post($url, $body);
-                }
-                $data = $response->json();
-                
-                if (!isset($data['code']) || ($data['code'] != 106001 && $data['code'] != 36009004)) {
-                    return $data;
-                }
-                
-                // Try Format 5: app_secret + URL + body + app_secret
-                // Rebuild params without sign for Format 5
-                $paramsForSign5 = [
-                    'access_token' => $this->accessToken,
-                    'app_key' => $this->clientKey,
-                    'shop_id' => (string)$this->shopId,
-                    'timestamp' => (string)$timestamp,
-                ];
-                $paramsForSign5 = array_merge($paramsForSign5, $queryParams);
-                $paramsForSign5 = array_filter($paramsForSign5, function($value) {
-                    return $value !== null && $value !== '';
-                });
-                $urlWithoutSign = $this->apiBase . $path . '?' . http_build_query($paramsForSign5);
-                $altSign5 = $this->generateSignatureFormat5($urlWithoutSign, $bodyJsonForSign ?? '');
-                $paramsForSign5['sign'] = $altSign5;
-                $url = $this->apiBase . $path . '?' . http_build_query($paramsForSign5);
-                
-                if ($method === 'GET') {
-                    $response = Http::timeout(30)->withHeaders($headers)->get($url);
-                } else {
-                    $response = Http::timeout(30)->withHeaders($headers)->post($url, $body);
-                }
-                $data = $response->json();
-                
-                if (!isset($data['code']) || ($data['code'] != 106001 && $data['code'] != 36009004)) {
-                    return $data;
-                }
-                
-                // Try Format 6: Sign from query string directly (HMAC)
-                // Rebuild params without sign
-                $paramsForSign6 = [
-                    'access_token' => $this->accessToken,
-                    'app_key' => $this->clientKey,
-                    'shop_id' => (string)$this->shopId,
-                    'timestamp' => (string)$timestamp,
-                ];
-                $paramsForSign6 = array_merge($paramsForSign6, $queryParams);
-                $paramsForSign6 = array_filter($paramsForSign6, function($value) {
-                    return $value !== null && $value !== '';
-                });
-                ksort($paramsForSign6);
-                $queryStr = http_build_query($paramsForSign6, '', '&', PHP_QUERY_RFC3986);
-                $altSign6 = $this->generateSignatureFromQueryString($path, $queryStr, $bodyJsonForSign ?? '');
-                $paramsForSign6['sign'] = $altSign6;
-                $url = $this->apiBase . $path . '?' . http_build_query($paramsForSign6);
-                
-                if ($method === 'GET') {
-                    $response = Http::timeout(30)->withHeaders($headers)->get($url);
-                } else {
-                    $response = Http::timeout(30)->withHeaders($headers)->post($url, $body);
-                }
-                $data = $response->json();
-                
-                if (!isset($data['code']) || ($data['code'] != 106001 && $data['code'] != 36009004)) {
-                    return $data;
-                }
-                
-                // Try Format 7: app_secret + query string + body + app_secret
-                $altSign7 = $this->generateSignatureFormat7($path, $queryStr, $bodyJsonForSign ?? '');
-                $paramsForSign6['sign'] = $altSign7;
-                $url = $this->apiBase . $path . '?' . http_build_query($paramsForSign6);
-                
-                if ($method === 'GET') {
-                    $response = Http::timeout(30)->withHeaders($headers)->get($url);
-                } else {
-                    $response = Http::timeout(30)->withHeaders($headers)->post($url, $body);
-                }
-                $data = $response->json();
-                
-                if (!isset($data['code']) || ($data['code'] != 106001 && $data['code'] != 36009004)) {
-                    return $data;
-                }
-                
-                // All signature formats failed - log error but don't output to console
-                Log::error('TikTok API signature validation failed', [
-                    'path' => $path,
-                    'response_code' => $data['code'] ?? null,
-                    'response_message' => $data['message'] ?? null
-                ]);
-            }
-
-            // Check for token expiry
-            if (isset($data['code']) && $data['code'] === 105001) {
-                // Token expired, refresh and retry
-                if ($this->refreshAccessToken()) {
-                    return $this->apiRequest($method, $path, $queryParams, $body, $includeShopId);
+            } else {
+                if ($outputCallback) {
+                    $outputCallback('error', 'Failed to refresh token');
                 }
             }
-
-            return $data;
+            
+            if ($outputCallback) {
+                $outputCallback('error', 'Error: ' . $e->getMessage());
+            }
+            Log::error('TikTok getShopInfo failed', ['error' => $e->getMessage()]);
+            return ['code' => 999999, 'message' => $e->getMessage(), 'data' => null];
         } catch (\Exception $e) {
-            Log::error('TikTok API request failed', [
-                'path' => $path,
-                'error' => $e->getMessage()
+            if ($outputCallback) {
+                $outputCallback('error', 'Error: ' . $e->getMessage());
+                $outputCallback('error', 'Error Class: ' . get_class($e));
+            }
+            Log::error('TikTok getShopInfo failed', [
+                'error' => $e->getMessage(),
+                'class' => get_class($e),
             ]);
+            return ['code' => 999999, 'message' => $e->getMessage(), 'data' => null];
+        }
+    }
+
+    /**
+     * Set output callback for console output
+     */
+    public function setOutputCallback(callable $callback): void
+    {
+        $this->outputCallback = $callback;
+    }
+
+    /**
+     * Get products list using the library
+     */
+    public function getProducts(int $pageSize = 20, string $cursor = '', int $status = 0, $outputCallback = null): ?array
+    {
+        $callback = $outputCallback ?? $this->outputCallback;
+        
+        try {
+            if (!$this->accessToken) {
+                if ($callback && is_callable($callback)) {
+                    call_user_func($callback, 'error', 'No access token available');
+                }
+                return null;
+            }
+            
+            $this->client->setAccessToken($this->accessToken);
+            
+            // Build request body with required page_size
+            $body = [
+                'page_size' => min($pageSize, 50),
+            ];
+
+            if ($cursor) {
+                $body['cursor'] = $cursor;
+            }
+
+            if ($status > 0) {
+                $body['product_status'] = $status;
+            }
+
+            // Ensure shop cipher is set on client (required for all product API calls)
+            if (!$this->shopCipher) {
+                // Try to get shop info to extract cipher
+                $shopInfo = $this->getShopInfo();
+                if ($shopInfo && isset($shopInfo['shops'][0]['cipher'])) {
+                    $this->shopCipher = $shopInfo['shops'][0]['cipher'];
+                    $this->client->setShopCipher($this->shopCipher);
+                }
+            } else {
+                // Make sure it's set on client even if we already have it
+                $this->client->setShopCipher($this->shopCipher);
+            }
+
+            // Shop cipher is already set on the client, so we don't pass it in query params
+            $queryParams = [];
+
+
+            // Use searchProducts - shop_cipher is already set on the client
+            $response = $this->client->Product->searchProducts([], $body);
+            
+            $this->lastResponse = $response;
+            
+            if ($callback && is_callable($callback)) {
+                call_user_func($callback, 'info', 'Response received. Keys: ' . implode(', ', array_keys($response)));
+                if (isset($response['code'])) {
+                    call_user_func($callback, 'info', 'Response code: ' . $response['code']);
+                }
+            }
+            
+            // Check for error in response
+            if (isset($response['code']) && $response['code'] != 0) {
+                $errorMsg = 'API Error Code: ' . $response['code'] . ', Message: ' . ($response['message'] ?? 'No message');
+                if ($callback && is_callable($callback)) {
+                    call_user_func($callback, 'error', $errorMsg);
+                    call_user_func($callback, 'error', 'Full response: ' . json_encode($response, JSON_PRETTY_PRINT));
+                }
+            }
+            
+            return $response;
+        } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+            if ($callback && is_callable($callback)) {
+                call_user_func($callback, 'info', 'Token expired, attempting to refresh...');
+            }
+            // Token expired - refresh and retry
+            if ($this->refreshAccessToken()) {
+                $this->client->setAccessToken($this->accessToken);
+                // Rebuild query params and body for retry
+                $retryQueryParams = [];
+                if ($this->shopCipher) {
+                    $retryQueryParams['shop_cipher'] = $this->shopCipher;
+                }
+                $retryBody = $body;
+                
+                // Retry with same parameters
+                try {
+                    $response = $this->client->Product->searchProducts($retryQueryParams, $retryBody);
+                } catch (\Exception $e2) {
+                    if ($this->shopCipher) {
+                        $retryBody['shop_cipher'] = $this->shopCipher;
+                        $response = $this->client->Product->searchProducts($retryBody);
+                    } else {
+                        throw $e2;
+                    }
+                }
+                $this->lastResponse = $response;
+                if ($callback && is_callable($callback)) {
+                    call_user_func($callback, 'info', 'Token refreshed, retry successful');
+                }
+                return $response;
+            }
+            if ($callback && is_callable($callback)) {
+                call_user_func($callback, 'error', 'Failed to refresh token: ' . $e->getMessage());
+            }
+            return null;
+        } catch (\Exception $e) {
+            if ($callback && is_callable($callback)) {
+                call_user_func($callback, 'error', 'Exception getting products: ' . $e->getMessage());
+                call_user_func($callback, 'error', 'Exception class: ' . get_class($e));
+            }
             return null;
         }
-    }
-
-    /**
-     * Get orders from TikTok Shop
-     */
-    public function getOrders(int $startTime = null, int $endTime = null, int $pageSize = 100, string $cursor = ''): ?array
-    {
-        $path = '/api/orders/search';
-        
-        // Default to last 30 days if not specified
-        if (!$startTime) {
-            $startTime = Carbon::now()->subDays(30)->timestamp;
-        }
-        if (!$endTime) {
-            $endTime = Carbon::now()->timestamp;
-        }
-
-        $body = [
-            'create_time_ge' => $startTime,
-            'create_time_lt' => $endTime,
-            'page_size' => $pageSize,
-        ];
-
-        if ($cursor) {
-            $body['cursor'] = $cursor;
-        }
-
-        return $this->apiRequest('POST', $path, [], $body);
-    }
-
-    /**
-     * Get order details
-     */
-    public function getOrderDetail(array $orderIds): ?array
-    {
-        $path = '/api/orders/detail/query';
-        
-        $body = [
-            'order_id_list' => $orderIds,
-        ];
-
-        return $this->apiRequest('POST', $path, [], $body);
-    }
-
-    /**
-     * Get all orders with pagination
-     */
-    public function getAllOrders(int $days = 30): array
-    {
-        $allOrders = [];
-        $startTime = Carbon::now()->subDays($days)->timestamp;
-        $endTime = Carbon::now()->timestamp;
-        $cursor = '';
-        $hasMore = true;
-
-        while ($hasMore) {
-            $response = $this->getOrders($startTime, $endTime, 100, $cursor);
-
-            if (!$response || !isset($response['data'])) {
-                Log::error('TikTok getAllOrders failed', ['response' => $response]);
-                break;
-            }
-
-            if (isset($response['data']['orders'])) {
-                $allOrders = array_merge($allOrders, $response['data']['orders']);
-            }
-
-            // Check for more pages
-            $hasMore = isset($response['data']['more']) && $response['data']['more'];
-            $cursor = $response['data']['next_cursor'] ?? '';
-
-            // Safety limit
-            if (count($allOrders) > 10000) {
-                break;
-            }
-        }
-
-        return $allOrders;
-    }
-
-    /**
-     * Get shop info
-     */
-    public function getShopInfo(): ?array
-    {
-        // Try multiple possible endpoint formats with correct TikTok Shop API structure
-        // Note: get_authorized_shop typically doesn't need shop_id (it returns the authorized shop)
-        $paths = [
-            '/api/shops/202309/shop/get_authorized_shop',
-            '/api/shops/202312/shop/get_authorized_shop',
-            '/api/shops/202401/shop/get_authorized_shop',
-            '/api/shops/202402/shop/get_authorized_shop',
-            '/api/shop/get_authorized_shop',
-            '/api/202309/shop/get_authorized_shop',
-            '/api/202312/shop/get_authorized_shop',
-        ];
-        
-        // For shop info, try without shop_id first (shop_id is derived from access_token)
-        foreach ($paths as $path) {
-            $response = $this->apiRequest('GET', $path, [], [], false); // false = don't include shop_id
-            if ($response && isset($response['data'])) {
-                return $response;
-            }
-            // If we got a different error (not signature and not schema), stop trying
-            if ($response && isset($response['code']) && $response['code'] != 106001 && $response['code'] != 40006) {
-                return $response;
-            }
-        }
-        
-        // If all failed without shop_id, try with shop_id
-        foreach ($paths as $path) {
-            $response = $this->apiRequest('GET', $path, [], [], true); // true = include shop_id
-            if ($response && isset($response['data'])) {
-                return $response;
-            }
-            // If we got a different error (not signature and not schema), stop trying
-            if ($response && isset($response['code']) && $response['code'] != 106001 && $response['code'] != 40006) {
-                return $response;
-            }
-        }
-        
-        return $response ?? null;
-    }
-
-    /**
-     * Check if authenticated
-     */
-    public function isAuthenticated(): bool
-    {
-        return !empty($this->accessToken);
-    }
-
-    /**
-     * Set tokens manually (for testing or from database)
-     */
-    public function setTokens(string $accessToken, string $refreshToken = null): void
-    {
-        $this->accessToken = $accessToken;
-        $this->refreshToken = $refreshToken;
-        
-        Cache::put('tiktok_access_token', $accessToken, 86400);
-        if ($refreshToken) {
-            Cache::put('tiktok_refresh_token', $refreshToken, 86400 * 30);
-        }
-    }
-
-    /**
-     * Set callback for signature retry events (for command output)
-     */
-    public function setSignatureCallback(callable $callback): void
-    {
-        $this->signatureCallback = $callback;
-    }
-
-    /**
-     * Get products list from TikTok Shop
-     * 
-     * @param int $pageSize Page size (default 20, max 50)
-     * @param string $cursor Pagination cursor
-     * @param int $status Product status (0=All, 1=Active, 2=Inactive)
-     * @return array|null
-     */
-    public function getProducts(int $pageSize = 20, string $cursor = '', int $status = 0): ?array
-    {
-        // Try different possible endpoints with correct TikTok Shop API structure
-        $paths = [
-            '/api/products/202309/products/search',
-            '/api/products/202312/products/search',
-            '/api/products/202401/products/search',
-            '/api/products/202402/products/search',
-            '/api/products/search',
-        ];
-
-        $body = [
-            'page_size' => min($pageSize, 50), // Max 50 per TikTok API
-        ];
-
-        if ($cursor) {
-            $body['cursor'] = $cursor;
-        }
-
-        if ($status > 0) {
-            $body['product_status'] = $status;
-        }
-
-        // Try each endpoint until one works
-        foreach ($paths as $path) {
-            $response = $this->apiRequest('POST', $path, [], $body);
-            if ($response && isset($response['data'])) {
-                return $response;
-            }
-            // If we got a different error (not signature and not schema), stop trying
-            if ($response && isset($response['code']) && $response['code'] != 106001 && $response['code'] != 40006) {
-                return $response;
-            }
-        }
-
-        // If all failed, return the last response (might have error info)
-        return $response ?? null;
     }
 
     /**
      * Get all products with pagination
-     * 
-     * @param int $status Product status filter
-     * @return array
      */
     public function getAllProducts(int $status = 0): array
     {
@@ -823,206 +251,206 @@ class TikTokShopService
         $hasMore = true;
         $page = 1;
 
-        while ($hasMore) {
-            $response = $this->getProducts(50, $cursor, $status);
+            while ($hasMore) {
 
-            if (!$response || !isset($response['data'])) {
-                Log::error('TikTok getAllProducts failed', ['response' => $response, 'page' => $page]);
+            $response = $this->getProducts(50, $cursor, $status, $this->outputCallback);
+
+            if (!$response) {
+                if ($this->outputCallback && is_callable($this->outputCallback)) {
+                    call_user_func($this->outputCallback, 'error', "Page {$page}: No response received");
+                }
                 break;
             }
 
-            if (isset($response['data']['products'])) {
-                $allProducts = array_merge($allProducts, $response['data']['products']);
+
+            // Check for error in response
+            if (isset($response['code']) && $response['code'] != 0) {
+                break;
             }
 
-            // Check for more pages
-            $hasMore = isset($response['data']['more']) && $response['data']['more'];
-            $cursor = $response['data']['next_cursor'] ?? '';
+            // Library returns data in different format
+            $products = $response['data']['products'] ?? $response['products'] ?? $response['data'] ?? [];
+            
+            // Handle case where products might be directly in response
+            if (empty($products) && isset($response['data']) && is_array($response['data'])) {
+                // Try to find products array in nested structure
+                foreach ($response['data'] as $key => $value) {
+                    if (is_array($value) && isset($value[0]) && (isset($value[0]['id']) || isset($value[0]['product_id']))) {
+                        $products = $value;
+                        break;
+                    }
+                }
+            }
 
-            // Safety limit
+            if (!empty($products)) {
+                $allProducts = array_merge($allProducts, $products);
+            }
+
+            $hasMore = isset($response['data']['more']) && $response['data']['more'];
+            $cursor = $response['data']['next_cursor'] ?? $response['data']['cursor'] ?? $response['next_cursor'] ?? '';
+
+            // If no cursor and no more flag, assume no more pages
+            if (empty($cursor) && !$hasMore) {
+                break;
+            }
+
             if (count($allProducts) > 10000) {
-                Log::warning('TikTok getAllProducts: Reached safety limit of 10000 products');
                 break;
             }
 
             $page++;
-            
-            // Small delay to respect rate limits
-            usleep(200000); // 0.2 seconds
+            usleep(200000);
         }
+
 
         return $allProducts;
     }
 
     /**
-     * Get product inventory/stock
-     * 
-     * @param array $productIds Product IDs to query
-     * @return array|null
+     * Get product inventory using the library
      */
     public function getProductInventory(array $productIds): ?array
     {
-        // Try different possible endpoints with correct TikTok Shop API structure
-        $paths = [
-            '/api/products/202309/products/inventory/query',
-            '/api/products/202312/products/inventory/query',
-            '/api/products/202401/products/inventory/query',
-            '/api/products/202402/products/inventory/query',
-            '/api/products/inventory/query',
-        ];
-
-        $body = [
-            'product_id_list' => array_slice($productIds, 0, 50), // Limit to 50 per request
-        ];
-
-        // Try each endpoint until one works
-        foreach ($paths as $path) {
-            $response = $this->apiRequest('POST', $path, [], $body);
-            if ($response && isset($response['data'])) {
-                return $response;
+        try {
+            if (!$this->accessToken) {
+                return null;
             }
-            // If we got a different error (not signature and not schema), stop trying
-            if ($response && isset($response['code']) && $response['code'] != 106001 && $response['code'] != 40006) {
-                return $response;
+            
+            $this->client->setAccessToken($this->accessToken);
+            
+            // Use inventorySearch method from library
+            $response = $this->client->Product->inventorySearch([
+                'product_id_list' => array_slice($productIds, 0, 50),
+            ]);
+            $this->lastResponse = $response;
+            
+            return $response;
+        } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+            if ($this->refreshAccessToken()) {
+                $this->client->setAccessToken($this->accessToken);
+                return $this->client->Product->inventorySearch([
+                    'product_id_list' => array_slice($productIds, 0, 50),
+                ]);
             }
+            Log::error('TikTok getProductInventory failed', ['error' => $e->getMessage()]);
+            return null;
+        } catch (\Exception $e) {
+            Log::error('TikTok getProductInventory failed', ['error' => $e->getMessage()]);
+            return null;
         }
-
-        // If all failed, return the last response
-        return $response ?? null;
     }
 
     /**
-     * Get product analytics/views data
-     * 
-     * @param int $startTime Start timestamp
-     * @param int $endTime End timestamp
-     * @param array $productIds Optional product IDs filter
-     * @return array|null
+     * Get product analytics using the library
      */
     public function getProductAnalytics(int $startTime = null, int $endTime = null, array $productIds = []): ?array
     {
-        // Try different possible endpoints with correct TikTok Shop API structure
-        $paths = [
-            '/api/analytics/202309/analytics/products/query',
-            '/api/analytics/202312/analytics/products/query',
-            '/api/analytics/202401/analytics/products/query',
-            '/api/analytics/products/query',
-            '/api/analytics/query',
-        ];
-        
-        // Default to last 30 days if not specified
-        if (!$startTime) {
-            $startTime = Carbon::now()->subDays(30)->timestamp;
-        }
-        if (!$endTime) {
-            $endTime = Carbon::now()->timestamp;
-        }
-
-        $body = [
-            'start_time' => $startTime,
-            'end_time' => $endTime,
-            'dimensions' => ['product_id', 'sku'],
-            'metrics' => ['product_views', 'views', 'product_clicks', 'product_orders'],
-        ];
-
-        if (!empty($productIds)) {
-            $body['product_id_list'] = array_slice($productIds, 0, 50); // Limit to 50
-        }
-
-        // Try each endpoint until one works
-        foreach ($paths as $path) {
-            $response = $this->apiRequest('POST', $path, [], $body);
-            if ($response && isset($response['data'])) {
-                return $response;
+        try {
+            if (!$this->accessToken) {
+                return null;
             }
-            // If we got a different error (not signature and not schema), stop trying
-            if ($response && isset($response['code']) && $response['code'] != 106001 && $response['code'] != 40006) {
-                return $response;
+            
+            $this->client->setAccessToken($this->accessToken);
+            
+            if (!$startTime) {
+                $startTime = Carbon::now()->subDays(30)->timestamp;
             }
-        }
+            if (!$endTime) {
+                $endTime = Carbon::now()->timestamp;
+            }
 
-        // If all failed, return the last response
-        return $response ?? null;
+            $params = [
+                'start_time' => $startTime,
+                'end_time' => $endTime,
+            ];
+
+            if (!empty($productIds)) {
+                $params['product_id_list'] = array_slice($productIds, 0, 50);
+            }
+
+            // Use getShopProductPerformanceList for product analytics
+            $response = $this->client->Analytics->getShopProductPerformanceList($params);
+            $this->lastResponse = $response;
+            
+            return $response;
+        } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+            if ($this->refreshAccessToken()) {
+                $this->client->setAccessToken($this->accessToken);
+                return $this->client->Analytics->getShopProductPerformanceList($params);
+            }
+            Log::error('TikTok getProductAnalytics failed', ['error' => $e->getMessage()]);
+            return null;
+        } catch (\Exception $e) {
+            Log::error('TikTok getProductAnalytics failed', ['error' => $e->getMessage()]);
+            return null;
+        }
     }
 
     /**
-     * Get product details by product IDs
-     * 
-     * @param array $productIds Product IDs
-     * @return array|null
+     * Get product details using the library
      */
     public function getProductDetails(array $productIds): ?array
     {
-        // Try different possible endpoints with correct TikTok Shop API structure
-        $paths = [
-            '/api/products/202309/products/details',
-            '/api/products/202312/products/details',
-            '/api/products/202401/products/details',
-            '/api/products/202402/products/details',
-            '/api/products/details',
-        ];
-        
-        $body = [
-            'product_id_list' => array_slice($productIds, 0, 50), // Limit to 50
-        ];
-
-        // Try each endpoint until one works
-        foreach ($paths as $path) {
-            $response = $this->apiRequest('POST', $path, [], $body);
-            if ($response && isset($response['data'])) {
-                return $response;
+        try {
+            if (!$this->accessToken) {
+                return null;
             }
-            // If we got a different error (not signature and not schema), stop trying
-            if ($response && isset($response['code']) && $response['code'] != 106001 && $response['code'] != 40006) {
-                return $response;
+            
+            $this->client->setAccessToken($this->accessToken);
+            
+            // Get first product ID (library method takes single ID)
+            if (empty($productIds)) {
+                return null;
             }
+            
+            $productId = $productIds[0];
+            $response = $this->client->Product->getProduct($productId);
+            $this->lastResponse = $response;
+            
+            return $response;
+        } catch (\Exception $e) {
+            Log::error('TikTok getProductDetails failed', ['error' => $e->getMessage()]);
+            return null;
         }
-
-        return $response ?? null;
     }
-    
+
     /**
-     * Get product reviews/ratings
-     * 
-     * @param array $productIds Product IDs to query
-     * @return array|null
+     * Get product reviews using the library
+     * Note: TikTok API may not have a direct reviews endpoint - reviews might be in product details
      */
     public function getProductReviews(array $productIds): ?array
     {
-        // Try different possible endpoints for reviews with correct TikTok Shop API structure
-        $paths = [
-            '/api/products/202309/products/reviews/query',
-            '/api/products/202312/products/reviews/query',
-            '/api/products/202401/products/reviews/query',
-            '/api/products/202402/products/reviews/query',
-            '/api/products/reviews/query',
-            '/api/reviews/query',
-        ];
-        
-        $body = [
-            'product_id_list' => array_slice($productIds, 0, 50), // Limit to 50
-        ];
-
-        // Try each endpoint until one works
-        foreach ($paths as $path) {
-            $response = $this->apiRequest('POST', $path, [], $body);
-            if ($response && isset($response['data'])) {
-                return $response;
+        try {
+            if (!$this->accessToken) {
+                return null;
             }
-            // If we got a different error (not signature and not schema), stop trying
-            if ($response && isset($response['code']) && $response['code'] != 106001 && $response['code'] != 40006) {
-                return $response;
+            
+            $this->client->setAccessToken($this->accessToken);
+            
+            // Try to get reviews from product details (if available)
+            // TikTok API might include reviews in product details
+            $reviews = [];
+            foreach (array_slice($productIds, 0, 50) as $productId) {
+                $product = $this->client->Product->getProduct($productId);
+                if (isset($product['data']['reviews']) || isset($product['reviews'])) {
+                    $reviews[] = [
+                        'product_id' => $productId,
+                        'reviews' => $product['data']['reviews'] ?? $product['reviews'] ?? [],
+                    ];
+                }
+                usleep(100000); // Rate limit
             }
+            
+            $this->lastResponse = ['reviews' => $reviews];
+            return ['reviews' => $reviews];
+        } catch (\Exception $e) {
+            Log::error('TikTok getProductReviews failed', ['error' => $e->getMessage()]);
+            return null;
         }
-
-        return $response ?? null;
     }
 
     /**
-     * Sync all product data (price, stock, views, reviews) from TikTok API
-     * This is a convenience method that fetches and returns structured data
-     * 
-     * @return array
+     * Sync all product data
      */
     public function syncAllProductData(): array
     {
@@ -1035,52 +463,48 @@ class TikTokShopService
         ];
 
         try {
-            // 1. Get all products
             Log::info('TikTok: Fetching products...');
-            $products = $this->getAllProducts(1); // Status 1 = Active products
+            $products = $this->getAllProducts(1);
             $result['products'] = $products;
             Log::info('TikTok: Fetched ' . count($products) . ' products');
 
-            // 2. Get inventory for all products (in batches)
             if (!empty($products)) {
                 $productIds = array_column($products, 'id');
-                $chunks = array_chunk($productIds, 50); // TikTok API limit
+                $chunks = array_chunk($productIds, 50);
                 
                 Log::info('TikTok: Fetching inventory for ' . count($productIds) . ' products in ' . count($chunks) . ' batches...');
                 
                 foreach ($chunks as $chunk) {
                     $inventory = $this->getProductInventory($chunk);
-                    if ($inventory && isset($inventory['data']['inventory_list'])) {
-                        $result['inventory'] = array_merge($result['inventory'], $inventory['data']['inventory_list']);
+                    if ($inventory) {
+                        $inventoryList = $inventory['data']['inventory_list'] ?? $inventory['inventory_list'] ?? [];
+                        $result['inventory'] = array_merge($result['inventory'], $inventoryList);
                     }
-                    usleep(200000); // Rate limit delay
+                    usleep(200000);
                 }
                 Log::info('TikTok: Fetched inventory for ' . count($result['inventory']) . ' products');
             }
 
-            // 3. Get analytics/views (last 30 days)
             Log::info('TikTok: Fetching analytics/views...');
             $analytics = $this->getProductAnalytics();
-            if ($analytics && isset($analytics['data']['analytics_list'])) {
-                $result['analytics'] = $analytics['data']['analytics_list'];
+            if ($analytics) {
+                $result['analytics'] = $analytics['data']['product_performance_list'] ?? $analytics['product_performance_list'] ?? $analytics['data'] ?? [];
             }
             Log::info('TikTok: Fetched analytics for ' . count($result['analytics']) . ' products');
             
-            // 4. Get reviews/ratings for all products (in batches)
             if (!empty($products)) {
                 $productIds = array_column($products, 'id');
-                $chunks = array_chunk($productIds, 50); // TikTok API limit
+                $chunks = array_chunk($productIds, 50);
                 
                 Log::info('TikTok: Fetching reviews for ' . count($productIds) . ' products in ' . count($chunks) . ' batches...');
                 
                 foreach ($chunks as $chunk) {
                     $reviews = $this->getProductReviews($chunk);
-                    if ($reviews && isset($reviews['data']['reviews'])) {
-                        $result['reviews'] = array_merge($result['reviews'], $reviews['data']['reviews']);
-                    } elseif ($reviews && isset($reviews['data']['review_list'])) {
-                        $result['reviews'] = array_merge($result['reviews'], $reviews['data']['review_list']);
+                    if ($reviews) {
+                        $reviewList = $reviews['reviews'] ?? $reviews['data']['reviews'] ?? $reviews['review_list'] ?? [];
+                        $result['reviews'] = array_merge($result['reviews'], $reviewList);
                     }
-                    usleep(200000); // Rate limit delay
+                    usleep(200000);
                 }
                 Log::info('TikTok: Fetched reviews for ' . count($result['reviews']) . ' products');
             }
@@ -1091,5 +515,72 @@ class TikTokShopService
         }
 
         return $result;
+    }
+
+    public function isAuthenticated(): bool
+    {
+        return !empty($this->accessToken);
+    }
+    
+    public function setTokens(string $accessToken, string $refreshToken = null): void
+    {
+        $this->accessToken = $accessToken;
+        $this->refreshToken = $refreshToken;
+        
+        Cache::put('tiktok_access_token', $accessToken, 86400);
+        if ($refreshToken) {
+            Cache::put('tiktok_refresh_token', $refreshToken, 86400 * 30);
+        }
+        
+        if ($this->client) {
+            $this->client->setAccessToken($accessToken);
+        }
+    }
+    
+    public function getLastResponse(): ?array
+    {
+        return $this->lastResponse;
+    }
+    
+    public function getLastResponseCode(): ?int
+    {
+        return $this->lastResponseCode;
+    }
+    
+    public function getAuthorizationUrl(): string
+    {
+        $auth = $this->client->auth();
+        $state = bin2hex(random_bytes(16));
+        Cache::put('tiktok_oauth_state', $state, 600);
+        return $auth->createAuthRequest($state, true);
+    }
+    
+    public function refreshAccessToken(): ?array
+    {
+        if (!$this->refreshToken) {
+            return null;
+        }
+
+        try {
+            $auth = $this->client->auth();
+            $newToken = $auth->refreshNewToken($this->refreshToken);
+            
+            if (isset($newToken['access_token'])) {
+                $this->accessToken = $newToken['access_token'];
+                $this->refreshToken = $newToken['refresh_token'] ?? $this->refreshToken;
+                
+                $expiresIn = $newToken['expire_in'] ?? 86400;
+                Cache::put('tiktok_access_token', $this->accessToken, $expiresIn - 300);
+                Cache::put('tiktok_refresh_token', $this->refreshToken, 86400 * 30);
+                
+                $this->client->setAccessToken($this->accessToken);
+                
+                return $newToken;
+            }
+        } catch (\Exception $e) {
+            Log::error('TikTok refreshAccessToken failed', ['error' => $e->getMessage()]);
+        }
+
+        return null;
     }
 }

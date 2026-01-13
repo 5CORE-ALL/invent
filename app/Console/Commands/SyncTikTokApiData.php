@@ -32,7 +32,22 @@ class SyncTikTokApiData extends Command
     public function handle()
     {
         $this->tiktokService = new TikTokShopService();
-
+        
+        // Set output callback to print debug info to console
+        $this->tiktokService->setOutputCallback(function($type, $message) {
+            switch ($type) {
+                case 'info':
+                    $this->line($message);
+                    break;
+                case 'error':
+                    $this->error($message);
+                    break;
+                case 'warn':
+                    $this->warn($message);
+                    break;
+            }
+        });
+        
         // Try to load tokens from env if not in cache
         if (!$this->tiktokService->isAuthenticated()) {
             $accessToken = env('TIKTOK_ACCESS_TOKEN');
@@ -59,6 +74,25 @@ class SyncTikTokApiData extends Command
             $this->info($this->tiktokService->getAuthorizationUrl());
             return 1;
         }
+        
+        // Verify credentials are loaded
+        $this->info('Verifying credentials...');
+        $clientKey = config('services.tiktok.client_key');
+        $clientSecret = config('services.tiktok.client_secret');
+        $shopId = config('services.tiktok.shop_id');
+        
+        if (empty($clientKey) || empty($clientSecret)) {
+            $this->error('❌ Missing TikTok credentials in config!');
+            $this->info('Please check your .env file has:');
+            $this->info('  TIKTOK_CLIENT_KEY');
+            $this->info('  TIKTOK_CLIENT_SECRET');
+            return 1;
+        }
+        
+        $this->info('✓ Client Key: ' . substr($clientKey, 0, 10) . '...');
+        $this->info('✓ Client Secret: ' . (strlen($clientSecret) > 0 ? substr($clientSecret, 0, 10) . '...' : 'MISSING'));
+        $this->info('✓ Shop ID: ' . ($shopId ?? 'NOT SET'));
+        $this->info('✓ Access Token: ' . (strlen(env('TIKTOK_ACCESS_TOKEN') ?? '') > 0 ? substr(env('TIKTOK_ACCESS_TOKEN'), 0, 20) . '...' : 'MISSING'));
 
         $this->info('Starting TikTok API data sync...');
 
@@ -66,19 +100,78 @@ class SyncTikTokApiData extends Command
             // Fetch all product data
             $this->info('Fetching products, inventory, analytics, and reviews from TikTok API...');
             
-            // First, test shop info to verify connection
-            $shopInfo = $this->tiktokService->getShopInfo();
-            if ($shopInfo && isset($shopInfo['data'])) {
-                $this->info('✓ Connected to TikTok Shop API');
+            // First, test shop info to verify connection (non-blocking)
+            $this->info('');
+            $this->info('Testing shop info endpoint...');
+            $command = $this;
+            $shopInfo = $this->tiktokService->getShopInfo(function($type, $message) use ($command) {
+                if ($type === 'info') {
+                    $command->line($message);
+                } elseif ($type === 'error') {
+                    $command->error($message);
+                }
+            });
+            
+            // Check for success - library returns shops array directly or in data
+            if ($shopInfo && (isset($shopInfo['shops']) || isset($shopInfo['data']['shops']))) {
+                $shops = $shopInfo['shops'] ?? $shopInfo['data']['shops'] ?? [];
+                if (!empty($shops)) {
+                    $shop = $shops[0];
+                    $this->info('✓ Connected to TikTok Shop API');
+                    $this->info('  Shop: ' . ($shop['name'] ?? 'N/A') . ' (ID: ' . ($shop['id'] ?? 'N/A') . ')');
+                } else {
+                    $this->warn('⚠ Shop info returned but no shops found.');
+                    $this->info('Continuing with product data sync...');
+                }
+            } elseif ($shopInfo && isset($shopInfo['code']) && $shopInfo['code'] != 0) {
+                $this->warn('⚠ Could not fetch shop info.');
+                $this->error('Error Code: ' . ($shopInfo['code'] ?? 'unknown'));
+                $this->error('Error Message: ' . ($shopInfo['message'] ?? 'No message provided'));
+                if (isset($shopInfo['validation_failures'])) {
+                    $this->error('Validation Failures: ' . json_encode($shopInfo['validation_failures'], JSON_PRETTY_PRINT));
+                }
+                if (isset($shopInfo['request_id'])) {
+                    $this->line('Request ID: ' . $shopInfo['request_id']);
+                }
+                $this->line('Full Response: ' . json_encode($shopInfo, JSON_PRETTY_PRINT));
+                $this->info('Continuing with product data sync...');
             } else {
-                $this->warn('⚠ Could not fetch shop info. API response: ' . json_encode($shopInfo));
+                $this->warn('⚠ Could not fetch shop info.');
+                $this->info('Continuing with product data sync...');
             }
             
+            // Proceed with syncing product data even if shop info fails
+            $this->info('');
+            $this->info('Fetching products from TikTok API...');
             $data = $this->tiktokService->syncAllProductData();
 
             if (!empty($data['errors'])) {
                 foreach ($data['errors'] as $error) {
                     $this->error('Error: ' . $error);
+                }
+            }
+            
+            // Display detailed error information if API calls failed
+            if (empty($data['products']) && empty($data['inventory']) && empty($data['analytics']) && empty($data['reviews'])) {
+                $this->warn('');
+                $this->warn('⚠ No data retrieved. Checking for API errors...');
+                $lastResponse = $this->tiktokService->getLastResponse();
+                if ($lastResponse) {
+                    if (isset($lastResponse['code']) && $lastResponse['code'] != 0) {
+                        $this->error('API Error Code: ' . $lastResponse['code']);
+                        $this->error('API Error Message: ' . ($lastResponse['message'] ?? 'No message'));
+                        if (isset($lastResponse['validation_failures'])) {
+                            $this->error('Validation Failures: ' . json_encode($lastResponse['validation_failures'], JSON_PRETTY_PRINT));
+                        }
+                        if (isset($lastResponse['request_id'])) {
+                            $this->line('Request ID: ' . $lastResponse['request_id']);
+                        }
+                    } else {
+                        $this->info('Last API Response (no error code):');
+                        $this->line(json_encode($lastResponse, JSON_PRETTY_PRINT));
+                    }
+                } else {
+                    $this->warn('No last response available. Check logs for details.');
                 }
             }
 
@@ -127,18 +220,18 @@ class SyncTikTokApiData extends Command
                 $sku = $this->extractSku($product);
                 
                 if (!$sku) {
-                    $this->warn('Skipping product ' . $productId . ' - no SKU found');
                     continue;
                 }
 
                 // Extract price from product
                 $price = $this->extractPrice($product);
+                $normalizedSku = strtoupper(trim($sku));
 
-                // Update or create product
+                // Update or create product using SKU as unique key (table has unique constraint on SKU)
                 $tiktokProduct = TikTokProduct::updateOrCreate(
-                    ['product_id' => $productId],
+                    ['sku' => $normalizedSku],
                     [
-                        'sku' => strtoupper(trim($sku)),
+                        'product_id' => $productId,
                         'price' => $price,
                     ]
                 );
