@@ -185,7 +185,7 @@
                             <div class="card-body p-4">
                                 <!-- Stats Cards Row -->
                                 <div class="row g-4 align-items-end mb-3 pb-3 border-bottom">
-                                    <div class="col-md-12">
+                                                    <div class="col-md-12">
                                         <label class="form-label fw-semibold mb-2 d-block"
                                             style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-chart-line me-1" style="color: #64748b;"></i>Statistics
@@ -197,25 +197,25 @@
                                                     SKU</span>
                                                 <span class="fw-bold" id="total-sku-count"
                                                     style="font-size: 1.1rem;">0</span>
-                                            </div>
+                                                    </div>
                                             <div class="badge-count-item total-campaign-card" id="total-campaign-card"
                                                 style="background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
                                                 <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Campaign</span>
                                                 <span class="fw-bold" id="total-campaign-count"
                                                     style="font-size: 1.1rem;">0</span>
-                                            </div>
+                                                    </div>
                                             <div class="badge-count-item missing-campaign-card" id="missing-campaign-card"
                                                 style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
                                                 <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Missing</span>
                                                 <span class="fw-bold" id="missing-campaign-count"
                                                     style="font-size: 1.1rem;">0</span>
-                                            </div>
+                                                    </div>
                                             <div class="badge-count-item nra-missing-card" id="nra-missing-card"
                                                 style="background: linear-gradient(135deg, #ffc107 0%, #ffb300 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
                                                 <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">NRA MISSING</span>
                                                 <span class="fw-bold" id="nra-missing-count"
                                                     style="font-size: 1.1rem;">0</span>
-                                            </div>
+                                                </div>
                                             <div class="badge-count-item zero-inv-card" id="zero-inv-card"
                                                 style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
                                                 <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Zero
@@ -228,16 +228,16 @@
                                                 <span
                                                     style="font-size: 0.75rem; display: block; margin-bottom: 2px;">NRA</span>
                                                 <span class="fw-bold" id="nra-count" style="font-size: 1.1rem;">0</span>
-                                            </div>
+                                                    </div>
                                             <div class="badge-count-item ra-card" id="ra-card"
                                                 style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
                                                 <span
                                                     style="font-size: 0.75rem; display: block; margin-bottom: 2px;">RA</span>
                                                 <span class="fw-bold" id="ra-count" style="font-size: 1.1rem;">0</span>
+                                                    </div>
+                                                    </div>
+                                                </div>
                                             </div>
-                                        </div>
-                                    </div>
-                                </div>
 
                                 <!-- Search and Filter Controls Row -->
                                 <div class="row g-2 align-items-end mb-3">
@@ -245,21 +245,21 @@
                                         <label class="form-label fw-semibold mb-1"
                                             style="color: #475569; font-size: 0.75rem;">
                                             <i class="fa-solid fa-search me-1" style="color: #64748b;"></i>Search SKU
-                                        </label>
+                                                        </label>
                                         <input type="text" id="global-search" class="form-control form-control-sm"
                                             placeholder="Search..." style="border-color: #e2e8f0;">
-                                    </div>
+                                                    </div>
                                     <div class="col-md-1">
                                         <label class="form-label fw-semibold mb-1"
                                             style="color: #475569; font-size: 0.75rem;">
                                             <i class="fa-solid fa-tags me-1" style="color: #64748b;"></i>SKU Type
                                         </label>
                                         <select id="sku-type-select" class="form-select form-select-sm">
-                                            <option value="all">All</option>
+                                        <option value="all">All</option>
                                             <option value="parent">Parent</option>
                                             <option value="sku" selected>SKU</option>
-                                        </select>
-                                    </div>
+                                    </select>
+                                </div>
                                     <div class="col-md-1">
                                         <label class="form-label fw-semibold mb-1"
                                             style="color: #475569; font-size: 0.75rem;">
@@ -269,8 +269,8 @@
                                             <option value="">INV > 0</option>
                                             <option value="ALL">ALL</option>
                                             <option value="INV_0">0 INV</option>
-                                        </select>
-                                    </div>
+                                    </select>
+                                </div>
                                     <div class="col-md-1">
                                         <label class="form-label fw-semibold mb-1"
                                             style="color: #475569; font-size: 0.75rem;">
@@ -281,8 +281,8 @@
                                             <option value="RA">🟢 RA</option>
                                             <option value="NRA">🔴 NRA</option>
                                             <option value="LATER">🟡 LATER</option>
-                                        </select>
-                                    </div>
+                                    </select>
+                                </div>
                                     <div class="col-md-5">
                                         <label class="form-label fw-semibold mb-1"
                                             style="color: #475569; font-size: 0.75rem;">
@@ -294,28 +294,28 @@
                                                 <input type="file" id="l7-upload-file" accept=".xlsx,.xls,.csv"
                                                     class="form-control form-control-sm"
                                                     style="font-size: 0.7rem; height: 31px;">
-                                            </div>
+                                </div>
                                             <button id="l7-upload-btn" class="btn btn-primary btn-sm" title="L7 Upload"
                                                 style="min-width: 50px; padding: 4px 8px; font-size: 0.75rem; height: 31px; white-space: nowrap;">
                                                 <i class="fa-solid fa-upload me-1"></i>L7
-                                            </button>
+                                    </button>
                                             <div style="flex: 1; min-width: 0;">
                                                 <input type="file" id="l30-upload-file" accept=".xlsx,.xls,.csv"
                                                     class="form-control form-control-sm"
                                                     style="font-size: 0.7rem; height: 31px;">
-                                            </div>
+                                    </div>
                                             <button id="l30-upload-btn" class="btn btn-primary btn-sm" title="L30 Upload"
                                                 style="min-width: 55px; padding: 4px 8px; font-size: 0.75rem; height: 31px; white-space: nowrap;">
                                                 <i class="fa-solid fa-upload me-1"></i>L30
-                                            </button>
-                                        </div>
+                                    </button>
+                                </div>
                                         <div class="d-flex gap-2" id="upload-status-container" style="display: none;">
                                             <div id="l7-upload-status"
                                                 style="font-size: 0.65rem; line-height: 1.2; flex: 1; min-width: 0;"></div>
                                             <div id="l30-upload-status"
                                                 style="font-size: 0.65rem; line-height: 1.2; flex: 1; min-width: 0;"></div>
-                                        </div>
-                                    </div>
+                                </div>
+                            </div>
                                     <div class="col-md-1">
                                         <label class="form-label fw-semibold mb-1 d-block"
                                             style="color: transparent; font-size: 0.75rem;">Export</label>
@@ -323,16 +323,16 @@
                                             style="padding: 4px 8px; font-size: 0.75rem;">
                                             <i class="fa-solid fa-download me-1"></i>Export
                                         </button>
-                                    </div>
-                                </div>
+                        </div>
                             </div>
                         </div>
                     </div>
+                                            </div>
 
                     <!-- Table Section -->
                     <div id="budget-under-table"></div>
-                </div>
-            </div>
+                                            </div>
+                                        </div>
         </div>
     </div>
 @endsection
@@ -420,7 +420,7 @@
                                 processedSkusForCampaign.add(sku);
                                 campaignCount++;
                             }
-                        } else {
+                } else {
                             // Count missing only once per SKU
                             // NRA missing (yellow dots) should count if NRA='NRA'
                             if (rowNra === 'NRA') {
@@ -428,7 +428,7 @@
                                     processedSkusForNraMissing.add(sku);
                                     nraMissingCount++;
                                 }
-                            } else {
+                } else {
                                 // Count as missing (red dot) if NRA is not 'NRA' AND INV > 0
                                 if (!processedSkusForMissing.has(sku)) {
                                     processedSkusForMissing.add(sku);
@@ -606,7 +606,7 @@
                     showZeroInvOnly = false;
                     document.getElementById('zero-inv-card').style.boxShadow = '';
                     this.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.5)';
-                } else {
+                    } else {
                     this.style.boxShadow = '';
                 }
 
@@ -691,7 +691,7 @@
                     showZeroInvOnly = false;
                     document.getElementById('zero-inv-card').style.boxShadow = '';
                     this.style.boxShadow = '0 4px 12px rgba(6, 182, 212, 0.5)';
-                } else {
+                    } else {
                     this.style.boxShadow = '';
                 }
 
@@ -718,7 +718,7 @@
                     showZeroInvOnly = false;
                     document.getElementById('zero-inv-card').style.boxShadow = '';
                     this.style.boxShadow = '0 4px 12px rgba(220, 53, 69, 0.5)';
-                } else {
+                    } else {
                     this.style.boxShadow = '';
                 }
 
@@ -772,7 +772,7 @@
                 }
 
                 // Save to backend
-                $.ajax({
+                            $.ajax({
                     url: '/temu/ads/update',
                     method: 'POST',
                     headers: {
@@ -784,7 +784,7 @@
                         field: field,
                         value: value
                     }),
-                    success: function(response) {
+                                success: function(response) {
                         if (response.success) {
                             updateButtonCounts();
                         }
@@ -857,7 +857,7 @@
                             if (nraValue === 'NRA') {
                                 dotColor = 'yellow';
                                 title = 'NRA - Not Required';
-                            } else {
+                    } else {
                                 dotColor = hasCampaign ? 'green' : 'red';
                                 title = hasCampaign ? 'Campaign Exists' : 'Campaign Missing';
                             }
@@ -1194,8 +1194,8 @@
                 if (!file) {
                     statusDiv.innerHTML = '<span style="color: red;">Please select a file</span>';
                     statusContainer.style.display = 'flex';
-                    return;
-                }
+                        return;
+                    }
 
                 const formData = new FormData();
                 formData.append('file', file);
@@ -1232,7 +1232,7 @@
                                     statusContainer.style.marginTop = '0';
                                 }
                             }, 5000);
-                        } else {
+                    } else {
                             statusDiv.innerHTML = '<span style="color: red;">' + (response
                                 .message || 'Upload failed') + '</span>';
                             statusContainer.style.display = 'flex';

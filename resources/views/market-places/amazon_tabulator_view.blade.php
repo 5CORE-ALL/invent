@@ -1914,7 +1914,7 @@
                     },
 
                     {
-                        title: "AD%",
+                        title: "TACOS",
                         field: "AD%",
                         hozAlign: "center",
                         sorter: "number",
@@ -1941,32 +1941,6 @@
                             return `${parseFloat(value).toFixed(0)}%`;
                         },
                         width: 55
-                    },
-
-                    {
-                        title: "SPEND L30",
-                        field: "AD_Spend_L30",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = parseFloat(cell.getValue() || 0);
-                            if (value === 0) return '';
-                            return `<span>${value.toFixed(0)}</span>`;
-                        },
-                        width: 85
-                    },
-
-                    {
-                        title: "SALES L30",
-                        field: "SALES_L30",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = parseFloat(cell.getValue() || 0);
-                            if (value === 0) return '';
-                            return `<span>${value.toFixed(0)}</span>`;
-                        },
-                        width: 85
                     },
 
                     {
@@ -2013,6 +1987,32 @@
                             return calcACOS(aRow.getData()) - calcACOS(bRow.getData());
                         },
                         width: 60
+                    },
+
+                    {
+                        title: "SPEND L30",
+                        field: "AD_Spend_L30",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            if (value === 0) return '';
+                            return `<span>${value.toFixed(0)}</span>`;
+                        },
+                        width: 85
+                    },
+
+                    {
+                        title: "AD SALES L30",
+                        field: "SALES_L30",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            if (value === 0) return '';
+                            return `<span>${value.toFixed(0)}</span>`;
+                        },
+                        width: 85
                     },
 
                      {
@@ -2399,7 +2399,8 @@
                             const value = cell.getValue();
                             return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
                         },
-                        width: 90
+                        width: 90,
+                        visible: false
                     },
 
                     
