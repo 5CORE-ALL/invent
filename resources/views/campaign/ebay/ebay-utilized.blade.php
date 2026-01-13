@@ -282,6 +282,19 @@
                                                     style="font-size: 0.75rem; display: block; margin-bottom: 2px;">NRA</span>
                                                 <span class="fw-bold" id="nra-count" style="font-size: 1.1rem;">0</span>
                                     </div>
+                                            <div class="badge-count-item nrl-missing-card" id="nrl-missing-card"
+                                                style="background: linear-gradient(135deg, #ffc107 0%, #ffb300 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">NRL
+                                                    MISSING</span>
+                                                <span class="fw-bold" id="nrl-missing-count"
+                                                    style="font-size: 1.1rem;">0</span>
+                                    </div>
+                                            <div class="badge-count-item nrl-card" id="nrl-card"
+                                                style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
+                                                <span
+                                                    style="font-size: 0.75rem; display: block; margin-bottom: 2px;">NRL</span>
+                                                <span class="fw-bold" id="nrl-count" style="font-size: 1.1rem;">0</span>
+                                    </div>
                                             <div class="badge-count-item ra-card" id="ra-card"
                                                 style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
                                                 <span
@@ -389,6 +402,17 @@
                                             <option value="LATER">LATER</option>
                                 </select>
                             </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label fw-semibold mb-2"
+                                            style="color: #475569; font-size: 0.8125rem;">
+                                            <i class="fa-solid fa-tags me-1" style="color: #64748b;"></i>NRL
+                                        </label>
+                                        <select id="nrl-filter" class="form-select form-select-md">
+                                            <option value="">All NRL</option>
+                                    <option value="NRL">NRL</option>
+                                    <option value="REQ">REQ</option>
+                                </select>
+                            </div>
                                     <div class="col-md-2 d-flex gap-2">
                                         <div class="w-100">
                                             <button id="apr-all-sbid-btn" class="btn btn-info btn-sm w-100 d-none">
@@ -404,6 +428,15 @@
 
                     <!-- Table Section -->
                     <div id="budget-under-table"></div>
+                    
+                    <!-- Pagination Count Display -->
+                    <div class="mt-2 d-flex justify-content-between align-items-center">
+                        <div>
+                            <span id="pagination-count" class="badge badge-light" style="color: #475569; font-size: 0.875rem;">
+                                Showing 0 of 0 rows
+                            </span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -460,9 +493,11 @@
             let currentUtilizationType = 'all'; // Default to all
             let showMissingOnly = false; // Filter for missing campaigns only
             let showNraMissingOnly = false; // Filter for NRA missing (yellow dots) only
+            let showNrlMissingOnly = false; // Filter for NRL missing (yellow dots) only
             let showZeroInvOnly = false; // Filter for zero/negative inventory only
             let showCampaignOnly = false; // Filter for campaigns only
             let showNraOnly = false; // Filter for NRA only
+            let showNrlOnly = false; // Filter for NRL only
             let showRaOnly = false; // Filter for RA only
             let showEbaySkuOnly = false; // Filter for eBay SKUs only
             let totalACOSValue = 0;
@@ -496,9 +531,11 @@
                     let correctlyCount = 0;
                 let missingCount = 0;
                 let nraMissingCount = 0; // Count NRA missing (yellow dots)
+                let nrlMissingCount = 0; // Count NRL missing (yellow dots)
                 let zeroInvCount = 0; // Count zero and negative inventory
                 let totalCampaignCount = 0; // Count total campaigns
                 let nraCount = 0; // Count NRA
+                let nrlCount = 0; // Count NRL
                 let raCount = 0; // Count RA
                 let validSkuCount = 0; // Count only valid SKUs (not parent, not empty)
                 let ub7Count = 0; // Count 7UB
@@ -506,9 +543,11 @@
 
                 // Track processed SKUs to avoid counting duplicates
                 const processedSkusForNra = new Set(); // Track SKUs for NRA/RA counting
+                const processedSkusForNrl = new Set(); // Track SKUs for NRL/REQ counting
                 const processedSkusForCampaign = new Set(); // Track SKUs for campaign counting
                 const processedSkusForMissing = new Set(); // Track SKUs for missing counting
                 const processedSkusForNraMissing = new Set(); // Track SKUs for NRA missing counting
+                const processedSkusForNrlMissing = new Set(); // Track SKUs for NRL missing counting
                 const processedSkusForZeroInv = new Set(); // Track SKUs for zero INV counting
 
                     allData.forEach(function(row) {
@@ -566,6 +605,19 @@
                         }
                     }
 
+                    // Count NRL and REQ only for valid SKUs and only once per SKU (after filters)
+                    if (isValidSku && !processedSkusForNrl.has(sku)) {
+                        processedSkusForNrl.add(sku);
+                        // Note: Empty/null NRL defaults to "REQ" in the display
+                        let rowNrl = row.NRL ? row.NRL.trim() : "";
+                        if (rowNrl === 'NRL') {
+                            nrlCount++;
+                        } else {
+                            // If NRL is empty, null, or "REQ", it shows as "REQ" by default
+                            // REQ count is not tracked separately, only NRL
+                        }
+                    }
+
                     // NRA filter
                     let nraFilterVal = $("#nra-filter").val();
                     if (nraFilterVal) {
@@ -576,6 +628,19 @@
                         } else {
                             // For "NRA" or "LATER", exact match
                             if (rowNra !== nraFilterVal) return;
+                        }
+                    }
+
+                    // NRL filter
+                    let nrlFilterVal = $("#nrl-filter").val();
+                    if (nrlFilterVal) {
+                        let rowNrl = row.NRL ? row.NRL.trim() : "";
+                        if (nrlFilterVal === 'REQ') {
+                            // For "REQ" filter, include empty/null values too
+                            if (rowNrl === 'NRL') return;
+                        } else {
+                            // For "NRL", exact match
+                            if (rowNrl !== nrlFilterVal) return;
                         }
                     }
 
@@ -610,8 +675,19 @@
                                 if (rowNrlForMissing !== 'NRL' && rowNraForMissing !== 'NRA') {
                                     missingCount++;
                                 } else {
+                                    // Count NRL missing (yellow dots) separately
+                                    if (rowNrlForMissing === 'NRL' && !processedSkusForNrlMissing.has(sku)) {
+                                        processedSkusForNrlMissing.add(sku);
+                                        nrlMissingCount++;
+                                    }
                                     // Count NRA missing (yellow dots) separately
-                                    if (!processedSkusForNraMissing.has(sku)) {
+                                    // If NRL='NRL', NRA should be 'NRA', so count it as NRA missing too
+                                    if (rowNraForMissing === 'NRA' && !processedSkusForNraMissing.has(sku)) {
+                                        processedSkusForNraMissing.add(sku);
+                                        nraMissingCount++;
+                                    } else if (rowNrlForMissing === 'NRL' && !processedSkusForNraMissing.has(sku)) {
+                                        // If NRL='NRL' but NRA is not 'NRA', still count as NRA missing
+                                        // because NRA should be 'NRA' when NRL is 'NRL'
                                         processedSkusForNraMissing.add(sku);
                                         nraMissingCount++;
                                     }
@@ -663,6 +739,12 @@
                     nraMissingCountEl.textContent = nraMissingCount;
                 }
 
+                // Update NRL missing count
+                const nrlMissingCountEl = document.getElementById('nrl-missing-count');
+                if (nrlMissingCountEl) {
+                    nrlMissingCountEl.textContent = nrlMissingCount;
+                }
+
                 // Update total campaign count
                 const totalCampaignCountEl = document.getElementById('total-campaign-count');
                 if (totalCampaignCountEl) {
@@ -673,6 +755,12 @@
                 const nraCountEl = document.getElementById('nra-count');
                 if (nraCountEl) {
                     nraCountEl.textContent = nraCount;
+                }
+
+                // Update NRL count
+                const nrlCountEl = document.getElementById('nrl-count');
+                if (nrlCountEl) {
+                    nrlCountEl.textContent = nrlCount;
                 }
 
                 // Update RA count
@@ -758,6 +846,7 @@
                         table.redraw(true);
                         updateButtonCounts();
                         updateL30Totals();
+                        setTimeout(updatePaginationCount, 100);
                     }
                 });
             }
@@ -779,6 +868,9 @@
                     // Reset NRA missing filter
                     showNraMissingOnly = false;
                     document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset NRL missing filter
+                    showNrlMissingOnly = false;
+                    document.getElementById('nrl-missing-card').style.boxShadow = '';
                     // Reset zero INV filter
                     showZeroInvOnly = false;
                     document.getElementById('zero-inv-card').style.boxShadow = '';
@@ -787,6 +879,9 @@
                     document.getElementById('nra-card').style.boxShadow = '';
                     showRaOnly = false;
                     document.getElementById('ra-card').style.boxShadow = '';
+                    // Reset NRL filter
+                    showNrlOnly = false;
+                    document.getElementById('nrl-card').style.boxShadow = '';
                     // Reset eBay SKU filter
                     showEbaySkuOnly = false;
                     document.getElementById('ebay-sku-card').style.boxShadow = '';
@@ -799,6 +894,7 @@
                     table.setFilter(combinedFilter);
                     table.redraw(true);
                     updateButtonCounts();
+                    setTimeout(updatePaginationCount, 100);
                 }
             });
 
@@ -818,11 +914,17 @@
                     // Reset NRA missing filter
                     showNraMissingOnly = false;
                     document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset NRL missing filter
+                    showNrlMissingOnly = false;
+                    document.getElementById('nrl-missing-card').style.boxShadow = '';
                     // Reset NRA/RA filters
                     showNraOnly = false;
                     document.getElementById('nra-card').style.boxShadow = '';
                     showRaOnly = false;
                     document.getElementById('ra-card').style.boxShadow = '';
+                    // Reset NRL filter
+                    showNrlOnly = false;
+                    document.getElementById('nrl-card').style.boxShadow = '';
                     // Reset eBay SKU filter
                     showEbaySkuOnly = false;
                     document.getElementById('ebay-sku-card').style.boxShadow = '';
@@ -835,6 +937,7 @@
                     table.setFilter(combinedFilter);
                     table.redraw(true);
                     updateButtonCounts();
+                    setTimeout(updatePaginationCount, 100);
                 }
             });
 
@@ -851,6 +954,9 @@
                     // Reset missing filter
                     showMissingOnly = false;
                     document.getElementById('missing-campaign-card').style.boxShadow = '';
+                    // Reset NRL missing filter
+                    showNrlMissingOnly = false;
+                    document.getElementById('nrl-missing-card').style.boxShadow = '';
                     // Reset zero INV filter
                     showZeroInvOnly = false;
                     document.getElementById('zero-inv-card').style.boxShadow = '';
@@ -859,6 +965,9 @@
                     document.getElementById('nra-card').style.boxShadow = '';
                     showRaOnly = false;
                     document.getElementById('ra-card').style.boxShadow = '';
+                    // Reset NRL filter
+                    showNrlOnly = false;
+                    document.getElementById('nrl-card').style.boxShadow = '';
                     // Reset eBay SKU filter
                     showEbaySkuOnly = false;
                     document.getElementById('ebay-sku-card').style.boxShadow = '';
@@ -871,6 +980,7 @@
                     table.setFilter(combinedFilter);
                     table.redraw(true);
                     updateButtonCounts();
+                    setTimeout(updatePaginationCount, 100);
                 }
             });
 
@@ -887,6 +997,9 @@
                     // Reset NRA missing filter
                     showNraMissingOnly = false;
                     document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset NRL missing filter
+                    showNrlMissingOnly = false;
+                    document.getElementById('nrl-missing-card').style.boxShadow = '';
                     // Reset campaign filter
                     showCampaignOnly = false;
                     document.getElementById('total-campaign-card').style.boxShadow = '';
@@ -895,6 +1008,9 @@
                     document.getElementById('nra-card').style.boxShadow = '';
                     showRaOnly = false;
                     document.getElementById('ra-card').style.boxShadow = '';
+                    // Reset NRL filter
+                    showNrlOnly = false;
+                    document.getElementById('nrl-card').style.boxShadow = '';
                     // Reset eBay SKU filter
                     showEbaySkuOnly = false;
                     document.getElementById('ebay-sku-card').style.boxShadow = '';
@@ -924,12 +1040,18 @@
                     // Reset NRA missing filter
                     showNraMissingOnly = false;
                     document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset NRL missing filter
+                    showNrlMissingOnly = false;
+                    document.getElementById('nrl-missing-card').style.boxShadow = '';
                     // Reset campaign filter
                     showCampaignOnly = false;
                     document.getElementById('total-campaign-card').style.boxShadow = '';
                     // Reset zero INV filter
                     showZeroInvOnly = false;
                     document.getElementById('zero-inv-card').style.boxShadow = '';
+                    // Reset NRL filter
+                    showNrlOnly = false;
+                    document.getElementById('nrl-card').style.boxShadow = '';
                     // Reset RA filter
                     showRaOnly = false;
                     document.getElementById('ra-card').style.boxShadow = '';
@@ -945,6 +1067,94 @@
                     table.setFilter(combinedFilter);
                     table.redraw(true);
                     updateButtonCounts();
+                    setTimeout(updatePaginationCount, 100);
+                }
+            });
+
+            // NRL missing card click handler
+            document.getElementById('nrl-missing-card').addEventListener('click', function() {
+                showNrlMissingOnly = !showNrlMissingOnly;
+                if (showNrlMissingOnly) {
+                    // Reset dropdown to "All" when showing NRL missing only
+                    document.getElementById('utilization-type-select').value = 'all';
+                    currentUtilizationType = 'all';
+                    // Reset campaign filter
+                    showCampaignOnly = false;
+                    document.getElementById('total-campaign-card').style.boxShadow = '';
+                    // Reset missing filter
+                    showMissingOnly = false;
+                    document.getElementById('missing-campaign-card').style.boxShadow = '';
+                    // Reset NRA missing filter
+                    showNraMissingOnly = false;
+                    document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset zero INV filter
+                    showZeroInvOnly = false;
+                    document.getElementById('zero-inv-card').style.boxShadow = '';
+                    // Reset NRA/RA filters
+                    showNraOnly = false;
+                    document.getElementById('nra-card').style.boxShadow = '';
+                    showRaOnly = false;
+                    document.getElementById('ra-card').style.boxShadow = '';
+                    // Reset NRL filter
+                    showNrlOnly = false;
+                    document.getElementById('nrl-card').style.boxShadow = '';
+                    // Reset eBay SKU filter
+                    showEbaySkuOnly = false;
+                    document.getElementById('ebay-sku-card').style.boxShadow = '';
+                    this.style.boxShadow = '0 4px 12px rgba(255, 193, 7, 0.5)';
+                } else {
+                    this.style.boxShadow = '';
+                }
+
+                if (typeof table !== 'undefined' && table) {
+                    table.setFilter(combinedFilter);
+                    table.redraw(true);
+                    updateButtonCounts();
+                    setTimeout(updatePaginationCount, 100);
+                }
+            });
+
+            // NRL card click handler
+            document.getElementById('nrl-card').addEventListener('click', function() {
+                showNrlOnly = !showNrlOnly;
+                if (showNrlOnly) {
+                    // Reset dropdown to "All" when showing NRL only
+                    document.getElementById('utilization-type-select').value = 'all';
+                    currentUtilizationType = 'all';
+                    // Reset missing filter
+                    showMissingOnly = false;
+                    document.getElementById('missing-campaign-card').style.boxShadow = '';
+                    // Reset NRA missing filter
+                    showNraMissingOnly = false;
+                    document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset NRL missing filter
+                    showNrlMissingOnly = false;
+                    document.getElementById('nrl-missing-card').style.boxShadow = '';
+                    // Reset campaign filter
+                    showCampaignOnly = false;
+                    document.getElementById('total-campaign-card').style.boxShadow = '';
+                    // Reset zero INV filter
+                    showZeroInvOnly = false;
+                    document.getElementById('zero-inv-card').style.boxShadow = '';
+                    // Reset NRA filter
+                    showNraOnly = false;
+                    document.getElementById('nra-card').style.boxShadow = '';
+                    // Reset RA filter
+                    showRaOnly = false;
+                    document.getElementById('ra-card').style.boxShadow = '';
+                    // Reset eBay SKU filter
+                    showEbaySkuOnly = false;
+                    document.getElementById('ebay-sku-card').style.boxShadow = '';
+                    this.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.5)';
+                } else {
+                    this.style.boxShadow = '';
+                }
+
+                if (typeof table !== 'undefined' && table) {
+                    table.setFilter(combinedFilter);
+                    table.redraw(true);
+                    updateButtonCounts();
+                    setTimeout(updatePaginationCount, 100);
                 }
             });
 
@@ -961,6 +1171,9 @@
                     // Reset NRA missing filter
                     showNraMissingOnly = false;
                     document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset NRL missing filter
+                    showNrlMissingOnly = false;
+                    document.getElementById('nrl-missing-card').style.boxShadow = '';
                     // Reset campaign filter
                     showCampaignOnly = false;
                     document.getElementById('total-campaign-card').style.boxShadow = '';
@@ -970,6 +1183,9 @@
                     // Reset NRA filter
                     showNraOnly = false;
                     document.getElementById('nra-card').style.boxShadow = '';
+                    // Reset NRL filter
+                    showNrlOnly = false;
+                    document.getElementById('nrl-card').style.boxShadow = '';
                     // Reset eBay SKU filter
                     showEbaySkuOnly = false;
                     document.getElementById('ebay-sku-card').style.boxShadow = '';
@@ -982,6 +1198,7 @@
                     table.setFilter(combinedFilter);
                     table.redraw(true);
                     updateButtonCounts();
+                    setTimeout(updatePaginationCount, 100);
                 }
             });
 
@@ -998,6 +1215,9 @@
                     // Reset NRA missing filter
                     showNraMissingOnly = false;
                     document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset NRL missing filter
+                    showNrlMissingOnly = false;
+                    document.getElementById('nrl-missing-card').style.boxShadow = '';
                     // Reset campaign filter
                     showCampaignOnly = false;
                     document.getElementById('total-campaign-card').style.boxShadow = '';
@@ -1007,6 +1227,9 @@
                     // Reset NRA filter
                     showNraOnly = false;
                     document.getElementById('nra-card').style.boxShadow = '';
+                    // Reset NRL filter
+                    showNrlOnly = false;
+                    document.getElementById('nrl-card').style.boxShadow = '';
                     // Reset RA filter
                     showRaOnly = false;
                     document.getElementById('ra-card').style.boxShadow = '';
@@ -1019,6 +1242,7 @@
                     table.setFilter(combinedFilter);
                     table.redraw(true);
                     updateButtonCounts();
+                    setTimeout(updatePaginationCount, 100);
                 }
             });
 
@@ -1034,7 +1258,9 @@
                 resizableColumns: true,
                 height: "700px",             
                 virtualDom: true,
-                pagination: false,
+                pagination: "local",
+                paginationSize: 100,
+                paginationSizeSelector: [25, 50, 100, 200, 500],
                 rowFormatter: function(row) {
                     const data = row.getData();
                     const sku = data["sku"] || '';
@@ -2270,9 +2496,20 @@
                         data.campaignName);
                     if (hasCampaign) return false;
                     // Show only NRA missing (yellow dots)
+                    // If NRL='NRL', NRA should be 'NRA', so show it as NRA missing too
                     let rowNrlForMissing = data.NRL ? data.NRL.trim() : "";
                     let rowNraForMissing = data.NR ? data.NR.trim() : "";
+                    // Show if NRL='NRL' OR NRA='NRA' (because NRL='NRL' means NRA should be 'NRA')
                     if (rowNrlForMissing !== 'NRL' && rowNraForMissing !== 'NRA') return false;
+                }
+
+                if (showNrlMissingOnly) {
+                    const hasCampaign = data.hasCampaign !== undefined ? data.hasCampaign : (data.campaign_id &&
+                        data.campaignName);
+                    if (hasCampaign) return false;
+                    // Show only NRL missing (yellow dots)
+                    let rowNrlForMissing = data.NRL ? data.NRL.trim() : "";
+                    if (rowNrlForMissing !== 'NRL') return false;
                 }
 
                 if (showCampaignOnly) {
@@ -2349,6 +2586,26 @@
                     }
                 }
 
+                // Apply NRL/REQ filters first (if enabled)
+                // Note: Empty/null NRL defaults to "REQ" in the display
+                let rowNrl = data.NRL ? data.NRL.trim() : "";
+                if (showNrlOnly) {
+                    // Show only NRL (explicitly "NRL" only)
+                    if (rowNrl !== 'NRL') return false;
+                } else {
+                    // NRL filter from dropdown
+                    let nrlFilterVal = $("#nrl-filter").val();
+                if (nrlFilterVal) {
+                        if (nrlFilterVal === 'REQ') {
+                            // For "REQ" filter, include empty/null values too
+                            if (rowNrl === 'NRL') return false;
+                        } else {
+                            // For "NRL", exact match
+                            if (rowNrl !== nrlFilterVal) return false;
+                        }
+                    }
+                }
+
                 // Apply utilization type filter
                 let budget = parseFloat(data.campaignBudgetAmount) || 0;
                 let l7_spend = parseFloat(data.l7_spend || 0);
@@ -2415,7 +2672,17 @@
                     filterTimeout = setTimeout(function() {
                         updateButtonCounts();
                         updateL30Totals();
+                        updatePaginationCount();
                     }, 200);
+                });
+
+                // Update pagination count on page changes
+                table.on("pageLoaded", function() {
+                    updatePaginationCount();
+                });
+                
+                table.on("dataProcessed", function() {
+                    setTimeout(updatePaginationCount, 100);
                 });
 
             // Debounced search
@@ -2427,20 +2694,55 @@
                     }, 300);
                 });
 
-                $("#status-filter, #inv-filter, #nra-filter").on("change", function() {
+                $("#status-filter, #inv-filter, #nra-filter, #nrl-filter").on("change", function() {
                     table.setFilter(combinedFilter);
                     // Update counts when filter changes - use longer timeout to ensure filter is applied
                     setTimeout(function() {
                         updateButtonCounts();
                         updateL30Totals();
+                        updatePaginationCount();
                     }, 300);
                 });
 
                 // Initial update of all button counts after data loads
                 setTimeout(function() {
                     updateButtonCounts();
+                    updatePaginationCount();
                 }, 1000);
             });
+
+            // Function to update pagination count display
+            function updatePaginationCount() {
+                if (typeof table === 'undefined' || !table) {
+                    return;
+                }
+                
+                try {
+                    const filteredData = table.getData('active');
+                    const totalRows = filteredData.length;
+                    const pageSize = table.getPageSize();
+                    const currentPage = table.getPage();
+                    
+                    let startRow = 0;
+                    let endRow = 0;
+                    
+                    if (totalRows > 0) {
+                        startRow = ((currentPage - 1) * pageSize) + 1;
+                        endRow = Math.min(currentPage * pageSize, totalRows);
+                    }
+                    
+                    const paginationCountEl = document.getElementById('pagination-count');
+                    if (paginationCountEl) {
+                        if (totalRows === 0) {
+                            paginationCountEl.textContent = 'Showing 0 of 0 rows';
+                        } else {
+                            paginationCountEl.textContent = `Showing ${startRow} to ${endRow} of ${totalRows} rows`;
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error updating pagination count:', e);
+                }
+            }
 
             table.on("rowSelectionChanged", function(data, rows) {
                 if (data.length > 0) {
@@ -2477,21 +2779,70 @@
                     })
                     .then(res => res.json())
                     .then(data => {
+                            console.log('Update response:', data); // Debug log
                             // Update table data with response
                             if (data.success && typeof table !== 'undefined' && table) {
                                 let row = table.searchRows('sku', '=', sku);
                                 if (row.length > 0) {
-                                    row[0].update({
-                                        [field]: value
-                                    });
-                                    // If NRL is updated, reformat the row to update NRA column (which depends on NRL)
-                                    if (field === 'NRL') {
-                                        row[0].reformat();
+                                    // If NRL is set to "NRL", automatically set NRA to "NRA" (only if NRA is not already set)
+                                    if (field === 'NRL' && value === 'NRL') {
+                                        console.log('NRL set to NRL, updating NRA...'); // Debug log
+                                        // Get current row data BEFORE update
+                                        let rowData = row[0].getData();
+                                        let currentNra = rowData.NR ? String(rowData.NR).trim() : '';
+                                        
+                                        // Get NRA value from backend response (backend always sets it to 'NRA' when NRL is 'NRL')
+                                        let backendNra = '';
+                                        if (data.updated_json && data.updated_json.NR) {
+                                            backendNra = String(data.updated_json.NR).trim();
+                                        }
+                                        
+                                        console.log('Current NRA:', currentNra, 'Backend NRA:', backendNra); // Debug log
+                                        
+                                        // Always update both NRL and NR when NRL is set to "NRL"
+                                        // Backend always sets NR to "NRA" when NRL is "NRL"
+                                        let updateData = {
+                                            NRL: value,
+                                            NR: backendNra || 'NRA' // Use backend value (should be 'NRA') or default to 'NRA'
+                                        };
+                                        
+                                        console.log('Updating row with:', updateData); // Debug log
+                                        
+                                        // Update the row data immediately
+                                        row[0].update(updateData);
+                                        
+                                        // Force update NRA column display immediately
+                                        setTimeout(function() {
+                                            // Reformat the row to update all formatters (especially NRA column)
+                                            row[0].reformat();
+                                        }, 50);
+                                        
+                                        // Second attempt to ensure UI updates
+                                        setTimeout(function() {
+                                            row[0].reformat();
+                                            // Redraw the table to ensure all cells are updated
+                                            if (typeof table !== 'undefined' && table) {
+                                                table.redraw(true);
+                                            }
+                                        }, 200);
+                                    } else {
+                                        // Update the field from backend response
+                                        let updatedData = {};
+                                        if (data.updated_json && data.updated_json[field] !== undefined) {
+                                            updatedData[field] = data.updated_json[field];
+                                        } else {
+                                            updatedData[field] = value;
+                                        }
+                                        row[0].update(updatedData);
                                     }
                                 }
                             }
                     })
-                    .catch(err => console.error(err));
+                    .catch(err => {
+                        console.error('Error updating field:', err);
+                        // Show error message to user
+                        alert('Error updating field. Please try again.');
+                    });
                 }
             });
 
