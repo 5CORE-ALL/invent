@@ -535,4 +535,58 @@ class StockBalanceController extends Controller
 
         return response()->json(['data' => $data]);
     }
+
+    /**
+     * Get inventory data for the inventory table
+     */
+    public function getInventoryData()
+    {
+        $normalizeSku = function ($sku) {
+            $sku = strtoupper(trim($sku));
+            $sku = preg_replace('/\s+/u', ' ', $sku);
+            $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
+            return $sku;
+        };
+
+        // Fetch product master
+        $productMasterData = ProductMaster::all();
+
+        // Get SKUs
+        $skus = $productMasterData->pluck('sku')
+            ->filter()
+            ->unique()
+            ->map(fn($sku) => $normalizeSku($sku))
+            ->toArray();
+
+        // Fetch Shopify data from local DB (shopify_skus)
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->sku));
+
+        // Merge everything
+        $data = $productMasterData->map(function ($item) use ($shopifyData, $normalizeSku) {
+            $sku = $normalizeSku($item->sku ?? '');
+            $shopify = $shopifyData[$sku] ?? null;
+
+            $inv = $shopify->inv ?? 0;
+            $l30 = $shopify->quantity ?? 0;
+            $dil = $inv != 0 ? ($l30 / $inv) : 0;
+
+            return [
+                'IMAGE_URL' => $shopify->image_src ?? null,
+                'Parent' => $item->parent ?? '(No Parent)',
+                'SKU' => $item->sku ?? '',
+                'INV' => $inv,
+                'SOLD' => $l30,
+                'DIL' => $dil,
+            ];
+        })->filter(function ($item) {
+            // Filter out items with no SKU
+            return !empty($item['SKU']);
+        });
+
+        return response()->json([
+            'message' => 'Data fetched successfully',
+            'data' => $data->values(),
+            'status' => 200
+        ]);
+    }
 }
