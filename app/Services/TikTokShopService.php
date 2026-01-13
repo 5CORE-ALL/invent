@@ -60,11 +60,13 @@ class TikTokShopService
             
             $this->lastResponse = $response;
             
-            // Extract shop_cipher from response for use in other API calls
+            // Extract shop_cipher from response and set it on the client for subsequent API calls
             if (isset($response['shops']) && is_array($response['shops']) && !empty($response['shops'])) {
                 $shop = $response['shops'][0];
                 if (isset($shop['cipher'])) {
                     $this->shopCipher = $shop['cipher'];
+                    // Set shop cipher on the client - required for all product/inventory API calls
+                    $this->client->setShopCipher($this->shopCipher);
                     if ($outputCallback) {
                         $outputCallback('info', 'Shop cipher extracted: ' . substr($this->shopCipher, 0, 20) . '...');
                     }
@@ -88,6 +90,13 @@ class TikTokShopService
                 try {
                     $response = $this->client->Authorization->getAuthorizedShop();
                     $this->lastResponse = $response;
+                    
+                    // Extract shop cipher from response and set it on client
+                    if (isset($response['shops']) && !empty($response['shops'][0]['cipher'])) {
+                        $shopCipher = $response['shops'][0]['cipher'];
+                        $this->client->setShopCipher($shopCipher);
+                    }
+                    
                     if ($outputCallback) {
                         $outputCallback('info', '✓ Token refreshed and request succeeded');
                     }
@@ -159,48 +168,28 @@ class TikTokShopService
                 $body['product_status'] = $status;
             }
 
-            // Get shop_cipher if not already set (try to get from shop info)
+            // Ensure shop cipher is set on client (required for all product API calls)
             if (!$this->shopCipher) {
+                // Try to get shop info to extract cipher
                 $shopInfo = $this->getShopInfo();
                 if ($shopInfo && isset($shopInfo['shops'][0]['cipher'])) {
                     $this->shopCipher = $shopInfo['shops'][0]['cipher'];
+                    $this->client->setShopCipher($this->shopCipher);
                 }
+            } else {
+                // Make sure it's set on client even if we already have it
+                $this->client->setShopCipher($this->shopCipher);
             }
 
-            // Build query params with shop_cipher (required by TikTok API)
+            // Shop cipher is already set on the client, so we don't pass it in query params
             $queryParams = [];
-            if ($this->shopCipher) {
-                $queryParams['shop_cipher'] = $this->shopCipher;
-            }
 
             if ($callback && is_callable($callback)) {
-                call_user_func($callback, 'info', 'Calling Product->searchProducts() with query: ' . json_encode($queryParams) . ', body: ' . json_encode($body));
+                call_user_func($callback, 'info', 'Calling Product->searchProducts() with body: ' . json_encode($body));
             }
 
-            // Call searchProducts - try different parameter formats
-            $response = null;
-            try {
-                // Try with query params and body (two parameters)
-                $response = $this->client->Product->searchProducts($queryParams, $body);
-            } catch (\Exception $e1) {
-                // If that fails, try with shop_cipher in body (single parameter)
-                if ($this->shopCipher) {
-                    $bodyWithCipher = $body;
-                    $bodyWithCipher['shop_cipher'] = $this->shopCipher;
-                    try {
-                        $response = $this->client->Product->searchProducts($bodyWithCipher);
-                    } catch (\Exception $e2) {
-                        // If that also fails, try with just query params
-                        if (!empty($queryParams)) {
-                            $response = $this->client->Product->searchProducts($queryParams);
-                        } else {
-                            throw $e1; // Re-throw original exception
-                        }
-                    }
-                } else {
-                    throw $e1;
-                }
-            }
+            // Use searchProducts - shop_cipher is already set on the client
+            $response = $this->client->Product->searchProducts([], $body);
             
             $this->lastResponse = $response;
             
