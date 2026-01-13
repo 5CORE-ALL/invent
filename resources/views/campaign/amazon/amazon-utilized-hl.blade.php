@@ -1165,6 +1165,39 @@
                         visible: false
                     },
                     {
+                        title: "Active",
+                        field: "campaignStatus",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var campaignId = row.campaign_id;
+                            var status = row.campaignStatus || 'PAUSED';
+                            var isEnabled = status === 'ENABLED';
+                            
+                            if (!campaignId) {
+                                return '<span style="color: #999;">-</span>';
+                            }
+                            
+                            return `
+                                <div class="form-check form-switch d-flex justify-content-center">
+                                    <input class="form-check-input campaign-status-toggle" 
+                                           type="checkbox" 
+                                           role="switch" 
+                                           data-campaign-id="${campaignId}"
+                                           ${isEnabled ? 'checked' : ''}
+                                           style="cursor: pointer; width: 3rem; height: 1.5rem;">
+                                </div>
+                            `;
+                        },
+                        cellClick: function(e, cell) {
+                            // Prevent default to handle toggle manually
+                            if (e.target.classList.contains('campaign-status-toggle')) {
+                                e.stopPropagation();
+                            }
+                        },
+                        width: 80
+                    },
+                    {
                         title: "SKU",
                         field: "sku",
                         hozAlign: "left",
@@ -2515,6 +2548,65 @@
                         },
                         error: function(xhr) {
                             showToast('error', 'Failed to update SPRICE');
+                        }
+                    });
+                }
+            });
+
+            // Handle campaign status toggle
+            document.addEventListener("change", function(e) {
+                if(e.target.classList.contains("campaign-status-toggle")) {
+                    let campaignId = e.target.getAttribute("data-campaign-id");
+                    let isEnabled = e.target.checked;
+                    let newStatus = isEnabled ? 'ENABLED' : 'PAUSED';
+                    
+                    if(!campaignId) {
+                        alert("Campaign ID not found!");
+                        e.target.checked = !isEnabled; // Revert toggle
+                        return;
+                    }
+                    
+                    const overlay = document.getElementById("progress-overlay");
+                    if (overlay) {
+                        overlay.style.display = "flex";
+                    }
+                    
+                    fetch('/toggle-amazon-sp-campaign-status', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                        },
+                        body: JSON.stringify({
+                            campaign_id: campaignId,
+                            status: newStatus
+                        })
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if(data.status === 200){
+                            // Update the row data
+                            let rows = table.getRows();
+                            for(let i = 0; i < rows.length; i++) {
+                                let rowData = rows[i].getData();
+                                if(rowData.campaign_id === campaignId) {
+                                    rows[i].update({campaignStatus: newStatus});
+                                    break;
+                                }
+                            }
+                        } else {
+                            alert("Error: " + (data.message || "Failed to update campaign status"));
+                            e.target.checked = !isEnabled; // Revert toggle
+                        }
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        alert("Request failed: " + err.message);
+                        e.target.checked = !isEnabled; // Revert toggle
+                    })
+                    .finally(() => {
+                        if (overlay) {
+                            overlay.style.display = "none";
                         }
                     });
                 }
