@@ -18,6 +18,7 @@ use App\Models\Ebay2Metric;
 use App\Models\EbayTwoListingStatus;
 use App\Models\Ebay2Order;
 use App\Models\Ebay2OrderItem;
+use App\Models\AmazonDatasheet;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -112,9 +113,12 @@ class EbayTwoController extends Controller
             ->keyBy("sku");
 
         // Fetch ALL ebay2_metrics (including Open Box items not in product_masters)
-        $ebayMetrics = Ebay2Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'views', 'item_id')
+        $ebayMetrics = Ebay2Metric::select('sku', 'ebay_price', 'ebay_l30', 'ebay_l60', 'views', 'item_id', 'ebay_stock')
             ->get()
             ->keyBy("sku");
+        
+        // Fetch Amazon prices for comparison
+        $amazonPrices = AmazonDatasheet::whereIn('sku', $skus)->pluck('price', 'sku');
         
         // Add OPEN BOX and USED items from ebay2_metrics to processing list
         foreach ($ebayMetrics as $metric) {
@@ -241,6 +245,10 @@ class EbayTwoController extends Controller
             $row["eBay Price"] = $ebayMetric->ebay_price ?? 0;
             $row['views'] = $ebayMetric->views ?? 0;
             $row['eBay_item_id'] = $ebayMetric->item_id ?? null;
+            $row['E Stock'] = $ebayMetric->ebay_stock ?? 0;
+            
+            // Amazon Price for comparison
+            $row['A Price'] = isset($amazonPrices[$pm->sku]) ? floatval($amazonPrices[$pm->sku]) : 0;
 
             $row["E Dil%"] = ($row["eBay L30"] && $row["INV"] > 0)
                 ? round(($row["eBay L30"] / $row["INV"]), 2)

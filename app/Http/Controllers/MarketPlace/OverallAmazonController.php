@@ -1713,15 +1713,19 @@ class OverallAmazonController extends Controller
             $row['lmp_entries_total'] = $lmpEntries->count();
 
             // Amazon SP Campaign Reports - KW and PMT spend L30
-            $matchedCampaignKwL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
+            // Get ALL matching campaigns (not just first) to handle variations like 'A-54' and 'A-54 2PCS'
+            $matchedCampaignsKwL30 = $amazonSpCampaignReportsL30->filter(function ($item) use ($sku) {
                 $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
                 $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                return $campaignName === $cleanSku;
+                // Match exact SKU or campaigns starting with SKU (like 'A-54' and 'A-54 2PCS')
+                return $campaignName === $cleanSku || str_starts_with($campaignName, $cleanSku . ' ');
             });
 
-            $matchedCampaignPtL30 = $amazonSpCampaignReportsPtL30->first(function ($item) use ($sku) {
+            $matchedCampaignsPtL30 = $amazonSpCampaignReportsPtL30->filter(function ($item) use ($sku) {
                 $cleanName = strtoupper(trim($item->campaignName));
-                return (str_ends_with($cleanName, $sku . ' PT') || str_ends_with($cleanName, $sku . ' PT.'));
+                // Match PT campaigns that end with SKU PT or start with SKU and end with PT
+                return (str_ends_with($cleanName, $sku . ' PT') || str_ends_with($cleanName, $sku . ' PT.'))
+                    || (str_starts_with($cleanName, $sku . ' ') && (str_ends_with($cleanName, ' PT') || str_ends_with($cleanName, ' PT.')));
             });
 
             $matchedCampaignHlL30 = $amazonHlL30->first(function ($item) use ($sku) {
@@ -1729,12 +1733,54 @@ class OverallAmazonController extends Controller
                 return in_array($cleanName, [$sku, $sku . ' HEAD']) && strtoupper($item->campaignStatus) === 'ENABLED';
             });
 
-            $row['kw_spend_L30'] = $matchedCampaignKwL30->spend ?? 0;
-            $row['pmt_spend_L30'] = $matchedCampaignPtL30->spend ?? 0;
+            // Sum spend from all matching KW campaigns
+            $row['kw_spend_L30'] = $matchedCampaignsKwL30->sum('spend');
+            // Sum spend from all matching PT campaigns
+            $row['pmt_spend_L30'] = $matchedCampaignsPtL30->sum('spend');
             
-            // Sales data for L30 (like AmazonAdRunningController)
-            $row['kw_sales_L30'] = $matchedCampaignKwL30->sales30d ?? 0;
-            $row['pmt_sales_L30'] = $matchedCampaignPtL30->sales30d ?? 0;
+            // Campaign status for ad pause toggle
+            // Check EXACT SKU match first (like acos-kw-control shows individual campaign status)
+            // If exact match not found, then check variations
+            $cleanSku = strtoupper(trim(rtrim($sku, '.')));
+            
+            // Find exact SKU match campaigns (not variations)
+            $exactKwCampaigns = $matchedCampaignsKwL30->filter(function ($campaign) use ($cleanSku) {
+                $campaignName = strtoupper(trim(rtrim($campaign->campaignName, '.')));
+                return $campaignName === $cleanSku;
+            });
+            
+            $exactPtCampaigns = $matchedCampaignsPtL30->filter(function ($campaign) use ($cleanSku, $sku) {
+                $cleanName = strtoupper(trim($campaign->campaignName));
+                // Exact PT match: ends with exactly "SKU PT" or "SKU PT."
+                return str_ends_with($cleanName, $sku . ' PT') || str_ends_with($cleanName, $sku . ' PT.');
+            });
+            
+            // Use exact match if available, otherwise use all matches (variations)
+            $kwCampaignsForStatus = $exactKwCampaigns->isNotEmpty() ? $exactKwCampaigns : $matchedCampaignsKwL30;
+            $ptCampaignsForStatus = $exactPtCampaigns->isNotEmpty() ? $exactPtCampaigns : $matchedCampaignsPtL30;
+            
+            // Check if ANY campaign is ENABLED
+            $kwHasEnabled = $kwCampaignsForStatus->contains(function ($campaign) {
+                return strtoupper($campaign->campaignStatus ?? 'PAUSED') === 'ENABLED';
+            });
+            $ptHasEnabled = $ptCampaignsForStatus->contains(function ($campaign) {
+                return strtoupper($campaign->campaignStatus ?? 'PAUSED') === 'ENABLED';
+            });
+
+            // If either has any ENABLED campaign, ads are enabled
+            $row['ad_pause'] = !($kwHasEnabled || $ptHasEnabled);
+            
+            // Store status based on exact match (or all if no exact match)
+            // This matches the behavior in acos-kw-control where individual campaign status is shown
+            $row['kw_campaign_status'] = $kwHasEnabled ? 'ENABLED' : 'PAUSED';
+            $row['pt_campaign_status'] = $ptHasEnabled ? 'ENABLED' : 'PAUSED';
+            
+            // Check if any campaigns exist for this SKU
+            $row['has_campaigns'] = $matchedCampaignsKwL30->isNotEmpty() || $matchedCampaignsPtL30->isNotEmpty();
+            
+            // Sales data for L30 (like AmazonAdRunningController) - sum from all matching campaigns
+            $row['kw_sales_L30'] = $matchedCampaignsKwL30->sum('sales30d');
+            $row['pmt_sales_L30'] = $matchedCampaignsPtL30->sum('sales30d');
 
             // HL (Headline/Sponsored Brands) data (like AmazonAdRunningController)
             if (isset($parentHlSpendData[$parent]) && $parentHlSpendData[$parent]['childCount'] > 0) {

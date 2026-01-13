@@ -239,51 +239,40 @@
                     <a href="{{ url('/ebay-ratings-sample') }}" class="btn btn-sm btn-info">
                         <i class="fas fa-download"></i> Sample CSV
                     </a>
-                    
-                    <button id="toggle-chart-btn" class="btn btn-sm btn-secondary" style="display: none;">
-                        <i class="fa fa-eye-slash"></i> Hide Chart
-                    </button>
-                </div>
-
-                <!-- Metrics Chart Section -->
-                <div id="metrics-chart-section" class="mt-2 p-2 bg-white rounded border" style="display: none;">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h6 class="mb-0">Metrics Trend</h6>
-                        <select id="chart-days-filter" class="form-select form-select-sm" style="width: auto;">
-                            <option value="7" >Last 7 Days</option>
-                            <option value="14">Last 14 Days</option>
-                            <option value="30" selected>Last 30 Days</option>
-                            <option value="60">Last 60 Days</option>
-                        </select>
-                    </div>
-                    <div style="height: 200px;">
-                        <canvas id="metricsChart"></canvas>
-                    </div>
                 </div>
 
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">All Calculations Summary</h6>
+                    <h6 class="mb-3">Summary (INV > 0)</h6>
                     <div class="d-flex flex-wrap gap-2">
-                        <!-- Top Metrics -->
-                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold;">Total PFT AMT: $0.00</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total SALES AMT: $0.00</span>
-                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">GPFT: 0%</span>
-
-                                                <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">GROI %: 0%</span>
-                        <span class="badge bg-primary fs-6 p-2" id="net-roi-percent-badge" style="color: black; font-weight: bold;">NROI %: 0%</span>
-                        <span class="badge bg-success fs-6 p-2" id="avg-pft-badge" style="color: black; font-weight: bold;">N PFT: 0%</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
-                        
-                        <!-- eBay Metrics -->
-                        <span class="badge bg-success fs-6 p-2" id="total-fba-l30-badge" style="color: black; font-weight: bold;">Total eBay L30: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold;">0 Sold Count: 0</span>
+                        <!-- Sold Filter Badges (Clickable) -->
+                        <span class="badge bg-danger fs-6 p-2 sold-filter-badge" data-filter="zero" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: <span id="zero-sold-count">0</span></span>
+                        <span class="badge bg-success fs-6 p-2 sold-filter-badge" data-filter="sold" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter sold items">> 0 Sold: <span id="more-sold-count">0</span></span>
                         
                         <!-- Financial Metrics -->
-                        <span class="badge bg-danger fs-6 p-2" id="total-tcos-badge" style="color: black; font-weight: bold;">Total TCOS: 0%</span>
-                        <span class="badge bg-warning fs-6 p-2" id="total-spend-l30-badge" style="color: black; font-weight: bold;">PMT Ads Spend L30: $0.00</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-cogs-amt-badge" style="color: black; font-weight: bold;">COGS AMT: $0.00</span>
-
+                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold;">Total PFT: $0</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total Sales: $0</span>
+                        <span class="badge bg-warning fs-6 p-2" id="total-spend-l30-badge" style="color: black; font-weight: bold;">PMT Spend: $0</span>
+                        
+                        <!-- Percentage Metrics -->
+                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">GPFT: 0%</span>
+                        <span class="badge bg-info fs-6 p-2" id="avg-pft-badge" style="color: black; font-weight: bold;">NPFT: 0%</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="groi-percent-badge" style="color: black; font-weight: bold;">GROI: 0%</span>
+                        <span class="badge bg-primary fs-6 p-2" id="nroi-percent-badge" style="color: black; font-weight: bold;">NROI: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="tacos-percent-badge" style="color: black; font-weight: bold;">TACOS: 0%</span>
+                        
+                        <!-- eBay Metrics -->
+                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
+                        <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">CVR: 0.00%</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color: black; font-weight: bold;">INV: 0</span>
+                        
+                        <!-- Map/Missing/Amazon Comparison Badges -->
+                        <span class="badge bg-danger fs-6 p-2 missing-filter-badge" data-filter="missing" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing SKUs">Missing: <span id="missing-count">0</span></span>
+                        <span class="badge bg-success fs-6 p-2 map-filter-badge" data-filter="map" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter mapped SKUs">Map: <span id="map-count">0</span></span>
+                        <span class="badge bg-warning fs-6 p-2 notmap-filter-badge" data-filter="notmap" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter not mapped SKUs">N MP: <span id="notmap-count">0</span></span>
+                        <span class="badge bg-danger fs-6 p-2 lessamz-filter-badge" data-filter="less" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">< Amz: <span id="less-amz-count">0</span></span>
+                        <span class="badge bg-success fs-6 p-2 moreamz-filter-badge" data-filter="more" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">> Amz: <span id="more-amz-count">0</span></span>
                     </div>
                 </div>
             </div>
@@ -299,6 +288,12 @@
                         <input type="number" id="discount-percentage-input" class="form-control form-control-sm" 
                             placeholder="Enter %" step="0.01" style="width: 100px;">
                         <button id="apply-discount-btn" class="btn btn-primary btn-sm">Apply</button>
+                        <button id="sugg-amz-prc-selected-btn" class="btn btn-sm btn-info">
+                            <i class="fas fa-amazon"></i> Suggest Amazon Price
+                        </button>
+                        <button id="clear-sprice-selected-btn" class="btn btn-sm btn-danger">
+                            <i class="fa fa-eraser"></i> Clear SPRICE
+                        </button>
                     </div>
                 </div>
                 <div id="ebay2-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
@@ -420,13 +415,21 @@
     <script>
         // Cache bust: v2.1 - OPEN BOX items now included with base SKU lookup
         const COLUMN_VIS_KEY = "ebay2_tabulator_column_visibility";
-        let metricsChart = null;
         let skuMetricsChart = null;
         let currentSku = null;
         let table = null; // Global table reference
         let decreaseModeActive = false; // Track decrease mode state
         let increaseModeActive = false; // Track increase mode state
         let selectedSkus = new Set(); // Track selected SKUs across all pages
+        
+        // Badge filter state variables
+        let zeroSoldFilterActive = false;
+        let moreSoldFilterActive = false;
+        let missingFilterActive = false;
+        let mapFilterActive = false;
+        let notMapFilterActive = false;
+        let lessAmzFilterActive = false;
+        let moreAmzFilterActive = false;
         
         // Toast notification function
         function showToast(message, type = 'info') {
@@ -448,165 +451,6 @@
             const bsToast = new bootstrap.Toast(toast);
             bsToast.show();
             toast.addEventListener('hidden.bs.toast', () => toast.remove());
-        }
-
-        // Initialize Metrics Chart
-        function initMetricsChart() {
-            const ctx = document.getElementById('metricsChart').getContext('2d');
-            metricsChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: [],
-                    datasets: [
-                        {
-                            label: 'Avg Price ($)',
-                            data: [],
-                            borderColor: 'rgb(75, 192, 192)',
-                            backgroundColor: 'rgba(75, 192, 192, 0.1)',
-                            borderWidth: 2,
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                            yAxisID: 'y',
-                            tension: 0.4
-                        },
-                        {
-                            label: 'Total Views',
-                            data: [],
-                            borderColor: 'rgb(54, 162, 235)',
-                            backgroundColor: 'rgba(54, 162, 235, 0.1)',
-                            borderWidth: 2,
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                            yAxisID: 'y1',
-                            tension: 0.4
-                        },
-                        {
-                            label: 'Avg CVR%',
-                            data: [],
-                            borderColor: 'rgb(255, 206, 86)',
-                            backgroundColor: 'rgba(255, 206, 86, 0.1)',
-                            borderWidth: 2,
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                            yAxisID: 'y',
-                            tension: 0.4
-                        },
-                        {
-                            label: 'Avg AD%',
-                            data: [],
-                            borderColor: 'rgb(255, 99, 132)',
-                            backgroundColor: 'rgba(255, 99, 132, 0.1)',
-                            borderWidth: 2,
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                            yAxisID: 'y',
-                            tension: 0.4
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: {
-                        mode: 'index',
-                        intersect: false,
-                    },
-                    plugins: {
-                        legend: {
-                            position: 'top',
-                            labels: {
-                                usePointStyle: true,
-                                padding: 10
-                            }
-                        },
-                        title: {
-                            display: false
-                        },
-                        tooltip: {
-                            enabled: true,
-                            mode: 'index',
-                            intersect: false,
-                            callbacks: {
-                                label: function(context) {
-                                    let label = context.dataset.label || '';
-                                    let value = context.parsed.y || 0;
-                                    
-                                    // Format based on dataset label
-                                    if (label.includes('Price') || label.includes('price')) {
-                                        return label + ': $' + value.toFixed(2);
-                                    } else if (label.includes('Views') || label.includes('views')) {
-                                        return label + ': ' + value.toLocaleString();
-                                    } else if (label.includes('CVR')) {
-                                        return label + ': ' + value.toFixed(1) + '%';
-                                    } else if (label.includes('AD') || label.includes('%')) {
-                                        return label + ': ' + Math.round(value) + '%';
-                                    }
-                                    return label + ': ' + value;
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        y: {
-                            type: 'linear',
-                            display: true,
-                            position: 'left',
-                            title: {
-                                display: true,
-                                text: 'Price / Percentages'
-                            },
-                            beginAtZero: false,
-                            ticks: {
-                                callback: function(value, index, values) {
-                                    // Format based on value range
-                                    if (value >= 0 && value <= 200) {
-                                        return value.toFixed(0) + '%';
-                                    } else {
-                                        return '$' + value.toFixed(0);
-                                    }
-                                }
-                            }
-                        },
-                        y1: {
-                            type: 'linear',
-                            display: true,
-                            position: 'right',
-                            title: {
-                                display: true,
-                                text: 'Views'
-                            },
-                            beginAtZero: true,
-                            grid: {
-                                drawOnChartArea: false,
-                            },
-                            ticks: {
-                                callback: function(value) {
-                                    return value.toLocaleString();
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-        }
-
-        // Load Metrics Data
-        function loadMetricsData(days = 30) {
-            fetch(`/ebay-metrics-history?days=${days}`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.length > 0 && metricsChart) {
-                        metricsChart.data.labels = data.map(d => d.date_formatted || d.date || '');
-                        metricsChart.data.datasets[0].data = data.map(d => d.avg_price || 0);
-                        metricsChart.data.datasets[1].data = data.map(d => d.total_views || 0);
-                        metricsChart.data.datasets[2].data = data.map(d => d.avg_cvr_percent || 0);
-                        metricsChart.data.datasets[3].data = data.map(d => d.avg_ad_percent || 0);
-                        metricsChart.update();
-                    }
-                })
-                .catch(error => {
-                    console.error('Error loading metrics data:', error);
-                });
         }
 
         // SKU-specific chart
@@ -844,30 +688,11 @@
         }
 
         $(document).ready(function() {
-            // Initialize charts
-            initMetricsChart();
-            loadMetricsData(30);
+            // Initialize SKU-specific chart only
             initSkuMetricsChart();
             
             // Load eBay ads spend from marketplace_daily_metrics
             loadEbayAdsSpend();
-
-            // Toggle chart button
-            $('#toggle-chart-btn').on('click', function() {
-                const $chartSection = $('#metrics-chart-section');
-                const $btn = $(this);
-                
-                if ($chartSection.is(':visible')) {
-                    $chartSection.slideUp();
-                    $btn.html('<i class="fa fa-eye"></i> Show Chart');
-                } else {
-                    $chartSection.slideDown();
-                    $btn.html('<i class="fa fa-eye-slash"></i> Hide Chart');
-                }
-            });
-
-            // Show chart button by default on first load
-            $('#toggle-chart-btn').show();
 
             // Discount type dropdown change handler
             $('#discount-type-select').on('change', function() {
@@ -974,6 +799,154 @@
                     applyDiscount();
                 }
             });
+
+            // Suggest Amazon Price button handler
+            $('#sugg-amz-prc-selected-btn').on('click', function() {
+                applySuggestAmazonPrice();
+            });
+
+            function applySuggestAmazonPrice() {
+                if (selectedSkus.size === 0) {
+                    showToast('Please select SKUs first', 'error');
+                    return;
+                }
+
+                let updatedCount = 0;
+                let noAmazonPriceCount = 0;
+                const totalSkus = selectedSkus.size;
+
+                selectedSkus.forEach(sku => {
+                    const rows = table.searchRows("(Child) sku", "=", sku);
+                    
+                    if (rows.length > 0) {
+                        const row = rows[0];
+                        const rowData = row.getData();
+                        const amazonPrice = parseFloat(rowData['A Price']);
+                        
+                        if (amazonPrice && amazonPrice > 0) {
+                            // Update SPRICE in table
+                            row.update({
+                                SPRICE: amazonPrice
+                            });
+                            
+                            // Force redraw
+                            row.reformat();
+                            
+                            // Save to database
+                            saveSpriceWithRetry(sku, amazonPrice, row)
+                                .then(() => {
+                                    updatedCount++;
+                                    if (updatedCount + noAmazonPriceCount === totalSkus) {
+                                        let message = `Amazon price applied to ${updatedCount} SKU(s)`;
+                                        if (noAmazonPriceCount > 0) {
+                                            message += ` (${noAmazonPriceCount} SKU(s) had no Amazon price)`;
+                                        }
+                                        showToast(message, updatedCount > 0 ? 'success' : 'error');
+                                    }
+                                })
+                                .catch(() => {
+                                    noAmazonPriceCount++;
+                                    if (updatedCount + noAmazonPriceCount === totalSkus) {
+                                        showToast(`Applied to ${updatedCount} SKU(s), ${noAmazonPriceCount} failed`, 'error');
+                                    }
+                                });
+                            
+                            updatedCount++;
+                        } else {
+                            noAmazonPriceCount++;
+                        }
+                    } else {
+                        noAmazonPriceCount++;
+                    }
+                });
+                
+                // Show immediate feedback
+                if (noAmazonPriceCount === totalSkus) {
+                    showToast('No Amazon prices found for selected SKUs', 'error');
+                }
+            }
+
+            // Clear SPRICE button handler
+            $('#clear-sprice-selected-btn').on('click', function() {
+                if (confirm('Are you sure you want to clear SPRICE for selected SKUs?')) {
+                    clearSpriceForSelected();
+                }
+            });
+
+            // Badge filter click handlers - Work together with other filters
+            $('.sold-filter-badge[data-filter="zero"], #zero-sold-count-badge').on('click', function() {
+                zeroSoldFilterActive = !zeroSoldFilterActive;
+                moreSoldFilterActive = false;
+                applyFilters();
+            });
+
+            $('.sold-filter-badge[data-filter="sold"]').on('click', function() {
+                moreSoldFilterActive = !moreSoldFilterActive;
+                zeroSoldFilterActive = false;
+                applyFilters();
+            });
+
+            $('.missing-filter-badge, #missing-count-badge').on('click', function() {
+                missingFilterActive = !missingFilterActive;
+                mapFilterActive = false;
+                notMapFilterActive = false;
+                applyFilters();
+            });
+
+            $('.map-filter-badge, #map-count-badge').on('click', function() {
+                mapFilterActive = !mapFilterActive;
+                missingFilterActive = false;
+                notMapFilterActive = false;
+                applyFilters();
+            });
+
+            $('.notmap-filter-badge, #not-map-count-badge').on('click', function() {
+                notMapFilterActive = !notMapFilterActive;
+                mapFilterActive = false;
+                missingFilterActive = false;
+                applyFilters();
+            });
+
+            $('.lessamz-filter-badge, #less-amz-badge').on('click', function() {
+                lessAmzFilterActive = !lessAmzFilterActive;
+                moreAmzFilterActive = false;
+                applyFilters();
+            });
+
+            $('.moreamz-filter-badge, #more-amz-badge').on('click', function() {
+                moreAmzFilterActive = !moreAmzFilterActive;
+                lessAmzFilterActive = false;
+                applyFilters();
+            });
+
+            function clearSpriceForSelected() {
+                if (selectedSkus.size === 0) {
+                    showToast('Please select SKUs first', 'error');
+                    return;
+                }
+
+                let clearedCount = 0;
+
+                selectedSkus.forEach(sku => {
+                    const rows = table.searchRows("(Child) sku", "=", sku);
+                    
+                    if (rows.length > 0) {
+                        const row = rows[0];
+                        row.update({
+                            SPRICE: 0,
+                            SGPFT: 0,
+                            SPFT: 0,
+                            SROI: 0
+                        });
+                        
+                        row.reformat();
+                        saveSpriceWithRetry(sku, 0, row);
+                        clearedCount++;
+                    }
+                });
+
+                showToast(`SPRICE cleared for ${clearedCount} SKU(s)`, 'success');
+            }
 
             // Apply All button handler
             $(document).on('click', '#apply-all-btn', function(e) {
@@ -1830,19 +1803,20 @@
                             return html;
                         }
                     },
-                    {
-                        title: "Ratings",
-                        field: "rating",
-                        hozAlign: "center",
-                        editor: "input",
-                        tooltip: "Enter rating between 0 and 5",
-                        width: 80
-                    },
+                    // {
+                    //     title: "Ratings",
+                    //     field: "rating",
+                    //     hozAlign: "center",
+                    //     editor: "input",
+                    //     tooltip: "Enter rating between 0 and 5",
+                    //     width: 80
+                    // },
                     {
                         title: "Links",
                         field: "links_column",
                         frozen: true,
                         width: 100,
+                        visible: false,
                         hozAlign: "center",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
@@ -1928,6 +1902,67 @@
                         width: 30,
                         sorter: "number"
                     },
+                    {
+                        title: "E Stock",
+                        field: "E Stock",
+                        hozAlign: "center",
+                        width: 60,
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            if (value === 0) {
+                                return '<span style="color: #dc3545; font-weight: 600;">0</span>';
+                            }
+                            return `<span style="font-weight: 600;">${value}</span>`;
+                        }
+                    },
+                    {
+                        title: "Missing",
+                        field: "Missing",
+                        hozAlign: "center",
+                        width: 70,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const ebayPrice = parseFloat(rowData['eBay Price']) || 0;
+                            const ebayL30 = parseFloat(rowData['eBay L30']) || 0;
+                            const itemId = rowData['eBay_item_id'];
+                            
+                            // Missing = SKU in product_master but not listed in eBay2
+                            // If no eBay price AND no item_id, it's missing from eBay2
+                            if (ebayPrice === 0 && (!itemId || itemId === null || itemId === '')) {
+                                return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
+                            }
+                            return '';
+                        }
+                    },
+                    {
+                        title: "MAP",
+                        field: "MAP",
+                        hozAlign: "center",
+                        width: 90,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const itemId = rowData['eBay_item_id'];
+                            if (!itemId || itemId === null || itemId === '') {
+                                return '';
+                            }
+                            const ebayStock = parseFloat(rowData['E Stock']) || 0;
+                            const inv = parseFloat(rowData['INV']) || 0;
+                            if (inv > 0 && ebayStock === 0) {
+                                return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${inv})</span>`;
+                            }
+                            if (inv > 0 && ebayStock > 0) {
+                                if (inv === ebayStock) {
+                                    return '<span style="color: #28a745; font-weight: bold;">MP</span>';
+                                } else {
+                                    const diff = inv - ebayStock;
+                                    const sign = diff > 0 ? '+' : '';
+                                    return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${diff})</span>`;
+                                }
+                            }
+                            return '';
+                        }
+                    },
 
                     
                     // {
@@ -1938,7 +1973,7 @@
                     //     visible: false
                     // },
                     {
-                        title: "S CVR",
+                        title: "CVR",
                         field: "SCVR",
                         hozAlign: "center",
                         sorter: function(a, b, aRow, bRow) {
@@ -2047,13 +2082,36 @@
                         sorter: "number",
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue() || 0);
+                            const rowData = cell.getRow().getData();
+                            const amazonPrice = parseFloat(rowData['A Price']) || 0;
                             
                             if (value === 0) {
-                                // Show $0.00 in red with red alert icon
                                 return `<span style="color: #a00211; font-weight: 600;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
                             }
                             
-                            // Normal price formatting
+                            // Color code based on Amazon price comparison
+                            if (amazonPrice > 0 && value > 0) {
+                                if (value < amazonPrice) {
+                                    return `<span style="color: #a00211; font-weight: 600;">$${value.toFixed(2)}</span>`;
+                                } else if (value > amazonPrice) {
+                                    return `<span style="color: #28a745; font-weight: 600;">$${value.toFixed(2)}</span>`;
+                                }
+                            }
+                            
+                            return `$${value.toFixed(2)}`;
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "A Prc",
+                        field: "A Price",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue());
+                            if (value === null || value === 0 || isNaN(value)) {
+                                return '<span style="color: #6c757d;">-</span>';
+                            }
                             return `$${value.toFixed(2)}`;
                         },
                         width: 70
@@ -2070,12 +2128,11 @@
                             const percent = parseFloat(value);
                             let color = '';
                             
-                            // getPftColor logic from inc/dec page (same as PFT)
                             if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
-                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
+                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
+                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink (50% and above)
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
@@ -2136,12 +2193,11 @@
                             const percent = gpft - ad;
                             let color = '';
                             
-                            // getPftColor logic from inc/dec page
                             if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
-                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
+                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
+                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink (50% and above)
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
@@ -2179,6 +2235,31 @@
                         width: 65
                     },
                     {
+                        title: "GROI%",
+                        field: "ROI%",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '';
+                            const percent = parseFloat(value);
+                            let color = '';
+                            
+                            if (percent < 50) color = '#a00211'; // red
+                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
+                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        bottomCalc: "avg",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>${parseFloat(value).toFixed(2)}%</strong>`;
+                        },
+                        width: 65
+                    },
+                    {
                         title: "NROI%",
                         field: "NROI%",
                         hozAlign: "center",
@@ -2188,11 +2269,10 @@
                             const roi = parseFloat(rowData['ROI%'] || 0);
                             const adPercent = parseFloat(rowData['AD%'] || 0);
                             
-                            // NROI = ROI - AD%
+                            // NROI = GROI - AD%
                             const nroi = roi - adPercent;
                             
                             let color = '';
-                            // Same color logic as ROI
                             if (nroi < 50) color = '#a00211'; // red
                             else if (nroi >= 50 && nroi < 75) color = '#ffc107'; // yellow
                             else if (nroi >= 75 && nroi <= 125) color = '#28a745'; // green
@@ -2505,12 +2585,11 @@
                             if (isNaN(percent)) return '';
                             
                             let color = '';
-                            // Same as GPFT% color logic
                             if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
-                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
+                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
+                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink (50% and above)
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
@@ -2531,12 +2610,11 @@
                             if (isNaN(percent)) return '';
                             
                             let color = '';
-                            // Same as PFT% color logic
                             if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
-                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
+                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
+                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink (50% and above)
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
@@ -2602,11 +2680,11 @@
                         width: 70
                     },
                     {
-                        title: "eBay2 <br> Ship",
+                        title: "eBay2 Ship",
                         field: "ebay2_ship",
                         hozAlign: "center",
                         sorter: "number",
-                        visible: true,
+                        visible: false,
                         formatter: "money",
                         formatterParams: {
                             decimal: ".",
@@ -2621,7 +2699,7 @@
                         field: "LP_productmaster",
                         hozAlign: "center",
                         sorter: "number",
-                        visible: true,
+                        visible: false,
                         formatter: "money",
                         formatterParams: {
                             decimal: ".",
@@ -2858,9 +2936,6 @@
 
                 if (statusFilter !== 'all') {
                     table.addFilter(function(data) {
-                        // const isParent = data.Parent && data.Parent.startsWith('PARENT');
-                        // if (isParent) return true;
-                        
                         const status = data.nr_req || '';
                         
                         if (statusFilter === 'REQ') {
@@ -2869,6 +2944,74 @@
                             return status === 'NR';
                         }
                         return true;
+                    });
+                }
+
+                // Badge Filters (only INV > 0)
+                if (zeroSoldFilterActive) {
+                    table.addFilter(function(data) {
+                        const ebayL30 = parseFloat(data['eBay L30']) || 0;
+                        const inv = parseFloat(data['INV']) || 0;
+                        return ebayL30 === 0 && inv > 0;
+                    });
+                }
+
+                if (moreSoldFilterActive) {
+                    table.addFilter(function(data) {
+                        const ebayL30 = parseFloat(data['eBay L30']) || 0;
+                        const inv = parseFloat(data['INV']) || 0;
+                        return ebayL30 > 0 && inv > 0;
+                    });
+                }
+
+                if (missingFilterActive) {
+                    table.addFilter(function(data) {
+                        const inv = parseFloat(data['INV']) || 0;
+                        const ebayPrice = parseFloat(data['eBay Price']) || 0;
+                        const itemId = data['eBay_item_id'];
+                        const nrReq = data['nr_req'] || '';
+                        // Exclude NR/NRL items from missing
+                        return inv > 0 && ebayPrice === 0 && (!itemId || itemId === null || itemId === '') && nrReq !== 'NR' && nrReq !== 'NRL';
+                    });
+                }
+
+                if (mapFilterActive) {
+                    table.addFilter(function(data) {
+                        const itemId = data['eBay_item_id'];
+                        const inv = parseFloat(data['INV']) || 0;
+                        if (!itemId || itemId === null || itemId === '' || inv === 0) return false;
+                        
+                        const ebayStock = parseFloat(data['E Stock']) || 0;
+                        return inv > 0 && ebayStock > 0 && inv === ebayStock;
+                    });
+                }
+
+                if (notMapFilterActive) {
+                    table.addFilter(function(data) {
+                        const itemId = data['eBay_item_id'];
+                        const inv = parseFloat(data['INV']) || 0;
+                        if (!itemId || itemId === null || itemId === '' || inv === 0) return false;
+                        
+                        const ebayStock = parseFloat(data['E Stock']) || 0;
+                        return inv > 0 && (ebayStock === 0 || (ebayStock > 0 && inv !== ebayStock));
+                    });
+                }
+
+                if (lessAmzFilterActive) {
+                    table.addFilter(function(data) {
+                        const inv = parseFloat(data['INV']) || 0;
+                        const ebayPrice = parseFloat(data['eBay Price']) || 0;
+                        const amazonPrice = parseFloat(data['A Price']) || 0;
+                        return inv > 0 && amazonPrice > 0 && ebayPrice > 0 && ebayPrice < amazonPrice;
+                    });
+                }
+
+                if (moreAmzFilterActive) {
+                    table.addFilter(function(data) {
+                        const inv = parseFloat(data['INV']) || 0;
+                        const ebayPrice = parseFloat(data['eBay Price']) || 0;
+                        const amazonPrice = parseFloat(data['A Price']) || 0;
+                        return inv > 0 && amazonPrice > 0 && ebayPrice > 0 && ebayPrice > amazonPrice;
                     });
                 }
 
@@ -2993,12 +3136,10 @@
                 // const avgRoi = sumLp > 0 ? (totalProfit / sumLp) * 100 : 0;
             }
 
-            // Update summary badges - ALWAYS use ALL data, not filtered
+            // Update summary badges - use filtered data for accurate counts
             function updateSummary() {
-                // Use allTableData (include ALL rows, even PARENT rows)
-                const data = allTableData;
-                
-                console.log('updateSummary - Total rows:', data.length);
+                // Use active (filtered) data for all counts to match what's actually visible
+                const data = table.getData('active');
                 
                 let totalPmtSpendL30 = 0;
                 let totalPftAmt = 0;
@@ -3006,80 +3147,111 @@
                 let totalLpAmt = 0;
                 let totalFbaInv = 0;
                 let totalFbaL30 = 0;
-                let totalDilPercent = 0;
-                let dilCount = 0;
                 let zeroSoldCount = 0;
-
-                // Fetch real-time PMT ads spend from database instead of calculating from SKUs
-                loadEbayAdsSpend();
-
-                // PMT spend is per listing (item_id)
-                const countedItemsPmt = new Set();
+                let moreSoldCount = 0;
+                let missingCount = 0;
+                let mapCount = 0;
+                let notMapCount = 0;
+                let lessAmzCount = 0;
+                let moreAmzCount = 0;
 
                 data.forEach(row => {
-                    // Count all rows regardless of filters
-                    totalPftAmt += parseFloat(row['Total_pft'] || 0);
-                    totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
-                    totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * parseFloat(row['eBay L30'] || 0);
-                    totalFbaInv += parseFloat(row.INV || 0);
-                    totalFbaL30 += parseFloat(row['eBay L30'] || 0);
+                    const inv = parseFloat(row.INV || 0);
+                    const ebayL30 = parseFloat(row['eBay L30'] || 0);
                     
-                    // PMT Spend - count once per item_id (listing-wise ads)
-                    const itemId = row['eBay_item_id'] || '';
-                    const pmtSpend = parseFloat(row['pmt_spend_L30'] || 0);
-                    if (itemId && pmtSpend > 0 && !countedItemsPmt.has(itemId)) {
-                        countedItemsPmt.add(itemId);
-                        totalPmtSpendL30 += pmtSpend;
-                    }
-                    
-                    // Count SKUs with 0 sold (L30 = 0)
-                    const l30 = parseFloat(row['eBay L30'] || 0);
-                    if (l30 === 0) {
-                        zeroSoldCount++;
-                    }
-                    
-                    const dil = parseFloat(row['E Dil%'] || 0);
-                    if (!isNaN(dil)) {
-                        totalDilPercent += dil;
-                        dilCount++;
+                    if (inv > 0) {
+                        totalPftAmt += parseFloat(row['Total_pft'] || 0);
+                        totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
+                        totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * ebayL30;
+                        totalFbaInv += inv;
+                        totalFbaL30 += ebayL30;
+                        totalPmtSpendL30 += parseFloat(row['pmt_spend_L30'] || 0);
+                        
+                        // Count sold
+                        if (ebayL30 === 0) zeroSoldCount++;
+                        else moreSoldCount++;
+                        
+                        // Count Missing (exclude NR items)
+                        const ebayPrice = parseFloat(row['eBay Price']) || 0;
+                        const itemId = row['eBay_item_id'];
+                        const nrReq = row['nr_req'] || '';
+                        // Only count as missing if NOT NR/NRL
+                        if (ebayPrice === 0 && (!itemId || itemId === null || itemId === '') && nrReq !== 'NR' && nrReq !== 'NRL') {
+                            missingCount++;
+                        }
+                        
+                        // Count Map and N MP
+                        if (itemId && itemId !== null && itemId !== '') {
+                            const ebayStock = parseFloat(row['E Stock']) || 0;
+                            if (inv > 0 && ebayStock > 0 && inv === ebayStock) {
+                                mapCount++;
+                            } else if (inv > 0 && (ebayStock === 0 || (ebayStock > 0 && inv !== ebayStock))) {
+                                notMapCount++;
+                            }
+                        }
+                        
+                        // Count < Amz and > Amz
+                        const ebayPrc = parseFloat(row['eBay Price']) || 0;
+                        const amazonPrice = parseFloat(row['A Price']) || 0;
+                        if (amazonPrice > 0 && ebayPrc > 0) {
+                            if (ebayPrc < amazonPrice) lessAmzCount++;
+                            else if (ebayPrc > amazonPrice) moreAmzCount++;
+                        }
                     }
                 });
 
-                // eBay2 only has PMT ads
-                const totalSpendL30 = totalPmtSpendL30;
+                // Calculate weighted average price
+                let totalWeightedPrice = 0;
+                let totalL30 = 0;
+                data.forEach(row => {
+                    if (parseFloat(row.INV) > 0) {
+                        const price = parseFloat(row['eBay Price'] || 0);
+                        const l30 = parseFloat(row['eBay L30'] || 0);
+                        totalWeightedPrice += price * l30;
+                        totalL30 += l30;
+                    }
+                });
+                const avgPrice = totalL30 > 0 ? totalWeightedPrice / totalL30 : 0;
 
+                // Calculate views and CVR
                 let totalViews = 0;
                 data.forEach(row => {
-                    totalViews += parseFloat(row.views || 0);
+                    if (parseFloat(row.INV) > 0) {
+                        totalViews += parseFloat(row.views || 0);
+                    }
                 });
+                const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
+                
+                // Calculate percentages
+                const tacosPercent = totalSalesAmt > 0 ? ((totalPmtSpendL30 / totalSalesAmt) * 100) : 0;
+                const groiPercent = totalLpAmt > 0 ? ((totalPftAmt / totalLpAmt) * 100) : 0;
+                const avgGpft = totalSalesAmt > 0 ? ((totalPftAmt / totalSalesAmt) * 100) : 0;
+                const npftPercent = avgGpft - tacosPercent;
+                const nroiPercent = groiPercent - tacosPercent;
+                
+                // Update all badges
+                $('#zero-sold-count').text(zeroSoldCount.toLocaleString());
+                $('#more-sold-count').text(moreSoldCount.toLocaleString());
+                $('#missing-count').text(missingCount.toLocaleString());
+                $('#map-count').text(mapCount.toLocaleString());
+                $('#notmap-count').text(notMapCount.toLocaleString());
+                $('#less-amz-count').text(lessAmzCount.toLocaleString());
+                $('#more-amz-count').text(moreAmzCount.toLocaleString());
+                
+                $('#total-pft-amt-badge').text('Total PFT: $' + Math.round(totalPftAmt).toLocaleString());
+                $('#total-sales-amt-badge').text('Total Sales: $' + Math.round(totalSalesAmt).toLocaleString());
+                $('#total-spend-l30-badge').text('PMT Spend: $' + Math.round(totalPmtSpendL30).toLocaleString());
+                
+                $('#avg-gpft-badge').text('GPFT: ' + avgGpft.toFixed(1) + '%');
+                $('#avg-pft-badge').text('NPFT: ' + npftPercent.toFixed(1) + '%');
+                $('#groi-percent-badge').text('GROI: ' + groiPercent.toFixed(1) + '%');
+                $('#nroi-percent-badge').text('NROI: ' + nroiPercent.toFixed(1) + '%');
+                $('#tacos-percent-badge').text('TACOS: ' + Math.round(tacosPercent) + '%');
+                
+                $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
+                $('#avg-cvr-badge').text('CVR: ' + avgCVR.toFixed(1) + '%');
                 $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
-                
-                // Calculate TCOS = (Total Ad Spend / Total Sales) * 100
-                const tcosPercent = totalSalesAmt > 0 ? ((totalSpendL30 / totalSalesAmt) * 100).toFixed(2) : '0.00';
-
-                $('#total-tcos-badge').text('Total TCOS: ' + tcosPercent + '%');
-                $('#total-cogs-amt-badge').text('COGS AMT: $' + Math.round(totalLpAmt));
-                const roiPercent = totalLpAmt > 0 ? Math.round((totalPftAmt / totalLpAmt) * 100) : 0;
-                $('#roi-percent-badge').text('GROI %: ' + roiPercent + '%');
-                
-                // Calculate Net ROI = ROI - TCOS
-                const netRoiPercent = roiPercent - parseFloat(tcosPercent);
-                $('#net-roi-percent-badge').text('NROI %: ' + netRoiPercent.toFixed(2) + '%');
-                
-                console.log('updateSummary - Total eBay L30:', totalFbaL30);
-                $('#total-fba-l30-badge').text('Total eBay L30: ' + Math.round(totalFbaL30).toLocaleString());
-                $('#zero-sold-count-badge').text('0 Sold Count: ' + zeroSoldCount.toLocaleString());
-                $('#total-pft-amt').text('$' + Math.round(totalPftAmt));
-                $('#total-pft-amt-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
-                $('#total-sales-amt').text('$' + Math.round(totalSalesAmt));
-                $('#total-sales-amt-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
-                const avgGpft = totalSalesAmt > 0 ? ((totalPftAmt / totalSalesAmt) * 100).toFixed(1) : '0.0';
-                $('#avg-gpft-badge').text('GPFT: ' + avgGpft + '%');
-                $('#avg-gpft-summary').text(avgGpft + '%');
-                
-                // Calculate N PFT = GPFT - TCOS
-                const avgPft = parseFloat(avgGpft) - parseFloat(tcosPercent);
-                $('#avg-pft-badge').text('N PFT: ' + avgPft.toFixed(1) + '%');
+                $('#total-inv-badge').text('INV: ' + Math.round(totalFbaInv).toLocaleString());
             }
 
             // Build Column Visibility Dropdown
