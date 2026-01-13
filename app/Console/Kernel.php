@@ -383,6 +383,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('sync:sync-temu-sip')->everyMinute();
         $schedule->command('sync:walmart-metrics-data')->everyMinute();
         $schedule->command('sync:tiktok-sheet-data')->everyMinute();
+        $schedule->command('sync:tiktok-api-data')->daily(); // Sync TikTok API data (price, stock, views) once daily
         $schedule->command('app:aliexpress-sheet-sync')->everyMinute();
         $schedule->command('app:fetch-ebay-table-data')->dailyAt('00:00');
         $schedule->call(function () {
