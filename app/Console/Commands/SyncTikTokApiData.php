@@ -51,6 +51,18 @@ class SyncTikTokApiData extends Command
                 case 'format3_success':
                     $this->info('✅ Signature Format 3 (HMAC-SHA256 params only) worked!');
                     break;
+                case 'trying_format4':
+                    $this->info('🔄 Trying Signature Format 4 (Sign by URL)...');
+                    break;
+                case 'format4_success':
+                    $this->info('✅ Signature Format 4 (Sign by URL) worked!');
+                    break;
+                case 'trying_format5':
+                    $this->info('🔄 Trying Signature Format 5 (app_secret + URL + body + app_secret)...');
+                    break;
+                case 'format5_success':
+                    $this->info('✅ Signature Format 5 worked!');
+                    break;
                 case 'all_formats_failed':
                     $this->error('❌ All signature formats failed. Response: ' . json_encode($data));
                     break;

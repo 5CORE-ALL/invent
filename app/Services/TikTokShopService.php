@@ -233,6 +233,58 @@ class TikTokShopService
         
         return hash_hmac('sha256', $stringToSign, $this->clientSecret);
     }
+    
+    /**
+     * Generate signature format 4: Sign by full URL (like signByUrl method)
+     */
+    protected function generateSignatureFormat4(string $fullUrl, string $body = ''): string
+    {
+        // Extract path and query string from URL
+        $parsed = parse_url($fullUrl);
+        $path = $parsed['path'] ?? '';
+        $query = $parsed['query'] ?? '';
+        
+        // Parse query string to array, remove sign
+        parse_str($query, $params);
+        unset($params['sign']);
+        ksort($params);
+        
+        // Rebuild query string without sign
+        $queryString = http_build_query($params);
+        
+        // String to sign: path + query + body
+        $stringToSign = $path;
+        if ($queryString) {
+            $stringToSign .= '?' . $queryString;
+        }
+        $stringToSign .= $body;
+        
+        // HMAC-SHA256 with app_secret
+        return hash_hmac('sha256', $stringToSign, $this->clientSecret);
+    }
+    
+    /**
+     * Generate signature format 5: app_secret + full_url + body + app_secret, then SHA256
+     */
+    protected function generateSignatureFormat5(string $fullUrl, string $body = ''): string
+    {
+        $parsed = parse_url($fullUrl);
+        $path = $parsed['path'] ?? '';
+        $query = $parsed['query'] ?? '';
+        
+        parse_str($query, $params);
+        unset($params['sign']);
+        ksort($params);
+        $queryString = http_build_query($params);
+        
+        $urlWithoutSign = $path;
+        if ($queryString) {
+            $urlWithoutSign .= '?' . $queryString;
+        }
+        
+        $stringToSign = $this->clientSecret . $urlWithoutSign . $body . $this->clientSecret;
+        return hash('sha256', $stringToSign);
+    }
 
     /**
      * Make authenticated API request
@@ -364,6 +416,52 @@ class TikTokShopService
                 if (!isset($data['code']) || ($data['code'] != 106001 && $data['code'] != 36009004)) {
                     if ($this->signatureCallback && is_callable($this->signatureCallback)) {
                         call_user_func($this->signatureCallback, 'format3_success', $data);
+                    }
+                    return $data;
+                }
+                
+                // Try Format 4: Sign by full URL (signByUrl style)
+                $urlWithoutSign = $this->apiBase . $path . '?' . http_build_query($params);
+                $altSign4 = $this->generateSignatureFormat4($urlWithoutSign, $bodyJson);
+                if ($this->signatureCallback && is_callable($this->signatureCallback)) {
+                    call_user_func($this->signatureCallback, 'trying_format4', $altSign4);
+                }
+                $params['sign'] = $altSign4;
+                $url = $this->apiBase . $path . '?' . http_build_query($params);
+                
+                if ($method === 'GET') {
+                    $response = Http::timeout(30)->withHeaders($headers)->get($url);
+                } else {
+                    $response = Http::timeout(30)->withHeaders($headers)->post($url, $body);
+                }
+                $data = $response->json();
+                
+                if (!isset($data['code']) || ($data['code'] != 106001 && $data['code'] != 36009004)) {
+                    if ($this->signatureCallback && is_callable($this->signatureCallback)) {
+                        call_user_func($this->signatureCallback, 'format4_success', $data);
+                    }
+                    return $data;
+                }
+                
+                // Try Format 5: app_secret + URL + body + app_secret
+                $urlWithoutSign = $this->apiBase . $path . '?' . http_build_query($params);
+                $altSign5 = $this->generateSignatureFormat5($urlWithoutSign, $bodyJson);
+                if ($this->signatureCallback && is_callable($this->signatureCallback)) {
+                    call_user_func($this->signatureCallback, 'trying_format5', $altSign5);
+                }
+                $params['sign'] = $altSign5;
+                $url = $this->apiBase . $path . '?' . http_build_query($params);
+                
+                if ($method === 'GET') {
+                    $response = Http::timeout(30)->withHeaders($headers)->get($url);
+                } else {
+                    $response = Http::timeout(30)->withHeaders($headers)->post($url, $body);
+                }
+                $data = $response->json();
+                
+                if (!isset($data['code']) || ($data['code'] != 106001 && $data['code'] != 36009004)) {
+                    if ($this->signatureCallback && is_callable($this->signatureCallback)) {
+                        call_user_func($this->signatureCallback, 'format5_success', $data);
                     }
                     return $data;
                 }
