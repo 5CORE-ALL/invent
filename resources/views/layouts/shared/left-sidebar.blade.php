@@ -2059,9 +2059,9 @@
                                             Decrease </a>
                                     </li>
 
-                                    <li>
+                                    {{-- <li>
                                         <a href="{{ url('ebay-pricing-data') }}">Ebay Pricing Data</a>
-                                    </li>
+                                    </li> --}}
 
                                     {{-- <li>
                                         <a href="{{ url('ebay-pricing-increase') }}">Ebay Pricing
