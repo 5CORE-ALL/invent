@@ -63,6 +63,38 @@ class TikTokShopService
             }
             
             return $response;
+        } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+            // Token expired - try to refresh
+            if ($outputCallback) {
+                $outputCallback('info', 'Token expired, attempting to refresh...');
+            }
+            
+            if ($this->refreshAccessToken()) {
+                // Retry with new token
+                $this->client->setAccessToken($this->accessToken);
+                try {
+                    $response = $this->client->Authorization->getAuthorizedShop();
+                    $this->lastResponse = $response;
+                    if ($outputCallback) {
+                        $outputCallback('info', '✓ Token refreshed and request succeeded');
+                    }
+                    return $response;
+                } catch (\Exception $retryException) {
+                    if ($outputCallback) {
+                        $outputCallback('error', 'Retry after refresh failed: ' . $retryException->getMessage());
+                    }
+                }
+            } else {
+                if ($outputCallback) {
+                    $outputCallback('error', 'Failed to refresh token');
+                }
+            }
+            
+            if ($outputCallback) {
+                $outputCallback('error', 'Error: ' . $e->getMessage());
+            }
+            Log::error('TikTok getShopInfo failed', ['error' => $e->getMessage()]);
+            return ['code' => 999999, 'message' => $e->getMessage(), 'data' => null];
         } catch (\Exception $e) {
             if ($outputCallback) {
                 $outputCallback('error', 'Error: ' . $e->getMessage());
@@ -71,7 +103,6 @@ class TikTokShopService
             Log::error('TikTok getShopInfo failed', [
                 'error' => $e->getMessage(),
                 'class' => get_class($e),
-                'trace' => $e->getTraceAsString()
             ]);
             return ['code' => 999999, 'message' => $e->getMessage(), 'data' => null];
         }
@@ -106,6 +137,16 @@ class TikTokShopService
             $this->lastResponse = $response;
             
             return $response;
+        } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+            // Token expired - refresh and retry
+            if ($this->refreshAccessToken()) {
+                $this->client->setAccessToken($this->accessToken);
+                $response = $this->client->Product->searchProducts([], $body);
+                $this->lastResponse = $response;
+                return $response;
+            }
+            Log::error('TikTok getProducts failed', ['error' => $e->getMessage()]);
+            return null;
         } catch (\Exception $e) {
             if ($outputCallback) {
                 $outputCallback('error', 'Error getting products: ' . $e->getMessage());
@@ -173,6 +214,15 @@ class TikTokShopService
             $this->lastResponse = $response;
             
             return $response;
+        } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+            if ($this->refreshAccessToken()) {
+                $this->client->setAccessToken($this->accessToken);
+                return $this->client->Product->inventorySearch([
+                    'product_id_list' => array_slice($productIds, 0, 50),
+                ]);
+            }
+            Log::error('TikTok getProductInventory failed', ['error' => $e->getMessage()]);
+            return null;
         } catch (\Exception $e) {
             Log::error('TikTok getProductInventory failed', ['error' => $e->getMessage()]);
             return null;
@@ -212,6 +262,13 @@ class TikTokShopService
             $this->lastResponse = $response;
             
             return $response;
+        } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+            if ($this->refreshAccessToken()) {
+                $this->client->setAccessToken($this->accessToken);
+                return $this->client->Analytics->getShopProductPerformanceList($params);
+            }
+            Log::error('TikTok getProductAnalytics failed', ['error' => $e->getMessage()]);
+            return null;
         } catch (\Exception $e) {
             Log::error('TikTok getProductAnalytics failed', ['error' => $e->getMessage()]);
             return null;
