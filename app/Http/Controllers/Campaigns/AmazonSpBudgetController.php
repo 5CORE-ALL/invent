@@ -10,6 +10,7 @@ use App\Models\AmazonSbCampaignReport;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\FbaTable;
+use App\Models\MarketplacePercentage;
 use AWS\CRT\Log;
 use GuzzleHttp\Client;
 use Illuminate\Http\Request;
@@ -1630,6 +1631,10 @@ class AmazonSpBudgetController extends Controller
 
         $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
+        // Get marketplace percentage for AD% calculation
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'Amazon')->first();
+        $percentage = $marketplaceData ? $marketplaceData->percentage : 100;
+
         // Calculate AVG CPC from all daily records (lifetime average)
         $avgCpcData = collect();
         try {
@@ -1660,7 +1665,7 @@ class AmazonSpBudgetController extends Controller
                 }
             }
         } catch (\Exception $e) {
-            \Log::error('Error calculating AVG CPC: ' . $e->getMessage());
+            FacadesLog::error('Error calculating AVG CPC: ' . $e->getMessage());
             // Continue without avg_cpc data if there's an error
         }
 
@@ -1749,6 +1754,28 @@ class AmazonSpBudgetController extends Controller
                 $amazonSpCampaignReportsL30 = $amazonSpCampaignReportsL30->where('campaignStatus', '!=', 'ARCHIVED')->get();
             }
         }
+
+        // Load ALL campaigns (KW + PT) for AD% calculation - need all types regardless of view
+        $allSpCampaignReportsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+            ->where('report_date_range', 'L30')
+            ->where(function ($q) use ($skus) {
+                foreach ($skus as $sku) {
+                    $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
+                }
+            })
+            ->where('campaignStatus', '!=', 'ARCHIVED')
+            ->get();
+        
+        // Load HL (SB) campaigns for all views to calculate total AD% (KW + PT + HL)
+        $amazonHlL30 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+            ->where('report_date_range', 'L30')
+            ->where(function ($q) use ($skus) {
+                foreach ($skus as $sku) {
+                    $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
+                }
+            })
+            ->where('campaignStatus', '!=', 'ARCHIVED')
+            ->get();
 
         if ($campaignType === 'HL') {
             $amazonSpCampaignReportsL15 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
@@ -1997,12 +2024,16 @@ class AmazonSpBudgetController extends Controller
                 $campaignName = '';
             }
 
-            // Check NRA filter and get TPFT, PFT, ROI and NRL from AmazonDataView
+            // Check NRA filter and get TPFT, PFT, ROI, NRL, SPRICE, SGPFT, SROI from AmazonDataView
             $nra = '';
             $tpft = null;
             $pft = null;
             $roi = null;
             $nrl = 'REQ'; // Default value
+            $sprice = null;
+            $sgpft = null;
+            $sroi = null;
+            $spriceStatus = null;
             if (isset($nrValues[$pm->sku])) {
                 $raw = $nrValues[$pm->sku];
                 if (!is_array($raw)) {
@@ -2014,6 +2045,10 @@ class AmazonSpBudgetController extends Controller
                     $pft = $raw['PFT'] ?? null;
                     $roi = $raw['ROI'] ?? null;
                     $nrl = $raw['NRL'] ?? 'REQ';
+                    $sprice = $raw['SPRICE'] ?? null;
+                    $sgpft = $raw['SGPFT'] ?? null;
+                    $sroi = $raw['SROI'] ?? null;
+                    $spriceStatus = $raw['SPRICE_STATUS'] ?? null;
                 }
             }
 
@@ -2033,6 +2068,122 @@ class AmazonSpBudgetController extends Controller
 
             if (!isset($campaignMap[$mapKey])) {
                 $baseSku = strtoupper(trim($pm->sku));
+                $price = ($amazonSheet && isset($amazonSheet->price)) ? $amazonSheet->price : 0;
+                
+                // Get LP and Ship from ProductMaster
+                $values = $pm->Values ?: [];
+                $lp = $values['lp'] ?? 0;
+                if ($lp === 0 && isset($pm->lp)) {
+                    $lp = floatval($pm->lp);
+                }
+                $ship = isset($values['ship']) ? floatval($values['ship']) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+                
+                // Calculate AD% (ad spend percentage) - use ALL campaign types (KW + PT + HL) like OverallAmazonController
+                $adPercent = 0;
+                $unitsL30 = ($amazonSheet && isset($amazonSheet->units_ordered_l30)) ? (int)$amazonSheet->units_ordered_l30 : 0;
+                $totalRevenue = $price * $unitsL30;
+                
+                if ($totalRevenue > 0) {
+                    // Get KW campaign spend (exact SKU match, excluding PT)
+                    $kwSpend = 0;
+                    $kwCampaign = $allSpCampaignReportsL30->first(function ($item) use ($sku) {
+                        $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
+                        $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                        $campaignName = strtoupper(trim(rtrim($campaignName, '.')));
+                        $cleanSku = strtoupper(trim(rtrim($sku, '.')));
+                        // Exclude PT campaigns
+                        if (stripos($campaignName, ' PT') !== false || stripos($campaignName, 'PT.') !== false) {
+                            return false;
+                        }
+                        return $campaignName === $cleanSku;
+                    });
+                    if ($kwCampaign) {
+                        $kwSpend = $kwCampaign->spend ?? 0;
+                    }
+                    
+                    // Get PT campaign spend (ends with PT or PT.)
+                    $ptSpend = 0;
+                    $ptCampaign = $allSpCampaignReportsL30->first(function ($item) use ($sku) {
+                        $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
+                        $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                        $cleanName = strtoupper(trim($campaignName));
+                        return ($cleanName === $sku . ' PT' || $cleanName === $sku . ' PT.' || 
+                                $cleanName === $sku . 'PT' || $cleanName === $sku . 'PT.');
+                    });
+                    if ($ptCampaign) {
+                        $ptSpend = $ptCampaign->spend ?? 0;
+                    }
+                    
+                    // Get HL campaign spend (SKU or SKU HEAD)
+                    $hlSpend = 0;
+                    if (isset($amazonHlL30)) {
+                        $hlCampaign = $amazonHlL30->first(function ($item) use ($sku) {
+                            $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
+                            $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                            $cleanName = strtoupper(trim($campaignName));
+                            return ($cleanName === $sku || $cleanName === $sku . ' HEAD') && strtoupper($item->campaignStatus ?? '') === 'ENABLED';
+                        });
+                        if ($hlCampaign) {
+                            $hlSpend = $hlCampaign->cost ?? 0;
+                        }
+                    }
+                    
+                    // Total AD spend = KW + PT + HL
+                    $totalAdSpend = $kwSpend + $ptSpend + $hlSpend;
+                    $adPercent = round($totalAdSpend / $totalRevenue * 100, 4);
+                }
+                
+                // Calculate GPFT% = ((price × 0.80 - ship - lp) / price) × 100
+                $gpft = $price > 0
+                    ? round((($price * 0.80 - $ship - $lp) / $price) * 100, 2)
+                    : 0;
+                
+                // Calculate SPRICE, SGPFT, SROI if not set
+                $calculatedSprice = $sprice;
+                $calculatedSgpft = $sgpft;
+                $calculatedSroi = $sroi;
+                $hasCustomSprice = !empty($sprice);
+                
+                if (empty($calculatedSprice) && $price > 0) {
+                    $calculatedSprice = $price;
+                    $hasCustomSprice = false;
+                    
+                    // Calculate SGPFT based on default price (using 0.80 for Amazon)
+                    $calculatedSgpft = round(
+                        $price > 0 ? (($price * 0.80 - $ship - $lp) / $price) * 100 : 0,
+                        2
+                    );
+                    
+                    // Calculate SROI = ((SPRICE * (0.80 - AD%/100) - ship - lp) / lp) * 100
+                    $adDecimal = $adPercent / 100;
+                    $calculatedSroi = round(
+                        $lp > 0 ? (($price * (0.80 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
+                        2
+                    );
+                } else if (!empty($calculatedSprice)) {
+                    $hasCustomSprice = true;
+                    
+                    // Calculate SGPFT using custom SPRICE if not already set (using 0.80 for Amazon)
+                    if (empty($calculatedSgpft)) {
+                        $spriceFloat = floatval($calculatedSprice);
+                        $calculatedSgpft = round(
+                            $spriceFloat > 0 ? (($spriceFloat * 0.80 - $ship - $lp) / $spriceFloat) * 100 : 0,
+                            2
+                        );
+                    }
+                    
+                    // Always recalculate SROI from SPRICE and current AD% (AD% might have changed)
+                    $spriceFloat = floatval($calculatedSprice);
+                    $adDecimal = $adPercent / 100;
+                    $calculatedSroi = round(
+                        $lp > 0 ? (($spriceFloat * (0.80 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
+                        2
+                    );
+                }
+                
+                // Always recalculate SPFT = SGPFT - AD% (AD% might have changed)
+                $spft = !empty($calculatedSgpft) ? round($calculatedSgpft - $adPercent, 2) : 0;
+                
                 $campaignMap[$mapKey] = [
                     'parent' => $parent,
                     'sku' => $pm->sku,
@@ -2044,7 +2195,7 @@ class AmazonSpBudgetController extends Controller
                     'FBA_INV' => isset($fbaData[$baseSku]) ? ($fbaData[$baseSku]->quantity_available ?? 0) : 0,
                     'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
                     'A_L30' => ($amazonSheet && isset($amazonSheet->units_ordered_l30)) ? (int)$amazonSheet->units_ordered_l30 : 0,
-                    'price' => ($amazonSheet && isset($amazonSheet->price)) ? $amazonSheet->price : 0,
+                    'price' => $price,
                     'ratings' => $junglescoutData[$sku] ?? null,
                     'reviews' => $junglescoutReviews[$sku] ?? null,
                     'l7_spend' => 0,
@@ -2062,6 +2213,14 @@ class AmazonSpBudgetController extends Controller
                     'roi' => $roi,
                     'NRL' => $nrl,
                     'hasCampaign' => $hasCampaign,
+                    'GPFT' => $gpft,
+                    'SPRICE' => $calculatedSprice,
+                    'SGPFT' => $calculatedSgpft,
+                    'Spft%' => $spft,
+                    'SPFT' => $spft, // Keep both for backward compatibility
+                    'SROI' => $calculatedSroi,
+                    'has_custom_sprice' => $hasCustomSprice,
+                    'SPRICE_STATUS' => $spriceStatus,
                 ];
             }
 
@@ -2437,6 +2596,14 @@ class AmazonSpBudgetController extends Controller
                     'roi' => $roi,
                     'NRL' => $nrl,
                     'hasCampaign' => $hasCampaign,
+                    'GPFT' => $gpft,
+                    'SPRICE' => $calculatedSprice,
+                    'SGPFT' => $calculatedSgpft,
+                    'Spft%' => $spft,
+                    'SPFT' => $spft, // Keep both for backward compatibility
+                    'SROI' => $calculatedSroi,
+                    'has_custom_sprice' => $hasCustomSprice,
+                    'SPRICE_STATUS' => $spriceStatus,
                 ];
                 
                 // Update existingSkusMap to avoid duplicates
@@ -2547,12 +2714,16 @@ class AmazonSpBudgetController extends Controller
             $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
             $shopify = $shopifyData[$pm->sku] ?? null;
 
-            // Get NRA, TPFT, PFT, ROI and NRL from AmazonDataView
+            // Get NRA, TPFT, PFT, ROI, NRL, SPRICE, SGPFT, SROI from AmazonDataView
             $nra = '';
             $tpft = null;
             $pft = null;
             $roi = null;
             $nrl = 'REQ'; // Default value
+            $sprice = null;
+            $sgpft = null;
+            $sroi = null;
+            $spriceStatus = null;
             if (isset($nrValues[$pm->sku])) {
                 $raw = $nrValues[$pm->sku];
                 if (!is_array($raw)) {
@@ -2564,8 +2735,130 @@ class AmazonSpBudgetController extends Controller
                     $pft = $raw['PFT'] ?? null;
                     $roi = $raw['ROI'] ?? null;
                     $nrl = $raw['NRL'] ?? 'REQ';
+                    $sprice = $raw['SPRICE'] ?? null;
+                    $sgpft = $raw['SGPFT'] ?? null;
+                    $sroi = $raw['SROI'] ?? null;
+                    $spriceStatus = $raw['SPRICE_STATUS'] ?? null;
                 }
             }
+            
+            // Get LP and Ship from ProductMaster
+            $values = $pm->Values ?: [];
+            $lp = $values['lp'] ?? 0;
+            if ($lp === 0 && isset($pm->lp)) {
+                $lp = floatval($pm->lp);
+            }
+            $ship = isset($values['ship']) ? floatval($values['ship']) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+            
+            $price = ($amazonSheet && isset($amazonSheet->price)) ? $amazonSheet->price : 0;
+            
+            // Calculate AD% (ad spend percentage) - use ALL campaign types (KW + PT + HL) like OverallAmazonController
+            $adPercent = 0;
+            $unitsL30 = ($amazonSheet && isset($amazonSheet->units_ordered_l30)) ? (int)$amazonSheet->units_ordered_l30 : 0;
+            $totalRevenue = $price * $unitsL30;
+            
+            if ($totalRevenue > 0) {
+                // Get KW campaign spend (exact SKU match, excluding PT)
+                $kwSpend = 0;
+                $kwCampaign = $allSpCampaignReportsL30->first(function ($item) use ($sku) {
+                    $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
+                    $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                    $campaignName = strtoupper(trim(rtrim($campaignName, '.')));
+                    $cleanSku = strtoupper(trim(rtrim($sku, '.')));
+                    // Exclude PT campaigns
+                    if (stripos($campaignName, ' PT') !== false || stripos($campaignName, 'PT.') !== false) {
+                        return false;
+                    }
+                    return $campaignName === $cleanSku;
+                });
+                if ($kwCampaign) {
+                    $kwSpend = $kwCampaign->spend ?? 0;
+                }
+                
+                // Get PT campaign spend (ends with PT or PT.)
+                $ptSpend = 0;
+                $ptCampaign = $allSpCampaignReportsL30->first(function ($item) use ($sku) {
+                    $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
+                    $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                    $cleanName = strtoupper(trim($campaignName));
+                    return ($cleanName === $sku . ' PT' || $cleanName === $sku . ' PT.' || 
+                            $cleanName === $sku . 'PT' || $cleanName === $sku . 'PT.');
+                });
+                if ($ptCampaign) {
+                    $ptSpend = $ptCampaign->spend ?? 0;
+                }
+                
+                // Get HL campaign spend (SKU or SKU HEAD)
+                $hlSpend = 0;
+                if (isset($amazonHlL30)) {
+                    $hlCampaign = $amazonHlL30->first(function ($item) use ($sku) {
+                        $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
+                        $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                        $cleanName = strtoupper(trim($campaignName));
+                        return ($cleanName === $sku || $cleanName === $sku . ' HEAD') && strtoupper($item->campaignStatus ?? '') === 'ENABLED';
+                    });
+                    if ($hlCampaign) {
+                        $hlSpend = $hlCampaign->cost ?? 0;
+                    }
+                }
+                
+                // Total AD spend = KW + PT + HL
+                $totalAdSpend = $kwSpend + $ptSpend + $hlSpend;
+                $adPercent = $totalAdSpend / $totalRevenue * 100;
+            }
+            
+            // Calculate GPFT% = ((price × 0.80 - ship - lp) / price) × 100
+            $gpft = $price > 0
+                ? round((($price * 0.80 - $ship - $lp) / $price) * 100, 2)
+                : 0;
+            
+            // Calculate SPRICE, SGPFT, SROI if not set
+            $calculatedSprice = $sprice;
+            $calculatedSgpft = $sgpft;
+            $calculatedSroi = $sroi;
+            $hasCustomSprice = !empty($sprice);
+            
+            if (empty($calculatedSprice) && $price > 0) {
+                $calculatedSprice = $price;
+                $hasCustomSprice = false;
+                
+                // Calculate SGPFT based on default price (using 0.80 for Amazon)
+                $calculatedSgpft = round(
+                    $price > 0 ? (($price * 0.80 - $ship - $lp) / $price) * 100 : 0,
+                    2
+                );
+                
+                // Calculate SROI = ((SPRICE * (0.80 - AD%/100) - ship - lp) / lp) * 100
+                $adDecimal = $adPercent / 100;
+                $calculatedSroi = round(
+                    $lp > 0 ? (($price * (0.80 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
+                    2
+                );
+            } else if (!empty($calculatedSprice)) {
+                $hasCustomSprice = true;
+                
+                // Calculate SGPFT using custom SPRICE if not already set (using 0.80 for Amazon)
+                if (empty($calculatedSgpft)) {
+                    $spriceFloat = floatval($calculatedSprice);
+                    $calculatedSgpft = round(
+                        $spriceFloat > 0 ? (($spriceFloat * 0.80 - $ship - $lp) / $spriceFloat) * 100 : 0,
+                        2
+                    );
+                }
+                
+                // Calculate SROI = ((SPRICE * (0.80 - AD%/100) - ship - lp) / lp) * 100
+                if (!empty($calculatedSprice)) {
+                    $spriceFloat = floatval($calculatedSprice);
+                    $adDecimal = $adPercent / 100;
+                    $calculatedSroi = round(
+                        $lp > 0 ? (($spriceFloat * (0.80 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
+                        2
+                    );
+                }
+            }
+            
+            // Calculate SPFT% = SGPFT% - AD%
+            $spft = !empty($calculatedSgpft) ? round($calculatedSgpft - $adPercent, 2) : 0;
 
             // Calculate spend and CPC for second loop (same as main loop)
             $l7Spend = 0;
@@ -2708,6 +3001,14 @@ class AmazonSpBudgetController extends Controller
                 'roi' => $roi,
                 'NRL' => $nrl,
                 'hasCampaign' => $hasCampaign,
+                'GPFT' => $gpft,
+                'SPRICE' => $calculatedSprice,
+                'SGPFT' => $calculatedSgpft,
+                'Spft%' => $spft,
+                'SPFT' => $spft, // Keep both for backward compatibility
+                'SROI' => $calculatedSroi,
+                'has_custom_sprice' => $hasCustomSprice,
+                'SPRICE_STATUS' => $spriceStatus,
             ];
             }
         }
@@ -2748,12 +3049,16 @@ class AmazonSpBudgetController extends Controller
                 $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
                 $shopify = $shopifyData[$pm->sku] ?? null;
                 
-                // Get NRA, TPFT, PFT, ROI and NRL from AmazonDataView
+                // Get NRA, TPFT, PFT, ROI, NRL, SPRICE, SGPFT, SROI from AmazonDataView
                 $nra = '';
                 $tpft = null;
                 $pft = null;
                 $roi = null;
                 $nrl = 'REQ'; // Default value
+                $sprice = null;
+                $sgpft = null;
+                $sroi = null;
+                $spriceStatus = null;
                 if (isset($nrValues[$pm->sku])) {
                     $raw = $nrValues[$pm->sku];
                     if (!is_array($raw)) {
@@ -2765,8 +3070,128 @@ class AmazonSpBudgetController extends Controller
                         $pft = $raw['PFT'] ?? null;
                         $roi = $raw['ROI'] ?? null;
                         $nrl = $raw['NRL'] ?? 'REQ';
+                        $sprice = $raw['SPRICE'] ?? null;
+                        $sgpft = $raw['SGPFT'] ?? null;
+                        $sroi = $raw['SROI'] ?? null;
+                        $spriceStatus = $raw['SPRICE_STATUS'] ?? null;
                     }
                 }
+                
+                // Get LP and Ship from ProductMaster
+                $values = $pm->Values ?: [];
+                $lp = $values['lp'] ?? 0;
+                if ($lp === 0 && isset($pm->lp)) {
+                    $lp = floatval($pm->lp);
+                }
+                $ship = isset($values['ship']) ? floatval($values['ship']) : (isset($pm->ship) ? floatval($pm->ship) : 0);
+                
+                $price = ($amazonSheet && isset($amazonSheet->price)) ? $amazonSheet->price : 0;
+                
+                // Calculate AD% (ad spend percentage) - use ALL campaign types (KW + PT + HL) like OverallAmazonController
+                $adPercent = 0;
+                $unitsL30 = ($amazonSheet && isset($amazonSheet->units_ordered_l30)) ? (int)$amazonSheet->units_ordered_l30 : 0;
+                $totalRevenue = $price * $unitsL30;
+                
+                if ($totalRevenue > 0) {
+                    // Get KW campaign spend (exact SKU match, excluding PT)
+                    $kwSpend = 0;
+                    $kwCampaign = $allSpCampaignReportsL30->first(function ($item) use ($sku) {
+                        $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
+                        $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                        $campaignName = strtoupper(trim(rtrim($campaignName, '.')));
+                        $cleanSku = strtoupper(trim(rtrim($sku, '.')));
+                        // Exclude PT campaigns
+                        if (stripos($campaignName, ' PT') !== false || stripos($campaignName, 'PT.') !== false) {
+                            return false;
+                        }
+                        return $campaignName === $cleanSku;
+                    });
+                    if ($kwCampaign) {
+                        $kwSpend = $kwCampaign->spend ?? 0;
+                    }
+                    
+                    // Get PT campaign spend (ends with PT or PT.)
+                    $ptSpend = 0;
+                    $ptCampaign = $allSpCampaignReportsL30->first(function ($item) use ($sku) {
+                        $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
+                        $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                        $cleanName = strtoupper(trim($campaignName));
+                        return ($cleanName === $sku . ' PT' || $cleanName === $sku . ' PT.' || 
+                                $cleanName === $sku . 'PT' || $cleanName === $sku . 'PT.');
+                    });
+                    if ($ptCampaign) {
+                        $ptSpend = $ptCampaign->spend ?? 0;
+                    }
+                    
+                    // Get HL campaign spend (SKU or SKU HEAD)
+                    $hlSpend = 0;
+                    if (isset($amazonHlL30)) {
+                        $hlCampaign = $amazonHlL30->first(function ($item) use ($sku) {
+                            $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
+                            $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                            $cleanName = strtoupper(trim($campaignName));
+                            return ($cleanName === $sku || $cleanName === $sku . ' HEAD') && strtoupper($item->campaignStatus ?? '') === 'ENABLED';
+                        });
+                        if ($hlCampaign) {
+                            $hlSpend = $hlCampaign->cost ?? 0;
+                        }
+                    }
+                    
+                    // Total AD spend = KW + PT + HL
+                    $totalAdSpend = $kwSpend + $ptSpend + $hlSpend;
+                    $adPercent = round($totalAdSpend / $totalRevenue * 100, 4);
+                }
+                
+                // Calculate GPFT% = ((price × 0.80 - ship - lp) / price) × 100
+                $gpft = $price > 0
+                    ? round((($price * 0.80 - $ship - $lp) / $price) * 100, 2)
+                    : 0;
+                
+                // Calculate SPRICE, SGPFT, SROI if not set
+                $calculatedSprice = $sprice;
+                $calculatedSgpft = $sgpft;
+                $calculatedSroi = $sroi;
+                $hasCustomSprice = !empty($sprice);
+                
+                if (empty($calculatedSprice) && $price > 0) {
+                    $calculatedSprice = $price;
+                    $hasCustomSprice = false;
+                    
+                    // Calculate SGPFT based on default price (using 0.80 for Amazon)
+                    $calculatedSgpft = round(
+                        $price > 0 ? (($price * 0.80 - $ship - $lp) / $price) * 100 : 0,
+                        2
+                    );
+                    
+                    // Calculate SROI = ((SPRICE * (0.80 - AD%/100) - ship - lp) / lp) * 100
+                    $adDecimal = $adPercent / 100;
+                    $calculatedSroi = round(
+                        $lp > 0 ? (($price * (0.80 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
+                        2
+                    );
+                } else if (!empty($calculatedSprice)) {
+                    $hasCustomSprice = true;
+                    
+                    // Calculate SGPFT using custom SPRICE if not already set (using 0.80 for Amazon)
+                    if (empty($calculatedSgpft)) {
+                        $spriceFloat = floatval($calculatedSprice);
+                        $calculatedSgpft = round(
+                            $spriceFloat > 0 ? (($spriceFloat * 0.80 - $ship - $lp) / $spriceFloat) * 100 : 0,
+                            2
+                        );
+                    }
+                    
+                    // Always recalculate SROI from SPRICE and current AD% (AD% might have changed)
+                    $spriceFloat = floatval($calculatedSprice);
+                    $adDecimal = $adPercent / 100;
+                    $calculatedSroi = round(
+                        $lp > 0 ? (($spriceFloat * (0.80 - $adDecimal) - $ship - $lp) / $lp) * 100 : 0,
+                        2
+                    );
+                }
+                
+                // Always recalculate SPFT = SGPFT - AD% (AD% might have changed)
+                $spft = !empty($calculatedSgpft) ? round($calculatedSgpft - $adPercent, 2) : 0;
                 
                 // Check for campaign
                 $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
@@ -2884,6 +3309,14 @@ class AmazonSpBudgetController extends Controller
                     'roi' => $roi,
                     'NRL' => $nrl,
                     'hasCampaign' => $hasCampaign,
+                    'GPFT' => $gpft,
+                    'SPRICE' => $calculatedSprice,
+                    'SGPFT' => $calculatedSgpft,
+                    'Spft%' => $spft,
+                    'SPFT' => $spft, // Keep both for backward compatibility
+                    'SROI' => $calculatedSroi,
+                    'has_custom_sprice' => $hasCustomSprice,
+                    'SPRICE_STATUS' => $spriceStatus,
                 ];
             }
         }
