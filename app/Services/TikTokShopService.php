@@ -402,6 +402,7 @@ class TikTokShopService
                 Log::warning('TikTok API schema error (40006)', [
                     'path' => $path,
                     'method' => $method,
+                    'url' => $url,
                     'response' => $data,
                 ]);
             }
@@ -694,43 +695,9 @@ class TikTokShopService
      */
     public function getShopInfo(): ?array
     {
-        // Try multiple possible endpoint formats with correct TikTok Shop API structure
-        // Note: get_authorized_shop typically doesn't need shop_id (it returns the authorized shop)
-        $paths = [
-            '/api/shops/202309/shop/get_authorized_shop',
-            '/api/shops/202312/shop/get_authorized_shop',
-            '/api/shops/202401/shop/get_authorized_shop',
-            '/api/shops/202402/shop/get_authorized_shop',
-            '/api/shop/get_authorized_shop',
-            '/api/202309/shop/get_authorized_shop',
-            '/api/202312/shop/get_authorized_shop',
-        ];
-        
-        // For shop info, try without shop_id first (shop_id is derived from access_token)
-        foreach ($paths as $path) {
-            $response = $this->apiRequest('GET', $path, [], [], false); // false = don't include shop_id
-            if ($response && isset($response['data'])) {
-                return $response;
-            }
-            // If we got a different error (not signature and not schema), stop trying
-            if ($response && isset($response['code']) && $response['code'] != 106001 && $response['code'] != 40006) {
-                return $response;
-            }
-        }
-        
-        // If all failed without shop_id, try with shop_id
-        foreach ($paths as $path) {
-            $response = $this->apiRequest('GET', $path, [], [], true); // true = include shop_id
-            if ($response && isset($response['data'])) {
-                return $response;
-            }
-            // If we got a different error (not signature and not schema), stop trying
-            if ($response && isset($response['code']) && $response['code'] != 106001 && $response['code'] != 40006) {
-                return $response;
-            }
-        }
-        
-        return $response ?? null;
+        // TikTok Shop API endpoint for getting authorized shop info
+        $path = '/api/shop/get_authorized_shop';
+        return $this->apiRequest('GET', $path, [], [], false);
     }
 
     /**
@@ -773,14 +740,8 @@ class TikTokShopService
      */
     public function getProducts(int $pageSize = 20, string $cursor = '', int $status = 0): ?array
     {
-        // Try different possible endpoints with correct TikTok Shop API structure
-        $paths = [
-            '/api/products/202309/products/search',
-            '/api/products/202312/products/search',
-            '/api/products/202401/products/search',
-            '/api/products/202402/products/search',
-            '/api/products/search',
-        ];
+        // TikTok Shop API endpoint for product search
+        $path = '/api/product/202309/products/search';
 
         $body = [
             'page_size' => min($pageSize, 50), // Max 50 per TikTok API
@@ -794,20 +755,7 @@ class TikTokShopService
             $body['product_status'] = $status;
         }
 
-        // Try each endpoint until one works
-        foreach ($paths as $path) {
-            $response = $this->apiRequest('POST', $path, [], $body);
-            if ($response && isset($response['data'])) {
-                return $response;
-            }
-            // If we got a different error (not signature and not schema), stop trying
-            if ($response && isset($response['code']) && $response['code'] != 106001 && $response['code'] != 40006) {
-                return $response;
-            }
-        }
-
-        // If all failed, return the last response (might have error info)
-        return $response ?? null;
+        return $this->apiRequest('POST', $path, [], $body);
     }
 
     /**
@@ -862,33 +810,14 @@ class TikTokShopService
      */
     public function getProductInventory(array $productIds): ?array
     {
-        // Try different possible endpoints with correct TikTok Shop API structure
-        $paths = [
-            '/api/products/202309/products/inventory/query',
-            '/api/products/202312/products/inventory/query',
-            '/api/products/202401/products/inventory/query',
-            '/api/products/202402/products/inventory/query',
-            '/api/products/inventory/query',
-        ];
+        // TikTok Shop API endpoint for product inventory
+        $path = '/api/product/202309/products/inventory/query';
 
         $body = [
             'product_id_list' => array_slice($productIds, 0, 50), // Limit to 50 per request
         ];
 
-        // Try each endpoint until one works
-        foreach ($paths as $path) {
-            $response = $this->apiRequest('POST', $path, [], $body);
-            if ($response && isset($response['data'])) {
-                return $response;
-            }
-            // If we got a different error (not signature and not schema), stop trying
-            if ($response && isset($response['code']) && $response['code'] != 106001 && $response['code'] != 40006) {
-                return $response;
-            }
-        }
-
-        // If all failed, return the last response
-        return $response ?? null;
+        return $this->apiRequest('POST', $path, [], $body);
     }
 
     /**
@@ -901,14 +830,8 @@ class TikTokShopService
      */
     public function getProductAnalytics(int $startTime = null, int $endTime = null, array $productIds = []): ?array
     {
-        // Try different possible endpoints with correct TikTok Shop API structure
-        $paths = [
-            '/api/analytics/202309/analytics/products/query',
-            '/api/analytics/202312/analytics/products/query',
-            '/api/analytics/202401/analytics/products/query',
-            '/api/analytics/products/query',
-            '/api/analytics/query',
-        ];
+        // TikTok Shop API endpoint for product analytics
+        $path = '/api/analytics/202309/analytics/products/query';
         
         // Default to last 30 days if not specified
         if (!$startTime) {
@@ -929,20 +852,7 @@ class TikTokShopService
             $body['product_id_list'] = array_slice($productIds, 0, 50); // Limit to 50
         }
 
-        // Try each endpoint until one works
-        foreach ($paths as $path) {
-            $response = $this->apiRequest('POST', $path, [], $body);
-            if ($response && isset($response['data'])) {
-                return $response;
-            }
-            // If we got a different error (not signature and not schema), stop trying
-            if ($response && isset($response['code']) && $response['code'] != 106001 && $response['code'] != 40006) {
-                return $response;
-            }
-        }
-
-        // If all failed, return the last response
-        return $response ?? null;
+        return $this->apiRequest('POST', $path, [], $body);
     }
 
     /**
@@ -953,32 +863,14 @@ class TikTokShopService
      */
     public function getProductDetails(array $productIds): ?array
     {
-        // Try different possible endpoints with correct TikTok Shop API structure
-        $paths = [
-            '/api/products/202309/products/details',
-            '/api/products/202312/products/details',
-            '/api/products/202401/products/details',
-            '/api/products/202402/products/details',
-            '/api/products/details',
-        ];
+        // TikTok Shop API endpoint for product details
+        $path = '/api/product/202309/products/details';
         
         $body = [
             'product_id_list' => array_slice($productIds, 0, 50), // Limit to 50
         ];
 
-        // Try each endpoint until one works
-        foreach ($paths as $path) {
-            $response = $this->apiRequest('POST', $path, [], $body);
-            if ($response && isset($response['data'])) {
-                return $response;
-            }
-            // If we got a different error (not signature and not schema), stop trying
-            if ($response && isset($response['code']) && $response['code'] != 106001 && $response['code'] != 40006) {
-                return $response;
-            }
-        }
-
-        return $response ?? null;
+        return $this->apiRequest('POST', $path, [], $body);
     }
     
     /**
@@ -989,33 +881,14 @@ class TikTokShopService
      */
     public function getProductReviews(array $productIds): ?array
     {
-        // Try different possible endpoints for reviews with correct TikTok Shop API structure
-        $paths = [
-            '/api/products/202309/products/reviews/query',
-            '/api/products/202312/products/reviews/query',
-            '/api/products/202401/products/reviews/query',
-            '/api/products/202402/products/reviews/query',
-            '/api/products/reviews/query',
-            '/api/reviews/query',
-        ];
+        // TikTok Shop API endpoint for product reviews
+        $path = '/api/product/202309/products/reviews/query';
         
         $body = [
             'product_id_list' => array_slice($productIds, 0, 50), // Limit to 50
         ];
 
-        // Try each endpoint until one works
-        foreach ($paths as $path) {
-            $response = $this->apiRequest('POST', $path, [], $body);
-            if ($response && isset($response['data'])) {
-                return $response;
-            }
-            // If we got a different error (not signature and not schema), stop trying
-            if ($response && isset($response['code']) && $response['code'] != 106001 && $response['code'] != 40006) {
-                return $response;
-            }
-        }
-
-        return $response ?? null;
+        return $this->apiRequest('POST', $path, [], $body);
     }
 
     /**

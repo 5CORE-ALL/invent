@@ -66,14 +66,16 @@ class SyncTikTokApiData extends Command
             // Fetch all product data
             $this->info('Fetching products, inventory, analytics, and reviews from TikTok API...');
             
-            // First, test shop info to verify connection
+            // First, test shop info to verify connection (non-blocking)
             $shopInfo = $this->tiktokService->getShopInfo();
             if ($shopInfo && isset($shopInfo['data'])) {
                 $this->info('✓ Connected to TikTok Shop API');
             } else {
                 $this->warn('⚠ Could not fetch shop info. API response: ' . json_encode($shopInfo));
+                $this->info('Continuing with product data sync...');
             }
             
+            // Proceed with syncing product data even if shop info fails
             $data = $this->tiktokService->syncAllProductData();
 
             if (!empty($data['errors'])) {
