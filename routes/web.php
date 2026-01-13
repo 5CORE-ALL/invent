@@ -979,10 +979,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon/refresh-links', [OverallAmazonController::class, 'refreshAmazonLinks'])->name('amazon.refresh.links');
     Route::post('/save-amazon-nr', [OverallAmazonController::class, 'saveNrToDatabase']);
     Route::post('/save-amazon-sprice', [OverallAmazonController::class, 'saveSpriceToDatabase']);
+    Route::post('/amazon-clear-sprice', [OverallAmazonController::class, 'clearAmazonSprice']);
     Route::post('/apply-amazon-price', [OverallAmazonController::class, 'applyAmazonPrice']);
     Route::post('/update-sprice-status', [OverallAmazonController::class, 'updateSpriceStatus']);
     Route::post('/update-amazon-listed-live', [OverallAmazonController::class, 'updateListedLive']);
     Route::get('/amazon-export-pricing-cvr', [OverallAmazonController::class, 'exportAmazonPricingCVR'])->name('amazon.export.pricing.cvr');
+    Route::get('/amazon-export-sprice-upload', [OverallAmazonController::class, 'exportAmazonSpriceUpload'])->name('amazon.export.sprice.upload');
     Route::get('/amazon-ratings-sample', [OverallAmazonController::class, 'downloadAmazonRatingsSample'])->name('amazon.ratings.sample');
     Route::get('/amazon-pricing-increase-decrease', action: [OverallAmazonController::class, 'amazonPriceIncreaseDecrease'])->name('amazon.pricing.increase');
     Route::post('/amazon/save-manual-link', [OverallAmazonController::class, 'saveManualLink'])->name('amazon.saveManualLink');

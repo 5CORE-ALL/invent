@@ -129,6 +129,22 @@ class TikTokShopService
     }
 
     /**
+     * Output message using callback or log
+     */
+    protected function output(string $type, string $message): void
+    {
+        if (is_callable($this->outputCallback)) {
+            call_user_func($this->outputCallback, $type, $message);
+        } else {
+            // Fallback to Log if no callback is set
+            if ($type === 'info') Log::info($message);
+            elseif ($type === 'error') Log::error($message);
+            elseif ($type === 'warn') Log::warning($message);
+            else Log::debug($message);
+        }
+    }
+
+    /**
      * Get products list using the library
      */
     public function getProducts(int $pageSize = 20, string $cursor = '', int $status = 0, $outputCallback = null): ?array
@@ -313,28 +329,45 @@ class TikTokShopService
     {
         try {
             if (!$this->accessToken) {
+                $this->output('error', 'getProductInventory: No access token available');
                 return null;
             }
             
             $this->client->setAccessToken($this->accessToken);
             
             // Use inventorySearch method from library
+            // Ensure all product IDs are strings
+            $productIdList = array_map('strval', array_slice($productIds, 0, 50));
+            $this->output('info', 'Calling Product->inventorySearch() with ' . count($productIdList) . ' product IDs');
+            $this->output('info', 'Sample product IDs: ' . implode(', ', array_slice($productIdList, 0, 3)));
             $response = $this->client->Product->inventorySearch([
-                'product_id_list' => array_slice($productIds, 0, 50),
+                'product_id_list' => $productIdList,
             ]);
             $this->lastResponse = $response;
             
+            if (isset($response['code']) && $response['code'] != 0) {
+                $this->output('error', 'getProductInventory API error: Code ' . $response['code'] . ', Message: ' . ($response['message'] ?? 'No message'));
+                return null;
+            }
+            
+            $this->output('info', 'getProductInventory: Response received. Keys: ' . implode(', ', array_keys($response)));
             return $response;
         } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+            $this->output('info', 'getProductInventory: Token expired, refreshing...');
             if ($this->refreshAccessToken()) {
                 $this->client->setAccessToken($this->accessToken);
-                return $this->client->Product->inventorySearch([
-                    'product_id_list' => array_slice($productIds, 0, 50),
+                $productIdList = array_map('strval', array_slice($productIds, 0, 50));
+                $response = $this->client->Product->inventorySearch([
+                    'product_id_list' => $productIdList,
                 ]);
+                $this->lastResponse = $response;
+                return $response;
             }
+            $this->output('error', 'getProductInventory: Failed to refresh token - ' . $e->getMessage());
             Log::error('TikTok getProductInventory failed', ['error' => $e->getMessage()]);
             return null;
         } catch (\Exception $e) {
+            $this->output('error', 'getProductInventory Exception: ' . $e->getMessage() . ' (Class: ' . get_class($e) . ')');
             Log::error('TikTok getProductInventory failed', ['error' => $e->getMessage()]);
             return null;
         }
@@ -347,6 +380,7 @@ class TikTokShopService
     {
         try {
             if (!$this->accessToken) {
+                $this->output('error', 'getProductAnalytics: No access token available');
                 return null;
             }
             
@@ -368,19 +402,31 @@ class TikTokShopService
                 $params['product_id_list'] = array_slice($productIds, 0, 50);
             }
 
+            $this->output('info', 'Calling Analytics->getShopProductPerformanceList() with params: ' . json_encode($params));
             // Use getShopProductPerformanceList for product analytics
             $response = $this->client->Analytics->getShopProductPerformanceList($params);
             $this->lastResponse = $response;
             
+            if (isset($response['code']) && $response['code'] != 0) {
+                $this->output('error', 'getProductAnalytics API error: Code ' . $response['code'] . ', Message: ' . ($response['message'] ?? 'No message'));
+                return null;
+            }
+            
+            $this->output('info', 'getProductAnalytics: Response received. Keys: ' . implode(', ', array_keys($response)));
             return $response;
         } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+            $this->output('info', 'getProductAnalytics: Token expired, refreshing...');
             if ($this->refreshAccessToken()) {
                 $this->client->setAccessToken($this->accessToken);
-                return $this->client->Analytics->getShopProductPerformanceList($params);
+                $response = $this->client->Analytics->getShopProductPerformanceList($params);
+                $this->lastResponse = $response;
+                return $response;
             }
+            $this->output('error', 'getProductAnalytics: Failed to refresh token - ' . $e->getMessage());
             Log::error('TikTok getProductAnalytics failed', ['error' => $e->getMessage()]);
             return null;
         } catch (\Exception $e) {
+            $this->output('error', 'getProductAnalytics Exception: ' . $e->getMessage() . ' (Class: ' . get_class($e) . ')');
             Log::error('TikTok getProductAnalytics failed', ['error' => $e->getMessage()]);
             return null;
         }
@@ -422,28 +468,42 @@ class TikTokShopService
     {
         try {
             if (!$this->accessToken) {
+                $this->output('error', 'getProductReviews: No access token available');
                 return null;
             }
             
             $this->client->setAccessToken($this->accessToken);
             
+            $this->output('info', 'getProductReviews: Attempting to fetch reviews for ' . count($productIds) . ' products');
+            $this->output('warn', 'Note: TikTok API may not have a direct reviews endpoint - checking product details');
+            
             // Try to get reviews from product details (if available)
             // TikTok API might include reviews in product details
             $reviews = [];
+            $processed = 0;
             foreach (array_slice($productIds, 0, 50) as $productId) {
-                $product = $this->client->Product->getProduct($productId);
-                if (isset($product['data']['reviews']) || isset($product['reviews'])) {
-                    $reviews[] = [
-                        'product_id' => $productId,
-                        'reviews' => $product['data']['reviews'] ?? $product['reviews'] ?? [],
-                    ];
+                try {
+                    $product = $this->client->Product->getProduct($productId);
+                    $processed++;
+                    
+                    if (isset($product['data']['reviews']) || isset($product['reviews'])) {
+                        $reviews[] = [
+                            'product_id' => $productId,
+                            'reviews' => $product['data']['reviews'] ?? $product['reviews'] ?? [],
+                        ];
+                    }
+                } catch (\Exception $e) {
+                    $this->output('warn', "getProductReviews: Failed to get product {$productId}: " . $e->getMessage());
                 }
                 usleep(100000); // Rate limit
             }
             
+            $this->output('info', "getProductReviews: Processed {$processed} products, found reviews for " . count($reviews) . " products");
+            
             $this->lastResponse = ['reviews' => $reviews];
             return ['reviews' => $reviews];
         } catch (\Exception $e) {
+            $this->output('error', 'getProductReviews Exception: ' . $e->getMessage() . ' (Class: ' . get_class($e) . ')');
             Log::error('TikTok getProductReviews failed', ['error' => $e->getMessage()]);
             return null;
         }
@@ -463,54 +523,115 @@ class TikTokShopService
         ];
 
         try {
-            Log::info('TikTok: Fetching products...');
+            $this->output('info', 'Starting syncAllProductData...');
+            
+            $this->output('info', 'Step 1: Fetching products...');
             $products = $this->getAllProducts(1);
             $result['products'] = $products;
-            Log::info('TikTok: Fetched ' . count($products) . ' products');
+            $this->output('info', '✓ Fetched ' . count($products) . ' products');
 
             if (!empty($products)) {
-                $productIds = array_column($products, 'id');
-                $chunks = array_chunk($productIds, 50);
+                // Extract product IDs and ensure they're strings (TikTok API requires string IDs)
+                $productIds = array_map(function($product) {
+                    return (string)($product['id'] ?? $product['product_id'] ?? '');
+                }, array_filter($products, function($product) {
+                    return !empty($product['id'] ?? $product['product_id'] ?? null);
+                }));
                 
-                Log::info('TikTok: Fetching inventory for ' . count($productIds) . ' products in ' . count($chunks) . ' batches...');
-                
-                foreach ($chunks as $chunk) {
-                    $inventory = $this->getProductInventory($chunk);
-                    if ($inventory) {
-                        $inventoryList = $inventory['data']['inventory_list'] ?? $inventory['inventory_list'] ?? [];
-                        $result['inventory'] = array_merge($result['inventory'], $inventoryList);
+                if (empty($productIds)) {
+                    $this->output('warn', '⚠ No valid product IDs found in products');
+                } else {
+                    $chunks = array_chunk($productIds, 50);
+                    
+                    $this->output('info', 'Step 2: Fetching inventory for ' . count($productIds) . ' products in ' . count($chunks) . ' batches...');
+                    $batchNum = 1;
+                    
+                    foreach ($chunks as $chunk) {
+                        $this->output('info', "  Batch {$batchNum}/" . count($chunks) . ": Fetching inventory for " . count($chunk) . " products (IDs: " . substr(implode(', ', $chunk), 0, 50) . "...)");
+                        $inventory = $this->getProductInventory($chunk);
+                        
+                        if ($inventory) {
+                            $inventoryList = $inventory['data']['inventory_list'] ?? $inventory['inventory_list'] ?? [];
+                            if (!empty($inventoryList)) {
+                                $result['inventory'] = array_merge($result['inventory'], $inventoryList);
+                                $this->output('info', "  ✓ Batch {$batchNum}: Got " . count($inventoryList) . " inventory records");
+                            } else {
+                                $this->output('warn', "  ⚠ Batch {$batchNum}: No inventory_list in response. Response keys: " . implode(', ', array_keys($inventory)));
+                            }
+                        } else {
+                            $this->output('error', "  ✗ Batch {$batchNum}: getProductInventory returned null");
+                        }
+                        $batchNum++;
+                        usleep(200000);
                     }
-                    usleep(200000);
+                    $this->output('info', '✓ Completed inventory fetch: ' . count($result['inventory']) . ' total records');
                 }
-                Log::info('TikTok: Fetched inventory for ' . count($result['inventory']) . ' products');
+            } else {
+                $this->output('warn', '⚠ No products to fetch inventory for');
             }
 
-            Log::info('TikTok: Fetching analytics/views...');
-            $analytics = $this->getProductAnalytics();
-            if ($analytics) {
-                $result['analytics'] = $analytics['data']['product_performance_list'] ?? $analytics['product_performance_list'] ?? $analytics['data'] ?? [];
+            $this->output('info', 'Step 3: Fetching analytics/views...');
+            $this->output('warn', '⚠ Note: Analytics API requires API version 202405+. Skipping if unavailable.');
+            try {
+                $analytics = $this->getProductAnalytics();
+                if ($analytics) {
+                    $result['analytics'] = $analytics['data']['product_performance_list'] ?? $analytics['product_performance_list'] ?? $analytics['data'] ?? [];
+                    if (!empty($result['analytics'])) {
+                        $this->output('info', '✓ Fetched analytics for ' . count($result['analytics']) . ' products');
+                    } else {
+                        $this->output('warn', '⚠ Analytics response received but no product_performance_list found. Response keys: ' . implode(', ', array_keys($analytics)));
+                    }
+                } else {
+                    $this->output('warn', '⚠ Analytics not available (API version requirement or endpoint issue). Skipping...');
+                }
+            } catch (\Exception $e) {
+                $this->output('warn', '⚠ Analytics fetch failed: ' . $e->getMessage() . '. Skipping...');
             }
-            Log::info('TikTok: Fetched analytics for ' . count($result['analytics']) . ' products');
             
             if (!empty($products)) {
-                $productIds = array_column($products, 'id');
-                $chunks = array_chunk($productIds, 50);
+                // Extract product IDs and ensure they're strings
+                $productIds = array_map(function($product) {
+                    return (string)($product['id'] ?? $product['product_id'] ?? '');
+                }, array_filter($products, function($product) {
+                    return !empty($product['id'] ?? $product['product_id'] ?? null);
+                }));
                 
-                Log::info('TikTok: Fetching reviews for ' . count($productIds) . ' products in ' . count($chunks) . ' batches...');
-                
-                foreach ($chunks as $chunk) {
-                    $reviews = $this->getProductReviews($chunk);
+                if (!empty($productIds)) {
+                    $chunks = array_chunk($productIds, 50);
+                    
+                    $this->output('info', 'Step 4: Fetching reviews for ' . count($productIds) . ' products in ' . count($chunks) . ' batches...');
+                    $batchNum = 1;
+                    
+                    foreach ($chunks as $chunk) {
+                        $this->output('info', "  Batch {$batchNum}/" . count($chunks) . ": Fetching reviews for " . count($chunk) . " products...");
+                        $reviews = $this->getProductReviews($chunk);
+                    
                     if ($reviews) {
-                        $reviewList = $reviews['reviews'] ?? $reviews['data']['reviews'] ?? $reviews['review_list'] ?? [];
-                        $result['reviews'] = array_merge($result['reviews'], $reviewList);
+                        $reviewList = $reviews['reviews'] ?? $reviews['data']['reviews'] ?? $reviews['review_list'] ?? $reviews['data'] ?? [];
+                        if (!empty($reviewList)) {
+                            $result['reviews'] = array_merge($result['reviews'], $reviewList);
+                            $this->output('info', "  ✓ Batch {$batchNum}: Got " . count($reviewList) . " reviews");
+                        } else {
+                            $this->output('warn', "  ⚠ Batch {$batchNum}: No reviews in response. Response keys: " . implode(', ', array_keys($reviews)));
+                        }
+                    } else {
+                        $this->output('error', "  ✗ Batch {$batchNum}: getProductReviews returned null");
                     }
-                    usleep(200000);
+                        $batchNum++;
+                        usleep(200000);
+                    }
+                    $this->output('info', '✓ Completed reviews fetch: ' . count($result['reviews']) . ' total reviews');
+                } else {
+                    $this->output('warn', '⚠ No valid product IDs found for reviews');
                 }
-                Log::info('TikTok: Fetched reviews for ' . count($result['reviews']) . ' products');
+            } else {
+                $this->output('warn', '⚠ No products to fetch reviews for');
             }
 
         } catch (\Exception $e) {
-            Log::error('TikTok syncAllProductData error: ' . $e->getMessage());
+            $errorMsg = 'TikTok syncAllProductData error: ' . $e->getMessage();
+            $this->output('error', '✗ Exception: ' . $errorMsg);
+            Log::error($errorMsg, ['trace' => $e->getTraceAsString()]);
             $result['errors'][] = $e->getMessage();
         }
 

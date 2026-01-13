@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Amazon Pricing Decrease CVR FBM', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Amazon Pricing FBM', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -52,8 +52,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Amazon Pricing Decrease CVR FBM',
-        'sub_title' => 'Amazon Pricing Decrease CVR FBM',
+        'page_title' => 'Amazon Pricing FBM',
+        'sub_title' => 'Amazon Pricing FBM',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -105,6 +105,15 @@
                         <option value="pink">Pink 50%+</option>
                     </select>
 
+                    <select id="rating-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">
+                        <option value="all">Rating</option>
+                        <option value="red">Red &lt;3</option>
+                        <option value="yellow">Yellow 3-3.5</option>
+                        <option value="blue">Blue 3.51-3.99</option>
+                        <option value="green">Green 4-4.5</option>
+                        <option value="pink">Pink &gt;4.5</option>
+                    </select>
+
                     <select id="parent-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="show">Show Parent</option>
@@ -118,6 +127,13 @@
                         <option value="pushed">Pushed</option>
                         <option value="applied">Applied</option>
                         <option value="error">Error</option>
+                    </select>
+
+                    <select id="sold-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">Sold</option>
+                        <option value="sold">Sold (>0)</option>
+                        <option value="zero">0 Sold</option>
                     </select>
 
                     <!-- Column Visibility Dropdown -->
@@ -152,6 +168,10 @@
                     <a href="{{ url('/amazon-export-pricing-cvr') }}" class="btn btn-sm btn-success">
                         <i class="fas fa-file-csv"></i> Export
                     </a>
+
+                    <a href="{{ url('/amazon-export-sprice-upload') }}" class="btn btn-sm btn-info">
+                        <i class="fas fa-download"></i> SPRICE N Upload
+                    </a>
                     
                     <button id="decrease-btn" class="btn btn-sm btn-warning">
                         <i class="fas fa-percent"></i> Decrease
@@ -161,60 +181,42 @@
                         <i class="fas fa-percent"></i> Increase
                     </button>
 
-                    <button id="clear-sprice-btn" class="btn btn-sm btn-danger">
+                    <button id="clear-sprice-btn" class="btn btn-sm btn-danger" style="display: none;">
                         <i class="fas fa-eraser"></i> Clear SPRICE
-                    </button>
-                                        
-                    <button id="toggle-chart-btn" class="btn btn-sm btn-secondary" style="display: none;">
-                        <i class="fa fa-eye-slash"></i> Hide Chart
                     </button>
 
                     <span class="badge bg-info fs-6 p-2" id="total-sku-count-badge" style="color: black; font-weight: bold; display: none;">Total SKUs: 0</span>
 
                 </div>
 
-                <!-- Metrics Chart Section -->
-                <div id="metrics-chart-section" class="mt-2 p-2 bg-white rounded border" style="display: none;">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h6 class="mb-0">Metrics Trend</h6>
-                        <select id="chart-days-filter" class="form-select form-select-sm" style="width: auto;">
-                            <option value="7" selected>Last 7 Days</option>
-                            <option value="14">Last 14 Days</option>
-                            <option value="30">Last 30 Days</option>
-                            <option value="60">Last 60 Days</option>
-                        </select>
-                    </div>
-                    <div style="height: 200px;">
-                        <canvas id="metricsChart"></canvas>
-                    </div>
-                </div>
-
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">All Calculations Summary</h6>
+                    <h6 class="mb-3">Summary (INV > 0)</h6>
                     <div class="d-flex flex-wrap gap-2">
-                        <!-- Top Metrics -->
-                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold;">Total PFT AMT: $0.00</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total SALES AMT: $0.00</span>
-                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">AVG GPFT: 0%</span>
-                        <span class="badge bg-info fs-6 p-2" id="avg-pft-badge" style="color: black; font-weight: bold;">AVG PFT: 0%</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
-                        <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">Avg CVR: 0.00%</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="cvr-badge" style="color: black; font-weight: bold;">CVR: 0.00%</span>
-                        
-                        <!-- Amazon Metrics -->
-                        <span class="badge bg-primary fs-6 p-2" id="total-amazon-inv-badge" style="color: black; font-weight: bold;">Total Amazon INV: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-amazon-l30-badge" style="color: black; font-weight: bold;">Total Amazon L30: 0</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-dil-percent-badge" style="color: black; font-weight: bold;">DIL %: 0%</span>
+                        <!-- Sold Filter Badges (Clickable) -->
+                        <span class="badge bg-success fs-6 p-2 sold-filter-badge" data-filter="all" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter sold items">
+                            Sold (>0): <span id="total-sold-count">0</span>
+                        </span>
+                        <span class="badge bg-danger fs-6 p-2 sold-filter-badge" data-filter="zero" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">
+                            0 Sold: <span id="zero-sold-count">0</span>
+                        </span>
                         
                         <!-- Financial Metrics -->
-                        <span class="badge bg-danger fs-6 p-2" id="total-tcos-badge" style="color: black; font-weight: bold;">Total TCOS: 0%</span>
-                        <span class="badge bg-warning fs-6 p-2" id="total-spend-l30-badge" style="color: black; font-weight: bold;">Total Spend L30: $0.00</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-summary-badge" style="color: black; font-weight: bold;">Total PFT AMT: $0.00</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-summary-badge" style="color: black; font-weight: bold;">Total SALES AMT: $0.00</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-cogs-amt-badge" style="color: black; font-weight: bold;">COGS AMT: $0.00</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI %: 0%</span>
+                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold;">Total PFT: $0.00</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total Sales: $0.00</span>
+                        <span class="badge bg-warning fs-6 p-2" id="total-spend-l30-badge" style="color: black; font-weight: bold;">Spend L30: $0.00</span>
+                        
+                        <!-- Percentage Metrics -->
+                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">GPFT: 0%</span>
+                        <span class="badge bg-info fs-6 p-2" id="avg-pft-badge" style="color: black; font-weight: bold;">PFT: 0%</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="groi-percent-badge" style="color: black; font-weight: bold;">GROI: 0%</span>
+                        <span class="badge bg-primary fs-6 p-2" id="nroi-percent-badge" style="color: black; font-weight: bold;">NROI: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="tcos-percent-badge" style="color: black; font-weight: bold;">TCOS: 0%</span>
+                        
+                        <!-- Amazon Metrics -->
+                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-amazon-inv-badge" style="color: black; font-weight: bold;">INV: 0</span>
                     </div>
                 </div>
             </div>
@@ -341,191 +343,13 @@
 @section('script-bottom')
     <script>
         const COLUMN_VIS_KEY = "amazon_tabulator_column_visibility";
-        let metricsChart = null;
         let skuMetricsChart = null;
         let currentSku = null;
         let table = null; // Global table reference
         let decreaseModeActive = false; // Track decrease mode state
         let increaseModeActive = false; // Track increase mode state
         let selectedSkus = new Set(); // Track selected SKUs across all pages
-
-        // Initialize Metrics Chart
-        function initMetricsChart() {
-            const ctx = document.getElementById('metricsChart').getContext('2d');
-            metricsChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: [],
-                    datasets: [
-                        {
-                            label: 'Avg Price ($)',
-                            data: [],
-                            borderColor: 'rgb(75, 192, 192)',
-                            backgroundColor: 'rgba(75, 192, 192, 0.1)',
-                            borderWidth: 2,
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                            yAxisID: 'y',
-                            tension: 0.4
-                        },
-                        {
-                            label: 'Total Views',
-                            data: [],
-                            borderColor: 'rgb(54, 162, 235)',
-                            backgroundColor: 'rgba(54, 162, 235, 0.1)',
-                            borderWidth: 2,
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                            yAxisID: 'y1',
-                            tension: 0.4
-                        },
-                        {
-                            label: 'Avg CVR%',
-                            data: [],
-                            borderColor: 'rgb(255, 206, 86)',
-                            backgroundColor: 'rgba(255, 206, 86, 0.1)',
-                            borderWidth: 2,
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                            yAxisID: 'y',
-                            tension: 0.4
-                        },
-                        {
-                            label: 'Avg AD%',
-                            data: [],
-                            borderColor: 'rgb(255, 99, 132)',
-                            backgroundColor: 'rgba(255, 99, 132, 0.1)',
-                            borderWidth: 2,
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                            yAxisID: 'y',
-                            tension: 0.4
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: {
-                        mode: 'index',
-                        intersect: false,
-                    },
-                    plugins: {
-                        legend: {
-                            position: 'top',
-                            labels: {
-                                usePointStyle: true,
-                                padding: 10
-                            }
-                        },
-                        title: {
-                            display: false
-                        },
-                        tooltip: {
-                            enabled: true,
-                            mode: 'index',
-                            intersect: false,
-                            callbacks: {
-                                label: function(context) {
-                                    let label = context.dataset.label || '';
-                                    let value = context.parsed.y || 0;
-                                    
-                                    // Format based on dataset label
-                                    if (label.includes('Price') || label.includes('price')) {
-                                        return label + ': $' + value.toFixed(2);
-                                    } else if (label.includes('Views') || label.includes('views')) {
-                                        return label + ': ' + value.toLocaleString();
-                                    } else if (label.includes('CVR')) {
-                                        return label + ': ' + value.toFixed(1) + '%';
-                                    } else if (label.includes('AD') || label.includes('%')) {
-                                        return label + ': ' + Math.round(value) + '%';
-                                    }
-                                    return label + ': ' + value;
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        y: {
-                            type: 'linear',
-                            display: true,
-                            position: 'left',
-                            title: {
-                                display: true,
-                                text: 'Price / Percentages'
-                            },
-                            beginAtZero: false,
-                            ticks: {
-                                callback: function(value, index, values) {
-                                    // Format based on value range
-                                    if (value >= 0 && value <= 200) {
-                                        return value.toFixed(0) + '%';
-                                    } else {
-                                        return '$' + value.toFixed(0);
-                                    }
-                                }
-                            }
-                        },
-                        y1: {
-                            type: 'linear',
-                            display: true,
-                            position: 'right',
-                            title: {
-                                display: true,
-                                text: 'Views'
-                            },
-                            beginAtZero: true,
-                            grid: {
-                                drawOnChartArea: false,
-                            },
-                            ticks: {
-                                callback: function(value) {
-                                    return value.toLocaleString();
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-        }
-
-        // Load Metrics Data
-        function loadMetricsData(days = 7) {
-            // Check if table is initialized
-            if (!table) {
-                console.warn('Table not initialized yet, skipping chart data load');
-                return;
-            }
-            
-            // Get current filtered SKUs (INV > 0) from table
-            const tableData = table.getData("active");
-            const filteredSkus = tableData
-                .filter(row => !row['is_parent_summary'] && parseFloat(row['INV']) > 0)
-                .map(row => {
-                    const sku = row['(Child) sku'];
-                    return sku ? sku.toUpperCase().trim() : '';
-                })
-                .filter(sku => sku && !sku.startsWith('PARENT'));
-            
-            // Build query string with SKU filter
-            const skuParam = filteredSkus.length > 0 ? '&skus=' + encodeURIComponent(JSON.stringify(filteredSkus)) : '';
-            
-            fetch(`/amazon-metrics-history?days=${days}${skuParam}`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.length > 0 && metricsChart) {
-                        metricsChart.data.labels = data.map(d => d.date_formatted || d.date || '');
-                        metricsChart.data.datasets[0].data = data.map(d => d.avg_price || 0);
-                        metricsChart.data.datasets[1].data = data.map(d => d.total_views || 0);
-                        metricsChart.data.datasets[2].data = data.map(d => d.avg_cvr_percent || 0);
-                        metricsChart.data.datasets[3].data = data.map(d => d.avg_ad_percent || 0);
-                        metricsChart.update();
-                    }
-                })
-                .catch(error => {
-                    console.error('Error loading metrics data:', error);
-                });
-        }
+        let soldFilterActive = 'all'; // Track sold filter state: 'all', 'sold', 'zero'
 
         // SKU-specific chart
         function initSkuMetricsChart() {
@@ -762,26 +586,22 @@
 
         $(document).ready(function() {
             // Initialize charts
-            initMetricsChart();
-            loadMetricsData(7);
             initSkuMetricsChart();
 
-            // Toggle chart button
-            $('#toggle-chart-btn').on('click', function() {
-                const $chartSection = $('#metrics-chart-section');
-                const $btn = $(this);
+            // Sold filter badge click handlers
+            $('.sold-filter-badge').on('click', function() {
+                const filter = $(this).data('filter');
                 
-                if ($chartSection.is(':visible')) {
-                    $chartSection.slideUp();
-                    $btn.html('<i class="fa fa-eye"></i> Show Chart');
-                } else {
-                    $chartSection.slideDown();
-                    $btn.html('<i class="fa fa-eye-slash"></i> Hide Chart');
+                // Update dropdown value
+                if (filter === 'all') {
+                    $('#sold-filter').val('sold'); // Show only sold items
+                } else if (filter === 'zero') {
+                    $('#sold-filter').val('zero'); // Show only 0-sold items
                 }
+                
+                // Re-apply filters
+                applyFilters();
             });
-
-            // Show chart button by default on first load
-            $('#toggle-chart-btn').show();
 
             // Discount type dropdown change handler
             $('#discount-type-select').on('change', function() {
@@ -812,6 +632,8 @@
                     selectColumn.show();
                     $(this).removeClass('btn-warning').addClass('btn-danger');
                     $(this).html('<i class="fas fa-times"></i> Cancel Decrease');
+                    // Show Clear SPRICE button
+                    $('#clear-sprice-btn').show();
                 } else {
                     selectColumn.hide();
                     $(this).removeClass('btn-danger').addClass('btn-warning');
@@ -821,6 +643,8 @@
                     $('.sku-select-checkbox').prop('checked', false);
                     $('#select-all-checkbox').prop('checked', false);
                     $('#discount-input-container').hide();
+                    // Hide Clear SPRICE button
+                    $('#clear-sprice-btn').hide();
                 }
             });
 
@@ -839,6 +663,8 @@
                     selectColumn.show();
                     $(this).removeClass('btn-success').addClass('btn-danger');
                     $(this).html('<i class="fas fa-times"></i> Cancel Increase');
+                    // Show Clear SPRICE button
+                    $('#clear-sprice-btn').show();
                 } else {
                     selectColumn.hide();
                     $(this).removeClass('btn-danger').addClass('btn-success');
@@ -848,6 +674,8 @@
                     $('.sku-select-checkbox').prop('checked', false);
                     $('#select-all-checkbox').prop('checked', false);
                     $('#discount-input-container').hide();
+                    // Hide Clear SPRICE button
+                    $('#clear-sprice-btn').hide();
                 }
             });
 
@@ -1526,12 +1354,6 @@
                 }
             });
 
-            // Chart days filter
-            $('#chart-days-filter').on('change', function() {
-                const days = $(this).val();
-                loadMetricsData(days);
-            });
-
             // SKU chart days filter
             $('#sku-chart-days-filter').on('change', function() {
                 const days = $(this).val();
@@ -1563,17 +1385,18 @@
                         row.getElement().classList.add("parent-row");
                     }
                 },
-                columns: [{
-                        title: "Parent",
-                        field: "Parent",
-                        headerFilter: "input",
-                        headerFilterPlaceholder: "Search Parent...",
-                        cssClass: "text-primary",
-                        tooltip: true,
-                        frozen: true,
-                        width: 150,
-                        visible: false
-                    },
+                columns: [
+                    // {
+                    //     title: "Parent",
+                    //     field: "Parent",
+                    //     headerFilter: "input",
+                    //     headerFilterPlaceholder: "Search Parent...",
+                    //     cssClass: "text-primary",
+                    //     tooltip: true,
+                    //     frozen: true,
+                    //     width: 150,
+                    //     visible: false
+                    // },
 
                     {
                         title: "Image",
@@ -1621,7 +1444,7 @@
                         title: "Rating",
                         field: "rating",
                         hozAlign: "center",
-                        headerSort: false,
+                        headerSort: true,
                         tooltip: "Rating and Reviews from Jungle Scout",
                         formatter: function(cell) {
                             const rating = cell.getValue();
@@ -1632,10 +1455,17 @@
                                 return '<span style="color: #6c757d;">-</span>';
                             }
                             
-                            // Red and bold if reviews < 4
-                            const ratingColor = reviews < 4 ? '#a00211' : 'orange';
+                            // Use same colors as rating filter
+                            let ratingColor = '';
+                            const ratingVal = parseFloat(rating);
+                            if (ratingVal < 3) ratingColor = '#a00211'; // red
+                            else if (ratingVal >= 3 && ratingVal <= 3.5) ratingColor = '#ffc107'; // yellow
+                            else if (ratingVal >= 3.51 && ratingVal <= 3.99) ratingColor = '#3591dc'; // blue
+                            else if (ratingVal >= 4 && ratingVal <= 4.5) ratingColor = '#28a745'; // green
+                            else ratingColor = '#e83e8c'; // pink (>4.5)
+                            
                             const reviewColor = reviews < 4 ? '#a00211' : '#6c757d';
-                            const fontWeight = reviews < 4 ? '700' : '600';
+                            const fontWeight = '600';
                             
                             return `<div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
                                 <span style="color: ${ratingColor}; font-weight: ${fontWeight};">
@@ -1654,19 +1484,11 @@
                         frozen: true,
                         width: 100,
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const buyerLink = rowData['buyer_link'] || '';
                             const sellerLink = rowData['seller_link'] || '';
-                            
-                            // Enhanced debug logging - log every row
-                            console.log('Amazon Row Data:', {
-                                sku: rowData['(Child) sku'],
-                                buyerLink: buyerLink,
-                                sellerLink: sellerLink,
-                                allKeys: Object.keys(rowData).filter(k => k.toLowerCase().includes('link'))
-                            });
                             
                             let html = '<div style="display: flex; flex-direction: column; gap: 4px; align-items: center;">';
                             
@@ -1776,7 +1598,7 @@
                             const aL30 = parseFloat(row['A_L30']) || 0;
                             const sess30 = parseFloat(row['Sess30']) || 0;
 
-                            if (sess30 === 0) return '<span style="color: #6c757d; font-weight: 600;">0.0%</span>';
+                            if (sess30 === 0) return '<span style="color: #a00211; font-weight: 600;">0.0%</span>';
 
                             const cvr = (aL30 / sess30) * 100;
                             let color = '';
@@ -1809,7 +1631,7 @@
                             const aL7 = parseFloat(row['A_L7']) || 0;
                             const sess7 = parseFloat(row['Sess7']) || 0;
 
-                            if (sess7 === 0) return '<span style="color: #6c757d; font-weight: 600;">0.0%</span>';
+                            if (sess7 === 0) return '<span style="color: #a00211; font-weight: 600;">0.0%</span>';
 
                             const cvr = (aL7 / sess7) * 100;
                             let color = '';
@@ -1903,14 +1725,75 @@
                             let color = '';
 
                             if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
-                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
+                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
+                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink (50% and above)
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
                         width: 50
+                    },
+
+                    {
+                        title: "GROI%",
+                        field: "ROI_percentage",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '0.00%';
+                            const percent = parseFloat(value);
+                            let color = '';
+                            
+                            // getRoiColor logic from inc/dec page (same as eBay)
+                            if (percent < 50) color = '#a00211'; // red
+                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
+                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        sorter: "number",
+                        width: 65
+                    },
+
+                    {
+                        title: "NROI%",
+                        field: "NROI",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const roi = parseFloat(rowData.ROI_percentage) || 0;
+                            const adSpend = parseFloat(rowData.AD_Spend_L30) || 0;
+                            const price = parseFloat(rowData.price) || 0;
+                            const aL30 = parseFloat(rowData.A_L30) || 0;
+                            const totalSales = price * aL30;
+                            const tcos = totalSales > 0 ? (adSpend / totalSales) * 100 : 0;
+                            
+                            // NROI% = GROI% - TCOS%
+                            const nroi = roi - tcos;
+                            
+                            let color = '';
+                            if (nroi < 50) color = '#a00211'; // red
+                            else if (nroi >= 50 && nroi < 75) color = '#ffc107'; // yellow
+                            else if (nroi >= 75 && nroi <= 125) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${nroi.toFixed(0)}%</span>`;
+                        },
+                        sorter: function(a, b, aRow, bRow) {
+                            const calcNROI = (row) => {
+                                const roi = parseFloat(row.ROI_percentage) || 0;
+                                const adSpend = parseFloat(row.AD_Spend_L30) || 0;
+                                const price = parseFloat(row.price) || 0;
+                                const aL30 = parseFloat(row.A_L30) || 0;
+                                const totalSales = price * aL30;
+                                const tcos = totalSales > 0 ? (adSpend / totalSales) * 100 : 0;
+                                return roi - tcos;
+                            };
+                            return calcNROI(aRow.getData()) - calcNROI(bRow.getData());
+                        },
+                        width: 65
                     },
 
                     {
@@ -2025,38 +1908,16 @@
                             const percent = parseFloat(value);
                             let color = '';
                             
-                            // getPftColor logic from inc/dec page (same as eBay)
                             if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
-                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
+                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
+                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink (50% and above)
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
                         sorter: "number",
                         width: 50
-                    },
-                    {
-                        title: "ROI%",
-                        field: "ROI_percentage",
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '0.00%';
-                            const percent = parseFloat(value);
-                            let color = '';
-                            
-                            // getRoiColor logic from inc/dec page (same as eBay)
-                            if (percent < 50) color = '#a00211'; // red
-                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
-                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                        },
-                        sorter: "number",
-                        width: 65
                     },
                     {
                         title: "LMP",
@@ -2323,10 +2184,10 @@
                             let color = '';
                             // Same as GPFT% color logic
                             if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
-                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
+                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
+                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink (50% and above)
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
@@ -2345,10 +2206,10 @@
                             let color = '';
                             // Same as PFT% color logic
                             if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
-                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
+                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
+                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink (50% and above)
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
@@ -2546,8 +2407,10 @@
                 const gpftFilter = $('#gpft-filter').val();
                 const cvrFilter = $('#cvr-filter').val();
                 const dilFilter = $('#dil-filter').val();
+                const ratingFilter = $('#rating-filter').val();
                 const parentFilter = $('#parent-filter').val();
                 const statusFilter = $('#status-filter').val();
+                const soldFilter = $('#sold-filter').val();
 
                 table.clearFilter(true);
 
@@ -2613,6 +2476,20 @@
                     });
                 }
 
+                // Rating filter
+                if (ratingFilter !== 'all') {
+                    table.addFilter(function(data) {
+                        const rating = parseFloat(data['rating']) || 0;
+                        
+                        if (ratingFilter === 'red') return rating < 3;
+                        if (ratingFilter === 'yellow') return rating >= 3 && rating <= 3.5;
+                        if (ratingFilter === 'blue') return rating >= 3.51 && rating <= 3.99;
+                        if (ratingFilter === 'green') return rating >= 4 && rating <= 4.5;
+                        if (ratingFilter === 'pink') return rating > 4.5;
+                        return true;
+                    });
+                }
+
                 if (parentFilter === 'hide') {
                     table.addFilter(function(data) {
                         return data.is_parent_summary !== true;
@@ -2640,18 +2517,31 @@
                     });
                 }
 
+                // Sold filter (based on A_L30)
+                if (soldFilter !== 'all') {
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return false;
+                        
+                        const aL30 = parseFloat(data.A_L30) || 0;
+                        
+                        if (soldFilter === 'zero') {
+                            return aL30 === 0;
+                        } else if (soldFilter === 'sold') {
+                            return aL30 > 0;
+                        }
+                        return true;
+                    });
+                }
+
                 updateCalcValues();
                 updateSummary();
-                // Reload chart with filtered data (only INV > 0)
-                const days = $('#chart-days-filter').val() || 7;
-                loadMetricsData(days);
                 // Update select all checkbox after filter is applied
                 setTimeout(function() {
                     updateSelectAllCheckbox();
                 }, 100);
             }
 
-            $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #dil-filter, #parent-filter, #status-filter').on('change', function() {
+            $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter').on('change', function() {
                 applyFilters();
             });
 
@@ -2700,7 +2590,6 @@
             // Update summary badges for INV > 0
             function updateSummary() {
                 const data = table.getData("active");
-                let totalTcos = 0;
                 let totalSpendL30 = 0;
                 let totalPftAmt = 0;
                 let totalSalesAmt = 0;
@@ -2710,17 +2599,27 @@
                 let totalDilPercent = 0;
                 let dilCount = 0;
                 let totalSkuCount = 0;
+                let totalSoldCount = 0;
+                let zeroSoldCount = 0;
 
                 data.forEach(row => {
                     if (!row['is_parent_summary'] && parseFloat(row['INV']) > 0) {
                         totalSkuCount++;
-                        totalTcos += parseFloat(row['AD%'] || 0);
                         totalSpendL30 += parseFloat(row['AD_Spend_L30'] || 0);
                         totalPftAmt += parseFloat(row['Total_pft'] || 0);
                         totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
                         totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * parseFloat(row['A_L30'] || 0);
                         totalAmazonInv += parseFloat(row['INV'] || 0);
-                        totalAmazonL30 += parseFloat(row['A_L30'] || 0);
+                        
+                        const aL30 = parseFloat(row['A_L30'] || 0);
+                        totalAmazonL30 += aL30;
+                        
+                        // Count sold and 0-sold
+                        if (aL30 > 0) {
+                            totalSoldCount++;
+                        } else {
+                            zeroSoldCount++;
+                        }
                         
                         const dil = parseFloat(row['E Dil%'] || 0);
                         if (!isNaN(dil)) {
@@ -2750,38 +2649,43 @@
                     }
                 });
                 const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
-                $('#avg-cvr-badge').text('Avg CVR: ' + avgCVR.toFixed(1) + '%');
+                $('#avg-cvr-badge').text('CVR: ' + avgCVR.toFixed(1) + '%');
                 $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
-                $('#cvr-badge').text('CVR: ' + avgCVR.toFixed(2) + '%');
                 
-
-                $('#total-tcos-badge').text('Total TCOS: ' + Math.round(totalTcos));
-                $('#total-spend-l30-badge').text('Total Spend L30: $' + Math.round(totalSpendL30));
-                $('#total-pft-amt-summary-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
-                $('#total-sales-amt-summary-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
-                $('#total-cogs-amt-badge').text('COGS AMT: $' + Math.round(totalLpAmt));
-                const roiPercent = totalLpAmt > 0 ? ((totalPftAmt / totalLpAmt) * 100) : 0;
-                $('#roi-percent-badge').text('ROI %: ' + roiPercent.toFixed(1) + '%');
-                $('#total-amazon-inv-badge').text('Total Amazon INV: ' + Math.round(totalAmazonInv).toLocaleString());
-                $('#total-amazon-l30-badge').text('Total Amazon L30: ' + Math.round(totalAmazonL30).toLocaleString());
-                const avgDilPercent = dilCount > 0 ? (totalDilPercent / dilCount) : 0;
-                $('#avg-dil-percent-badge').text('DIL %: ' + Math.round(avgDilPercent) + '%');
-                $('#total-pft-amt-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
-                $('#total-sales-amt-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
+                // Update sold counts
+                $('#total-sold-count').text(totalSoldCount.toLocaleString());
+                $('#zero-sold-count').text(zeroSoldCount.toLocaleString());
+                
+                // Calculate TCOS% = (Total Spend L30 / Total Sales) * 100
+                const tcosPercent = totalSalesAmt > 0 ? ((totalSpendL30 / totalSalesAmt) * 100) : 0;
+                
+                $('#total-spend-l30-badge').text('Spend L30: $' + Math.round(totalSpendL30));
+                
+                // GROI% = (Total PFT / Total COGS) * 100
+                const groiPercent = totalLpAmt > 0 ? ((totalPftAmt / totalLpAmt) * 100) : 0;
+                $('#groi-percent-badge').text('GROI: ' + groiPercent.toFixed(1) + '%');
+                
+                // NROI% = GROI% - TCOS%
+                const nroiPercent = groiPercent - tcosPercent;
+                $('#nroi-percent-badge').text('NROI: ' + nroiPercent.toFixed(1) + '%');
+                
+                // TCOS%
+                $('#tcos-percent-badge').text('TCOS: ' + tcosPercent.toFixed(1) + '%');
+                
+                $('#total-amazon-inv-badge').text('INV: ' + Math.round(totalAmazonInv).toLocaleString());
+                $('#total-pft-amt-badge').text('Total PFT: $' + Math.round(totalPftAmt));
+                $('#total-sales-amt-badge').text('Total Sales: $' + Math.round(totalSalesAmt));
                 
                 // AVG GPFT% = (Total_pft / Total_Sales) * 100 (Gross Profit % - before ads)
                 const avgGpft = totalSalesAmt > 0 ? ((totalPftAmt / totalSalesAmt) * 100) : 0;
-                $('#avg-gpft-badge').text('AVG GPFT: ' + avgGpft.toFixed(1) + '%');
+                $('#avg-gpft-badge').text('GPFT: ' + avgGpft.toFixed(1) + '%');
                 
                 // TACOS% = (Total Ad Spend / Total Sales) * 100
                 const tacosPercent = totalSalesAmt > 0 ? ((totalSpendL30 / totalSalesAmt) * 100) : 0;
                 
                 // AVG PFT% = GPFT% - TACOS% (Net Profit % - after ads)
                 const avgPft = avgGpft - tacosPercent;
-                $('#avg-pft-badge').text('AVG PFT: ' + avgPft.toFixed(1) + '%');
-                
-                // Update total SKU count badge
-                $('#total-sku-count-badge').text('Total SKUs: ' + totalSkuCount.toLocaleString()).show();
+                $('#avg-pft-badge').text('PFT: ' + avgPft.toFixed(1) + '%');
             }
 
             // Build Column Visibility Dropdown
@@ -2867,9 +2771,6 @@
             table.on('dataLoaded', function() {
                 updateCalcValues();
                 updateSummary();
-                // Reload chart with current filtered data
-                const days = $('#chart-days-filter').val() || 7;
-                loadMetricsData(days);
                 setTimeout(function() {
                     $('[data-bs-toggle="tooltip"]').tooltip();
                     // Refresh checkboxes to reflect selectedSkus set
@@ -2891,36 +2792,8 @@
                         $(this).prop('checked', selectedSkus.has(sku));
                     });
                     updateSelectAllCheckbox();
-                    
-                    // Add refresh button to Links column header if not already added
-                    const linksCol = table.getColumn('links_column');
-                    if (linksCol) {
-                        const headerElement = linksCol.getElement();
-                        if (headerElement && !headerElement.querySelector('#refresh-links-btn')) {
-                            const titleElement = headerElement.querySelector('.tabulator-col-title');
-                            if (titleElement) {
-                                const buttonHtml = '<button id="refresh-links-btn" class="btn btn-sm btn-primary" style="padding: 2px 8px; font-size: 10px; line-height: 1.2; margin-bottom: 4px;" title="Refresh All Links"><i class="fa fa-refresh"></i> Refresh</button>';
-                                titleElement.innerHTML = buttonHtml + '<div>Links</div>';
-                            }
-                        }
-                    }
                 }, 100);
             });
-
-            // Add refresh button to Links column header after table is built
-            setTimeout(function() {
-                const linksCol = table.getColumn('links_column');
-                if (linksCol) {
-                    const headerElement = linksCol.getElement();
-                    if (headerElement && !headerElement.querySelector('#refresh-links-btn')) {
-                        const titleElement = headerElement.querySelector('.tabulator-col-title');
-                        if (titleElement) {
-                            const buttonHtml = '<button id="refresh-links-btn" class="btn btn-sm btn-primary" style="padding: 2px 8px; font-size: 10px; line-height: 1.2; margin-bottom: 4px;" title="Refresh All Links"><i class="fa fa-refresh"></i> Refresh</button>';
-                            titleElement.innerHTML = buttonHtml + '<div>Links</div>';
-                        }
-                    }
-                }
-            }, 500);
 
             // Toggle column from dropdown
             document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
@@ -3111,59 +2984,6 @@
                 },
                 complete: function() {
                     uploadBtn.prop('disabled', false).html('Upload & Import');
-                }
-            });
-        });
-
-        // Refresh Links Button Handler
-        $(document).on('click', '#refresh-links-btn', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            const $btn = $(this);
-            const originalHtml = $btn.html();
-            
-            // Disable button and show loading state
-            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Refreshing...');
-            
-            // Show toast notification
-            showToast('info', 'Refreshing links for all SKUs...');
-            
-            $.ajax({
-                url: '/amazon/refresh-links',
-                type: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                },
-                data: {
-                    update_all: true
-                },
-                success: function(response) {
-                    if (response.status === 'success') {
-                        showToast('success', response.message || `Successfully updated ${response.updated || 0} links`);
-                        
-                        // Reload table data
-                        if (typeof table !== 'undefined' && table.reload) {
-                            table.reload(function() {
-                                showToast('success', 'Table refreshed with updated links');
-                            });
-                        } else {
-                            // Fallback: reload page if table.reload is not available
-                            setTimeout(function() {
-                                location.reload();
-                            }, 1000);
-                        }
-                    } else {
-                        showToast('error', response.message || 'Failed to refresh links');
-                    }
-                },
-                error: function(xhr) {
-                    const error = xhr.responseJSON?.message || 'Failed to refresh links';
-                    showToast('error', error);
-                },
-                complete: function() {
-                    // Re-enable button
-                    $btn.prop('disabled', false).html(originalHtml);
                 }
             });
         });
