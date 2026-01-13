@@ -54,13 +54,13 @@
                         style="width: auto; display: inline-block;">
                         <option value="all" selected>All Inventory</option>
                         <option value="zero">0 Inventory</option>
-                        <option value="more">More than 0</option>
+                        <option value="more" selected>More than 0</option>
                     </select>
 
                     <select id="nrl-filter" class="form-select form-select-sm me-2"
                         style="width: auto; display: inline-block;">
                         <option value="all">All Status</option>
-                        <option value="REQ">REQ Only</option>
+                        <option value="REQ" selected>REQ Only</option>
                         <option value="NR">NR Only</option>
                     </select>
 
@@ -103,29 +103,33 @@
 
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">All Calculations Summary</h6>
+                    <h6 class="mb-3">All Calculations Summary (85% Margin)</h6>
                     <div class="d-flex flex-wrap gap-2">
                         <!-- Top Metrics -->
-                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold;">Total PFT AMT: $0.00</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total SALES AMT: $0.00</span>
+                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold;">Total PFT: $0</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total Sales: $0</span>
                         <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">AVG GPFT: 0%</span>
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">Avg CVR: 0.00%</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="cvr-badge" style="color: black; font-weight: bold;">CVR: 0.00%</span>
                         
                         <!-- eBay Metrics -->
-                        <span class="badge bg-primary fs-6 p-2" id="total-fba-inv-badge" style="color: black; font-weight: bold;">Total eBay INV: 0</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color: black; font-weight: bold;">Total INV: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-fba-l30-badge" style="color: black; font-weight: bold;">Total eBay L30: 0</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-dil-percent-badge" style="color: black; font-weight: bold;">DIL %: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">0 Sold: 0</span>
+                        <span class="badge bg-warning fs-6 p-2" id="avg-dil-badge" style="color: black; font-weight: bold;">DIL%: 0%</span>
                         
                         <!-- Financial Metrics -->
-                        <span class="badge bg-danger fs-6 p-2" id="total-tcos-badge" style="color: black; font-weight: bold;">Total TCOS: 0%</span>
-                        <span class="badge bg-warning fs-6 p-2" id="total-spend-l30-badge" style="color: black; font-weight: bold;">Total Spend L30: $0.00</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-summary-badge" style="color: black; font-weight: bold;">Total PFT AMT: $0.00</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-summary-badge" style="color: black; font-weight: bold;">Total SALES AMT: $0.00</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-cogs-amt-badge" style="color: black; font-weight: bold;">COGS AMT: $0.00</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI %: 0%</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-cogs-badge" style="color: black; font-weight: bold;">COGS: $0</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI%: 0%</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="total-spend-badge" style="color: black; font-weight: bold;">Total Spend: $0.00</span>
+                        
+                        <!-- Badge Filters -->
+                        <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing SKUs (INV>0)">Missing: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="map-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter mapped SKUs (INV>0)">Map: 0</span>
+                        <span class="badge bg-warning fs-6 p-2" id="not-map-count-badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter not mapped SKUs (INV>0)">N MP: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon (INV>0)">< Amz: 0</span>
+                        <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon (INV>0)">> Amz: 0</span>
                     </div>
                 </div>
             </div>
@@ -163,6 +167,12 @@
         const COLUMN_VIS_KEY = "ebay_tabulator_column_visibility";
 
         $(document).ready(function() {
+            // Badge filter state variables
+            let zeroSoldFilterActive = false;
+            let missingFilterActive = false;
+            let mapFilterActive = false;
+            let notMapFilterActive = false;
+
             const table = new Tabulator("#ebay-table", {
                 ajaxURL: "/ebay-data-json",
                 ajaxSorting: false,
@@ -230,6 +240,34 @@
                         sorter: "number"
                     },
                     {
+                        title: "E Stock",
+                        field: "eBay Stock",
+                        hozAlign: "center",
+                        width: 60,
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            if (value === 0) {
+                                return '<span style="color: #dc3545; font-weight: 600;">0</span>';
+                            }
+                            return `<span style="font-weight: 600;">${value}</span>`;
+                        }
+                    },
+                    {
+                        title: "Missing",
+                        field: "Missing",
+                        hozAlign: "center",
+                        width: 70,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const itemId = rowData['eBay_item_id'];
+                            if (!itemId || itemId === null || itemId === '') {
+                                return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
+                            }
+                            return '';
+                        }
+                    },
+                    {
                         title: "OV L30",
                         field: "L30",
                         hozAlign: "center",
@@ -269,7 +307,38 @@
                         width: 30,
                         sorter: "number"
                     },
-
+                    {
+                        title: "MAP",
+                        field: "MAP",
+                        hozAlign: "center",
+                        width: 90,
+                        headerFilter: "select",
+                        headerFilterParams: {
+                            values: {"": "All", "MP": "MP", "N MP": "N MP (Mismatch)"}
+                        },
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const itemId = rowData['eBay_item_id'];
+                            if (!itemId || itemId === null || itemId === '') {
+                                return '';
+                            }
+                            const ebayStock = parseFloat(rowData['eBay Stock']) || 0;
+                            const inv = parseFloat(rowData['INV']) || 0;
+                            if (inv > 0 && ebayStock === 0) {
+                                return `<span style=\"color: #dc3545; font-weight: bold;\">N MP<br>(${inv})</span>`;
+                            }
+                            if (inv > 0 && ebayStock > 0) {
+                                if (inv === ebayStock) {
+                                    return '<span style="color: #28a745; font-weight: bold;">MP</span>';
+                                } else {
+                                    const diff = inv - ebayStock;
+                                    const sign = diff > 0 ? '+' : '';
+                                    return `<span style=\"color: #dc3545; font-weight: bold;\">N MP<br>(${sign}${diff})</span>`;
+                                }
+                            }
+                            return '';
+                        }
+                    },
                     
                     // {
                     //     title: "eBay L60",
@@ -389,13 +458,36 @@
                         sorter: "number",
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue() || 0);
+                            const rowData = cell.getRow().getData();
+                            const amazonPrice = parseFloat(rowData['A Price']) || 0;
                             
                             if (value === 0) {
-                                // Show $0.00 in red with red alert icon
                                 return `<span style="color: #a00211; font-weight: 600;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
                             }
                             
-                            // Normal price formatting
+                            // Color code based on Amazon price comparison (like Reverb)
+                            if (amazonPrice > 0 && value > 0) {
+                                if (value < amazonPrice) {
+                                    return `<span style="color: #a00211; font-weight: 600;">$${value.toFixed(2)}</span>`;
+                                } else if (value > amazonPrice) {
+                                    return `<span style="color: #28a745; font-weight: 600;">$${value.toFixed(2)}</span>`;
+                                }
+                            }
+                            
+                            return `$${value.toFixed(2)}`;
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "A Prc",
+                        field: "A Price",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue());
+                            if (value === null || value === 0 || isNaN(value)) {
+                                return '<span style="color: #6c757d;">-</span>';
+                            }
                             return `$${value.toFixed(2)}`;
                         },
                         width: 70
@@ -938,12 +1030,115 @@
                         }
                     });
                 }
+
+                // 0 Sold badge filter (only INV > 0)
+                if (zeroSoldFilterActive) {
+                    table.addFilter(function(data) {
+                        const ebayL30 = parseFloat(data['eBay L30']) || 0;
+                        const inv = parseFloat(data['INV']) || 0;
+                        return ebayL30 === 0 && inv > 0;
+                    });
+                }
+
+                // Missing badge filter (only INV > 0)
+                if (missingFilterActive) {
+                    table.addFilter(function(data) {
+                        const itemId = data['eBay_item_id'];
+                        const inv = parseFloat(data['INV']) || 0;
+                        return (!itemId || itemId === null || itemId === '') && inv > 0;
+                    });
+                }
+
+                // Map badge filter (only INV > 0)
+                if (mapFilterActive) {
+                    table.addFilter(function(data) {
+                        const itemId = data['eBay_item_id'];
+                        const inv = parseFloat(data['INV']) || 0;
+                        if (!itemId || itemId === null || itemId === '' || inv === 0) return false;
+                        
+                        const ebayStock = parseFloat(data['eBay Stock']) || 0;
+                        return inv > 0 && ebayStock > 0 && inv === ebayStock;
+                    });
+                }
+
+                // Not Map badge filter (only INV > 0)
+                if (notMapFilterActive) {
+                    table.addFilter(function(data) {
+                        const itemId = data['eBay_item_id'];
+                        const inv = parseFloat(data['INV']) || 0;
+                        if (!itemId || itemId === null || itemId === '' || inv === 0) return false;
+                        
+                        const ebayStock = parseFloat(data['eBay Stock']) || 0;
+                        return inv > 0 && (ebayStock === 0 || (ebayStock > 0 && inv !== ebayStock));
+                    });
+                }
+
+                // < Amz badge filter (only INV > 0)
+                if (lessAmzFilterActive) {
+                    table.addFilter(function(data) {
+                        const inv = parseFloat(data['INV']) || 0;
+                        const ebayPrice = parseFloat(data['eBay Price']) || 0;
+                        const amazonPrice = parseFloat(data['A Price']) || 0;
+                        return inv > 0 && amazonPrice > 0 && ebayPrice > 0 && ebayPrice < amazonPrice;
+                    });
+                }
+
+                // > Amz badge filter (only INV > 0)
+                if (moreAmzFilterActive) {
+                    table.addFilter(function(data) {
+                        const inv = parseFloat(data['INV']) || 0;
+                        const ebayPrice = parseFloat(data['eBay Price']) || 0;
+                        const amazonPrice = parseFloat(data['A Price']) || 0;
+                        return inv > 0 && amazonPrice > 0 && ebayPrice > 0 && ebayPrice > amazonPrice;
+                    });
+                }
                 
                 updateCalcValues();
                 updateSummary();
             }
 
             $('#inventory-filter, #nrl-filter, #pft-filter').on('change', function() {
+                applyFilters();
+            });
+
+            // Badge click handlers for filtering (like Reverb)
+            $('#zero-sold-count-badge').on('click', function() {
+                zeroSoldFilterActive = !zeroSoldFilterActive;
+                applyFilters();
+            });
+
+            $('#missing-count-badge').on('click', function() {
+                missingFilterActive = !missingFilterActive;
+                mapFilterActive = false;
+                applyFilters();
+            });
+
+            $('#map-count-badge').on('click', function() {
+                mapFilterActive = !mapFilterActive;
+                missingFilterActive = false;
+                notMapFilterActive = false;
+                applyFilters();
+            });
+
+            $('#not-map-count-badge').on('click', function() {
+                notMapFilterActive = !notMapFilterActive;
+                mapFilterActive = false;
+                missingFilterActive = false;
+                applyFilters();
+            });
+
+            let lessAmzFilterActive = false;
+            let moreAmzFilterActive = false;
+
+            $('#less-amz-badge').on('click', function() {
+                lessAmzFilterActive = !lessAmzFilterActive;
+                moreAmzFilterActive = false;
+                applyFilters();
+            });
+
+            $('#more-amz-badge').on('click', function() {
+                moreAmzFilterActive = !moreAmzFilterActive;
+                lessAmzFilterActive = false;
                 applyFilters();
             });
             
@@ -985,6 +1180,12 @@
                 let totalFbaL30 = 0;
                 let totalDilPercent = 0;
                 let dilCount = 0;
+                let zeroSoldCount = 0;
+                let missingCount = 0;
+                let mapCount = 0;
+                let notMapCount = 0;
+                let lessAmzCount = 0;
+                let moreAmzCount = 0;
 
                 data.forEach(row => {
                     totalTcos += parseFloat(row['AD%'] || 0);
@@ -999,6 +1200,41 @@
                     if (!isNaN(dil)) {
                         totalDilPercent += dil;
                         dilCount++;
+                    }
+                    
+                    // Count 0 Sold (only INV > 0)
+                    const ebayL30 = parseFloat(row['eBay L30'] || 0);
+                    const inv = parseFloat(row.INV || 0);
+                    if (ebayL30 === 0 && inv > 0) {
+                        zeroSoldCount++;
+                    }
+                    
+                    // Count Missing (only count if INV > 0)
+                    const itemId = row['eBay_item_id'];
+                    const inv = parseFloat(row.INV || 0);
+                    if ((!itemId || itemId === null || itemId === '') && inv > 0) {
+                        missingCount++;
+                    }
+                    
+                    // Count Map and N MP (only INV > 0)
+                    if (itemId && itemId !== null && itemId !== '' && inv > 0) {
+                        const ebayStock = parseFloat(row['eBay Stock']) || 0;
+                        if (inv > 0 && ebayStock > 0 && inv === ebayStock) {
+                            mapCount++;
+                        } else if (inv > 0 && (ebayStock === 0 || (ebayStock > 0 && inv !== ebayStock))) {
+                            notMapCount++;
+                        }
+                    }
+                    
+                    // Count < Amz and > Amz (only INV > 0)
+                    const ebayPrice = parseFloat(row['eBay Price']) || 0;
+                    const amazonPrice = parseFloat(row['A Price']) || 0;
+                    if (inv > 0 && amazonPrice > 0 && ebayPrice > 0) {
+                        if (ebayPrice < amazonPrice) {
+                            lessAmzCount++;
+                        } else if (ebayPrice > amazonPrice) {
+                            moreAmzCount++;
+                        }
                     }
                 });
 
@@ -1023,24 +1259,29 @@
                 $('#cvr-badge').text('CVR: ' + avgCVR.toFixed(2) + '%');
                 
 
-                $('#total-tcos-badge').text('Total TCOS: ' + Math.round(totalTcos) + '%');
-                $('#total-spend-l30-badge').text('Total Spend L30: $' + Math.round(totalSpendL30));
-                $('#total-pft-amt-summary-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
-                $('#total-sales-amt-summary-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
-                $('#total-cogs-amt-badge').text('COGS AMT: $' + Math.round(totalLpAmt));
-                const roiPercent = totalLpAmt > 0 ? Math.round((totalPftAmt / totalLpAmt) * 100) : 0;
-                $('#roi-percent-badge').text('ROI %: ' + roiPercent + '%');
-                $('#total-fba-inv-badge').text('Total eBay INV: ' + Math.round(totalFbaInv).toLocaleString());
-                $('#total-fba-l30-badge').text('Total eBay L30: ' + Math.round(totalFbaL30).toLocaleString());
                 const avgDilPercent = dilCount > 0 ? (totalDilPercent / dilCount) : 0;
-                $('#avg-dil-percent-badge').text('DIL %: ' + Math.round(avgDilPercent) + '%');
-                $('#total-pft-amt').text('$' + Math.round(totalPftAmt));
-                $('#total-pft-amt-badge').text('Total PFT AMT: $' + Math.round(totalPftAmt));
-                $('#total-sales-amt').text('$' + Math.round(totalSalesAmt));
-                $('#total-sales-amt-badge').text('Total SALES AMT: $' + Math.round(totalSalesAmt));
+                const roiPercent = totalLpAmt > 0 ? Math.round((totalPftAmt / totalLpAmt) * 100) : 0;
                 const avgGpft = totalSalesAmt > 0 ? Math.round((totalPftAmt / totalSalesAmt) * 100) : 0;
+                
+                // Update all badges
+                $('#total-pft-amt-badge').text('Total PFT: $' + Math.round(totalPftAmt).toLocaleString());
+                $('#total-sales-amt-badge').text('Total Sales: $' + Math.round(totalSalesAmt).toLocaleString());
                 $('#avg-gpft-badge').text('AVG GPFT: ' + avgGpft + '%');
-                $('#avg-gpft-summary').text(avgGpft + '%');
+                $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
+                $('#avg-cvr-badge').text('Avg CVR: ' + avgCVR.toFixed(1) + '%');
+                $('#total-inv-badge').text('Total INV: ' + Math.round(totalFbaInv).toLocaleString());
+                $('#total-fba-l30-badge').text('Total eBay L30: ' + Math.round(totalFbaL30).toLocaleString());
+                $('#zero-sold-count-badge').text('0 Sold: ' + zeroSoldCount.toLocaleString());
+                $('#avg-dil-badge').text('DIL%: ' + Math.round(avgDilPercent) + '%');
+                $('#total-cogs-badge').text('COGS: $' + Math.round(totalLpAmt).toLocaleString());
+                $('#roi-percent-badge').text('ROI%: ' + roiPercent + '%');
+                $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
+                $('#total-spend-badge').text('Total Spend: $' + totalSpendL30.toFixed(2));
+                $('#missing-count-badge').text('Missing: ' + missingCount.toLocaleString());
+                $('#map-count-badge').text('Map: ' + mapCount.toLocaleString());
+                $('#not-map-count-badge').text('N MP: ' + notMapCount.toLocaleString());
+                $('#less-amz-badge').text('< Amz: ' + lessAmzCount.toLocaleString());
+                $('#more-amz-badge').text('> Amz: ' + moreAmzCount.toLocaleString());
             }
 
             // Build Column Visibility Dropdown
