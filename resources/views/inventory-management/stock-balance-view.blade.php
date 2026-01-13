@@ -300,7 +300,7 @@
                                 </div>
 
                                 <div class="mb-3">
-                                    <label for="to_adjust_qty" class="form-label fw-bold">Qty Adj</label>
+                                    <label for="to_adjust_qty" class="form-label fw-bold">Qty Adj (From)</label>
                                     <input type="number" id="to_adjust_qty" name="to_adjust_qty" class="form-control" min="1" required>
                                 </div>
                                 </div>
@@ -335,9 +335,10 @@
                                 </div>
 
                                 <div class="mb-3">
-                                    <label for="from_adjust_qty" class="form-label fw-bold">Qty Adj</label>
+                                    <label for="from_adjust_qty" class="form-label fw-bold">Qty Adj (To)</label>
                                     <input type="number" id="from_adjust_qty" name="from_adjust_qty" class="form-control" min="1" required>
                                     <small class="text-muted" id="from_qty_hint"></small>
+                                    <div class="text-danger" id="ratio_calculation_error" style="display: none; font-size: 14px; margin-top: 5px;"></div>
                                 </div>
 
                                 <!-- <div class="mb-3 text-center">
@@ -577,6 +578,32 @@
                 $('#stockBalanceForm').on('submit', function (e) {
                     e.preventDefault();
                     
+                    // Validate ratio calculation first - ensure calculated value is a whole number
+                    const fromQtyAdj = parseFloat($('#to_adjust_qty').val()) || 0;
+                    const ratio = $('#ratio').val() || '1:1';
+                    
+                    if (fromQtyAdj > 0 && ratio) {
+                        const ratioParts = ratio.split(':');
+                        if (ratioParts.length === 2) {
+                            const firstRatio = parseFloat(ratioParts[0]);
+                            const secondRatio = parseFloat(ratioParts[1]);
+                            
+                            if (firstRatio > 0) {
+                                const calculatedQty = fromQtyAdj * (secondRatio / firstRatio);
+                                
+                                // Check if the result is a whole number
+                                if (calculatedQty % 1 !== 0) {
+                                    showLargeErrorAlert(
+                                        'Invalid Quantity Calculation',
+                                        `The calculated "Qty Adj (To)" value (<strong>${calculatedQty.toFixed(2)}</strong>) is not a whole number.<br><br>` +
+                                        `Please adjust the "Qty Adj (From)" value or select a different ratio to get a whole number result.`
+                                    );
+                                    return false;
+                                }
+                            }
+                        }
+                    }
+                    
                     // Validate inventory before submitting
                     const fromQty = parseInt($('#from_adjust_qty').val()) || 0;
                     const availableQty = parseInt($('#from_available_qty').val()) || 0;
@@ -681,9 +708,17 @@
                 $('#from_sku').select2({
                     dropdownParent: $('#addWarehouseModal'),
                     placeholder: "Select SKU",
-                    allowClear: true
+                    allowClear: true,
+                    minimumInputLength: 0
                 });
                 
+                // Make the dropdown field act as search box - focus search input immediately when opened
+                $('#from_sku').on('select2:open', function() {
+                    setTimeout(function() {
+                        document.querySelector('#addWarehouseModal .select2-search__field').focus();
+                    }, 10);
+                });
+
                 // Auto-fill Parent when select sku
                 // $('#sku').on('change', function () {
                 //     const parent = $(this).find('option:selected').data('parent');
@@ -693,7 +728,15 @@
                 $('#to_sku').select2({
                     dropdownParent: $('#addWarehouseModal'),
                     placeholder: "Select SKU",
-                    allowClear: true
+                    allowClear: true,
+                    minimumInputLength: 0
+                });
+                
+                // Make the dropdown field act as search box - focus search input immediately when opened
+                $('#to_sku').on('select2:open', function() {
+                    setTimeout(function() {
+                        document.querySelector('#addWarehouseModal .select2-search__field').focus();
+                    }, 10);
                 });
                 
                 // Auto-fill Parent when select sku_to
@@ -771,6 +814,56 @@
                     console.log('dilll',toDil);
                     
                     $('#to_dil_percent').val(toDil);
+                });
+
+                // Calculate Qty Adj (To) based on Qty Adj (From) and ratio
+                function calculateToQtyAdj() {
+                    const fromQty = parseFloat($('#to_adjust_qty').val()) || 0;
+                    const ratio = $('#ratio').val() || '1:1';
+                    const errorDiv = $('#ratio_calculation_error');
+                    const toQtyInput = $('#from_adjust_qty');
+                    
+                    // Clear previous errors
+                    errorDiv.hide().text('');
+                    toQtyInput.removeClass('is-invalid');
+                    
+                    if (fromQty > 0 && ratio) {
+                        // Parse ratio (e.g., "2:1" -> [2, 1])
+                        const ratioParts = ratio.split(':');
+                        if (ratioParts.length === 2) {
+                            const firstRatio = parseFloat(ratioParts[0]);
+                            const secondRatio = parseFloat(ratioParts[1]);
+                            
+                            if (firstRatio > 0) {
+                                // Calculate: to_qty = from_qty * (second_ratio / first_ratio)
+                                const calculatedQty = fromQty * (secondRatio / firstRatio);
+                                
+                                // Check if the result is a whole number
+                                if (calculatedQty % 1 !== 0) {
+                                    // Not a whole number - show error
+                                    const roundedQty = Math.round(calculatedQty);
+                                    errorDiv.text(`⚠️ Calculated quantity (${calculatedQty.toFixed(2)}) is not a whole number. Expected: ${roundedQty} (rounded). Please adjust the "Qty Adj (From)" value.`).show();
+                                    toQtyInput.addClass('is-invalid').val('');
+                                    return false;
+                                } else {
+                                    // Valid whole number
+                                    toQtyInput.val(calculatedQty);
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                    return true;
+                }
+
+                // Trigger calculation when Qty Adj (From) changes
+                $('#to_adjust_qty').on('input', function() {
+                    calculateToQtyAdj();
+                });
+
+                // Trigger calculation when ratio changes
+                $('#ratio').on('change', function() {
+                    calculateToQtyAdj();
                 });
 
                
