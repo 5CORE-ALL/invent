@@ -32,6 +32,30 @@ class SyncTikTokApiData extends Command
     public function handle()
     {
         $this->tiktokService = new TikTokShopService();
+        
+        // Set callback to output signature retry attempts to console
+        $this->tiktokService->setSignatureCallback(function($event, $data) {
+            switch ($event) {
+                case 'format1_failed':
+                    $this->warn('⚠ Signature Format 1 (SHA256) failed. Trying alternative formats...');
+                    break;
+                case 'trying_format2':
+                    $this->info('🔄 Trying Signature Format 2 (HMAC-SHA256 with path)...');
+                    break;
+                case 'format2_success':
+                    $this->info('✅ Signature Format 2 (HMAC-SHA256) worked!');
+                    break;
+                case 'trying_format3':
+                    $this->info('🔄 Trying Signature Format 3 (HMAC-SHA256 params only)...');
+                    break;
+                case 'format3_success':
+                    $this->info('✅ Signature Format 3 (HMAC-SHA256 params only) worked!');
+                    break;
+                case 'all_formats_failed':
+                    $this->error('❌ All signature formats failed. Response: ' . json_encode($data));
+                    break;
+            }
+        });
 
         // Try to load tokens from env if not in cache
         if (!$this->tiktokService->isAuthenticated()) {

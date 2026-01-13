@@ -16,6 +16,9 @@ class TikTokShopService
     protected $authBase;
     protected $accessToken;
     protected $refreshToken;
+    protected $lastResponse = null;
+    protected $lastResponseCode = null;
+    protected $signatureCallback = null;
 
     public function __construct()
     {
@@ -131,41 +134,61 @@ class TikTokShopService
 
     /**
      * Generate signature for API request
-     * TikTok Shop API signature: clientSecret + path + sorted_keyvalue_params + body + clientSecret, then SHA256
+     * TikTok Shop API signature format based on documentation
      */
     protected function generateSignature(string $path, array $params, string $body = ''): string
     {
-        // Remove sign from params if exists (it shouldn't be in signature calculation)
+        // Try multiple signature formats and return the most likely correct one
+        // Based on TikTok Shop API documentation patterns
+        
+        // Remove sign from params if exists
         unset($params['sign']);
         
         // Sort parameters alphabetically by key
         ksort($params);
         
-        // Build string to sign: clientSecret + path + sorted_params + body + clientSecret
-        $stringToSign = $this->clientSecret . $path;
-        
-        // Append sorted parameters (key + value)
+        // Format 1: app_secret + path + sorted_params + body + app_secret, then SHA256
+        $stringToSign1 = $this->clientSecret . $path;
         foreach ($params as $key => $value) {
             if ($value !== null && $value !== '') {
-                $stringToSign .= $key . (string)$value;
+                $stringToSign1 .= $key . (string)$value;
             }
         }
-        
-        // Append body if exists
         if (!empty($body)) {
-            $stringToSign .= $body;
+            $stringToSign1 .= $body;
         }
+        $stringToSign1 .= $this->clientSecret;
+        $sign1 = hash('sha256', $stringToSign1);
         
-        // Append clientSecret at the end
-        $stringToSign .= $this->clientSecret;
+        // Format 2: path + sorted_params + body, then HMAC-SHA256 with app_secret
+        $stringToSign2 = $path;
+        foreach ($params as $key => $value) {
+            if ($value !== null && $value !== '') {
+                $stringToSign2 .= $key . (string)$value;
+            }
+        }
+        if (!empty($body)) {
+            $stringToSign2 .= $body;
+        }
+        $sign2 = hash_hmac('sha256', $stringToSign2, $this->clientSecret);
         
-        // Generate SHA256 hash (not HMAC, just hash)
-        return hash('sha256', $stringToSign);
+        // Format 3: sorted_params only, then HMAC-SHA256
+        $stringToSign3 = '';
+        foreach ($params as $key => $value) {
+            if ($value !== null && $value !== '') {
+                $stringToSign3 .= $key . (string)$value;
+            }
+        }
+        $stringToSign3 .= $body;
+        $sign3 = hash_hmac('sha256', $stringToSign3, $this->clientSecret);
+        
+        // Return Format 1 by default (most common for TikTok Shop API)
+        // The retry mechanism will try others if this fails
+        return $sign1;
     }
 
     /**
-     * Generate signature using alternative format (HMAC-SHA256)
-     * This is a fallback if the standard format doesn't work
+     * Generate signature using alternative format (HMAC-SHA256 without clientSecret wrapper)
      */
     protected function generateSignatureAlternative(string $path, array $params, string $body = ''): string
     {
@@ -175,22 +198,39 @@ class TikTokShopService
         // Sort parameters alphabetically by key
         ksort($params);
         
-        // Build string to sign: path + sorted_params + body
+        // Build string: path + sorted_params + body
         $stringToSign = $path;
         
-        // Append sorted parameters (key + value)
         foreach ($params as $key => $value) {
             if ($value !== null && $value !== '') {
                 $stringToSign .= $key . (string)$value;
             }
         }
         
-        // Append body if exists
         if (!empty($body)) {
             $stringToSign .= $body;
         }
         
         // Generate HMAC-SHA256 signature
+        return hash_hmac('sha256', $stringToSign, $this->clientSecret);
+    }
+    
+    /**
+     * Generate signature format 3: params + body only
+     */
+    protected function generateSignatureFormat3(string $path, array $params, string $body = ''): string
+    {
+        unset($params['sign']);
+        ksort($params);
+        
+        $stringToSign = '';
+        foreach ($params as $key => $value) {
+            if ($value !== null && $value !== '') {
+                $stringToSign .= $key . (string)$value;
+            }
+        }
+        $stringToSign .= $body;
+        
         return hash_hmac('sha256', $stringToSign, $this->clientSecret);
     }
 
@@ -262,6 +302,10 @@ class TikTokShopService
 
             $data = $response->json();
             
+            // Store response for external access
+            $this->lastResponse = $data;
+            $this->lastResponseCode = $data['code'] ?? null;
+            
             // Log request for debugging (hide sensitive data)
             $logUrl = str_replace($this->accessToken, '***', $url);
             Log::debug('TikTok API Request', [
@@ -273,35 +317,59 @@ class TikTokShopService
                 'response_message' => $data['message'] ?? null
             ]);
             
-            // If signature error, log more details and try alternative signature format
+            // If signature error, try alternative signature formats
             if (isset($data['code']) && ($data['code'] == 106001 || (isset($data['message']) && strpos($data['message'], 'sign') !== false))) {
-                Log::error('TikTok Signature Error Details', [
-                    'path' => $path,
-                    'method' => $method,
-                    'params_keys' => array_keys($params),
-                    'signature_length' => strlen($sign),
-                    'body_length' => strlen($bodyJson),
-                    'response' => $data
-                ]);
+                // Call callback if set (for command output)
+                if ($this->signatureCallback && is_callable($this->signatureCallback)) {
+                    call_user_func($this->signatureCallback, 'format1_failed', $data);
+                }
                 
-                // Try alternative signature format (HMAC-SHA256 instead of SHA256)
-                $altSign = $this->generateSignatureAlternative($path, $params, $bodyJson);
-                if ($altSign !== $sign) {
-                    Log::info('Trying alternative signature format', ['alt_signature' => $altSign]);
-                    $params['sign'] = $altSign;
-                    $url = $this->apiBase . $path . '?' . http_build_query($params);
-                    
-                    if ($method === 'GET') {
-                        $response = Http::timeout(30)->withHeaders($headers)->get($url);
-                    } else {
-                        $response = Http::timeout(30)->withHeaders($headers)->post($url, $body);
+                // Try Format 2: HMAC-SHA256 (path + params + body)
+                $altSign2 = $this->generateSignatureAlternative($path, $params, $bodyJson);
+                if ($this->signatureCallback && is_callable($this->signatureCallback)) {
+                    call_user_func($this->signatureCallback, 'trying_format2', $altSign2);
+                }
+                $params['sign'] = $altSign2;
+                $url = $this->apiBase . $path . '?' . http_build_query($params);
+                
+                if ($method === 'GET') {
+                    $response = Http::timeout(30)->withHeaders($headers)->get($url);
+                } else {
+                    $response = Http::timeout(30)->withHeaders($headers)->post($url, $body);
+                }
+                $data = $response->json();
+                
+                if (!isset($data['code']) || ($data['code'] != 106001 && $data['code'] != 36009004)) {
+                    if ($this->signatureCallback && is_callable($this->signatureCallback)) {
+                        call_user_func($this->signatureCallback, 'format2_success', $data);
                     }
-                    $data = $response->json();
-                    
-                    if (!isset($data['code']) || $data['code'] != 106001) {
-                        Log::info('Alternative signature format worked!');
-                        return $data;
+                    return $data;
+                }
+                
+                // Try Format 3: params + body only
+                $altSign3 = $this->generateSignatureFormat3($path, $params, $bodyJson);
+                if ($this->signatureCallback && is_callable($this->signatureCallback)) {
+                    call_user_func($this->signatureCallback, 'trying_format3', $altSign3);
+                }
+                $params['sign'] = $altSign3;
+                $url = $this->apiBase . $path . '?' . http_build_query($params);
+                
+                if ($method === 'GET') {
+                    $response = Http::timeout(30)->withHeaders($headers)->get($url);
+                } else {
+                    $response = Http::timeout(30)->withHeaders($headers)->post($url, $body);
+                }
+                $data = $response->json();
+                
+                if (!isset($data['code']) || ($data['code'] != 106001 && $data['code'] != 36009004)) {
+                    if ($this->signatureCallback && is_callable($this->signatureCallback)) {
+                        call_user_func($this->signatureCallback, 'format3_success', $data);
                     }
+                    return $data;
+                }
+                
+                if ($this->signatureCallback && is_callable($this->signatureCallback)) {
+                    call_user_func($this->signatureCallback, 'all_formats_failed', $data);
                 }
             }
 
@@ -430,6 +498,14 @@ class TikTokShopService
         if ($refreshToken) {
             Cache::put('tiktok_refresh_token', $refreshToken, 86400 * 30);
         }
+    }
+
+    /**
+     * Set callback for signature retry events (for command output)
+     */
+    public function setSignatureCallback(callable $callback): void
+    {
+        $this->signatureCallback = $callback;
     }
 
     /**
