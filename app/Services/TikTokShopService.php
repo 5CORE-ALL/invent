@@ -120,6 +120,7 @@ class TikTokShopService
             
             $this->client->setAccessToken($this->accessToken);
             
+            // Library expects page_size in body, not query params
             $body = [
                 'page_size' => min($pageSize, 50),
             ];
@@ -132,7 +133,7 @@ class TikTokShopService
                 $body['product_status'] = $status;
             }
 
-            // Use searchProducts method from library
+            // Use searchProducts method from library - empty query params, body with page_size
             $response = $this->client->Product->searchProducts([], $body);
             $this->lastResponse = $response;
             

@@ -97,21 +97,31 @@ class SyncTikTokApiData extends Command
                 }
             });
             
-            if ($shopInfo && isset($shopInfo['data'])) {
-                $this->info('✓ Connected to TikTok Shop API');
+            // Check for success - library returns shops array directly or in data
+            if ($shopInfo && (isset($shopInfo['shops']) || isset($shopInfo['data']['shops']))) {
+                $shops = $shopInfo['shops'] ?? $shopInfo['data']['shops'] ?? [];
+                if (!empty($shops)) {
+                    $shop = $shops[0];
+                    $this->info('✓ Connected to TikTok Shop API');
+                    $this->info('  Shop: ' . ($shop['name'] ?? 'N/A') . ' (ID: ' . ($shop['id'] ?? 'N/A') . ')');
+                } else {
+                    $this->warn('⚠ Shop info returned but no shops found.');
+                    $this->info('Continuing with product data sync...');
+                }
+            } elseif ($shopInfo && isset($shopInfo['code']) && $shopInfo['code'] != 0) {
+                $this->warn('⚠ Could not fetch shop info.');
+                $this->error('Error Code: ' . ($shopInfo['code'] ?? 'unknown'));
+                $this->error('Error Message: ' . ($shopInfo['message'] ?? 'No message provided'));
+                if (isset($shopInfo['validation_failures'])) {
+                    $this->error('Validation Failures: ' . json_encode($shopInfo['validation_failures'], JSON_PRETTY_PRINT));
+                }
+                if (isset($shopInfo['request_id'])) {
+                    $this->line('Request ID: ' . $shopInfo['request_id']);
+                }
+                $this->line('Full Response: ' . json_encode($shopInfo, JSON_PRETTY_PRINT));
+                $this->info('Continuing with product data sync...');
             } else {
                 $this->warn('⚠ Could not fetch shop info.');
-                if ($shopInfo) {
-                    $this->error('Error Code: ' . ($shopInfo['code'] ?? 'unknown'));
-                    $this->error('Error Message: ' . ($shopInfo['message'] ?? 'No message provided'));
-                    if (isset($shopInfo['validation_failures'])) {
-                        $this->error('Validation Failures: ' . json_encode($shopInfo['validation_failures'], JSON_PRETTY_PRINT));
-                    }
-                    if (isset($shopInfo['request_id'])) {
-                        $this->line('Request ID: ' . $shopInfo['request_id']);
-                    }
-                    $this->line('Full Response: ' . json_encode($shopInfo, JSON_PRETTY_PRINT));
-                }
                 $this->info('Continuing with product data sync...');
             }
             
