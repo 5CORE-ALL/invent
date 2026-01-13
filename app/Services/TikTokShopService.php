@@ -13,6 +13,7 @@ class TikTokShopService
     protected $clientKey;
     protected $clientSecret;
     protected $shopId;
+    protected $shopCipher = null;
     protected $accessToken;
     protected $refreshToken;
     protected $lastResponse = null;
@@ -58,6 +59,17 @@ class TikTokShopService
             $response = $this->client->Authorization->getAuthorizedShop();
             
             $this->lastResponse = $response;
+            
+            // Extract shop_cipher from response for use in other API calls
+            if (isset($response['shops']) && is_array($response['shops']) && !empty($response['shops'])) {
+                $shop = $response['shops'][0];
+                if (isset($shop['cipher'])) {
+                    $this->shopCipher = $shop['cipher'];
+                    if ($outputCallback) {
+                        $outputCallback('info', 'Shop cipher extracted: ' . substr($this->shopCipher, 0, 20) . '...');
+                    }
+                }
+            }
             
             if ($outputCallback) {
                 $outputCallback('info', 'Response received: ' . json_encode($response, JSON_PRETTY_PRINT));
@@ -147,12 +159,49 @@ class TikTokShopService
                 $body['product_status'] = $status;
             }
 
-            if ($callback && is_callable($callback)) {
-                call_user_func($callback, 'info', 'Calling Product->searchProducts() with body: ' . json_encode($body));
+            // Get shop_cipher if not already set (try to get from shop info)
+            if (!$this->shopCipher) {
+                $shopInfo = $this->getShopInfo();
+                if ($shopInfo && isset($shopInfo['shops'][0]['cipher'])) {
+                    $this->shopCipher = $shopInfo['shops'][0]['cipher'];
+                }
             }
 
-            // Call searchProducts with body as single parameter
-            $response = $this->client->Product->searchProducts($body);
+            // Build query params with shop_cipher (required by TikTok API)
+            $queryParams = [];
+            if ($this->shopCipher) {
+                $queryParams['shop_cipher'] = $this->shopCipher;
+            }
+
+            if ($callback && is_callable($callback)) {
+                call_user_func($callback, 'info', 'Calling Product->searchProducts() with query: ' . json_encode($queryParams) . ', body: ' . json_encode($body));
+            }
+
+            // Call searchProducts - try different parameter formats
+            $response = null;
+            try {
+                // Try with query params and body (two parameters)
+                $response = $this->client->Product->searchProducts($queryParams, $body);
+            } catch (\Exception $e1) {
+                // If that fails, try with shop_cipher in body (single parameter)
+                if ($this->shopCipher) {
+                    $bodyWithCipher = $body;
+                    $bodyWithCipher['shop_cipher'] = $this->shopCipher;
+                    try {
+                        $response = $this->client->Product->searchProducts($bodyWithCipher);
+                    } catch (\Exception $e2) {
+                        // If that also fails, try with just query params
+                        if (!empty($queryParams)) {
+                            $response = $this->client->Product->searchProducts($queryParams);
+                        } else {
+                            throw $e1; // Re-throw original exception
+                        }
+                    }
+                } else {
+                    throw $e1;
+                }
+            }
+            
             $this->lastResponse = $response;
             
             if ($callback && is_callable($callback)) {
@@ -179,7 +228,24 @@ class TikTokShopService
             // Token expired - refresh and retry
             if ($this->refreshAccessToken()) {
                 $this->client->setAccessToken($this->accessToken);
-                $response = $this->client->Product->searchProducts($body);
+                // Rebuild query params and body for retry
+                $retryQueryParams = [];
+                if ($this->shopCipher) {
+                    $retryQueryParams['shop_cipher'] = $this->shopCipher;
+                }
+                $retryBody = $body;
+                
+                // Retry with same parameters
+                try {
+                    $response = $this->client->Product->searchProducts($retryQueryParams, $retryBody);
+                } catch (\Exception $e2) {
+                    if ($this->shopCipher) {
+                        $retryBody['shop_cipher'] = $this->shopCipher;
+                        $response = $this->client->Product->searchProducts($retryBody);
+                    } else {
+                        throw $e2;
+                    }
+                }
                 $this->lastResponse = $response;
                 if ($callback && is_callable($callback)) {
                     call_user_func($callback, 'info', 'Token refreshed, retry successful');
