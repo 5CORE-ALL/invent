@@ -2,18 +2,17 @@
 
 namespace App\Services;
 
-use Illuminate\Support\Facades\Http;
+use EcomPHP\TiktokShop\Client;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
 class TikTokShopService
 {
+    protected $client;
     protected $clientKey;
     protected $clientSecret;
     protected $shopId;
-    protected $apiBase;
-    protected $authBase;
     protected $accessToken;
     protected $refreshToken;
     protected $lastResponse = null;
@@ -24,340 +23,96 @@ class TikTokShopService
         $this->clientKey = config('services.tiktok.client_key');
         $this->clientSecret = config('services.tiktok.client_secret');
         $this->shopId = config('services.tiktok.shop_id');
-        $this->apiBase = rtrim(config('services.tiktok.api_base'), '/');
-        $this->authBase = rtrim(config('services.tiktok.auth_base'), '/');
         
         // Get tokens from cache first, then fallback to env
         $this->accessToken = Cache::get('tiktok_access_token') ?? env('TIKTOK_ACCESS_TOKEN');
         $this->refreshToken = Cache::get('tiktok_refresh_token') ?? env('TIKTOK_REFRESH_TOKEN');
-    }
-
-    /**
-     * Generate OAuth authorization URL
-     */
-    public function getAuthorizationUrl(): string
-    {
-        $state = bin2hex(random_bytes(16));
-        Cache::put('tiktok_oauth_state', $state, 600);
-
-        $params = [
-            'app_key' => $this->clientKey,
-            'state' => $state,
-        ];
-
-        return $this->authBase . '/oauth/authorize?' . http_build_query($params);
-    }
-
-    /**
-     * Exchange authorization code for access token
-     */
-    public function getAccessToken(string $authCode): ?array
-    {
-        $path = '/api/v2/token/get';
         
-        $params = [
-            'app_key' => $this->clientKey,
-            'app_secret' => $this->clientSecret,
-            'auth_code' => $authCode,
-            'grant_type' => 'authorized_code',
-        ];
-
-        $response = Http::get($this->authBase . $path, $params);
-
-        if ($response->successful()) {
-            $data = $response->json();
-            
-            if (isset($data['data']['access_token'])) {
-                $this->accessToken = $data['data']['access_token'];
-                $this->refreshToken = $data['data']['refresh_token'];
-                
-                $expiresIn = $data['data']['access_token_expire_in'] ?? 86400;
-                Cache::put('tiktok_access_token', $this->accessToken, $expiresIn - 300);
-                Cache::put('tiktok_refresh_token', $this->refreshToken, 86400 * 30);
-                
-                return $data['data'];
-            }
-        }
-
-        Log::error('TikTok getAccessToken failed', [
-            'response' => $response->json(),
-            'status' => $response->status()
-        ]);
-
-        return null;
-    }
-
-    /**
-     * Refresh access token
-     */
-    public function refreshAccessToken(): ?array
-    {
-        if (!$this->refreshToken) {
-            return null;
-        }
-
-        $path = '/api/v2/token/refresh';
+        // Initialize the TikTok Shop client library (same as ship_hub)
+        $this->client = new Client($this->clientKey, $this->clientSecret);
         
-        $params = [
-            'app_key' => $this->clientKey,
-            'app_secret' => $this->clientSecret,
-            'refresh_token' => $this->refreshToken,
-            'grant_type' => 'refresh_token',
-        ];
-
-        $response = Http::get($this->authBase . $path, $params);
-
-        if ($response->successful()) {
-            $data = $response->json();
-            
-            if (isset($data['data']['access_token'])) {
-                $this->accessToken = $data['data']['access_token'];
-                $this->refreshToken = $data['data']['refresh_token'];
-                
-                $expiresIn = $data['data']['access_token_expire_in'] ?? 86400;
-                Cache::put('tiktok_access_token', $this->accessToken, $expiresIn - 300);
-                Cache::put('tiktok_refresh_token', $this->refreshToken, 86400 * 30);
-                
-                return $data['data'];
-            }
-        }
-
-        Log::error('TikTok refreshAccessToken failed', [
-            'response' => $response->json()
-        ]);
-
-        return null;
-    }
-
-    /**
-     * Generate signature for API request
-     * TikTok Shop API signature format per documentation: https://m.tiktok.shop/s/AIu6dbFhs2XW
-     * Format: app_secret + path + sorted_params(key+value) + body + app_secret, then SHA256
-     */
-    protected function generateSignature(string $path, array $params, string $body = ''): string
-    {
-        unset($params['sign']);
-        ksort($params);
-        
-        $stringToSign = $this->clientSecret . $path;
-        
-        foreach ($params as $key => $value) {
-            if ($value !== null && $value !== '') {
-                $stringToSign .= $key . (string)$value;
-            }
-        }
-        
-        if (!empty($body)) {
-            $stringToSign .= $body;
-        }
-        
-        $stringToSign .= $this->clientSecret;
-        
-        $signature = hash('sha256', $stringToSign);
-        
-        return $signature;
-    }
-
-    /**
-     * Generate signature with URL-encoded parameter values
-     * Some TikTok API versions require URL encoding in signature
-     */
-    protected function generateSignatureWithUrlEncoding(string $path, array $params, string $body = ''): string
-    {
-        unset($params['sign']);
-        ksort($params);
-        
-        $stringToSign = $this->clientSecret . $path;
-        
-        // Use URL-encoded values in signature
-        foreach ($params as $key => $value) {
-            if ($value !== null && $value !== '') {
-                $stringToSign .= $key . rawurlencode((string)$value);
-            }
-        }
-        
-        if (!empty($body)) {
-            $stringToSign .= $body;
-        }
-        
-        $stringToSign .= $this->clientSecret;
-        
-        return hash('sha256', $stringToSign);
-    }
-
-    /**
-     * Make authenticated API request - EXACT format from working orders endpoint
-     */
-    protected function apiRequest(string $method, string $path, array $queryParams = [], array $body = [], bool $includeShopId = true, $outputCallback = null): ?array
-    {
-        if (!$this->accessToken) {
-            if (!$this->refreshAccessToken()) {
-                Log::error('TikTok API: No valid access token');
-                return null;
-            }
-        }
-
-        $timestamp = time();
-        
-        $params = [
-            'access_token' => $this->accessToken,
-            'app_key' => $this->clientKey,
-            'timestamp' => (string)$timestamp,
-        ];
-        
-        if ($includeShopId && !empty($this->shopId)) {
-            $params['shop_id'] = (string)$this->shopId;
-        }
-        
-        if (empty($this->clientKey) || empty($this->clientSecret) || ($includeShopId && empty($this->shopId))) {
-            Log::error('TikTok API: Missing credentials');
-            return ['code' => 999999, 'message' => 'Missing credentials', 'data' => null];
-        }
-        
-        $params = array_merge($params, $queryParams);
-        $params = array_filter($params, function($value) {
-            return $value !== null && $value !== '';
-        });
-
-        // For signature: body must be minified JSON (no spaces, no newlines)
-        $bodyJson = !empty($body) ? json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : '';
-        $bodyJsonForSign = !empty($bodyJson) ? preg_replace('/\s+/', '', $bodyJson) : '';
-        
-        // CRITICAL: Sort params BEFORE signature calculation (TikTok requirement)
-        ksort($params);
-        
-        // Generate signature BEFORE adding sign to params
-        // Try with URL-encoded parameter values (TikTok might require this)
-        $sign = $this->generateSignatureWithUrlEncoding($path, $params, $bodyJsonForSign);
-        
-        // Add sign to params AFTER calculation
-        $params['sign'] = $sign;
-        
-        // Build query string - ensure proper encoding
-        $queryString = http_build_query($params, '', '&', PHP_QUERY_RFC3986);
-        $url = $this->apiBase . $path . '?' . $queryString;
-        
-        // DEBUG OUTPUT
-        if ($outputCallback) {
-            $outputCallback('info', '');
-            $outputCallback('info', '=== TikTok API Request Debug ===');
-            $outputCallback('info', 'Method: ' . $method);
-            $outputCallback('info', 'Path: ' . $path);
-            $outputCallback('info', 'Params (before sign): ' . json_encode($params, JSON_PRETTY_PRINT));
-            $outputCallback('info', 'Body JSON: ' . ($bodyJson ?: '(empty)'));
-            $outputCallback('info', 'Body for signature: ' . ($bodyJsonForSign ?: '(empty)'));
-            
-            // Show signature calculation
-            $debugParams = $params;
-            unset($debugParams['sign']);
-            ksort($debugParams);
-            $stringToSign = $this->clientSecret . $path;
-            foreach ($debugParams as $key => $value) {
-                if ($value !== null && $value !== '') {
-                    $stringToSign .= $key . (string)$value;
-                }
-            }
-            if (!empty($bodyJsonForSign)) {
-                $stringToSign .= $bodyJsonForSign;
-            }
-            $stringToSign .= $this->clientSecret;
-            
-            $outputCallback('info', 'String to sign (length: ' . strlen($stringToSign) . '): ' . substr($stringToSign, 0, 200) . '...');
-            $outputCallback('info', 'Generated Signature: ' . $sign);
-            $outputCallback('info', 'Client Secret (first 10 chars): ' . substr($this->clientSecret, 0, 10) . '...');
-            $outputCallback('info', 'Full URL: ' . $url);
-            $outputCallback('info', '===============================');
-        }
-
-        try {
-            $headers = ['Content-Type' => 'application/json'];
-            
-            if ($method === 'GET') {
-                $response = Http::timeout(30)->withHeaders($headers)->get($url);
-            } else {
-                $response = Http::timeout(30)->withHeaders($headers)->post($url, $body);
-            }
-
-            $data = $response->json();
-            $this->lastResponse = $data;
-            $this->lastResponseCode = $data['code'] ?? null;
-            
-            if ($outputCallback && isset($data['code']) && $data['code'] != 0) {
-                $outputCallback('error', 'API Response Code: ' . ($data['code'] ?? 'unknown'));
-                $outputCallback('error', 'API Response Message: ' . ($data['message'] ?? 'No message'));
-            }
-
-            if (isset($data['code']) && $data['code'] === 105001) {
-                if ($this->refreshAccessToken()) {
-                    return $this->apiRequest($method, $path, $queryParams, $body, $includeShopId, $outputCallback);
-                }
-            }
-
-            return $data;
-        } catch (\Exception $e) {
-            if ($outputCallback) {
-                $outputCallback('error', 'Exception: ' . $e->getMessage());
-            }
-            return null;
+        if ($this->accessToken) {
+            $this->client->setAccessToken($this->accessToken);
         }
     }
 
     /**
-     * Get orders from TikTok Shop - WORKING ENDPOINT
-     */
-    public function getOrders(int $startTime = null, int $endTime = null, int $pageSize = 100, string $cursor = ''): ?array
-    {
-        $path = '/api/orders/search';
-        
-        if (!$startTime) {
-            $startTime = Carbon::now()->subDays(30)->timestamp;
-        }
-        if (!$endTime) {
-            $endTime = Carbon::now()->timestamp;
-        }
-
-        $body = [
-            'create_time_ge' => $startTime,
-            'create_time_lt' => $endTime,
-            'page_size' => $pageSize,
-        ];
-
-        if ($cursor) {
-            $body['cursor'] = $cursor;
-        }
-
-        return $this->apiRequest('POST', $path, [], $body);
-    }
-
-    /**
-     * Get shop info - using same pattern as orders
+     * Get shop info using the library
      */
     public function getShopInfo($outputCallback = null): ?array
     {
-        $path = '/api/shop/get_authorized_shop';
-        return $this->apiRequest('GET', $path, [], [], false, $outputCallback);
+        try {
+            if (!$this->accessToken) {
+                if ($outputCallback) $outputCallback('error', 'No access token available');
+                return null;
+            }
+            
+            $this->client->setAccessToken($this->accessToken);
+            
+            if ($outputCallback) {
+                $outputCallback('info', 'Using TikTok Shop PHP library (same as ship_hub)');
+                $outputCallback('info', 'Calling: Authorization->getAuthorizedShop()');
+            }
+            
+            $response = $this->client->Authorization->getAuthorizedShop();
+            
+            $this->lastResponse = $response;
+            
+            if ($outputCallback) {
+                $outputCallback('info', 'Response received: ' . json_encode($response, JSON_PRETTY_PRINT));
+            }
+            
+            return $response;
+        } catch (\Exception $e) {
+            if ($outputCallback) {
+                $outputCallback('error', 'Error: ' . $e->getMessage());
+                $outputCallback('error', 'Error Class: ' . get_class($e));
+            }
+            Log::error('TikTok getShopInfo failed', [
+                'error' => $e->getMessage(),
+                'class' => get_class($e),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return ['code' => 999999, 'message' => $e->getMessage(), 'data' => null];
+        }
     }
 
     /**
-     * Get products list - using EXACT same pattern as orders
+     * Get products list using the library
      */
     public function getProducts(int $pageSize = 20, string $cursor = '', int $status = 0, $outputCallback = null): ?array
     {
-        $path = '/api/products/search';
+        try {
+            if (!$this->accessToken) {
+                return null;
+            }
+            
+            $this->client->setAccessToken($this->accessToken);
+            
+            $body = [
+                'page_size' => min($pageSize, 50),
+            ];
 
-        $body = [
-            'page_size' => min($pageSize, 50),
-        ];
+            if ($cursor) {
+                $body['cursor'] = $cursor;
+            }
 
-        if ($cursor) {
-            $body['cursor'] = $cursor;
+            if ($status > 0) {
+                $body['product_status'] = $status;
+            }
+
+            // Use searchProducts method from library
+            $response = $this->client->Product->searchProducts([], $body);
+            $this->lastResponse = $response;
+            
+            return $response;
+        } catch (\Exception $e) {
+            if ($outputCallback) {
+                $outputCallback('error', 'Error getting products: ' . $e->getMessage());
+            }
+            Log::error('TikTok getProducts failed', ['error' => $e->getMessage()]);
+            return null;
         }
-
-        if ($status > 0) {
-            $body['product_status'] = $status;
-        }
-
-        return $this->apiRequest('POST', $path, [], $body, true, $outputCallback);
     }
 
     /**
@@ -373,17 +128,19 @@ class TikTokShopService
         while ($hasMore) {
             $response = $this->getProducts(50, $cursor, $status);
 
-            if (!$response || !isset($response['data'])) {
-                Log::error('TikTok getAllProducts failed', ['response' => $response, 'page' => $page]);
+            if (!$response) {
+                Log::error('TikTok getAllProducts failed', ['page' => $page]);
                 break;
             }
 
-            if (isset($response['data']['products'])) {
-                $allProducts = array_merge($allProducts, $response['data']['products']);
+            // Library returns data in different format
+            $products = $response['data']['products'] ?? $response['products'] ?? [];
+            if (!empty($products)) {
+                $allProducts = array_merge($allProducts, $products);
             }
 
             $hasMore = isset($response['data']['more']) && $response['data']['more'];
-            $cursor = $response['data']['next_cursor'] ?? '';
+            $cursor = $response['data']['next_cursor'] ?? $response['data']['cursor'] ?? $response['next_cursor'] ?? '';
 
             if (count($allProducts) > 10000) {
                 Log::warning('TikTok getAllProducts: Reached safety limit of 10000 products');
@@ -398,73 +155,130 @@ class TikTokShopService
     }
 
     /**
-     * Get product inventory - using EXACT same pattern as orders
+     * Get product inventory using the library
      */
     public function getProductInventory(array $productIds): ?array
     {
-        $path = '/api/products/inventory/query';
-
-        $body = [
-            'product_id_list' => array_slice($productIds, 0, 50),
-        ];
-
-        return $this->apiRequest('POST', $path, [], $body);
+        try {
+            if (!$this->accessToken) {
+                return null;
+            }
+            
+            $this->client->setAccessToken($this->accessToken);
+            
+            // Use inventorySearch method from library
+            $response = $this->client->Product->inventorySearch([
+                'product_id_list' => array_slice($productIds, 0, 50),
+            ]);
+            $this->lastResponse = $response;
+            
+            return $response;
+        } catch (\Exception $e) {
+            Log::error('TikTok getProductInventory failed', ['error' => $e->getMessage()]);
+            return null;
+        }
     }
 
     /**
-     * Get product analytics - using EXACT same pattern as orders
+     * Get product analytics using the library
      */
     public function getProductAnalytics(int $startTime = null, int $endTime = null, array $productIds = []): ?array
     {
-        $path = '/api/analytics/products/query';
-        
-        if (!$startTime) {
-            $startTime = Carbon::now()->subDays(30)->timestamp;
-        }
-        if (!$endTime) {
-            $endTime = Carbon::now()->timestamp;
-        }
+        try {
+            if (!$this->accessToken) {
+                return null;
+            }
+            
+            $this->client->setAccessToken($this->accessToken);
+            
+            if (!$startTime) {
+                $startTime = Carbon::now()->subDays(30)->timestamp;
+            }
+            if (!$endTime) {
+                $endTime = Carbon::now()->timestamp;
+            }
 
-        $body = [
-            'start_time' => $startTime,
-            'end_time' => $endTime,
-            'dimensions' => ['product_id', 'sku'],
-            'metrics' => ['product_views', 'views', 'product_clicks', 'product_orders'],
-        ];
+            $params = [
+                'start_time' => $startTime,
+                'end_time' => $endTime,
+            ];
 
-        if (!empty($productIds)) {
-            $body['product_id_list'] = array_slice($productIds, 0, 50);
+            if (!empty($productIds)) {
+                $params['product_id_list'] = array_slice($productIds, 0, 50);
+            }
+
+            // Use getShopProductPerformanceList for product analytics
+            $response = $this->client->Analytics->getShopProductPerformanceList($params);
+            $this->lastResponse = $response;
+            
+            return $response;
+        } catch (\Exception $e) {
+            Log::error('TikTok getProductAnalytics failed', ['error' => $e->getMessage()]);
+            return null;
         }
-
-        return $this->apiRequest('POST', $path, [], $body);
     }
 
     /**
-     * Get product details - using EXACT same pattern as orders
+     * Get product details using the library
      */
     public function getProductDetails(array $productIds): ?array
     {
-        $path = '/api/products/details';
-        
-        $body = [
-            'product_id_list' => array_slice($productIds, 0, 50),
-        ];
-
-        return $this->apiRequest('POST', $path, [], $body);
+        try {
+            if (!$this->accessToken) {
+                return null;
+            }
+            
+            $this->client->setAccessToken($this->accessToken);
+            
+            // Get first product ID (library method takes single ID)
+            if (empty($productIds)) {
+                return null;
+            }
+            
+            $productId = $productIds[0];
+            $response = $this->client->Product->getProduct($productId);
+            $this->lastResponse = $response;
+            
+            return $response;
+        } catch (\Exception $e) {
+            Log::error('TikTok getProductDetails failed', ['error' => $e->getMessage()]);
+            return null;
+        }
     }
 
     /**
-     * Get product reviews - using EXACT same pattern as orders
+     * Get product reviews using the library
+     * Note: TikTok API may not have a direct reviews endpoint - reviews might be in product details
      */
     public function getProductReviews(array $productIds): ?array
     {
-        $path = '/api/products/reviews/query';
-        
-        $body = [
-            'product_id_list' => array_slice($productIds, 0, 50),
-        ];
-
-        return $this->apiRequest('POST', $path, [], $body);
+        try {
+            if (!$this->accessToken) {
+                return null;
+            }
+            
+            $this->client->setAccessToken($this->accessToken);
+            
+            // Try to get reviews from product details (if available)
+            // TikTok API might include reviews in product details
+            $reviews = [];
+            foreach (array_slice($productIds, 0, 50) as $productId) {
+                $product = $this->client->Product->getProduct($productId);
+                if (isset($product['data']['reviews']) || isset($product['reviews'])) {
+                    $reviews[] = [
+                        'product_id' => $productId,
+                        'reviews' => $product['data']['reviews'] ?? $product['reviews'] ?? [],
+                    ];
+                }
+                usleep(100000); // Rate limit
+            }
+            
+            $this->lastResponse = ['reviews' => $reviews];
+            return ['reviews' => $reviews];
+        } catch (\Exception $e) {
+            Log::error('TikTok getProductReviews failed', ['error' => $e->getMessage()]);
+            return null;
+        }
     }
 
     /**
@@ -494,8 +308,9 @@ class TikTokShopService
                 
                 foreach ($chunks as $chunk) {
                     $inventory = $this->getProductInventory($chunk);
-                    if ($inventory && isset($inventory['data']['inventory_list'])) {
-                        $result['inventory'] = array_merge($result['inventory'], $inventory['data']['inventory_list']);
+                    if ($inventory) {
+                        $inventoryList = $inventory['data']['inventory_list'] ?? $inventory['inventory_list'] ?? [];
+                        $result['inventory'] = array_merge($result['inventory'], $inventoryList);
                     }
                     usleep(200000);
                 }
@@ -504,8 +319,8 @@ class TikTokShopService
 
             Log::info('TikTok: Fetching analytics/views...');
             $analytics = $this->getProductAnalytics();
-            if ($analytics && isset($analytics['data']['analytics_list'])) {
-                $result['analytics'] = $analytics['data']['analytics_list'];
+            if ($analytics) {
+                $result['analytics'] = $analytics['data']['product_performance_list'] ?? $analytics['product_performance_list'] ?? $analytics['data'] ?? [];
             }
             Log::info('TikTok: Fetched analytics for ' . count($result['analytics']) . ' products');
             
@@ -517,10 +332,9 @@ class TikTokShopService
                 
                 foreach ($chunks as $chunk) {
                     $reviews = $this->getProductReviews($chunk);
-                    if ($reviews && isset($reviews['data']['reviews'])) {
-                        $result['reviews'] = array_merge($result['reviews'], $reviews['data']['reviews']);
-                    } elseif ($reviews && isset($reviews['data']['review_list'])) {
-                        $result['reviews'] = array_merge($result['reviews'], $reviews['data']['review_list']);
+                    if ($reviews) {
+                        $reviewList = $reviews['reviews'] ?? $reviews['data']['reviews'] ?? $reviews['review_list'] ?? [];
+                        $result['reviews'] = array_merge($result['reviews'], $reviewList);
                     }
                     usleep(200000);
                 }
@@ -549,6 +363,10 @@ class TikTokShopService
         if ($refreshToken) {
             Cache::put('tiktok_refresh_token', $refreshToken, 86400 * 30);
         }
+        
+        if ($this->client) {
+            $this->client->setAccessToken($accessToken);
+        }
     }
     
     public function getLastResponse(): ?array
@@ -559,5 +377,42 @@ class TikTokShopService
     public function getLastResponseCode(): ?int
     {
         return $this->lastResponseCode;
+    }
+    
+    public function getAuthorizationUrl(): string
+    {
+        $auth = $this->client->auth();
+        $state = bin2hex(random_bytes(16));
+        Cache::put('tiktok_oauth_state', $state, 600);
+        return $auth->createAuthRequest($state, true);
+    }
+    
+    public function refreshAccessToken(): ?array
+    {
+        if (!$this->refreshToken) {
+            return null;
+        }
+
+        try {
+            $auth = $this->client->auth();
+            $newToken = $auth->refreshNewToken($this->refreshToken);
+            
+            if (isset($newToken['access_token'])) {
+                $this->accessToken = $newToken['access_token'];
+                $this->refreshToken = $newToken['refresh_token'] ?? $this->refreshToken;
+                
+                $expiresIn = $newToken['expire_in'] ?? 86400;
+                Cache::put('tiktok_access_token', $this->accessToken, $expiresIn - 300);
+                Cache::put('tiktok_refresh_token', $this->refreshToken, 86400 * 30);
+                
+                $this->client->setAccessToken($this->accessToken);
+                
+                return $newToken;
+            }
+        } catch (\Exception $e) {
+            Log::error('TikTok refreshAccessToken failed', ['error' => $e->getMessage()]);
+        }
+
+        return null;
     }
 }
