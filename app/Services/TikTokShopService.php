@@ -134,7 +134,7 @@ class TikTokShopService
 
     /**
      * Generate signature for API request
-     * TikTok Shop API signature format: app_secret + path + sorted_params + body + app_secret, then SHA256
+     * TikTok Shop API signature format: app_secret + path + sorted_params(URL-encoded values) + body + app_secret, then SHA256
      * Based on TikTok Shop API documentation: https://m.tiktok.shop/s/AIu6dbFhs2XW
      */
     protected function generateSignature(string $path, array $params, string $body = ''): string
@@ -146,20 +146,20 @@ class TikTokShopService
         ksort($params);
         
         // TikTok Shop API signature format:
-        // app_secret + path + sorted_params(key+value concatenated) + body + app_secret
+        // app_secret + path + sorted_params(key+URL-encoded-value concatenated) + body + app_secret
         // Then calculate SHA256 hash
         
         $stringToSign = $this->clientSecret . $path;
         
-        // Concatenate sorted parameters as key+value (no separators)
+        // Concatenate sorted parameters as key+URL-encoded-value (TikTok requires URL encoding in signature)
         foreach ($params as $key => $value) {
             if ($value !== null && $value !== '') {
-                // Convert to string and ensure no extra encoding
-                $stringToSign .= $key . (string)$value;
+                // TikTok API requires URL-encoded parameter values in signature calculation
+                $stringToSign .= $key . rawurlencode((string)$value);
             }
         }
         
-        // Append body if present (should already be minified JSON)
+        // Append body if present (should already be minified JSON string)
         if (!empty($body)) {
             $stringToSign .= $body;
         }
@@ -167,7 +167,7 @@ class TikTokShopService
         // Append app_secret at the end
         $stringToSign .= $this->clientSecret;
         
-        // Calculate SHA256 hash
+        // Calculate SHA256 hash - TikTok API expects lowercase hex
         return hash('sha256', $stringToSign);
     }
 
@@ -362,6 +362,8 @@ class TikTokShopService
         $bodyJson = !empty($body) ? json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : '';
         // Remove any whitespace from JSON body for signature calculation (TikTok API requirement)
         $bodyJsonForSign = !empty($bodyJson) ? preg_replace('/\s+/', '', $bodyJson) : '';
+        
+        // Generate signature with exact parameter values
         $sign = $this->generateSignature($path, $params, $bodyJsonForSign);
         
         // Add sign to params AFTER calculation
@@ -369,8 +371,6 @@ class TikTokShopService
 
         // Build URL with query parameters
         // Use the path as-is (caller should provide correct versioned path)
-        // Note: http_build_query may URL encode which could affect signature
-        // Try without encoding first for signature, then encode for URL
         $queryString = http_build_query($params, '', '&', PHP_QUERY_RFC3986);
         $url = $this->apiBase . $path . '?' . $queryString;
 
@@ -397,14 +397,42 @@ class TikTokShopService
             $this->lastResponse = $data;
             $this->lastResponseCode = $data['code'] ?? null;
             
-            // Log schema errors for debugging
-            if (isset($data['code']) && $data['code'] == 40006) {
-                Log::warning('TikTok API schema error (40006)', [
+            // Log and display detailed error information
+            if (isset($data['code']) && $data['code'] != 0) {
+                $errorDetails = [
+                    'code' => $data['code'] ?? 'unknown',
+                    'message' => $data['message'] ?? 'No message',
                     'path' => $path,
                     'method' => $method,
                     'url' => $url,
-                    'response' => $data,
-                ]);
+                ];
+                
+                // Add validation failures if present
+                if (isset($data['validation_failures'])) {
+                    $errorDetails['validation_failures'] = $data['validation_failures'];
+                }
+                
+                // Add request_id if present
+                if (isset($data['request_id'])) {
+                    $errorDetails['request_id'] = $data['request_id'];
+                }
+                
+                // Log the full error
+                Log::error('TikTok API Error', $errorDetails);
+                
+                // For schema errors, log additional details
+                if ($data['code'] == 40006) {
+                    Log::warning('TikTok API schema error (40006) - Endpoint may not exist', $errorDetails);
+                }
+                
+                // For signature errors, log signature details
+                if ($data['code'] == 106001 || (isset($data['message']) && strpos($data['message'], 'sign') !== false)) {
+                    Log::warning('TikTok API signature error (106001)', array_merge($errorDetails, [
+                        'signature_used' => $params['sign'] ?? 'not set',
+                        'params_count' => count($params),
+                        'has_body' => !empty($body),
+                    ]));
+                }
             }
             
             
@@ -415,13 +443,15 @@ class TikTokShopService
                     $bodyJsonForSign = !empty($body) ? preg_replace('/\s+/', '', json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)) : '';
                 }
                 
-                // Try Format 1a: With URL-encoded parameter values
+                // Try Format 1a: With URL-encoded parameter values in signature
                 $paramsForSign1a = [
                     'access_token' => $this->accessToken,
                     'app_key' => $this->clientKey,
-                    'shop_id' => (string)$this->shopId,
                     'timestamp' => (string)$timestamp,
                 ];
+                if ($includeShopId && !empty($this->shopId)) {
+                    $paramsForSign1a['shop_id'] = (string)$this->shopId;
+                }
                 $paramsForSign1a = array_merge($paramsForSign1a, $queryParams);
                 $paramsForSign1a = array_filter($paramsForSign1a, function($value) {
                     return $value !== null && $value !== '';
@@ -706,6 +736,22 @@ class TikTokShopService
     public function isAuthenticated(): bool
     {
         return !empty($this->accessToken);
+    }
+    
+    /**
+     * Get last API response (for error debugging)
+     */
+    public function getLastResponse(): ?array
+    {
+        return $this->lastResponse;
+    }
+    
+    /**
+     * Get last API response code (for error debugging)
+     */
+    public function getLastResponseCode(): ?int
+    {
+        return $this->lastResponseCode;
     }
 
     /**
