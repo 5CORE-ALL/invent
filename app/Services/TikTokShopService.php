@@ -129,6 +129,22 @@ class TikTokShopService
     }
 
     /**
+     * Output message using callback or log
+     */
+    protected function output(string $type, string $message): void
+    {
+        if (is_callable($this->outputCallback)) {
+            call_user_func($this->outputCallback, $type, $message);
+        } else {
+            // Fallback to Log if no callback is set
+            if ($type === 'info') Log::info($message);
+            elseif ($type === 'error') Log::error($message);
+            elseif ($type === 'warn') Log::warning($message);
+            else Log::debug($message);
+        }
+    }
+
+    /**
      * Get products list using the library
      */
     public function getProducts(int $pageSize = 20, string $cursor = '', int $status = 0, $outputCallback = null): ?array
