@@ -1760,10 +1760,7 @@
                                             Amz FBM</a>
                                     </li>
 
-                                    <li>
-                                        <a href="{{ route('amazon.pricing.cvr') }}">Amz FBM Pricing - CVR</a>
-                                    </li>
-
+                                 
 
 
                                     <li>
@@ -2411,9 +2408,7 @@
                                         </a>
                                         <div class="collapse" id="dobaSubmenu">
                                             <ul class="side-nav-fourth-level">
-                                                <li>
-                                                    <a href="{{ url('doba-tabulator') }}">Doba pricing Inc/Dsc </a>
-                                                </li>
+                                              
                                                 <li>
                                                     <a href="{{ route('zero.doba') }}">Doba 0 view</a>
                                                 </li>
@@ -2421,6 +2416,9 @@
                                         </div>
                                     </li>
 
+                                      <li>
+                                                    <a href="{{ url('doba-tabulator') }}">Doba pricing</a>
+                                                </li>
                                     <li>
                                         <a href="{{ route('listing.doba') }}">Listing Doba</a>
                                     </li>
@@ -2450,9 +2448,7 @@
                                         </a>
                                         <div class="collapse" id="ebay2Submenu">
                                             <ul class="side-nav-fourth-level">
-                                                <li> <a href="{{ url('ebay2-tabulator-view') }}">Ebay 2 Pricing </a>
-                                                </li>
-
+                                               
 
                                                 <li>
                                                     <a href="{{ route('ebay2.low.visibility.view') }}">Ebay
@@ -2466,6 +2462,8 @@
                                             </ul>
                                         </div>
                                     </li>
+ <li> <a href="{{ url('ebay2-tabulator-view') }}">Ebay 2 Pricing </a>
+                                                </li>
 
                                     <li>
                                         <a href="{{ route('listing.ebayTwo') }}">Listing Ebay 2</a>
@@ -2506,10 +2504,7 @@
                                         </a>
                                         <div class="collapse" id="ebay3Submenu">
                                             <ul class="side-nav-fourth-level">
-                                                <li>
-                                                    <a href="{{ url('ebayThreeAnalysis') }}">Ebay 3's
-                                                        Analytics</a>
-                                                </li>
+                                                
 
                                                 <li>
                                                     <a href="{{ route('ebay3.low.visibility.view') }}">Ebay
@@ -2523,17 +2518,14 @@
                                             </ul>
                                         </div>
                                     </li>
-
+<li>
+                                        <a href="{{ url('ebay3-tabulator-view') }}">Ebay 3 Pricing Decrease</a>
+                                    </li>
                                     <li>
                                         <a href="{{ route('listing.ebayThree') }}">Listing Ebay 3</a>
                                     </li>
 
-                                    <li>
-                                        <a href="{{ url('ebayThreePricingCVR') }}">Ebay 3 Pricing - CVR</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ url('ebay3-tabulator-view') }}">Ebay 3 Pricing Decrease</a>
-                                    </li>
+                                    
                                     <li>
                                         <a data-bs-toggle="collapse" href="#ebay3AcosSubmenu"
                                             aria-expanded="false" aria-controls="ebay3AcosSubmenu">
@@ -2635,6 +2627,9 @@
                                             <span>Walmart View</span>
                                             <span class="menu-arrow"></span>
                                         </a>
+                                         <li>
+                                        <a href="{{ route('walmart.sheet.upload') }}">Walmart Pricing</a>
+                                    </li>
                                         <div class="collapse" id="walmartSubmenu">
                                             <ul class="side-nav-fourth-level">
                                                 {{-- <li>
@@ -2642,9 +2637,7 @@
                                                         Analytics</a>
                                                 </li> --}}
 
-                                                <li>
-                                        <a href="{{ route('walmart.sheet.upload') }}">Walmart Pricing</a>
-                                    </li>
+                                               
                                             </ul>
                                         </div>
                                     </li>
@@ -2752,10 +2745,7 @@
                             <div class="collapse" id="sidebarAliexpress">
                                 <ul class="side-nav-third-level">
                                     <!-- <li><a href="#">Aliexpress Analytics</a></li> -->
-                                    <li>
-                                        <a href="{{ url('aliexpressAnalysis') }}">Aliexpress Analytics</a>
-                                    </li>
-                                    <li><a href="{{ url('aliexpress-tabulator') }}">Aliexpress Daily Data</a></li>
+                                   
                                     <li>
                                         <a href="{{ route('zero.aliexpress') }}">Aliexpress 0 view</a>
                                     </li>
