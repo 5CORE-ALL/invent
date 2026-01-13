@@ -148,10 +148,13 @@ class TikTokShopService
         ksort($params);
         
         // Format 1: app_secret + path + sorted_params + body + app_secret, then SHA256
+        // Try with URL-encoded parameter values for signature
         $stringToSign1 = $this->clientSecret . $path;
         foreach ($params as $key => $value) {
             if ($value !== null && $value !== '') {
-                $stringToSign1 .= $key . (string)$value;
+                // TikTok might require URL-encoded values in signature string
+                $encodedValue = rawurlencode((string)$value);
+                $stringToSign1 .= $key . $encodedValue;
             }
         }
         if (!empty($body)) {
@@ -159,6 +162,19 @@ class TikTokShopService
         }
         $stringToSign1 .= $this->clientSecret;
         $sign1 = hash('sha256', $stringToSign1);
+        
+        // Also try Format 1b: Same but with raw parameter values (no encoding)
+        $stringToSign1b = $this->clientSecret . $path;
+        foreach ($params as $key => $value) {
+            if ($value !== null && $value !== '') {
+                $stringToSign1b .= $key . (string)$value;
+            }
+        }
+        if (!empty($body)) {
+            $stringToSign1b .= $body;
+        }
+        $stringToSign1b .= $this->clientSecret;
+        $sign1b = hash('sha256', $stringToSign1b);
         
         // Format 2: path + sorted_params + body, then HMAC-SHA256 with app_secret
         $stringToSign2 = $path;
@@ -182,9 +198,9 @@ class TikTokShopService
         $stringToSign3 .= $body;
         $sign3 = hash_hmac('sha256', $stringToSign3, $this->clientSecret);
         
-        // Return Format 1 by default (most common for TikTok Shop API)
+        // Return Format 1b by default (non-encoded parameter values)
         // The retry mechanism will try others if this fails
-        return $sign1;
+        return $sign1b;
     }
 
     /**
@@ -336,18 +352,18 @@ class TikTokShopService
             }
         }
 
+        // Get current timestamp in milliseconds (TikTok API might expect milliseconds)
+        // Also try seconds format
+        $timestampMs = (int)(microtime(true) * 1000);
         $timestamp = time();
         
         // Required parameters for all requests (must be in alphabetical order for signature)
-        // Try different parameter name variations
-        $params = [];
-        
-        // Try standard format first
+        // TikTok API might require specific format for shop_id and timestamp
         $params = [
             'access_token' => $this->accessToken,
             'app_key' => $this->clientKey,
-            'shop_id' => (string)$this->shopId,
-            'timestamp' => (string)$timestamp,
+            'shop_id' => (string)$this->shopId, // Ensure it's a string
+            'timestamp' => (string)$timestamp, // Try seconds first
         ];
         
         // Verify credentials are loaded
@@ -449,6 +465,49 @@ class TikTokShopService
                 // Call callback if set (for command output)
                 if ($this->signatureCallback && is_callable($this->signatureCallback)) {
                     call_user_func($this->signatureCallback, 'format1_failed', $data);
+                }
+                
+                // Try Format 1a: With URL-encoded parameter values
+                $paramsForSign1a = [
+                    'access_token' => $this->accessToken,
+                    'app_key' => $this->clientKey,
+                    'shop_id' => (string)$this->shopId,
+                    'timestamp' => (string)$timestamp,
+                ];
+                $paramsForSign1a = array_merge($paramsForSign1a, $queryParams);
+                $paramsForSign1a = array_filter($paramsForSign1a, function($value) {
+                    return $value !== null && $value !== '';
+                });
+                ksort($paramsForSign1a);
+                $stringToSign1a = $this->clientSecret . $path;
+                foreach ($paramsForSign1a as $key => $value) {
+                    if ($value !== null && $value !== '') {
+                        $stringToSign1a .= $key . rawurlencode((string)$value);
+                    }
+                }
+                if (!empty($bodyJson)) {
+                    $stringToSign1a .= $bodyJson;
+                }
+                $stringToSign1a .= $this->clientSecret;
+                $altSign1a = hash('sha256', $stringToSign1a);
+                if ($this->signatureCallback && is_callable($this->signatureCallback)) {
+                    call_user_func($this->signatureCallback, 'trying_format1a', $altSign1a);
+                }
+                $paramsForSign1a['sign'] = $altSign1a;
+                $url = $this->apiBase . $path . '?' . http_build_query($paramsForSign1a);
+                
+                if ($method === 'GET') {
+                    $response = Http::timeout(30)->withHeaders($headers)->get($url);
+                } else {
+                    $response = Http::timeout(30)->withHeaders($headers)->post($url, $body);
+                }
+                $data = $response->json();
+                
+                if (!isset($data['code']) || ($data['code'] != 106001 && $data['code'] != 36009004)) {
+                    if ($this->signatureCallback && is_callable($this->signatureCallback)) {
+                        call_user_func($this->signatureCallback, 'format1a_success', $data);
+                    }
+                    return $data;
                 }
                 
                 // Try Format 2: HMAC-SHA256 (path + params + body)
@@ -954,17 +1013,62 @@ class TikTokShopService
      */
     public function getProductDetails(array $productIds): ?array
     {
-        $path = '/api/products/details';
+        // Try different possible endpoints
+        $paths = [
+            '/product/202309/products/details',
+            '/product/202312/products/details',
+            '/api/products/details',
+        ];
         
         $body = [
-            'product_id_list' => $productIds,
+            'product_id_list' => array_slice($productIds, 0, 50), // Limit to 50
         ];
 
-        return $this->apiRequest('POST', $path, [], $body);
+        // Try each endpoint until one works
+        foreach ($paths as $path) {
+            $response = $this->apiRequest('POST', $path, [], $body);
+            if ($response && isset($response['data'])) {
+                return $response;
+            }
+        }
+        
+        return $this->apiRequest('POST', $paths[0], [], $body);
+    }
+    
+    /**
+     * Get product reviews/ratings
+     * 
+     * @param array $productIds Product IDs to query
+     * @return array|null
+     */
+    public function getProductReviews(array $productIds): ?array
+    {
+        // Try different possible endpoints for reviews
+        $paths = [
+            '/product/202309/products/reviews',
+            '/product/202312/products/reviews',
+            '/api/products/reviews',
+            '/api/reviews/query',
+            '/product/202309/reviews/query',
+        ];
+        
+        $body = [
+            'product_id_list' => array_slice($productIds, 0, 50), // Limit to 50
+        ];
+        
+        // Try each endpoint until one works
+        foreach ($paths as $path) {
+            $response = $this->apiRequest('POST', $path, [], $body);
+            if ($response && isset($response['data'])) {
+                return $response;
+            }
+        }
+        
+        return $this->apiRequest('POST', $paths[0], [], $body);
     }
 
     /**
-     * Sync all product data (price, stock, views) from TikTok API
+     * Sync all product data (price, stock, views, reviews) from TikTok API
      * This is a convenience method that fetches and returns structured data
      * 
      * @return array
@@ -975,6 +1079,7 @@ class TikTokShopService
             'products' => [],
             'inventory' => [],
             'analytics' => [],
+            'reviews' => [],
             'errors' => []
         ];
 
@@ -1009,6 +1114,25 @@ class TikTokShopService
                 $result['analytics'] = $analytics['data']['analytics_list'];
             }
             Log::info('TikTok: Fetched analytics for ' . count($result['analytics']) . ' products');
+            
+            // 4. Get reviews/ratings for all products (in batches)
+            if (!empty($products)) {
+                $productIds = array_column($products, 'id');
+                $chunks = array_chunk($productIds, 50); // TikTok API limit
+                
+                Log::info('TikTok: Fetching reviews for ' . count($productIds) . ' products in ' . count($chunks) . ' batches...');
+                
+                foreach ($chunks as $chunk) {
+                    $reviews = $this->getProductReviews($chunk);
+                    if ($reviews && isset($reviews['data']['reviews'])) {
+                        $result['reviews'] = array_merge($result['reviews'], $reviews['data']['reviews']);
+                    } elseif ($reviews && isset($reviews['data']['review_list'])) {
+                        $result['reviews'] = array_merge($result['reviews'], $reviews['data']['review_list']);
+                    }
+                    usleep(200000); // Rate limit delay
+                }
+                Log::info('TikTok: Fetched reviews for ' . count($result['reviews']) . ' products');
+            }
 
         } catch (\Exception $e) {
             Log::error('TikTok syncAllProductData error: ' . $e->getMessage());

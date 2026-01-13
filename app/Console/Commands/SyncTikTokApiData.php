@@ -57,6 +57,12 @@ class SyncTikTokApiData extends Command
                 case 'format1_failed':
                     $this->warn('⚠ Signature Format 1 (SHA256) failed. Trying alternative formats...');
                     break;
+                case 'trying_format1a':
+                    $this->info('🔄 Trying Signature Format 1a (SHA256 with URL-encoded params)...');
+                    break;
+                case 'format1a_success':
+                    $this->info('✅ Signature Format 1a (URL-encoded params) worked!');
+                    break;
                 case 'trying_format2':
                     $this->info('🔄 Trying Signature Format 2 (HMAC-SHA256 with path)...');
                     break;
@@ -131,7 +137,7 @@ class SyncTikTokApiData extends Command
 
         try {
             // Fetch all product data
-            $this->info('Fetching products, inventory, and analytics from TikTok API...');
+            $this->info('Fetching products, inventory, analytics, and reviews from TikTok API...');
             
             // First, test shop info to verify connection
             $shopInfo = $this->tiktokService->getShopInfo();
@@ -157,6 +163,9 @@ class SyncTikTokApiData extends Command
             
             // Process and store analytics/views
             $this->processAnalytics($data['analytics'] ?? []);
+            
+            // Process and store reviews/ratings
+            $this->processReviews($data['reviews'] ?? []);
 
             $this->info('✅ TikTok API data sync completed successfully!');
             return 0;
@@ -329,6 +338,65 @@ class SyncTikTokApiData extends Command
         }
 
         $this->info("Analytics/Views: {$updated} records updated");
+    }
+
+    /**
+     * Process and store reviews/ratings data
+     */
+    protected function processReviews(array $reviews)
+    {
+        if (empty($reviews)) {
+            $this->warn('No reviews data found');
+            return;
+        }
+
+        $this->info('Processing ' . count($reviews) . ' reviews records...');
+        $updated = 0;
+
+        foreach ($reviews as $review) {
+            try {
+                $productId = $review['product_id'] ?? null;
+                $sku = $review['sku'] ?? null;
+                
+                if (!$productId && !$sku) {
+                    continue;
+                }
+
+                // Extract review count and rating
+                $reviewCount = $review['review_count'] ?? $review['reviews'] ?? $review['total_reviews'] ?? 0;
+                $rating = $review['rating'] ?? $review['average_rating'] ?? $review['avg_rating'] ?? null;
+
+                // Try to find by product_id first, then by SKU
+                $tiktokProduct = null;
+                if ($productId) {
+                    $tiktokProduct = TikTokProduct::where('product_id', $productId)->first();
+                }
+                
+                if (!$tiktokProduct && $sku) {
+                    $tiktokProduct = TikTokProduct::where('sku', strtoupper(trim($sku)))->first();
+                }
+
+                if ($tiktokProduct) {
+                    if ($reviewCount > 0) {
+                        $tiktokProduct->reviews = (int)$reviewCount;
+                    }
+                    if ($rating !== null && $rating > 0) {
+                        $tiktokProduct->rating = (float)$rating;
+                    }
+                    $tiktokProduct->save();
+                    $updated++;
+                }
+
+            } catch (\Exception $e) {
+                $this->error('Error processing reviews: ' . ($review['product_id'] ?? 'unknown') . ' - ' . $e->getMessage());
+                Log::error('TikTok reviews processing error', [
+                    'review' => $review,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        $this->info("Reviews/Ratings: {$updated} records updated");
     }
 
     /**

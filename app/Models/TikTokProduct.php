@@ -14,14 +14,18 @@ class TikTokProduct extends Model
         'price',
         'stock',
         'sold',
-        'views'
+        'views',
+        'reviews',
+        'rating'
     ];
 
     protected $casts = [
         'price' => 'decimal:2',
         'stock' => 'integer',
         'sold' => 'integer',
-        'views' => 'decimal:2'
+        'views' => 'decimal:2',
+        'reviews' => 'integer',
+        'rating' => 'decimal:2'
     ];
 }
 
