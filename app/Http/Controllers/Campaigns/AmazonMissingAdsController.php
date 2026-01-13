@@ -52,67 +52,70 @@ class AmazonMissingAdsController extends Controller
             });
 
         $shopifyData = ShopifySku::whereIn('sku', $skus)
-            ->whereIn('sku', $skus)
             ->get()
             ->keyBy('sku');
 
         $nrListingValues = AmazonListingStatus::whereIn('sku', $skus)->pluck('value', 'sku');
         $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
-        // Create uppercase SKU array for efficient matching
-        $skuUpperArray = array_map('strtoupper', $skus);
+        // OPTIMIZATION: Fetch all campaigns in ONE query instead of chunking with LIKE
+        // This is much faster than multiple LIKE queries
+        $allCampaigns = AmazonSpCampaignReport::select(['id', 'campaignName', 'campaignStatus', 'ad_type'])
+            ->where('ad_type', 'SPONSORED_PRODUCTS')
+            ->where('campaignStatus', '!=', 'ARCHIVED')
+            ->get();
 
-        // CRITICAL FIX: Use chunking with smaller batch size
-        $allCampaigns = collect();
-        $chunkSize = 5; // Reduced to 5 SKUs per query to prevent timeout
-        
-        foreach (array_chunk($skuUpperArray, $chunkSize) as $skuChunk) {
-            $campaignsChunk = AmazonSpCampaignReport::select(['id', 'campaignName', 'campaignStatus', 'ad_type'])
-                ->where('ad_type', 'SPONSORED_PRODUCTS')
-                ->where('campaignStatus', '!=', 'ARCHIVED')
-                ->where(function($q) use ($skuChunk) {
-                    foreach ($skuChunk as $skuUpper) {
-                        $q->orWhere('campaignName', 'LIKE', '%' . $skuUpper . '%');
-                    }
-                })
-                ->get();
+        // Helper function to normalize campaign names and SKUs
+        $normalizeString = function($str) {
+            // Replace non-breaking spaces and other unicode spaces with regular spaces
+            $normalized = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $str);
+            // Remove trailing dots, normalize spaces, uppercase
+            return preg_replace('/\s+/', ' ', strtoupper(trim(rtrim($normalized, '.'))));
+        };
+
+        // OPTIMIZATION: Pre-process campaigns into lookup maps for O(1) access
+        // Create maps: normalized SKU => campaign object
+        $kwCampaignMap = []; // For KW campaigns (exact SKU match)
+        $ptCampaignMap = []; // For PT campaigns (SKU + PT match)
+
+        foreach ($allCampaigns as $campaign) {
+            $campaignNameUpper = strtoupper($campaign->campaignName);
             
-            $allCampaigns = $allCampaigns->merge($campaignsChunk);
+            // Skip FBA campaigns
+            if (str_contains($campaignNameUpper, 'FBA') || str_contains($campaignNameUpper, 'FBA.')) {
+                continue;
+            }
+
+            $normalizedCampaignName = $normalizeString($campaign->campaignName);
             
-            // Clear memory after each chunk
-            unset($campaignsChunk);
+            // Check if it's a PT campaign
+            $hasPt = str_contains($campaignNameUpper, ' PT') || str_contains($campaignNameUpper, ' PT.') ||
+                     str_contains($campaignNameUpper, 'PT') || str_contains($campaignNameUpper, 'PT.');
+
+            if ($hasPt) {
+                // PT campaign: extract base SKU by removing PT suffix
+                // Handle: "SKU PT", "SKU PT.", "SKUPT", "SKUPT."
+                $baseSku = preg_replace('/\s*PT\.?\s*$/i', '', $normalizedCampaignName);
+                // Also try without space before PT
+                if ($baseSku === $normalizedCampaignName) {
+                    $baseSku = preg_replace('/PT\.?\s*$/i', '', $normalizedCampaignName);
+                }
+                if ($baseSku && $baseSku !== $normalizedCampaignName) {
+                    $ptCampaignMap[$baseSku] = $campaign;
+                }
+            } else {
+                // KW campaign: use normalized name as key (exact match)
+                $kwCampaignMap[$normalizedCampaignName] = $campaign;
+            }
         }
 
-        // Filter campaigns in memory - more efficient approach
-        // Since query already filtered by SKU, we just need to separate KW and PT campaigns
-        $amazonKwCampaigns = $allCampaigns->filter(function ($campaign) {
-            $campaignName = strtoupper($campaign->campaignName);
-            // Exclude PT and FBA campaigns - KW campaigns should NOT have PT or FBA
-            // Check both with space and without space before PT
-            return !str_contains($campaignName, ' PT') && 
-                   !str_contains($campaignName, ' PT.') &&
-                   !str_contains($campaignName, 'PT') && 
-                   !str_contains($campaignName, 'PT.') &&
-                   !str_contains($campaignName, 'FBA') && 
-                   !str_contains($campaignName, 'FBA.');
-        });
-
-        $amazonPtCampaigns = $allCampaigns->filter(function ($campaign) {
-            $campaignName = strtoupper($campaign->campaignName);
-            // Must contain PT but NOT FBA (regular PT campaigns, not FBA PT)
-            // Check both with space and without space before PT
-            $hasPt = str_contains($campaignName, ' PT') || str_contains($campaignName, ' PT.') ||
-                     str_contains($campaignName, 'PT') || str_contains($campaignName, 'PT.');
-            $hasFba = str_contains($campaignName, 'FBA') || str_contains($campaignName, 'FBA.');
-            // Must have PT and NOT have FBA
-            return $hasPt && !$hasFba;
-        });
+        // Clear memory
+        unset($allCampaigns);
 
         $result = [];
 
         foreach ($productMasters as $pm) {
-            // Normalize SKU first - normalize spaces (including non-breaking spaces) and convert to uppercase
-            // Replace non-breaking spaces (UTF-8 c2a0) and other unicode spaces with regular spaces
+            // Normalize SKU
             $normalizedSku = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $pm->sku);
             $sku = preg_replace('/\s+/', ' ', strtoupper(trim($normalizedSku)));
             $skuUpper = strtoupper($pm->sku); // Keep original uppercase for lookups
@@ -121,32 +124,10 @@ class AmazonMissingAdsController extends Controller
             $amazonSheet = $amazonDatasheetsBySku[$skuUpper] ?? null;
             $shopify = $shopifyData[$pm->sku] ?? null;
 
-            $matchedKwCampaign = $amazonKwCampaigns->first(function ($item) use ($sku) {
-                // Normalize spaces: replace non-breaking spaces and multiple spaces with single space
-                $campaignNameRaw = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
-                $campaignName = preg_replace('/\s+/', ' ', strtoupper(trim(rtrim($campaignNameRaw, '.'))));
-                $cleanSku = preg_replace('/\s+/', ' ', strtoupper(trim(rtrim($sku, '.'))));
-                
-                // Exact match only - campaign name must exactly equal SKU (excluding PT campaigns)
-                return $campaignName === $cleanSku;
-            });
-
-            $matchedPtCampaign = $amazonPtCampaigns->first(function ($item) use ($sku) {
-                // Normalize spaces: replace non-breaking spaces and multiple spaces with single space
-                $campaignNameRaw = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
-                $cleanName = preg_replace('/\s+/', ' ', strtoupper(trim($campaignNameRaw)));
-                $cleanSku = preg_replace('/\s+/', ' ', strtoupper(trim($sku)));
-
-                // Exact match: SKU + ' PT' or SKU + ' PT.' (with space)
-                // Also check: SKU + 'PT' or SKU + 'PT.' (without space)
-                $expected1 = $cleanSku . ' PT';
-                $expected2 = $cleanSku . ' PT.';
-                $expected3 = $cleanSku . 'PT';
-                $expected4 = $cleanSku . 'PT.';
-                
-                return ($cleanName === $expected1 || $cleanName === $expected2 || 
-                        $cleanName === $expected3 || $cleanName === $expected4);
-            });
+            // OPTIMIZATION: O(1) lookup instead of O(n) first() call
+            $normalizedSkuForLookup = $normalizeString($pm->sku);
+            $matchedKwCampaign = $kwCampaignMap[$normalizedSkuForLookup] ?? null;
+            $matchedPtCampaign = $ptCampaignMap[$normalizedSkuForLookup] ?? null;
 
             $row = [
                 'parent' => $parent,
@@ -185,7 +166,6 @@ class AmazonMissingAdsController extends Controller
             }
             
             $result[] = (object) $row;
-            
         }
 
         return response()->json([
