@@ -475,22 +475,45 @@ class TikTokShopService
             
             $this->output('info', 'getProductReviews: Extracting review data from ' . count($products) . ' products');
             
+            // Debug: Log first product structure to see what fields are available
+            if (!empty($products[0])) {
+                $sampleProduct = $products[0];
+                $this->output('info', 'Sample product keys: ' . implode(', ', array_keys($sampleProduct)));
+                if (isset($sampleProduct['data']) && is_array($sampleProduct['data'])) {
+                    $this->output('info', 'Sample product data keys: ' . implode(', ', array_keys($sampleProduct['data'])));
+                }
+            }
+            
             $reviewsData = [];
             foreach ($products as $product) {
                 $productId = $product['id'] ?? $product['product_id'] ?? null;
                 if (!$productId) continue;
                 
-                // Extract review count and rating from product data
-                $reviewCount = $product['review_count'] ?? $product['reviews_count'] ?? $product['data']['review_count'] ?? 0;
-                $rating = $product['shop_rating'] ?? $product['rating'] ?? $product['data']['shop_rating'] ?? $product['data']['rating'] ?? null;
+                // Extract review count and rating from product data - try various field names
+                $reviewCount = $product['review_count'] 
+                    ?? $product['reviews_count'] 
+                    ?? $product['total_reviews']
+                    ?? $product['reviews']
+                    ?? $product['data']['review_count'] 
+                    ?? $product['data']['reviews_count']
+                    ?? $product['data']['total_reviews']
+                    ?? $product['rating_info']['review_count'] ?? 0;
                 
-                if ($reviewCount > 0 || $rating !== null) {
-                    $reviewsData[] = [
-                        'product_id' => (string)$productId,
-                        'review_count' => (int)$reviewCount,
-                        'rating' => $rating !== null ? (float)$rating : null,
-                    ];
-                }
+                $rating = $product['shop_rating'] 
+                    ?? $product['rating'] 
+                    ?? $product['average_rating']
+                    ?? $product['avg_rating']
+                    ?? $product['data']['shop_rating'] 
+                    ?? $product['data']['rating']
+                    ?? $product['rating_info']['rating']
+                    ?? $product['rating_info']['average_rating'] ?? null;
+                
+                // Always include product with review data (even if 0/null) - let the processing method decide
+                $reviewsData[] = [
+                    'product_id' => (string)$productId,
+                    'review_count' => (int)$reviewCount,
+                    'rating' => $rating !== null ? (float)$rating : null,
+                ];
             }
             
             $this->output('info', "getProductReviews: Extracted review data for " . count($reviewsData) . " products");
