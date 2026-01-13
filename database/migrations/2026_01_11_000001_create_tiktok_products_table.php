@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('tiktok_products', function (Blueprint $table) {
             $table->id();
-            $table->string('sku')->unique();
+            $table->string('sku', 191)->unique();
             $table->decimal('price', 10, 2)->default(0);
             $table->integer('stock')->default(0);
             $table->integer('sold')->default(0);

@@ -1106,10 +1106,72 @@ class VerificationAdjustmentController extends Controller
         return response()->json(['success' => true]);
     }
 
-    public function getVerifiedStockActivityLog()
+    public function getVerifiedStockActivityLog(Request $request)
     {
-        $activityLogs = Inventory::where('type', null)->where('is_approved', true)
-            ->orderByDesc('created_at')
+        $query = Inventory::where('type', null)->where('is_approved', true);
+        
+        // Apply reason filter - handle comma-separated values
+        if ($request->filled('reason')) {
+            $reason = trim($request->reason);
+            if ($reason !== '') {
+                // Check if reason exists in the field (handles comma-separated values)
+                // Match exact value or as part of comma-separated list
+                $query->where(function($q) use ($reason) {
+                    $q->where('reason', '=', $reason)
+                      ->orWhere('reason', 'LIKE', "{$reason},%")
+                      ->orWhere('reason', 'LIKE', "%,{$reason},%")
+                      ->orWhere('reason', 'LIKE', "%,{$reason}");
+                });
+            }
+        }
+        
+        // Apply approved_by filter
+        if ($request->filled('approved_by')) {
+            $approvedBy = trim($request->approved_by);
+            if ($approvedBy !== '') {
+                $query->where('approved_by', 'LIKE', "%{$approvedBy}%");
+            }
+        }
+        
+        // Apply date range filter (using approved_at)
+        $hasDateFrom = $request->filled('date_from');
+        $hasDateTo = $request->filled('date_to');
+        
+        if ($hasDateFrom || $hasDateTo) {
+            $query->whereNotNull('approved_at');
+            
+            if ($hasDateFrom) {
+                $dateFrom = trim($request->date_from);
+                if ($dateFrom !== '') {
+                    try {
+                        // Parse date and set to start of day in America/New_York, then convert to UTC
+                        $dateFromCarbon = Carbon::createFromFormat('Y-m-d', $dateFrom, 'America/New_York')
+                            ->startOfDay()
+                            ->setTimezone('UTC');
+                        $query->where('approved_at', '>=', $dateFromCarbon);
+                    } catch (\Exception $e) {
+                        Log::warning('Invalid date_from format', ['date' => $dateFrom, 'error' => $e->getMessage()]);
+                    }
+                }
+            }
+            
+            if ($hasDateTo) {
+                $dateTo = trim($request->date_to);
+                if ($dateTo !== '') {
+                    try {
+                        // Parse date and set to end of day in America/New_York, then convert to UTC
+                        $dateToCarbon = Carbon::createFromFormat('Y-m-d', $dateTo, 'America/New_York')
+                            ->endOfDay()
+                            ->setTimezone('UTC');
+                        $query->where('approved_at', '<=', $dateToCarbon);
+                    } catch (\Exception $e) {
+                        Log::warning('Invalid date_to format', ['date' => $dateTo, 'error' => $e->getMessage()]);
+                    }
+                }
+            }
+        }
+        
+        $activityLogs = $query->orderByDesc('created_at')
             ->get()
             ->map(function ($item) {
                 return [
@@ -1120,7 +1182,9 @@ class VerificationAdjustmentController extends Controller
                     'reason' => $item->reason,
                     'remarks' => $item->remarks,
                     'approved_by' => $item->approved_by,
-                    'approved_at' => Carbon::parse($item->created_at)->timezone('America/New_York')->format('d M Y, h:i A'),
+                    'approved_at' => $item->approved_at 
+                        ? Carbon::parse($item->approved_at)->timezone('America/New_York')->format('d M Y, h:i A')
+                        : '-',
                     'is_ia' => (bool) $item->is_ia,
                 ];
             });

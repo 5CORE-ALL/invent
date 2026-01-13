@@ -50,6 +50,11 @@
             border: 1px solid #ced4da;
             font-size: 0.875rem;
         }
+        .badge.badge-sm {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+            line-height: 1.5;
+        }
     </style>
 @endsection
 
@@ -62,20 +67,73 @@
                 <div class="card-body">
                     <h4 class="header-title">Lost/Gain</h4>
 
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <div class="d-flex align-items-center gap-3">
-                            <div>
-                                <input type="text" id="lostGainSearch" class="form-control" placeholder="Search all columns">
+                    <div class="mb-3">
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-3">
+                                <label for="reasonFilter" class="form-label">Reason</label>
+                                <select id="reasonFilter" class="form-select form-select-sm">
+                                    <option value="">All Reasons</option>
+                                    <option value="Count">Count</option>
+                                    <option value="Received">Received</option>
+                                    <option value="Return Restock">Return Restock</option>
+                                    <option value="Damaged">Damaged</option>
+                                    <option value="Theft or Loss">Theft or Loss</option>
+                                    <option value="Promotion">Promotion</option>
+                                    <option value="Suspense">Suspense</option>
+                                    <option value="Unknown">Unknown</option>
+                                    <option value="Adjustment">Adjustment</option>
+                                    <option value="Combo">Combo</option>
+                                    <option value="Maybe FBA">Maybe FBA</option>
+                                    <option value="Need 2 Find">Need 2 Find</option>
+                                </select>
                             </div>
-                            <div>
-                                <span class="badge bg-secondary fs-6">
-                                    I&A Total: <span id="iaTotal">0</span>
-                                </span>
+                            <div class="col-md-3">
+                                <label for="approvedByFilter" class="form-label">Approved By</label>
+                                <select id="approvedByFilter" class="form-select form-select-sm">
+                                    <option value="">All Users</option>
+                                </select>
                             </div>
-                            <div>
-                                <button id="bulkIABtn" class="btn btn-dark btn-sm" disabled>
-                                    <i class="fas fa-archive"></i> Mark Selected as I&A
+                            <div class="col-md-3">
+                                <label for="dateFromFilter" class="form-label">Date From</label>
+                                <input type="date" id="dateFromFilter" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-md-3">
+                                <label for="dateToFilter" class="form-label">Date To</label>
+                                <input type="date" id="dateToFilter" class="form-control form-control-sm">
+                            </div>
+                        </div>
+                        <div class="row g-3 mb-3">
+                            <div class="col-md-12">
+                                <button id="iaFilterBtn" class="btn btn-outline-secondary btn-sm">
+                                    <i class="fas fa-filter"></i> I&A (<span id="iaFilterCount">0</span>)
                                 </button>
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="d-flex align-items-center gap-3">
+                                <div>
+                                    <input type="text" id="lostGainSearch" class="form-control" placeholder="Search all columns">
+                                </div>
+                                <div>
+                                    <span class="badge bg-info badge-sm">
+                                        Adjusted: <span id="adjustedTotal">0</span>
+                                    </span>
+                                </div>
+                                <div>
+                                    <span class="badge bg-primary badge-sm">
+                                        Loss/Gain: <span id="lostGainTotal">0</span>
+                                    </span>
+                                </div>
+                                <div>
+                                    <span class="badge bg-secondary badge-sm">
+                                        I&A Total: <span id="iaTotal">0</span>
+                                    </span>
+                                </div>
+                                <div>
+                                    <button id="bulkIABtn" class="btn btn-dark btn-sm" disabled>
+                                        <i class="fas fa-archive"></i> Mark Selected as I&A
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -90,12 +148,8 @@
                                     <th>Parent</th>
                                     <th>SKU</th>
                                     <th>Verified Stock</th>
-                                    <th class="text-center">
-                                        <span id="adjustedTotal" class="badge bg-info fs-4">0</span><br>
-                                        Adjusted
-                                    </th>
+                                    <th class="text-center">Adjusted</th>
                                     <th class="loss-gain-column loss-gain-header" data-sort="loss_gain">
-                                        <span id="lostGainTotal" class="badge bg-primary fs-4">0</span><br>
                                         Loss/Gain <span class="sort-arrow">↓</span>
                                     </th>
                                     <th>Reason</th>
@@ -140,14 +194,30 @@
             let tableRows = [];
             let currentSort = { field: null, direction: -1 }; // -1 for descending (highest to lowest)
             let iaRows = new Set(); // Track rows marked as I&A by index
+            let showIARows = true; // Toggle state for I&A rows visibility
             
             // Load data on page load
             loadLostGainData();
 
             function loadLostGainData() {
+                // Get filter values
+                const reason = $('#reasonFilter').val() || '';
+                const approvedBy = $('#approvedByFilter').val() || '';
+                const dateFrom = $('#dateFromFilter').val() || '';
+                const dateTo = $('#dateToFilter').val() || '';
+                
+                // Clear existing table rows
+                tableRows = [];
+                
                 $.ajax({
                     url: '/verified-stock-activity-log',
                     method: 'GET',
+                    data: {
+                        reason: reason,
+                        approved_by: approvedBy,
+                        date_from: dateFrom,
+                        date_to: dateTo
+                    },
                     success: function(res) {
                         const tableBody = $('#lostGainTable tbody');
                         tableBody.empty();
@@ -177,6 +247,9 @@
                                         });
                                     }
 
+                                    // Collect unique approved_by values for dropdown
+                                    const approvedBySet = new Set();
+                                    
                                     res.data.forEach(item => {
                                         const product = productMap[item.sku] || {};
                                         const parentTitle = product.parent || '(No Parent)';
@@ -192,6 +265,11 @@
 
                                         const formattedLossGain = lossGainValue !== 0 ? `${Math.trunc(lossGainValue)}` : '-';
 
+                                        // Collect approved_by values
+                                        if (item.approved_by && item.approved_by !== '-') {
+                                            approvedBySet.add(item.approved_by);
+                                        }
+
                                         tableRows.push({
                                             parent: parentTitle,
                                             sku: item.sku ?? '-',
@@ -206,6 +284,9 @@
                                             isIA: item.is_ia || false // Track I&A state from database
                                         });
                                     });
+                                    
+                                    // Populate approved_by dropdown
+                                    populateApprovedByDropdown(Array.from(approvedBySet).sort());
 
                                     // Sort by loss_gain descending (highest to lowest) by default
                                     tableRows.sort((a, b) => (b.loss_gain - a.loss_gain));
@@ -221,9 +302,17 @@
                                 },
                                 error: function() {
                                     // Fallback: render without parent data
+                                    // Collect unique approved_by values for dropdown
+                                    const approvedBySet = new Set();
+                                    
                                     res.data.forEach(item => {
                                         const toAdjust = parseFloat(item.to_adjust) || 0;
                                         let lossGainValue = parseFloat(item.loss_gain) || 0;
+                                        
+                                        // Collect approved_by values
+                                        if (item.approved_by && item.approved_by !== '-') {
+                                            approvedBySet.add(item.approved_by);
+                                        }
                                         
                                         const formattedLossGain = lossGainValue !== 0 ? `${Math.trunc(lossGainValue)}` : '-';
                                         
@@ -241,6 +330,9 @@
                                             isIA: item.is_ia || false // Track I&A state from database
                                         });
                                     });
+                                    
+                                    // Populate approved_by dropdown
+                                    populateApprovedByDropdown(Array.from(approvedBySet).sort());
                                     
                                     // Sort by loss_gain descending (highest to lowest) by default
                                     tableRows.sort((a, b) => (b.loss_gain - a.loss_gain));
@@ -268,6 +360,11 @@
                 tableBody.empty();
                 
                 rows.forEach((row, index) => {
+                    // Skip I&A rows if filter is off
+                    if (!showIARows && row.isIA) {
+                        return;
+                    }
+                    
                     const iaChecked = row.isIA ? 'checked' : '';
                     const iaClass = row.isIA ? 'btn-warning' : 'btn-outline-secondary';
                     tableBody.append(`
@@ -340,6 +437,7 @@
                 let lossGainTotal = 0;
                 let iaTotal = 0;
                 let adjustedTotal = 0;
+                let iaCount = 0;
                 
                 tableRows.forEach(row => {
                     const toAdjust = parseFloat(row.to_adjust) || 0;
@@ -347,6 +445,7 @@
                     
                     if (row.isIA) {
                         iaTotal += row.loss_gain;
+                        iaCount++;
                     } else {
                         lossGainTotal += row.loss_gain;
                     }
@@ -355,6 +454,7 @@
                 $('#lostGainTotal').text(`${Math.trunc(lossGainTotal)}`);
                 $('#iaTotal').text(`${Math.trunc(iaTotal)}`);
                 $('#adjustedTotal').text(`${Math.trunc(adjustedTotal)}`);
+                $('#iaFilterCount').text(iaCount);
             }
 
             function updateBulkButtonState() {
@@ -528,6 +628,46 @@
             $('#bulkIABtn').on('click', function() {
                 bulkMarkAsIA();
             });
+            
+            // Filter change handlers
+            $('#reasonFilter, #approvedByFilter, #dateFromFilter, #dateToFilter').on('change', function() {
+                loadLostGainData();
+            });
+            
+            // I&A filter button functionality
+            $('#iaFilterBtn').on('click', function() {
+                showIARows = !showIARows;
+                
+                // Update button appearance
+                if (showIARows) {
+                    $(this).removeClass('btn-secondary').addClass('btn-outline-secondary');
+                } else {
+                    $(this).removeClass('btn-outline-secondary').addClass('btn-secondary');
+                }
+                
+                // Re-render table with current filter state
+                renderTableRows(tableRows);
+                updateTotals();
+            });
+            
+            // Function to populate approved_by dropdown
+            function populateApprovedByDropdown(approvedByList) {
+                const dropdown = $('#approvedByFilter');
+                const currentValue = dropdown.val();
+                
+                // Clear existing options except "All Users"
+                dropdown.find('option:not(:first)').remove();
+                
+                // Add options
+                approvedByList.forEach(name => {
+                    dropdown.append(`<option value="${name}">${name}</option>`);
+                });
+                
+                // Restore previous selection if it still exists
+                if (currentValue) {
+                    dropdown.val(currentValue);
+                }
+            }
         });
     </script>
 @endsection
