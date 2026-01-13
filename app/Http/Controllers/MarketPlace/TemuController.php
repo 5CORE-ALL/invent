@@ -1454,13 +1454,21 @@ class TemuController extends Controller
 
             // Build pricing data with normalized matching
             $pricingData = collect();
+            // Build normalized SKU map for missing column check (same as pricing logic)
+            $temuPricingSkusNormalized = collect();
+            
             foreach ($allPricingData as $pricing) {
                 $normalizedPricingSku = $normalizeSku($pricing->sku);
+                $temuPricingSkusNormalized->push($normalizedPricingSku);
+                
                 if (isset($normalizedSkuMap[$normalizedPricingSku])) {
                     $originalSku = $normalizedSkuMap[$normalizedPricingSku];
                     $pricingData[$originalSku] = $pricing;
                 }
             }
+            
+            // Flip for quick lookup
+            $temuPricingSkusNormalized = $temuPricingSkusNormalized->flip();
             
             // Fetch shopify data for inventory
             $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
@@ -1499,13 +1507,16 @@ class TemuController extends Controller
             $amazonData = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
 
             // 4. Process data - iterate through ALL product masters
-            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $viewData, $adData, $temuDataViewData, $amazonData, $rPricingData, $percentage) {
+            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $viewData, $adData, $temuDataViewData, $amazonData, $rPricingData, $percentage, $temuPricingSkusNormalized, $normalizeSku) {
                 $sku = $productMaster->sku;
                 
                 // Get related data (may be null if not in Temu)
                 $item = $pricingData->get($sku);
                 $shopify = $shopifyData->get($sku);
                 $temuSales = $temuSalesData->get($sku);
+                
+                // Get Temu Stock from temu_pricing quantity column (like eBay stock)
+                $temuStock = $item ? ($item->quantity ?? 0) : 0;
                 
                 // Get values from product master - check Values JSON first, then direct properties
                 $lp = 0;
@@ -1625,14 +1636,21 @@ class TemuController extends Controller
                 $rPricingItem = $goodsId ? $rPricingData->get($goodsId) : null;
                 $recommendedBasePrice = $rPricingItem ? $rPricingItem->recommended_base_price : null;
                 
+                // Check if SKU exists in temu_pricing table with NORMALIZED matching (same as price logic)
+                // Normalize the current SKU and check if it exists in temu_pricing
+                $normalizedCurrentSku = $normalizeSku($sku);
+                $missing = isset($temuPricingSkusNormalized[$normalizedCurrentSku]) ? '' : 'M';
+                
                 return [
                     'sku' => $sku,
                     'parent' => $productMaster->parent ?? '',
+                    'missing' => $missing,
                     'image_path' => $imagePath,
                     'product_name' => $item ? $item->product_name : '',
                     'category' => $item ? $item->category : '',
                     'variation' => $item ? $item->variation : '',
                     'quantity' => $item ? $item->quantity : 0,
+                    'temu_stock' => $temuStock,
                     'base_price' => $basePrice,
                     'status' => $item ? $item->status : '',
                     'detail_status' => $item ? $item->detail_status : '',

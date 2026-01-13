@@ -250,26 +250,6 @@
                     <button type="button" class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#uploadPricingModal">
                         <i class="fa fa-dollar-sign"></i> Upload Pricing
                     </button>
-                    
-                    <button type="button" id="clear-sprice-btn" class="btn btn-sm btn-danger">
-                        <i class="fa fa-trash"></i> Clear SPRICE
-                    </button>
-                    
-                    <button id="sold-sprc-blank-btn" class="btn btn-sm btn-warning">
-                        <i class="fas fa-filter"></i> Sold+SPRC Blank
-                    </button>
-                    
-                    <button id="avg-views-btn" class="btn btn-sm btn-info">
-                        <i class="fas fa-eye"></i> AVG Views
-                    </button>
-                    
-                    <button id="store-daily-avg-btn" class="btn btn-sm btn-success">
-                        <i class="fas fa-save"></i> Store Daily Avg
-                    </button>
-                    
-                    <button id="view-avg-views-chart-btn" class="btn btn-sm btn-primary">
-                        <i class="fas fa-chart-line"></i> View Avg Chart
-                    </button>
                 </div>
 
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
@@ -278,7 +258,12 @@
                         <!-- Basic Counts -->
                         <span class="badge bg-primary fs-6 p-2" id="total-products-badge" style="color: black; font-weight: bold;">Total Products: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: black; font-weight: bold;">Total Quantity: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: black; font-weight: bold;">0 Sold Count: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items (INV>0)">0 Sold: 0</span>
+                        <span class="badge bg-warning fs-6 p-2" id="missing-count-badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter missing SKUs (INV>0)">Missing: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="mapped-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter mapped SKUs (INV>0)">MP: 0</span>
+                        <span class="badge bg-warning fs-6 p-2" id="not-mapped-count-badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter not mapped SKUs (INV>0)">N MP: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon (INV>0)">< Amz: 0</span>
+                        <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon (INV>0)">> Amz: 0</span>
                         
                         <!-- Pricing & Performance -->
                         <span class="badge bg-info fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
@@ -332,11 +317,15 @@
                         <button id="sprc-26-99-btn" class="btn btn-sm btn-primary">
                             <i class="fas fa-dollar-sign"></i> SPRC 26.99
                         </button>
+                        <button type="button" id="clear-sprice-btn" class="btn btn-sm btn-danger">
+                            <i class="fa fa-trash"></i> Clear SPRICE
+                        </button>
                     </div>
                 </div>
                 <div id="temu-table-wrapper" style="height: calc(100vh - 200px); display: flex; flex-direction: column;">
                     <div class="p-2 bg-light border-bottom">
-                        <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search by SKU...">
+                        <input type="text" id="sku-search" class="form-control form-control-sm" placeholder="Search by SKU (case-insensitive)...">
+                        <small id="search-result-info" class="text-muted" style="display: none;"></small>
                     </div>
                     <div id="temu-table" style="flex: 1;"></div>
                 </div>
@@ -1402,29 +1391,53 @@
             applySprice2699();
         });
 
-        $('#sold-sprc-blank-btn').on('click', function() {
-            selectSoldWithBlankSprice();
-        });
-
-        $('#avg-views-btn').on('click', function() {
-            showToast('Average Views is displayed in the Summary Statistics section', 'info');
-        });
-
-        $('#store-daily-avg-btn').on('click', function() {
-            storeDailyAvgViews();
-        });
-
-        $('#view-avg-views-chart-btn').on('click', function() {
-            $('#avg-views-days-filter').val('30');
-            $('#avg-views-no-data-message').hide();
-            loadAvgViewsHistory(30);
-            $('#avgViewsChartModal').modal('show');
-        });
 
         $('#discount-percentage-input').on('keypress', function(e) {
             if (e.which === 13) {
                 applyDiscount();
             }
+        });
+
+        // Badge click handlers for filtering
+        let zeroSoldFilterActive = false;
+        let lessAmzFilterActive = false;
+        let moreAmzFilterActive = false;
+        let missingBadgeFilterActive = false;
+        let mapBadgeFilterActive = false;
+        let notMapBadgeFilterActive = false;
+
+        $('#zero-sold-count-badge').on('click', function() {
+            zeroSoldFilterActive = !zeroSoldFilterActive;
+            applyFilters();
+        });
+
+        $('#less-amz-badge').on('click', function() {
+            lessAmzFilterActive = !lessAmzFilterActive;
+            moreAmzFilterActive = false;
+            applyFilters();
+        });
+
+        $('#more-amz-badge').on('click', function() {
+            moreAmzFilterActive = !moreAmzFilterActive;
+            lessAmzFilterActive = false;
+            applyFilters();
+        });
+
+        $('#missing-count-badge').on('click', function() {
+            missingBadgeFilterActive = !missingBadgeFilterActive;
+            applyFilters();
+        });
+
+        $('#mapped-count-badge').on('click', function() {
+            mapBadgeFilterActive = !mapBadgeFilterActive;
+            notMapBadgeFilterActive = false;
+            applyFilters();
+        });
+
+        $('#not-mapped-count-badge').on('click', function() {
+            notMapBadgeFilterActive = !notMapBadgeFilterActive;
+            mapBadgeFilterActive = false;
+            applyFilters();
         });
 
         function updateSelectedCount() {
@@ -1929,6 +1942,11 @@
             let cvrCount = 0;
             let dilCount = 0;
             let zeroSoldCount = 0;
+            let missingCount = 0;
+            let mappedCount = 0;
+            let notMappedCount = 0;
+            let lessAmzCount = 0;
+            let moreAmzCount = 0;
             
             data.forEach(row => {
                 const qty = parseInt(row['quantity']) || 0;
@@ -1973,11 +1991,50 @@
                 totalSpend += parseFloat(row['spend']) || 0;
                 totalViews += parseInt(row['product_clicks']) || 0;
                 totalTemuL30 += temuL30;
+                
+                // Declare common variables once for this row
+                const inventory = parseFloat(row['inventory']) || 0;
+                const missing = row['missing'];
+                const goodsId = row['goods_id'];
+                const temuStock = parseFloat(row['temu_stock']) || 0;
+                
                 totalInv += parseInt(row['inventory']) || 0;
                 
-                // Count SKUs with 0 sold (Temu L30 = 0)
-                if (temuL30 === 0) {
+                // Count SKUs with 0 sold (Temu L30 = 0 AND INV > 0)
+                if (temuL30 === 0 && inventory > 0) {
                     zeroSoldCount++;
+                }
+                
+                // Count missing SKUs (only count if INV > 0)
+                if (missing === 'M' && inventory > 0) {
+                    missingCount++;
+                }
+                
+                // Count MAP status - ONLY for items that exist in Temu (not missing)
+                // Skip missing items - same logic as eBay (only count if exists in marketplace)
+                if (missing !== 'M' && goodsId && goodsId !== '') {
+                    
+                    if (inventory > 0 && temuStock > 0) {
+                        if (inventory === temuStock) {
+                            mappedCount++; // MP (Mapped)
+                        } else {
+                            notMappedCount++; // N MP (Not Mapped - mismatch)
+                        }
+                    } else if (inventory > 0 && temuStock === 0) {
+                        notMappedCount++; // N MP (Not Mapped - no Temu stock)
+                    }
+                }
+                
+                // Count < Amz and > Amz (compare Temu Price with Amazon Price)
+                // temuPrice already declared above, reuse it
+                const amazonPrice = parseFloat(row['a_price']) || 0;
+                
+                if (amazonPrice > 0 && temuPrice > 0) {
+                    if (temuPrice < amazonPrice) {
+                        lessAmzCount++; // Temu Price < Amazon Price
+                    } else if (temuPrice > amazonPrice) {
+                        moreAmzCount++; // Temu Price > Amazon Price
+                    }
                 }
             });
             
@@ -2001,6 +2058,11 @@
             $('#total-products-badge').text('Total Products: ' + totalProducts.toLocaleString());
             $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
             $('#zero-sold-count-badge').text('0 Sold Count: ' + zeroSoldCount.toLocaleString());
+            $('#missing-count-badge').text('Missing: ' + missingCount.toLocaleString());
+            $('#mapped-count-badge').text('MP: ' + mappedCount.toLocaleString());
+            $('#not-mapped-count-badge').text('N MP: ' + notMappedCount.toLocaleString());
+            $('#less-amz-badge').text('< Amz: ' + lessAmzCount.toLocaleString());
+            $('#more-amz-badge').text('> Amz: ' + moreAmzCount.toLocaleString());
             $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
             $('#avg-cvr-badge').text('Avg CVR: ' + avgCvr.toFixed(1) + '%');
             $('#avg-dil-badge').text('Avg DIL: ' + Math.round(avgDil) + '%');
@@ -2075,10 +2137,79 @@
                     }
                 },
                 {
+                    title: "Missing",
+                    field: "missing",
+                    hozAlign: "center",
+                    sorter: "string",
+                    width: 80,
+                    visible: true,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        const rowData = cell.getRow().getData();
+                        
+                        // Debug: log first 5 rows
+                        if (cell.getRow().getPosition() <= 5) {
+                            console.log('Row ' + cell.getRow().getPosition() + ' - SKU:', rowData.sku, 'Missing:', value, 'Goods ID:', rowData.goods_id, 'Temu Stock:', rowData.temu_stock, 'INV:', rowData.inventory);
+                        }
+                        
+                        if (value === 'M') {
+                            return '<span style="color: #dc3545; font-weight: bold;" title="Not found in temu_pricing table">M</span>';
+                        }
+                        return '';
+                    }
+                },
+                {
+                    title: "MAP",
+                    field: "MAP",
+                    hozAlign: "center",
+                    width: 90,
+                    sorter: "string",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const missing = rowData['missing'];
+                        
+                        // IMPORTANT: Only show MAP if SKU exists in Temu (not missing)
+                        // Same logic as eBay - check if item exists before showing MAP
+                        if (missing === 'M' || !rowData['goods_id'] || rowData['goods_id'] === '') {
+                            return ''; // Don't show MAP for missing items
+                        }
+                        
+                        const temuStock = parseFloat(rowData['temu_stock']) || 0;
+                        const inv = parseFloat(rowData['inventory']) || 0;
+                        
+                        // Show "N MP" with INV if Temu Stock is 0 but INV exists
+                        if (inv > 0 && temuStock === 0) {
+                            return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${inv})</span>`;
+                        }
+                        
+                        // Only show if both INV and Temu Stock exist
+                        if (inv > 0 && temuStock > 0) {
+                            if (inv === temuStock) {
+                                // Perfect match - Green "MP" (Mapped)
+                                return '<span style="color: #28a745; font-weight: bold;">MP</span>';
+                            } else {
+                                // Mismatch - Red "N MP" with difference
+                                const diff = inv - temuStock;
+                                const sign = diff > 0 ? '+' : '';
+                                return `<span style="color: #dc3545; font-weight: bold;">N MP<br>(${sign}${diff})</span>`;
+                            }
+                        }
+                        
+                        return '';
+                    }
+                },
+                {
                     title: "INV",
                     field: "inventory",
                     hozAlign: "center",
                     sorter: "number"
+                },
+                {
+                    title: "Temu Stock",
+                    field: "temu_stock",
+                    hozAlign: "center",
+                    sorter: "number",
+                    visible: false
                 },
                 {
                     title: "OVL30",
@@ -2174,19 +2305,33 @@
                     sorter: "number",
                     formatter: function(cell) {
                         const basePrice = parseFloat(cell.getRow().getData()['base_price']) || 0;
+                        const rowData = cell.getRow().getData();
+                        const amazonPrice = parseFloat(rowData['a_price']) || 0;
+                        
                         // Only calculate Temu Price if base_price > 0 (item exists in Temu)
                         if (basePrice === 0) {
                             return '$0.00';
                         }
                         const temuPrice = basePrice <= 26.99 ? basePrice + 2.99 : basePrice;
+                        
+                        // Color code based on Amazon price comparison
+                        if (amazonPrice > 0 && temuPrice > 0) {
+                            if (temuPrice < amazonPrice) {
+                                return `<span style="color: #a00211; font-weight: 600;">$${temuPrice.toFixed(2)}</span>`;
+                            } else if (temuPrice > amazonPrice) {
+                                return `<span style="color: #28a745; font-weight: 600;">$${temuPrice.toFixed(2)}</span>`;
+                            }
+                        }
+                        
                         return '$' + temuPrice.toFixed(2);
                     }
                 },
                 {
-                    title: "A Price",
+                    title: "A Prc",
                     field: "a_price",
                     hozAlign: "center",
                     sorter: "number",
+                    width: 70,
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue());
                         if (value === null || value === 0 || isNaN(value)) {
@@ -2538,9 +2683,7 @@
         });
 
         $('#sku-search').on('keyup', function() {
-            const value = $(this).val();
-            table.setFilter("sku", "like", value);
-            updateSummary();
+            applyFilters();
         });
 
         // Apply filters
@@ -2558,9 +2701,12 @@
             // Clear all filters first
             table.clearFilter();
 
-            // SKU search filter
+            // SKU search filter (case-insensitive)
             if (skuSearch) {
-                table.setFilter("sku", "like", skuSearch);
+                table.addFilter(function(data) {
+                    const sku = data.sku || '';
+                    return sku.toUpperCase().includes(skuSearch.toUpperCase());
+                });
             }
 
             // Inventory filter
@@ -2685,8 +2831,92 @@
                 });
             }
 
+            // Missing badge filter (clickable badge only - no dropdown)
+            if (missingBadgeFilterActive) {
+                table.addFilter(function(data) {
+                    return data['missing'] === 'M';
+                });
+            }
+
+            // 0 Sold badge filter (only INV > 0)
+            if (zeroSoldFilterActive) {
+                table.addFilter(function(data) {
+                    const temuL30 = parseInt(data['temu_l30']) || 0;
+                    const inv = parseFloat(data['inventory']) || 0;
+                    return temuL30 === 0 && inv > 0;
+                });
+            }
+
+            // < Amz badge filter (only INV > 0)
+            if (lessAmzFilterActive) {
+                table.addFilter(function(data) {
+                    const inv = parseFloat(data['inventory']) || 0;
+                    const temuPrice = parseFloat(data['temu_price']) || 0;
+                    const amazonPrice = parseFloat(data['a_price']) || 0;
+                    return inv > 0 && amazonPrice > 0 && temuPrice > 0 && temuPrice < amazonPrice;
+                });
+            }
+
+            // > Amz badge filter (only INV > 0)
+            if (moreAmzFilterActive) {
+                table.addFilter(function(data) {
+                    const inv = parseFloat(data['inventory']) || 0;
+                    const temuPrice = parseFloat(data['temu_price']) || 0;
+                    const amazonPrice = parseFloat(data['a_price']) || 0;
+                    return inv > 0 && amazonPrice > 0 && temuPrice > 0 && temuPrice > amazonPrice;
+                });
+            }
+
+            // Missing badge filter (only INV > 0)
+            if (missingBadgeFilterActive) {
+                table.addFilter(function(data) {
+                    const inv = parseFloat(data['inventory']) || 0;
+                    return data['missing'] === 'M' && inv > 0;
+                });
+            }
+
+            // Map badge filter (only INV > 0)
+            if (mapBadgeFilterActive) {
+                table.addFilter(function(data) {
+                    const inv = parseFloat(data['inventory']) || 0;
+                    const missing = data['missing'];
+                    const goodsId = data['goods_id'];
+                    if (missing === 'M' || !goodsId || goodsId === '' || inv === 0) return false;
+                    
+                    const temuStock = parseFloat(data['temu_stock']) || 0;
+                    return inv > 0 && temuStock > 0 && inv === temuStock;
+                });
+            }
+
+            // Not Map badge filter (only INV > 0)
+            if (notMapBadgeFilterActive) {
+                table.addFilter(function(data) {
+                    const inv = parseFloat(data['inventory']) || 0;
+                    const missing = data['missing'];
+                    const goodsId = data['goods_id'];
+                    if (missing === 'M' || !goodsId || goodsId === '' || inv === 0) return false;
+                    
+                    const temuStock = parseFloat(data['temu_stock']) || 0;
+                    return inv > 0 && (temuStock === 0 || (temuStock > 0 && inv !== temuStock));
+                });
+            }
+
             updateSummary();
             updateSelectAllCheckbox();
+            
+            // Show search result info
+            if (skuSearch) {
+                const resultCount = table.getData('active').length;
+                const totalCount = table.getData('all').length;
+                
+                if (resultCount === 0) {
+                    $('#search-result-info').html(`<i class="fa fa-exclamation-triangle text-warning"></i> No results found for "${skuSearch}". SKU may not exist in product_master table.`).show();
+                } else {
+                    $('#search-result-info').html(`Found ${resultCount} result(s) matching "${skuSearch}"`).show();
+                }
+            } else {
+                $('#search-result-info').hide();
+            }
         }
 
         $('#inventory-filter, #gpft-filter, #cvr-filter, #ads-filter, #sprice-filter, #ads-req-filter, #ads-running-filter').on('change', function() {
