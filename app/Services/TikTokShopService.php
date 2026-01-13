@@ -5,6 +5,7 @@ namespace App\Services;
 use EcomPHP\TiktokShop\Client;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Http;
 use Carbon\Carbon;
 
 class TikTokShopService
@@ -461,47 +462,41 @@ class TikTokShopService
     }
 
     /**
-     * Get product reviews using the library
-     * Note: TikTok API may not have a direct reviews endpoint - reviews might be in product details
+     * Get product reviews/ratings - extract from product data since TikTok doesn't expose individual reviews
+     * TikTok product data includes review_count and shop_rating/rating fields
      */
-    public function getProductReviews(array $productIds): ?array
+    public function getProductReviews(array $products): ?array
     {
         try {
-            if (!$this->accessToken) {
-                $this->output('error', 'getProductReviews: No access token available');
+            if (empty($products)) {
+                $this->output('warn', 'getProductReviews: No products provided');
                 return null;
             }
             
-            $this->client->setAccessToken($this->accessToken);
+            $this->output('info', 'getProductReviews: Extracting review data from ' . count($products) . ' products');
             
-            $this->output('info', 'getProductReviews: Attempting to fetch reviews for ' . count($productIds) . ' products');
-            $this->output('warn', 'Note: TikTok API may not have a direct reviews endpoint - checking product details');
-            
-            // Try to get reviews from product details (if available)
-            // TikTok API might include reviews in product details
-            $reviews = [];
-            $processed = 0;
-            foreach (array_slice($productIds, 0, 50) as $productId) {
-                try {
-                    $product = $this->client->Product->getProduct($productId);
-                    $processed++;
-                    
-                    if (isset($product['data']['reviews']) || isset($product['reviews'])) {
-                        $reviews[] = [
-                            'product_id' => $productId,
-                            'reviews' => $product['data']['reviews'] ?? $product['reviews'] ?? [],
-                        ];
-                    }
-                } catch (\Exception $e) {
-                    $this->output('warn', "getProductReviews: Failed to get product {$productId}: " . $e->getMessage());
+            $reviewsData = [];
+            foreach ($products as $product) {
+                $productId = $product['id'] ?? $product['product_id'] ?? null;
+                if (!$productId) continue;
+                
+                // Extract review count and rating from product data
+                $reviewCount = $product['review_count'] ?? $product['reviews_count'] ?? $product['data']['review_count'] ?? 0;
+                $rating = $product['shop_rating'] ?? $product['rating'] ?? $product['data']['shop_rating'] ?? $product['data']['rating'] ?? null;
+                
+                if ($reviewCount > 0 || $rating !== null) {
+                    $reviewsData[] = [
+                        'product_id' => (string)$productId,
+                        'review_count' => (int)$reviewCount,
+                        'rating' => $rating !== null ? (float)$rating : null,
+                    ];
                 }
-                usleep(100000); // Rate limit
             }
             
-            $this->output('info', "getProductReviews: Processed {$processed} products, found reviews for " . count($reviews) . " products");
+            $this->output('info', "getProductReviews: Extracted review data for " . count($reviewsData) . " products");
             
-            $this->lastResponse = ['reviews' => $reviews];
-            return ['reviews' => $reviews];
+            $this->lastResponse = ['reviews' => $reviewsData];
+            return ['reviews' => $reviewsData];
         } catch (\Exception $e) {
             $this->output('error', 'getProductReviews Exception: ' . $e->getMessage() . ' (Class: ' . get_class($e) . ')');
             Log::error('TikTok getProductReviews failed', ['error' => $e->getMessage()]);
@@ -530,128 +525,22 @@ class TikTokShopService
             $result['products'] = $products;
             $this->output('info', '✓ Fetched ' . count($products) . ' products');
 
-            if (!empty($products)) {
-                // First, try to extract inventory from product data itself
-                $inventoryFromProducts = [];
-                foreach ($products as $product) {
-                    // Check if inventory is already in product data
-                    if (isset($product['stock_infos']) || isset($product['inventory']) || isset($product['stock'])) {
-                        $inventoryFromProducts[] = $product;
-                    }
-                }
-                
-                if (!empty($inventoryFromProducts)) {
-                    $this->output('info', 'Found inventory data in ' . count($inventoryFromProducts) . ' products');
-                    $result['inventory'] = $inventoryFromProducts;
-                }
-                
-                // Also try fetching via API (in case bulk fetch doesn't work, try individual products)
-                $productIds = array_map(function($product) {
-                    return (string)($product['id'] ?? $product['product_id'] ?? '');
-                }, array_filter($products, function($product) {
-                    return !empty($product['id'] ?? $product['product_id'] ?? null);
-                }));
-                
-                if (empty($productIds)) {
-                    $this->output('warn', '⚠ No valid product IDs found in products');
-                } else {
-                    // Try fetching inventory for smaller batches (maybe 1-5 at a time)
-                    $this->output('info', 'Step 2: Attempting to fetch inventory via API for ' . count($productIds) . ' products...');
-                    $this->output('info', '  Trying smaller batches (1 product at a time) to isolate the issue...');
-                    
-                    // Try with just 1 product first to test
-                    $testProductId = $productIds[0];
-                    $this->output('info', "  Testing with single product ID: {$testProductId}");
-                    $testInventory = $this->getProductInventory([$testProductId]);
-                    
-                    if ($testInventory && !isset($testInventory['code'])) {
-                        $this->output('info', "  ✓ Single product inventory fetch works! Fetching remaining products...");
-                        $chunks = array_chunk($productIds, 10); // Use smaller chunks
-                        $batchNum = 1;
-                        
-                        foreach ($chunks as $chunk) {
-                            $this->output('info', "  Batch {$batchNum}/" . count($chunks) . ": Fetching inventory for " . count($chunk) . " products...");
-                            $inventory = $this->getProductInventory($chunk);
-                            
-                            if ($inventory && !isset($inventory['code'])) {
-                                $inventoryList = $inventory['data']['inventory_list'] ?? $inventory['inventory_list'] ?? [];
-                                if (!empty($inventoryList)) {
-                                    $result['inventory'] = array_merge($result['inventory'], $inventoryList);
-                                    $this->output('info', "  ✓ Batch {$batchNum}: Got " . count($inventoryList) . " inventory records");
-                                }
-                            }
-                            $batchNum++;
-                            usleep(200000);
-                        }
-                    } else {
-                        $this->output('warn', '  ⚠ Inventory API not working. Inventory may be included in product data or requires different approach.');
-                        if ($testInventory && isset($testInventory['code'])) {
-                            $this->output('warn', '  Error details: Code ' . $testInventory['code'] . ', Message: ' . ($testInventory['message'] ?? 'No message'));
-                        }
-                    }
-                    
-                    $this->output('info', '✓ Completed inventory fetch: ' . count($result['inventory']) . ' total records');
-                }
-            } else {
-                $this->output('warn', '⚠ No products to fetch inventory for');
-            }
-
-            $this->output('info', 'Step 3: Fetching analytics/views...');
-            $this->output('warn', '⚠ Note: Analytics API requires API version 202405+. Skipping if unavailable.');
-            try {
-                $analytics = $this->getProductAnalytics();
-                if ($analytics) {
-                    $result['analytics'] = $analytics['data']['product_performance_list'] ?? $analytics['product_performance_list'] ?? $analytics['data'] ?? [];
-                    if (!empty($result['analytics'])) {
-                        $this->output('info', '✓ Fetched analytics for ' . count($result['analytics']) . ' products');
-                    } else {
-                        $this->output('warn', '⚠ Analytics response received but no product_performance_list found. Response keys: ' . implode(', ', array_keys($analytics)));
-                    }
-                } else {
-                    $this->output('warn', '⚠ Analytics not available (API version requirement or endpoint issue). Skipping...');
-                }
-            } catch (\Exception $e) {
-                $this->output('warn', '⚠ Analytics fetch failed: ' . $e->getMessage() . '. Skipping...');
-            }
+            // Inventory, Analytics: Not available with current TikTok API/library
+            // - Inventory API: Doesn't work with current library version
+            // - Analytics API: Requires API version 202405+ (not available)
+            $this->output('info', 'Step 2: Inventory/Analytics not available with current API/library. Skipping.');
+            $result['inventory'] = [];
+            $result['analytics'] = [];
             
-            if (!empty($products)) {
-                // Extract product IDs and ensure they're strings
-                $productIds = array_map(function($product) {
-                    return (string)($product['id'] ?? $product['product_id'] ?? '');
-                }, array_filter($products, function($product) {
-                    return !empty($product['id'] ?? $product['product_id'] ?? null);
-                }));
-                
-                if (!empty($productIds)) {
-                    $chunks = array_chunk($productIds, 50);
-                    
-                    $this->output('info', 'Step 4: Fetching reviews for ' . count($productIds) . ' products in ' . count($chunks) . ' batches...');
-                    $batchNum = 1;
-                    
-                    foreach ($chunks as $chunk) {
-                        $this->output('info', "  Batch {$batchNum}/" . count($chunks) . ": Fetching reviews for " . count($chunk) . " products...");
-                        $reviews = $this->getProductReviews($chunk);
-                    
-                    if ($reviews) {
-                        $reviewList = $reviews['reviews'] ?? $reviews['data']['reviews'] ?? $reviews['review_list'] ?? $reviews['data'] ?? [];
-                        if (!empty($reviewList)) {
-                            $result['reviews'] = array_merge($result['reviews'], $reviewList);
-                            $this->output('info', "  ✓ Batch {$batchNum}: Got " . count($reviewList) . " reviews");
-                        } else {
-                            $this->output('warn', "  ⚠ Batch {$batchNum}: No reviews in response. Response keys: " . implode(', ', array_keys($reviews)));
-                        }
-                    } else {
-                        $this->output('error', "  ✗ Batch {$batchNum}: getProductReviews returned null");
-                    }
-                        $batchNum++;
-                        usleep(200000);
-                    }
-                    $this->output('info', '✓ Completed reviews fetch: ' . count($result['reviews']) . ' total reviews');
-                } else {
-                    $this->output('warn', '⚠ No valid product IDs found for reviews');
-                }
+            // Reviews: Extract review_count and rating from product data (TikTok provides aggregated stats, not individual reviews)
+            $this->output('info', 'Step 3: Extracting review data from products...');
+            $reviews = $this->getProductReviews($products);
+            if ($reviews && !empty($reviews['reviews'])) {
+                $result['reviews'] = $reviews['reviews'];
+                $this->output('info', '✓ Extracted review data for ' . count($reviews['reviews']) . ' products');
             } else {
-                $this->output('warn', '⚠ No products to fetch reviews for');
+                $this->output('warn', '⚠ No review data found in products');
+                $result['reviews'] = [];
             }
 
         } catch (\Exception $e) {
