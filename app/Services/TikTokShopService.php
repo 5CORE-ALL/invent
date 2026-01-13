@@ -51,10 +51,6 @@ class TikTokShopService
             
             $this->client->setAccessToken($this->accessToken);
             
-            if ($outputCallback) {
-                $outputCallback('info', 'Using TikTok Shop PHP library (same as ship_hub)');
-                $outputCallback('info', 'Calling: Authorization->getAuthorizedShop()');
-            }
             
             $response = $this->client->Authorization->getAuthorizedShop();
             
@@ -67,15 +63,9 @@ class TikTokShopService
                     $this->shopCipher = $shop['cipher'];
                     // Set shop cipher on the client - required for all product/inventory API calls
                     $this->client->setShopCipher($this->shopCipher);
-                    if ($outputCallback) {
-                        $outputCallback('info', 'Shop cipher extracted: ' . substr($this->shopCipher, 0, 20) . '...');
-                    }
                 }
             }
             
-            if ($outputCallback) {
-                $outputCallback('info', 'Response received: ' . json_encode($response, JSON_PRETTY_PRINT));
-            }
             
             return $response;
         } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
@@ -184,9 +174,6 @@ class TikTokShopService
             // Shop cipher is already set on the client, so we don't pass it in query params
             $queryParams = [];
 
-            if ($callback && is_callable($callback)) {
-                call_user_func($callback, 'info', 'Calling Product->searchProducts() with body: ' . json_encode($body));
-            }
 
             // Use searchProducts - shop_cipher is already set on the client
             $response = $this->client->Product->searchProducts([], $body);
@@ -264,10 +251,7 @@ class TikTokShopService
         $hasMore = true;
         $page = 1;
 
-        while ($hasMore) {
-            if ($this->outputCallback && is_callable($this->outputCallback)) {
-                call_user_func($this->outputCallback, 'info', "Fetching products page {$page}...");
-            }
+            while ($hasMore) {
 
             $response = $this->getProducts(50, $cursor, $status, $this->outputCallback);
 
@@ -278,25 +262,9 @@ class TikTokShopService
                 break;
             }
 
-            // Debug first response structure
-            if ($page === 1) {
-                if ($this->outputCallback && is_callable($this->outputCallback)) {
-                    call_user_func($this->outputCallback, 'info', 'First response structure:');
-                    call_user_func($this->outputCallback, 'info', '  Response keys: ' . implode(', ', array_keys($response)));
-                    call_user_func($this->outputCallback, 'info', '  Has "data" key: ' . (isset($response['data']) ? 'Yes' : 'No'));
-                    call_user_func($this->outputCallback, 'info', '  Has "products" key: ' . (isset($response['products']) ? 'Yes' : 'No'));
-                    if (isset($response['data']) && is_array($response['data'])) {
-                        call_user_func($this->outputCallback, 'info', '  Data keys: ' . implode(', ', array_keys($response['data'])));
-                    }
-                    call_user_func($this->outputCallback, 'info', '  Full response: ' . json_encode($response, JSON_PRETTY_PRINT));
-                }
-            }
 
             // Check for error in response
             if (isset($response['code']) && $response['code'] != 0) {
-                if ($this->outputCallback && is_callable($this->outputCallback)) {
-                    call_user_func($this->outputCallback, 'error', "API Error on page {$page}: Code {$response['code']}, Message: " . ($response['message'] ?? 'No message'));
-                }
                 break;
             }
 
@@ -309,9 +277,6 @@ class TikTokShopService
                 foreach ($response['data'] as $key => $value) {
                     if (is_array($value) && isset($value[0]) && (isset($value[0]['id']) || isset($value[0]['product_id']))) {
                         $products = $value;
-                        if ($this->outputCallback && is_callable($this->outputCallback)) {
-                            call_user_func($this->outputCallback, 'info', "Found products in data.{$key} key");
-                        }
                         break;
                     }
                 }
@@ -319,14 +284,6 @@ class TikTokShopService
 
             if (!empty($products)) {
                 $allProducts = array_merge($allProducts, $products);
-                if ($this->outputCallback && is_callable($this->outputCallback)) {
-                    call_user_func($this->outputCallback, 'info', "Page {$page}: Found " . count($products) . " products (Total: " . count($allProducts) . ")");
-                }
-            } else {
-                if ($this->outputCallback && is_callable($this->outputCallback)) {
-                    call_user_func($this->outputCallback, 'warn', "Page {$page}: No products found in response");
-                    call_user_func($this->outputCallback, 'info', 'Response structure: ' . json_encode($response, JSON_PRETTY_PRINT));
-                }
             }
 
             $hasMore = isset($response['data']['more']) && $response['data']['more'];
@@ -334,16 +291,10 @@ class TikTokShopService
 
             // If no cursor and no more flag, assume no more pages
             if (empty($cursor) && !$hasMore) {
-                if ($this->outputCallback && is_callable($this->outputCallback)) {
-                    call_user_func($this->outputCallback, 'info', 'No more pages (no cursor and more=false)');
-                }
                 break;
             }
 
             if (count($allProducts) > 10000) {
-                if ($this->outputCallback && is_callable($this->outputCallback)) {
-                    call_user_func($this->outputCallback, 'warn', 'Reached safety limit of 10000 products');
-                }
                 break;
             }
 
@@ -351,9 +302,6 @@ class TikTokShopService
             usleep(200000);
         }
 
-        if ($this->outputCallback && is_callable($this->outputCallback)) {
-            call_user_func($this->outputCallback, 'info', "Completed fetching products: " . count($allProducts) . " total products from " . ($page - 1) . " pages");
-        }
 
         return $allProducts;
     }

@@ -220,18 +220,18 @@ class SyncTikTokApiData extends Command
                 $sku = $this->extractSku($product);
                 
                 if (!$sku) {
-                    $this->warn('Skipping product ' . $productId . ' - no SKU found');
                     continue;
                 }
 
                 // Extract price from product
                 $price = $this->extractPrice($product);
+                $normalizedSku = strtoupper(trim($sku));
 
-                // Update or create product
+                // Update or create product using SKU as unique key (table has unique constraint on SKU)
                 $tiktokProduct = TikTokProduct::updateOrCreate(
-                    ['product_id' => $productId],
+                    ['sku' => $normalizedSku],
                     [
-                        'sku' => strtoupper(trim($sku)),
+                        'product_id' => $productId,
                         'price' => $price,
                     ]
                 );
