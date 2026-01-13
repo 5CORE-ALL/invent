@@ -1514,61 +1514,14 @@
                     }
                 },
                 {
-                    title: "M",
-                    field: "missing",
-                    hozAlign: "center",
-                    width: 50,
-                    headerSort: true,
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value === 'M') {
-                            return '<span style="color: #dc3545; font-weight: bold; font-size: 14px;" title="Missing in Walmart - Product exists in Product Master but not listed on Walmart">M</span>';
-                        }
-                        return '';
-                    },
-                    sorter: function(a, b) {
-                        // M values come first
-                        if (a === 'M' && b !== 'M') return -1;
-                        if (a !== 'M' && b === 'M') return 1;
-                        return 0;
-                    }
-                },
-                {
-                    title: "RL/NRL",
-                    field: "rl_nrl",
-                    hozAlign: "center",
-                    width: 100,
-                    headerSort: false,
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const value = cell.getValue() || '';
-                        const sku = rowData.sku || '';
-                        
-                        if (!sku) return '';
-                        
-                        let bgColor = '#6c757d'; // Default gray
-                        let textColor = 'white';
-                        
-                        if (value === 'RL') {
-                            bgColor = '#28a745'; // Green
-                        } else if (value === 'NRL') {
-                            bgColor = '#dc3545'; // Red
-                        }
-                        
-                        return `<select class="rl-nrl-dropdown form-control form-control-sm" data-sku="${sku}" style="width: 90%; padding: 4px 8px; border-radius: 4px; font-weight: bold; text-align: center; color: ${textColor}; background-color: ${bgColor}; border: none; cursor: pointer;">
-                            <option value="">Select</option>
-                            <option value="RL" ${value === 'RL' ? 'selected' : ''} style="background-color: #28a745; color: white;">RL</option>
-                            <option value="NRL" ${value === 'NRL' ? 'selected' : ''} style="background-color: #dc3545; color: white;">NRL</option>
-                        </select>`;
-                    },
-                    cellClick: function(e, cell) {
-                        // Prevent default cell click behavior
-                        e.stopPropagation();
-                    }
-                },
-                {
                     title: "INV",
                     field: "INV",
+                    hozAlign: "center",
+                    sorter: "number"
+                },
+                {
+                    title: "OV L30",
+                    field: "L30",
                     hozAlign: "center",
                     sorter: "number"
                 },
@@ -1579,7 +1532,7 @@
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (value === 'Not Listed' || value === null || value === undefined || value === '') {
-                            return '<span style="color: #dc3545; font-weight: bold;">Not Listed</span>';
+                            return '<span style="color: #dc3545; font-weight: bold;" title="Not Listed on Walmart">0</span>';
                         }
                         const numValue = parseInt(value);
                         if (numValue === 0) {
@@ -1589,41 +1542,10 @@
                     },
                     sorter: function(a, b) {
                         // Custom sorter to handle 'Not Listed' and numeric values
-                        if (a === 'Not Listed') a = -1;
-                        if (b === 'Not Listed') b = -1;
+                        if (a === 'Not Listed') a = 0;
+                        if (b === 'Not Listed') b = 0;
                         return parseInt(a || 0) - parseInt(b || 0);
                     }
-                },
-                {
-                    title: "Map",
-                    field: "map_status",
-                    hozAlign: "center",
-                    width: 80,
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (!value) return '';
-                        
-                        if (value === 'Map') {
-                            return '<span style="color: #28a745; font-weight: bold; background-color: #d4edda; padding: 4px 8px; border-radius: 4px;" title="Inventory is mapped correctly">Map</span>';
-                        } else if (value === 'Nmap') {
-                            return '<span style="color: #dc3545; font-weight: bold; background-color: #f8d7da; padding: 4px 8px; border-radius: 4px;" title="Inventory mismatch - needs update">Nmap</span>';
-                        }
-                        return '';
-                    },
-                    sorter: function(a, b) {
-                        // Map comes first, then Nmap, then empty
-                        if (a === 'Map' && b !== 'Map') return -1;
-                        if (a !== 'Map' && b === 'Map') return 1;
-                        if (a === 'Nmap' && b !== 'Nmap') return -1;
-                        if (a !== 'Nmap' && b === 'Nmap') return 1;
-                        return 0;
-                    }
-                },
-                {
-                    title: "OV L30",
-                    field: "L30",
-                    hozAlign: "center",
-                    sorter: "number"
                 },
                 {
                     title: "Dil",
@@ -1666,6 +1588,84 @@
                     hozAlign: "center",
                     sorter: "number",
                     sorterParams: {dir: "asc"}
+                },
+                {
+                    title: "M",
+                    field: "missing",
+                    hozAlign: "center",
+                    width: 50,
+                    headerSort: true,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value === 'M') {
+                            return '<span style="color: #dc3545; font-weight: bold; font-size: 14px;" title="Missing in Walmart - Product exists in Product Master but not listed on Walmart">M</span>';
+                        }
+                        return '';
+                    },
+                    sorter: function(a, b) {
+                        // M values come first
+                        if (a === 'M' && b !== 'M') return -1;
+                        if (a !== 'M' && b === 'M') return 1;
+                        return 0;
+                    }
+                },
+                {
+                    title: "Map",
+                    field: "map_status",
+                    hozAlign: "center",
+                    width: 80,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (!value) return '';
+                        
+                        if (value === 'Map') {
+                            return '<span style="color: #28a745; font-weight: bold; background-color: #d4edda; padding: 4px 8px; border-radius: 4px;" title="Inventory is mapped correctly">Map</span>';
+                        } else if (value === 'Nmap') {
+                            return '<span style="color: #dc3545; font-weight: bold; background-color: #f8d7da; padding: 4px 8px; border-radius: 4px;" title="Inventory mismatch - needs update">Nmap</span>';
+                        }
+                        return '';
+                    },
+                    sorter: function(a, b) {
+                        // Map comes first, then Nmap, then empty
+                        if (a === 'Map' && b !== 'Map') return -1;
+                        if (a !== 'Map' && b === 'Map') return 1;
+                        if (a === 'Nmap' && b !== 'Nmap') return -1;
+                        if (a !== 'Nmap' && b === 'Nmap') return 1;
+                        return 0;
+                    }
+                },
+                {
+                    title: "RL/NRL",
+                    field: "rl_nrl",
+                    hozAlign: "center",
+                    width: 100,
+                    headerSort: false,
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const value = cell.getValue() || '';
+                        const sku = rowData.sku || '';
+                        
+                        if (!sku) return '';
+                        
+                        let bgColor = '#6c757d'; // Default gray
+                        let textColor = 'white';
+                        
+                        if (value === 'RL') {
+                            bgColor = '#28a745'; // Green
+                        } else if (value === 'NRL') {
+                            bgColor = '#dc3545'; // Red
+                        }
+                        
+                        return `<select class="rl-nrl-dropdown form-control form-control-sm" data-sku="${sku}" style="width: 90%; padding: 4px 8px; border-radius: 4px; font-weight: bold; text-align: center; color: ${textColor}; background-color: ${bgColor}; border: none; cursor: pointer;">
+                            <option value="">Select</option>
+                            <option value="RL" ${value === 'RL' ? 'selected' : ''} style="background-color: #28a745; color: white;">RL</option>
+                            <option value="NRL" ${value === 'NRL' ? 'selected' : ''} style="background-color: #dc3545; color: white;">NRL</option>
+                        </select>`;
+                    },
+                    cellClick: function(e, cell) {
+                        // Prevent default cell click behavior
+                        e.stopPropagation();
+                    }
                 },
                 {
                     title: "CVR %",
