@@ -1760,10 +1760,7 @@
                                             Amz FBM</a>
                                     </li>
 
-                                    <li>
-                                        <a href="{{ route('amazon.pricing.cvr') }}">Amz FBM Pricing - CVR</a>
-                                    </li>
-
+                                 
 
 
                                     <li>
