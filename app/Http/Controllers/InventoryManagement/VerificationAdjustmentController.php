@@ -1121,10 +1121,90 @@ class VerificationAdjustmentController extends Controller
                     'remarks' => $item->remarks,
                     'approved_by' => $item->approved_by,
                     'approved_at' => Carbon::parse($item->created_at)->timezone('America/New_York')->format('d M Y, h:i A'),
+                    'is_ia' => (bool) $item->is_ia,
                 ];
             });
             
         return response()->json(['data' => $activityLogs]);
+    }
+
+    public function lostGain()
+    {
+        $user = Auth::user();
+        
+        if (!$user || !in_array($user->email, ['inventory@5core.com', 'president@5core.com'])) {
+            abort(404, 'Page not available');
+        }
+        
+        return view('inventory-management.lost-gain');
+    }
+
+    public function getLostGainProductData(Request $request)
+    {
+        $user = Auth::user();
+        
+        if (!$user || !in_array($user->email, ['inventory@5core.com', 'president@5core.com'])) {
+            abort(404, 'Page not available');
+        }
+        
+        $skus = $request->input('skus', []);
+        
+        if (empty($skus)) {
+            return response()->json(['data' => []]);
+        }
+        
+        $productMasters = ProductMaster::whereIn('sku', $skus)->get();
+        
+        $productData = $productMasters->map(function ($product) {
+            $values = is_array($product->Values) ? $product->Values : (is_string($product->Values) ? json_decode($product->Values, true) : []);
+            $lp = $values['lp'] ?? $product->lp ?? 0;
+            
+            return [
+                'sku' => $product->sku,
+                'parent' => $product->parent ?? '(No Parent)',
+                'lp' => floatval($lp),
+            ];
+        });
+        
+        return response()->json(['data' => $productData]);
+    }
+
+    public function updateIAStatus(Request $request)
+    {
+        $user = Auth::user();
+        
+        if (!$user || !in_array($user->email, ['inventory@5core.com', 'president@5core.com'])) {
+            abort(404, 'Page not available');
+        }
+
+        $validated = $request->validate([
+            'skus' => 'required|array',
+            'is_ia' => 'required',
+        ]);
+
+        // Convert is_ia to boolean (handles "true"/"false" strings, 1/0, true/false)
+        $isIA = filter_var($request->input('is_ia'), FILTER_VALIDATE_BOOLEAN);
+
+        $updated = 0;
+        foreach ($validated['skus'] as $sku) {
+            $inventory = Inventory::where('sku', $sku)
+                ->where('type', null)
+                ->where('is_approved', true)
+                ->latest()
+                ->first();
+            
+            if ($inventory) {
+                $inventory->is_ia = $isIA;
+                $inventory->save();
+                $updated++;
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => "Updated {$updated} record(s).",
+            'updated' => $updated
+        ]);
     }
 
 

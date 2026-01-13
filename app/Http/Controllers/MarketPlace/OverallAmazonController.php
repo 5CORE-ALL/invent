@@ -1548,7 +1548,41 @@ class OverallAmazonController extends Controller
             ->where('report_date_range', 'L30')
             ->get();
 
+        // Fetch Amazon SB Campaign Reports for L30 (HL campaigns)
+        $amazonHlL30 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+            ->where('report_date_range', 'L30')
+            ->where(function ($q) use ($skus) {
+                foreach ($skus as $sku) $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
+            })
+            ->get();
+
+        $parentSkuCounts = $productMasters
+            ->filter(fn($pm) => $pm->parent && !str_starts_with(strtoupper($pm->sku), 'PARENT'))
+            ->groupBy('parent')
+            ->map->count();
+
         $result = [];
+        $parentHlSpendData = [];
+
+        // First loop: collect parent HL spend data
+        foreach ($productMasters as $pm) {
+            $sku = strtoupper($pm->sku);
+            $parent = trim($pm->parent);
+
+            $matchedCampaignHlL30 = $amazonHlL30->first(function ($item) use ($sku) {
+                $cleanName = strtoupper(trim($item->campaignName));
+                return in_array($cleanName, [$sku, $sku . ' HEAD']) && strtoupper($item->campaignStatus) === 'ENABLED';
+            });
+
+            if (str_starts_with($sku, 'PARENT')) {
+                $childCount = $parentSkuCounts[$parent] ?? 0;
+                $parentHlSpendData[$parent] = [
+                    'total_L30' => $matchedCampaignHlL30->cost ?? 0,
+                    'total_L30_sales' => $matchedCampaignHlL30->sales ?? 0,
+                    'childCount' => $childCount,
+                ];
+            }
+        }
 
         foreach ($productMasters as $pm) {
             $sku = strtoupper($pm->sku);
@@ -1690,9 +1724,31 @@ class OverallAmazonController extends Controller
                 return (str_ends_with($cleanName, $sku . ' PT') || str_ends_with($cleanName, $sku . ' PT.'));
             });
 
-            $row['kw_spend_L30'] = $matchedCampaignKwL30->cost ?? 0;
-            $row['pmt_spend_L30'] = $matchedCampaignPtL30->cost ?? 0;
-            $row['AD_Spend_L30'] = ($row['kw_spend_L30'] ?? 0) + ($row['pmt_spend_L30'] ?? 0);
+            $matchedCampaignHlL30 = $amazonHlL30->first(function ($item) use ($sku) {
+                $cleanName = strtoupper(trim($item->campaignName));
+                return in_array($cleanName, [$sku, $sku . ' HEAD']) && strtoupper($item->campaignStatus) === 'ENABLED';
+            });
+
+            $row['kw_spend_L30'] = $matchedCampaignKwL30->spend ?? 0;
+            $row['pmt_spend_L30'] = $matchedCampaignPtL30->spend ?? 0;
+            
+            // Sales data for L30 (like AmazonAdRunningController)
+            $row['kw_sales_L30'] = $matchedCampaignKwL30->sales30d ?? 0;
+            $row['pmt_sales_L30'] = $matchedCampaignPtL30->sales30d ?? 0;
+
+            // HL (Headline/Sponsored Brands) data (like AmazonAdRunningController)
+            if (isset($parentHlSpendData[$parent]) && $parentHlSpendData[$parent]['childCount'] > 0) {
+                $row['hl_spend_L30'] = $parentHlSpendData[$parent]['total_L30'] / $parentHlSpendData[$parent]['childCount'];
+                $row['hl_sales_L30'] = $parentHlSpendData[$parent]['total_L30_sales'] / $parentHlSpendData[$parent]['childCount'];
+            } else {
+                $row['hl_spend_L30'] = 0;
+                $row['hl_sales_L30'] = 0;
+            }
+
+            // SPEND_L30 and SALES_L30 include HL (like AmazonAdRunningController)
+            $row['SPEND_L30'] = ($row['kw_spend_L30'] ?? 0) + ($row['pmt_spend_L30'] ?? 0) + ($row['hl_spend_L30'] ?? 0);
+            $row['AD_Spend_L30'] = ($row['kw_spend_L30'] ?? 0) + ($row['pmt_spend_L30'] ?? 0) + ($row['hl_spend_L30'] ?? 0);
+            $row['SALES_L30'] = ($row['kw_sales_L30'] ?? 0) + ($row['pmt_sales_L30'] ?? 0) + ($row['hl_sales_L30'] ?? 0);
 
             // AD% Formula = (AD_Spend_L30 / (price * A_L30)) * 100
             $totalRevenue = $price * $units_ordered_l30;
