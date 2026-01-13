@@ -924,15 +924,69 @@
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
     }
 
-    /* Optional: ensure headers are tall enough */
+    /* Optional: ensure headers are tall enough and vertical */
     #ebay-table thead th {
-        height: 36px;
+        height: auto;
+        min-height: 120px;
+        max-width: 50px;
+        padding: 8px 4px !important;
         text-align: center;
-        vertical-align: middle;
+        vertical-align: bottom;
+    }
+    
+    #ebay-table thead th > div {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        height: 100%;
+    }
+    
+    #ebay-table thead th > div > div.d-flex:not(.dropdown-search-container) {
+        writing-mode: vertical-rl;
+        text-orientation: mixed;
+        transform: rotate(180deg);
+        white-space: nowrap;
+        margin: 4px 0;
+    }
+    
+    #ebay-table thead th > div > div.dropdown-search-container {
+        writing-mode: horizontal-tb;
+        transform: none;
+        margin-top: 8px;
+        width: 100%;
+    }
+    
+    #ebay-table thead th > div > div.dropdown-search-container input {
+        transform: none;
+        width: 100%;
+        height: 24px;
     }
 
     #ebay-table {
         color: #000 !important; /* Force dark black font */
+    }
+    
+    /* Reason dropdown styling */
+    .reason-select {
+        min-width: 120px;
+        font-size: 12px;
+        padding: 4px 8px;
+        border: 1px solid #ced4da;
+        border-radius: 4px;
+        background-color: #fff;
+        cursor: pointer;
+    }
+    
+    .reason-select:focus {
+        border-color: #80bdff;
+        outline: 0;
+        box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+    }
+    
+    .reason-select option {
+        padding: 4px 8px;
+        background-color: #fff;
     }
     
 
@@ -2190,6 +2244,13 @@
 
                 // Now render rows from orderedRows
                 orderedRows.forEach((item, rowIndex) => {
+                    // Hide row if SKU contains parent as string
+                    const sku = item.SKU || '';
+                    const parent = item.Parent || '';
+                    if (parent && sku && sku.toUpperCase().includes(parent.toUpperCase())) {
+                        return; // Skip this row
+                    }
+
                     const $row = $('<tr>');
 
                     const isParentRow = !!item.is_parent || (item.SKU && String(item.SKU).toUpperCase().startsWith('PARENT'));
@@ -2237,9 +2298,9 @@
                     $row.append($('<td>').text(item.Parent));
 
                     const $skuCell = $('<td>').addClass('skuColumn').css('position', 'static');
-                    const sku = item.SKU || '';
+                    
                     if (isParentRow) {
-                        $skuCell.html(`<strong>${sku}</strong><input type="hidden" class="sku-hidden" value="${sku}" />`);
+                        $skuCell.html(`<strong>${sku}</strong><input type="hidden" class="sku-hidden" value="${item.SKU || ''}" />`);
                     } else {
                         const buyerLink = item.raw_data?.['B Link'] || '';
                         const sellerLink = item.raw_data?.['AMZ LINK SL'] || '';
@@ -2252,10 +2313,10 @@
                                         ${sellerLink ? `<div class="sku-link"><a href="${sellerLink}" target="_blank" rel="noopener noreferrer">Seller link</a></div>` : ''}
                                     </div>
                                 </div>
-                                <input type="hidden" class="sku-hidden" value="${sku}" />
+                                <input type="hidden" class="sku-hidden" value="${item.SKU || ''}" />
                             `);
                         } else {
-                            $skuCell.html(`${sku}<input type="hidden" class="sku-hidden" value="${sku}" />`);
+                            $skuCell.html(`${sku}<input type="hidden" class="sku-hidden" value="${item.SKU || ''}" />`);
                         }
                     }
                     $row.append($skuCell);
@@ -2310,25 +2371,25 @@
                     item.TO_ADJUST = toAdjust;
                     $row.append($('<td>').addClass('to-adjust').text(toAdjust));
 
-                    // Parse comma-separated reasons for multiple selection
+                    // Parse comma-separated reasons - take first value for single select
                     const reasonStr = item.REASON || '';
-                    const selectedReasons = reasonStr ? reasonStr.split(',').map(r => r.trim()) : [];
-                    const isReasonSelected = (reasonValue) => selectedReasons.includes(reasonValue);
+                    const selectedReason = reasonStr ? reasonStr.split(',').map(r => r.trim())[0] : '';
 
                     $row.append($('<td>').html(`
-                        <select class="form-control reason-select" data-sku="${item.SKU}" data-index="${rowIndex}" multiple size="3" style="min-height: 80px;">
-                            <option value="Count" ${isReasonSelected('Count') ? 'selected' : ''}>Count</option>
-                            <option value="Received" ${isReasonSelected('Received') ? 'selected' : ''}>Received</option>
-                            <option value="Return Restock" ${isReasonSelected('Return Restock') ? 'selected' : ''}>Return Restock</option>
-                            <option value="Damaged" ${isReasonSelected('Damaged') ? 'selected' : ''}>Damaged</option>
-                            <option value="Theft or Loss" ${isReasonSelected('Theft or Loss') ? 'selected' : ''}>Theft or Loss</option>
-                            <option value="Promotion" ${isReasonSelected('Promotion') ? 'selected' : ''}>Promotion</option>
-                            <option value="Suspense" ${isReasonSelected('Suspense') ? 'selected' : ''}>Suspense</option>
-                            <option value="Unknown" ${isReasonSelected('Unknown') ? 'selected' : ''}>Unknown</option>
-                            <option value="Adjustment" ${isReasonSelected('Adjustment') ? 'selected' : ''}>Adjustment</option>
-                            <option value="Combo" ${isReasonSelected('Combo') ? 'selected' : ''}>Combo</option>
-                            <option value="Maybe FBA" ${isReasonSelected('Maybe FBA') ? 'selected' : ''}>Maybe FBA</option>
-                            <option value="Need 2 Find" ${isReasonSelected('Need 2 Find') ? 'selected' : ''}>Need 2 Find</option>
+                        <select class="form-control reason-select" data-sku="${item.SKU}" data-index="${rowIndex}">
+                            <option value="">Select reason...</option>
+                            <option value="Count" ${selectedReason === 'Count' ? 'selected' : ''}>Count</option>
+                            <option value="Received" ${selectedReason === 'Received' ? 'selected' : ''}>Received</option>
+                            <option value="Return Restock" ${selectedReason === 'Return Restock' ? 'selected' : ''}>Return Restock</option>
+                            <option value="Damaged" ${selectedReason === 'Damaged' ? 'selected' : ''}>Damaged</option>
+                            <option value="Theft or Loss" ${selectedReason === 'Theft or Loss' ? 'selected' : ''}>Theft or Loss</option>
+                            <option value="Promotion" ${selectedReason === 'Promotion' ? 'selected' : ''}>Promotion</option>
+                            <option value="Suspense" ${selectedReason === 'Suspense' ? 'selected' : ''}>Suspense</option>
+                            <option value="Unknown" ${selectedReason === 'Unknown' ? 'selected' : ''}>Unknown</option>
+                            <option value="Adjustment" ${selectedReason === 'Adjustment' ? 'selected' : ''}>Adjustment</option>
+                            <option value="Combo" ${selectedReason === 'Combo' ? 'selected' : ''}>Combo</option>
+                            <option value="Maybe FBA" ${selectedReason === 'Maybe FBA' ? 'selected' : ''}>Maybe FBA</option>
+                            <option value="Need 2 Find" ${selectedReason === 'Need 2 Find' ? 'selected' : ''}>Need 2 Find</option>
                         </select>
                     `));
 
@@ -2432,8 +2493,7 @@
                 const verifiedStock = parseInt($row.find('.verified-stock-input').val().trim()) || 0;
                 const onHand = parseInt($row.find('.on-hand').text().trim()) || 0;
                 const toAdjust = verifiedStock - onHand;
-                const reasonArray = $row.find('.reason-select').val() || [];
-                const reason = Array.isArray(reasonArray) ? reasonArray.join(', ') : reasonArray;
+                const reason = $row.find('.reason-select').val() || '';
                 const isApproved = $checkbox.is(':checked') ? 1 : 0;
                 const index = parseInt($checkbox.data('index'));
                 const remarks = $row.find('.remarks-input').val() || ''; 
@@ -2448,8 +2508,8 @@
                     return;
                 }
 
-                if (isApproved && (!reasonArray || reasonArray.length === 0)) {
-                    alert('Please select at least one reason before approving.');
+                if (isApproved && !reason) {
+                    alert('Please select a reason before approving.');
                     $checkbox.prop('checked', false);
                     return;
                 }
@@ -3719,13 +3779,22 @@
 
                     // Sort tableData (not just filteredData)
                     const sorted = [...filteredData].sort((a, b) => {
-                        const valA = a[sortField] ?? '';
-                        const valB = b[sortField] ?? '';
+                        let valA = a[sortField] ?? '';
+                        let valB = b[sortField] ?? '';
 
-                        // Handle numbers
-                        const isNumeric = !isNaN(valA) && !isNaN(valB);
-                        if (isNumeric) {
-                            return (parseFloat(valA) - parseFloat(valB)) * currentSort.direction;
+                        // Explicitly handle numeric fields (INV, L30, DIL, etc.)
+                        const numericFields = ['INV', 'L30', 'DIL', 'ON_HAND', 'COMMITTED', 'AVAILABLE_TO_SELL'];
+                        if (numericFields.includes(sortField)) {
+                            valA = parseFloat(valA) || 0;
+                            valB = parseFloat(valB) || 0;
+                            return (valA - valB) * currentSort.direction;
+                        }
+
+                        // Handle numbers (for other numeric fields)
+                        const numA = parseFloat(valA);
+                        const numB = parseFloat(valB);
+                        if (!isNaN(numA) && !isNaN(numB) && valA !== '' && valB !== '') {
+                            return (numA - numB) * currentSort.direction;
                         }
 
                         // Fallback: string compare
