@@ -2614,6 +2614,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::put('/update-amazon-campaign-bgt-price', 'updateAmazonCampaignBgt');
         Route::post('/toggle-amazon-sp-campaign-status', 'toggleAmazonSpCampaignStatus');
         Route::post('/toggle-amazon-sb-campaign-status', 'toggleAmazonSbCampaignStatus');
+        Route::post('/toggle-amazon-sku-ads', 'toggleAmazonSkuAds');
         Route::put('/update-amazon-sb-campaign-bgt-price', 'updateAmazonSbCampaignBgt');
     });
 

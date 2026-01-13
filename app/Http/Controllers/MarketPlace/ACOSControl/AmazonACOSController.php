@@ -1262,4 +1262,130 @@ class AmazonACOSController extends Controller
             ]);
         }
     }
+
+    public function toggleAmazonSkuAds(Request $request)
+    {
+        ini_set('max_execution_time', 300);
+        ini_set('memory_limit', '512M');
+
+        $sku = strtoupper(trim($request->input('sku')));
+        $status = $request->input('status'); // ENABLED or PAUSED
+
+        if (empty($sku) || empty($status)) {
+            return response()->json([
+                'message' => 'SKU and status are required',
+                'status' => 400
+            ]);
+        }
+
+        if (!in_array($status, ['ENABLED', 'PAUSED'])) {
+            return response()->json([
+                'message' => 'Status must be ENABLED or PAUSED',
+                'status' => 400
+            ]);
+        }
+
+        // Find all campaigns matching the SKU (KW campaigns - exact match or starting with SKU + space)
+        // Same logic as OverallAmazonController
+        $allSpCampaigns = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+            ->where('report_date_range', 'L30')
+            ->get();
+
+        $cleanSku = strtoupper(trim(rtrim($sku, '.')));
+        
+        // Match campaigns using SAME logic as OverallAmazonController
+        // This ensures we toggle the same campaigns that are being displayed
+        $kwCampaigns = $allSpCampaigns->filter(function ($item) use ($cleanSku) {
+            $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
+            // Exclude PT campaigns
+            if (str_ends_with($campaignName, ' PT') || str_ends_with($campaignName, ' PT.')) {
+                return false;
+            }
+            // Match exact SKU or campaigns starting with SKU (like 'A-54' and 'A-54 2PCS')
+            // Same logic as OverallAmazonController line 1721
+            return $campaignName === $cleanSku || str_starts_with($campaignName, $cleanSku . ' ');
+        });
+
+        // Find all PT campaigns matching the SKU - same logic as OverallAmazonController
+        $ptCampaigns = $allSpCampaigns->filter(function ($item) use ($cleanSku, $sku) {
+            $cleanName = strtoupper(trim($item->campaignName));
+            // Match PT campaigns that end with SKU PT or start with SKU and end with PT
+            // Same logic as OverallAmazonController line 1727-1728
+            return (str_ends_with($cleanName, $sku . ' PT') || str_ends_with($cleanName, $sku . ' PT.'))
+                || (str_starts_with($cleanName, $sku . ' ') && (str_ends_with($cleanName, ' PT') || str_ends_with($cleanName, ' PT.')));
+        });
+        
+
+        $allCampaignIds = $kwCampaigns->pluck('campaign_id')->merge($ptCampaigns->pluck('campaign_id'))->unique()->filter()->values()->all();
+
+        if (empty($allCampaignIds)) {
+            return response()->json([
+                'message' => 'No campaigns found for SKU: ' . $sku,
+                'status' => 404
+            ]);
+        }
+
+        $accessToken = $this->getAccessToken();
+        $client = new Client();
+        $url = 'https://advertising-api.amazon.com/sp/campaigns';
+
+        try {
+            // Prepare campaigns array for API call
+            $campaignsToUpdate = [];
+            foreach ($allCampaignIds as $campaignId) {
+                $campaignsToUpdate[] = [
+                    'campaignId' => $campaignId,
+                    'state' => $status
+                ];
+            }
+
+            // Update in chunks of 10 (Amazon API limit)
+            $chunks = array_chunk($campaignsToUpdate, 10);
+            $allResults = [];
+
+            foreach ($chunks as $chunk) {
+                $response = $client->put($url, [
+                    'headers' => [
+                        'Amazon-Advertising-API-ClientId' => env('AMAZON_ADS_CLIENT_ID'),
+                        'Authorization' => 'Bearer ' . $accessToken,
+                        'Amazon-Advertising-API-Scope' => $this->profileId,
+                        'Content-Type' => 'application/vnd.spCampaign.v3+json',
+                        'Accept' => 'application/vnd.spCampaign.v3+json',
+                    ],
+                    'json' => [
+                        'campaigns' => $chunk
+                    ],
+                    'timeout' => 60,
+                    'connect_timeout' => 30,
+                ]);
+
+                $allResults[] = json_decode($response->getBody(), true);
+            }
+
+            // Update database after successful API call
+            // Update for ALL date ranges, not just L30, to ensure status persists across page refreshes
+            try {
+                AmazonSpCampaignReport::whereIn('campaign_id', $allCampaignIds)
+                    ->update(['campaignStatus' => $status]);
+            } catch (\Exception $dbError) {
+                Log::warning('Error updating SP campaign status in database: ' . $dbError->getMessage());
+                // Continue even if DB update fails
+            }
+
+            return response()->json([
+                'message' => 'Campaign status updated successfully for SKU: ' . $sku,
+                'data' => $allResults,
+                'campaign_ids' => $allCampaignIds,
+                'status' => 200,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error toggling SP campaign status for SKU ' . $sku . ': ' . $e->getMessage());
+            return response()->json([
+                'message' => 'Error updating campaign status',
+                'error' => $e->getMessage(),
+                'status' => 500,
+            ]);
+        }
+    }
 }
