@@ -1873,6 +1873,46 @@
                     },
 
                     {
+                        title: "Ad Pause",
+                        field: "ad_pause",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const sku = rowData['(Child) sku'];
+                            
+                            // Empty for parent rows
+                            if (rowData.is_parent_summary) return '';
+                            
+                            // Don't show toggle if no campaigns exist for this SKU
+                            const hasCampaigns = rowData.has_campaigns === true || rowData.has_campaigns === 1;
+                            if (!hasCampaigns) return '';
+                            
+                            // Check campaign status - if either KW or PT is ENABLED, ads are enabled
+                            const kwStatus = (rowData.kw_campaign_status || '').toUpperCase();
+                            const ptStatus = (rowData.pt_campaign_status || '').toUpperCase();
+                            const isEnabled = kwStatus === 'ENABLED' || ptStatus === 'ENABLED';
+                            
+                            return `
+                                <div class="form-check form-switch d-flex justify-content-center">
+                                    <input class="form-check-input ad-pause-toggle" 
+                                           type="checkbox" 
+                                           role="switch" 
+                                           data-sku="${sku}"
+                                           ${isEnabled ? 'checked' : ''}
+                                           style="cursor: pointer; width: 3rem; height: 1.5rem;">
+                                </div>
+                            `;
+                        },
+                        cellClick: function(e, cell) {
+                            // Prevent row click event but allow checkbox to toggle
+                            if (e.target.classList.contains('ad-pause-toggle')) {
+                                e.stopPropagation();
+                            }
+                        },
+                        width: 90
+                    },
+
+                    {
                         title: "SPEND L30",
                         field: "AD_Spend_L30",
                         hozAlign: "center",
@@ -2861,6 +2901,92 @@
                     $('#chart-no-data-message').hide();
                     loadSkuMetricsData(sku, 7);
                     $('#skuMetricsModal').modal('show');
+                }
+            });
+
+            // Ad Pause Toggle - use change event like acos-control-kw
+            document.addEventListener("change", function(e) {
+                if (e.target.classList.contains("ad-pause-toggle")) {
+                    const checkbox = e.target;
+                    const sku = checkbox.getAttribute("data-sku");
+                    const isEnabled = checkbox.checked;
+                    const newStatus = isEnabled ? 'ENABLED' : 'PAUSED';
+                    
+                    if (!sku) {
+                        alert("SKU not found!");
+                        checkbox.checked = !isEnabled; // Revert toggle
+                        return;
+                    }
+                    
+                    // Show loading overlay if available
+                    const overlay = document.getElementById("progress-overlay");
+                    if (overlay) overlay.style.display = "flex";
+                    
+                    fetch('/toggle-amazon-sku-ads', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                        },
+                        body: JSON.stringify({
+                            sku: sku,
+                            status: newStatus
+                        })
+                    })
+                    .then(res => {
+                        if (!res.ok) {
+                            throw new Error(`HTTP error! status: ${res.status}`);
+                        }
+                        return res.json();
+                    })
+                    .then(data => {
+                        if (data.status === 200) {
+                            // Update the row data - update campaign status fields like acos-control-kw
+                            let rows = table.getRows();
+                            for (let i = 0; i < rows.length; i++) {
+                                let rowData = rows[i].getData();
+                                if (rowData['(Child) sku'] === sku) {
+                                    // Update campaign status fields
+                                    rows[i].update({
+                                        kw_campaign_status: newStatus,
+                                        pt_campaign_status: newStatus,
+                                        ad_pause: !isEnabled
+                                    });
+                                    
+                                    // Reformat the row to update the toggle button with new status
+                                    // This will re-run the formatter with the updated row data
+                                    rows[i].reformat();
+                                    
+                                    // Also directly update the checkbox state to ensure it's correct
+                                    setTimeout(() => {
+                                        const adPauseCell = rows[i].getCell('ad_pause');
+                                        if (adPauseCell) {
+                                            const cellElement = adPauseCell.getElement();
+                                            const checkbox = cellElement.querySelector('.ad-pause-toggle');
+                                            if (checkbox) {
+                                                // Set checkbox state based on new status
+                                                checkbox.checked = isEnabled;
+                                            }
+                                        }
+                                    }, 100);
+                                    
+                                    showToast('success', `Ads ${newStatus === 'ENABLED' ? 'enabled' : 'paused'} for SKU: ${sku}`);
+                                    break;
+                                }
+                            }
+                        } else {
+                            alert("Error: " + (data.message || "Failed to update ad status"));
+                            checkbox.checked = !isEnabled; // Revert toggle
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Toggle error:', err);
+                        alert("Request failed: " + (err.message || "Network error"));
+                        checkbox.checked = !isEnabled; // Revert toggle
+                    })
+                    .finally(() => {
+                        if (overlay) overlay.style.display = "none";
+                    });
                 }
             });
 
