@@ -46,8 +46,9 @@
             z-index: 10;
             padding: 12px 15px;
             /* Adjust padding as needed */
-            font-weight: 600;
-            /* Make header text slightly bold */
+            font-weight: 700;
+            /* Make header text bolder */
+            font-size: 20px;
             border-bottom: 2px solid #1a56b7;
             /* Darker blue border bottom */
         }
@@ -85,6 +86,8 @@
         #inventoryTable thead th {
             background-color: #2c6ed5 !important;
             color: white !important;
+            font-weight: 700 !important;
+            font-size: 20px !important;
         }
 
         /* Ensure DataTables sorting icons are visible */
@@ -175,6 +178,30 @@
             20%, 40%, 60%, 80% { transform: translate(-50%, -50%) rotate(2deg); }
         }
 
+        /* Increase overall page font size for better readability */
+        .card-body {
+            font-size: 20px;
+        }
+
+        .card-body table tbody td {
+            font-size: 20px;
+        }
+
+        .card-body .form-label {
+            font-size: 20px;
+        }
+
+        .card-body .form-control,
+        .card-body .form-select {
+            font-size: 20px;
+        }
+
+        /* Make form section headers bolder */
+        .modal-body h5 {
+            font-weight: 700;
+            font-size: 22px;
+        }
+
     </style>
 @endsection
 
@@ -237,46 +264,6 @@
                             <div class="row">
                                 <!-- From Warehouse Section -->
                                 <div class="col-md-6 p-3">
-                                <h5><strong> TO </strong></h5>
-
-                                <div class="mb-3">
-                                    <label for="from_sku" class="form-label fw-bold">SKU</label>
-                                    <select class="form-select" id="from_sku" name="from_sku" required>
-                                        <option selected disabled>Select SKU</option>
-                                        @foreach($skus as $item)
-                                            <option value="{{ $item->sku }}" data-parent="{{ $item->parent }}"  data-available_qty="{{ $item->available_quantity }}" data-dil="{{ $item->dil }}">{{ $item->sku }}</option>
-                                        @endforeach
-                                    </select>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="from_parent_name" class="form-label fw-bold">Parent</label>
-                                    <input type="text" class="form-control" id="from_parent_name" name="from_parent_name" readonly>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="from_available_qty" class="form-label fw-bold">Available Qty</label>
-                                    <input type="number" id="from_available_qty" name="from_available_qty" class="form-control" readonly>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="from_dil_percent" class="form-label fw-bold">Dil%</label>
-                                    <input type="number" id="from_dil_percent" name="from_dil_percent" class="form-control" min="0" max="100" step="0.01">
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="from_adjust_qty" class="form-label fw-bold">Qty Adj</label>
-                                    <input type="number" id="from_adjust_qty" name="from_adjust_qty" class="form-control" min="1" required>
-                                    <small class="text-muted" id="from_qty_hint"></small>
-                                </div>
-
-                                <!-- <div class="mb-3 text-center">
-                                    <label><strong>To</strong></label>
-                                </div> -->
-                                </div>
-
-                                <!-- To Warehouse Section -->
-                                <div class="col-md-6 p-3">
                                 <h5><strong>From</strong></h5>
 
                                 
@@ -316,10 +303,64 @@
                                     <label for="to_adjust_qty" class="form-label fw-bold">Qty Adj</label>
                                     <input type="number" id="to_adjust_qty" name="to_adjust_qty" class="form-control" min="1" required>
                                 </div>
-
-                                <div class="mt-4 text-end">
-                                    <button type="submit" class="btn btn-success">Submit</button>
                                 </div>
+
+                                <!-- To Warehouse Section -->
+                                <div class="col-md-6 p-3">
+                                <h5><strong> TO </strong></h5>
+
+                                <div class="mb-3">
+                                    <label for="from_sku" class="form-label fw-bold">SKU</label>
+                                    <select class="form-select" id="from_sku" name="from_sku" required>
+                                        <option selected disabled>Select SKU</option>
+                                        @foreach($skus as $item)
+                                            <option value="{{ $item->sku }}" data-parent="{{ $item->parent }}"  data-available_qty="{{ $item->available_quantity }}" data-dil="{{ $item->dil }}">{{ $item->sku }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="from_parent_name" class="form-label fw-bold">Parent</label>
+                                    <input type="text" class="form-control" id="from_parent_name" name="from_parent_name" readonly>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="from_available_qty" class="form-label fw-bold">Available Qty</label>
+                                    <input type="number" id="from_available_qty" name="from_available_qty" class="form-control" readonly>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="from_dil_percent" class="form-label fw-bold">Dil%</label>
+                                    <input type="number" id="from_dil_percent" name="from_dil_percent" class="form-control" min="0" max="100" step="0.01">
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="from_adjust_qty" class="form-label fw-bold">Qty Adj</label>
+                                    <input type="number" id="from_adjust_qty" name="from_adjust_qty" class="form-control" min="1" required>
+                                    <small class="text-muted" id="from_qty_hint"></small>
+                                </div>
+
+                                <!-- <div class="mb-3 text-center">
+                                    <label><strong>To</strong></label>
+                                </div> -->
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-12 p-3">
+                                    <div class="mb-3">
+                                        <label for="ratio" class="form-label fw-bold">Ratio</label>
+                                        <select class="form-select" id="ratio" name="ratio">
+                                            <option value="1:4">1:4 ratio</option>
+                                            <option value="1:2">1:2 ratio</option>
+                                            <option value="1:1" selected>1:1 ratio</option>
+                                            <option value="2:1">2:1 ratio</option>
+                                            <option value="4:1">4:1 ratio</option>
+                                        </select>
+                                    </div>
+                                    <div class="mt-3 text-end">
+                                        <button type="submit" class="btn btn-success">Submit</button>
+                                    </div>
                                 </div>
                             </div>
 

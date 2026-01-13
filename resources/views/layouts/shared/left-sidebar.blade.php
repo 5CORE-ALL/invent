@@ -1597,10 +1597,10 @@
                             <a href="{{ route('stock.adjustment.view') }}">Stock Adjustment</a>
                         </li>
                         <li>
-                            <a href="{{ route('stock.transfer.view') }}">Stock Transfer</a>
+                            <a href="{{ route('stock.transfer.view') }}">Stock Transfer (WH)</a>
                         </li>
                         <li>
-                            <a href="{{ route('stock.balance.view') }}">Stock Balance</a>
+                            <a href="{{ route('stock.balance.view') }}">Stock Balance / TRF</a>
                         </li>
                         <li>
                             <a href="{{ route('incoming.orders.view') }}">Incoming Orders</a>
