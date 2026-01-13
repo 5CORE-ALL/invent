@@ -16,6 +16,7 @@ use App\Models\ADVMastersData;
 use App\Models\EbayPriorityReport;
 use App\Models\ProductMaster; 
 use App\Models\EbaySkuDailyData;
+use App\Models\AmazonDatasheet;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Models\EbayListingStatus;
@@ -234,6 +235,10 @@ class EbayController extends Controller
             ->get()
             ->keyBy('sku');
 
+        // Fetch Amazon prices for comparison
+        $amazonPrices = AmazonDatasheet::whereIn('sku', $skus)
+            ->pluck('price', 'sku');
+
         $campaignListings = DB::connection('apicentral')
             ->table('ebay_campaign_ads_listings')
             ->select('listing_id', 'bid_percentage', 'suggested_bid')
@@ -381,6 +386,9 @@ class EbayController extends Controller
             $row['price_lmpa'] = $ebayMetric->price_lmpa ?? null;
             $row['eBay_item_id'] = $ebayMetric->item_id ?? null;
             $row['views'] = $ebayMetric->views ?? 0;
+
+            // Amazon Price for comparison
+            $row['A Price'] = isset($amazonPrices[$pm->sku]) ? floatval($amazonPrices[$pm->sku]) : 0;
 
             // Get bid percentage from campaign listings
             if ($ebayMetric && isset($campaignListings[$ebayMetric->item_id])) {
