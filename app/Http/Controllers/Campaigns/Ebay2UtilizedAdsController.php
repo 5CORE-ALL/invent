@@ -74,9 +74,25 @@ class Ebay2UtilizedAdsController extends Controller
             $ebayMetricData[$ebay->sku] = $ebay;
         }
         
-        $nrValues = EbayTwoDataView::whereIn('sku', $allSkus)->pluck('value', 'sku');
-        // Get NRL values from ebay_two_listing_statuses table
-        $nrlValues = EbayTwoListingStatus::whereIn('sku', $allSkus)->pluck('value', 'sku');
+        // Get NR values from EbayTwoDataView with normalized keys for case-insensitive matching
+        $nrValuesRaw = EbayTwoDataView::whereIn('sku', $allSkus)->get();
+        $nrValues = [];
+        foreach ($nrValuesRaw as $item) {
+            $normalizedKey = $normalizeSku($item->sku);
+            $nrValues[$normalizedKey] = $item->value;
+            // Also store with original SKU for backward compatibility
+            $nrValues[$item->sku] = $item->value;
+        }
+        
+        // Get NRL values from ebay_two_listing_statuses table with normalized keys
+        $nrlValuesRaw = EbayTwoListingStatus::whereIn('sku', $allSkus)->get();
+        $nrlValues = [];
+        foreach ($nrlValuesRaw as $item) {
+            $normalizedKey = $normalizeSku($item->sku);
+            $nrlValues[$normalizedKey] = $item->value;
+            // Also store with original SKU for backward compatibility
+            $nrlValues[$item->sku] = $item->value;
+        }
 
             $reports = Ebay2PriorityReport::whereIn('report_range', ['L7', 'L1', 'L30'])
                 ->where('campaign_name', 'NOT LIKE', 'Campaign %')
@@ -100,24 +116,24 @@ class Ebay2UtilizedAdsController extends Controller
 
             $nrValue = '';
             $nrlValue = '';
-            // Get NR value from EbayTwoDataView
-            if (isset($nrValues[$originalSku])) {
-                $raw = $nrValues[$originalSku];
-                if (!is_array($raw)) {
-                    $raw = json_decode($raw, true);
+            // Get NR value from EbayTwoDataView (try normalized SKU first, then original)
+            $nrRaw = $nrValues[$sku] ?? $nrValues[$originalSku] ?? null;
+            if ($nrRaw !== null) {
+                if (!is_array($nrRaw)) {
+                    $nrRaw = json_decode($nrRaw, true);
                 }
-                if (is_array($raw)) {
-                    $nrValue = $raw['NR'] ?? null;
+                if (is_array($nrRaw)) {
+                    $nrValue = $nrRaw['NR'] ?? null;
                 }
             }
-            // Get NRL value from ebay_two_listing_statuses table
-            if (isset($nrlValues[$originalSku])) {
-                $raw = $nrlValues[$originalSku];
-                if (!is_array($raw)) {
-                    $raw = json_decode($raw, true);
+            // Get NRL value from ebay_two_listing_statuses table (try normalized SKU first, then original)
+            $nrlRaw = $nrlValues[$sku] ?? $nrlValues[$originalSku] ?? null;
+            if ($nrlRaw !== null) {
+                if (!is_array($nrlRaw)) {
+                    $nrlRaw = json_decode($nrlRaw, true);
                 }
-                if (is_array($raw)) {
-                    $nrlValue = $raw['nr_req'] ?? null;
+                if (is_array($nrlRaw)) {
+                    $nrlValue = $nrlRaw['nr_req'] ?? null;
                     // Normalize: if value is "NRL", convert to "NR" for consistency
                     if ($nrlValue === 'NRL') {
                         $nrlValue = 'NR';
@@ -286,30 +302,36 @@ class Ebay2UtilizedAdsController extends Controller
                 }
             }
 
-            // Get NR value for unmatched campaign
+            // Get NR value for unmatched campaign (try normalized SKU first, then original)
             $nrValue = '';
-            if ($matchedSku && isset($nrValues[$matchedSku])) {
-                $raw = $nrValues[$matchedSku];
-                if (!is_array($raw)) {
-                    $raw = json_decode($raw, true);
-                }
-                if (is_array($raw)) {
-                    $nrValue = $raw['NR'] ?? null;
+            if ($matchedSku) {
+                $normalizedMatchedSku = $normalizeSku($matchedSku);
+                $nrRaw = $nrValues[$normalizedMatchedSku] ?? $nrValues[$matchedSku] ?? null;
+                if ($nrRaw !== null) {
+                    if (!is_array($nrRaw)) {
+                        $nrRaw = json_decode($nrRaw, true);
+                    }
+                    if (is_array($nrRaw)) {
+                        $nrValue = $nrRaw['NR'] ?? null;
+                    }
                 }
             }
             
-            // Get NRL value for unmatched campaign from ebay_two_listing_statuses table
+            // Get NRL value for unmatched campaign from ebay_two_listing_statuses table (try normalized SKU first, then original)
             $nrlValue = '';
-            if ($matchedSku && isset($nrlValues[$matchedSku])) {
-                $raw = $nrlValues[$matchedSku];
-                if (!is_array($raw)) {
-                    $raw = json_decode($raw, true);
-                }
-                if (is_array($raw)) {
-                    $nrlValue = $raw['nr_req'] ?? null;
-                    // Normalize: if value is "NRL", convert to "NR" for consistency
-                    if ($nrlValue === 'NRL') {
-                        $nrlValue = 'NR';
+            if ($matchedSku) {
+                $normalizedMatchedSku = $normalizeSku($matchedSku);
+                $nrlRaw = $nrlValues[$normalizedMatchedSku] ?? $nrlValues[$matchedSku] ?? null;
+                if ($nrlRaw !== null) {
+                    if (!is_array($nrlRaw)) {
+                        $nrlRaw = json_decode($nrlRaw, true);
+                    }
+                    if (is_array($nrlRaw)) {
+                        $nrlValue = $nrlRaw['nr_req'] ?? null;
+                        // Normalize: if value is "NRL", convert to "NR" for consistency
+                        if ($nrlValue === 'NRL') {
+                            $nrlValue = 'NR';
+                        }
                     }
                 }
             }
@@ -437,26 +459,26 @@ class Ebay2UtilizedAdsController extends Controller
                 $ebay = $ebayMetricData[$normalizedEbaySku] ?? $ebayMetricData[$ebaySku] ?? null;
                 $shopify = $shopifyData[$normalizedEbaySku] ?? $shopifyData[$ebaySku] ?? null;
                 
-                // Get NR and NRL values
+                // Get NR and NRL values (try normalized SKU first, then original)
                 $nrValue = '';
-                if (isset($nrValues[$ebaySku])) {
-                    $raw = $nrValues[$ebaySku];
-                    if (!is_array($raw)) {
-                        $raw = json_decode($raw, true);
+                $nrRaw = $nrValues[$normalizedEbaySku] ?? $nrValues[$ebaySku] ?? null;
+                if ($nrRaw !== null) {
+                    if (!is_array($nrRaw)) {
+                        $nrRaw = json_decode($nrRaw, true);
                     }
-                    if (is_array($raw)) {
-                        $nrValue = $raw['NR'] ?? null;
+                    if (is_array($nrRaw)) {
+                        $nrValue = $nrRaw['NR'] ?? null;
                     }
                 }
                 
                 $nrlValue = '';
-                if (isset($nrlValues[$ebaySku])) {
-                    $raw = $nrlValues[$ebaySku];
-                    if (!is_array($raw)) {
-                        $raw = json_decode($raw, true);
+                $nrlRaw = $nrlValues[$normalizedEbaySku] ?? $nrlValues[$ebaySku] ?? null;
+                if ($nrlRaw !== null) {
+                    if (!is_array($nrlRaw)) {
+                        $nrlRaw = json_decode($nrlRaw, true);
                     }
-                    if (is_array($raw)) {
-                        $nrlValue = $raw['nr_req'] ?? null;
+                    if (is_array($nrlRaw)) {
+                        $nrlValue = $nrlRaw['nr_req'] ?? null;
                         if ($nrlValue === 'NRL') {
                             $nrlValue = 'NR';
                         }
@@ -677,33 +699,55 @@ class Ebay2UtilizedAdsController extends Controller
             }
             
             // Map field to nr_req for NRL (as per ebay listing statuses structure)
-            $jsonData['nr_req'] = $value;
+            // Normalize: if value is "NR", convert to "NRL" for database storage
+            $normalizedValue = ($value === 'NR' || $value === 'NRL') ? 'NRL' : $value;
+            $jsonData['nr_req'] = $normalizedValue;
             
             $ebayListingStatus->value = $jsonData;
             $ebayListingStatus->save();
             
-            // If NRL is set to "NR", automatically set NR to "NRA" in ebay_two_data_views
-            // If NRL is set to "REQ", keep NR as is (don't auto-change)
-            if ($value === 'NR' || $value === 'NRL') {
+            // If NRL is set to "NR" or "NRL", automatically set NR to "NRA" in ebay_two_data_views
+            // Always set NRA to "NRA" when NRL is "NR" or "NRL" (regardless of current value)
+            if ($normalizedValue === 'NRL') {
                 $ebayDataView = EbayTwoDataView::firstOrNew(['sku' => $sku]);
                 $nrJsonData = $ebayDataView->value ?? [];
                 if (!is_array($nrJsonData)) {
                     $nrJsonData = json_decode($nrJsonData, true) ?? [];
                 }
-                // Only set NR to NRA if it's not already set to something else
-                // This ensures we don't override user's explicit NRA selection
-                if (!isset($nrJsonData['NR']) || $nrJsonData['NR'] === '' || $nrJsonData['NR'] === 'RA') {
-                    $nrJsonData['NR'] = 'NRA';
-                    $ebayDataView->value = $nrJsonData;
-                    $ebayDataView->save();
+                if (!is_array($nrJsonData)) {
+                    $nrJsonData = [];
+                }
+                // Always set NR to NRA when NRL is set to "NR" or "NRL"
+                $nrJsonData['NR'] = 'NRA';
+                $ebayDataView->value = $nrJsonData;
+                $ebayDataView->save();
+            }
+            
+            // Prepare response with both NRL and NR data
+            $responseData = $jsonData;
+            $nrValue = null;
+            if ($normalizedValue === 'NRL') {
+                // Get NR value from ebay_two_data_views table for response
+                $ebayDataView = EbayTwoDataView::where('sku', $sku)->first();
+                if ($ebayDataView) {
+                    $nrJsonData = is_array($ebayDataView->value) 
+                        ? $ebayDataView->value 
+                        : (json_decode($ebayDataView->value ?? '{}', true) ?: []);
+                    $nrValue = $nrJsonData['NR'] ?? 'NRA';
+                    // Include NR in response data
+                    $responseData['NR'] = $nrValue;
+                } else {
+                    $responseData['NR'] = 'NRA';
+                    $nrValue = 'NRA';
                 }
             }
             
             return response()->json([
+                'success' => true,
                 'status' => 200,
                 'message' => "NRL field updated successfully",
-                'updated_json' => $jsonData,
-                'nra_auto_set' => ($value === 'NR' || $value === 'NRL') ? true : false
+                'updated_json' => $responseData,
+                'nra_auto_set' => ($normalizedValue === 'NRL') ? true : false
             ]);
         }
         

@@ -282,6 +282,19 @@
                                                     style="font-size: 0.75rem; display: block; margin-bottom: 2px;">NRA</span>
                                                 <span class="fw-bold" id="nra-count" style="font-size: 1.1rem;">0</span>
                                         </div>
+                                            <div class="badge-count-item nrl-missing-card" id="nrl-missing-card"
+                                                style="background: linear-gradient(135deg, #ffc107 0%, #ffb300 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">NRL
+                                                    MISSING</span>
+                                                <span class="fw-bold" id="nrl-missing-count"
+                                                    style="font-size: 1.1rem;">0</span>
+                                        </div>
+                                            <div class="badge-count-item nrl-card" id="nrl-card"
+                                                style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
+                                                <span
+                                                    style="font-size: 0.75rem; display: block; margin-bottom: 2px;">NRL</span>
+                                                <span class="fw-bold" id="nrl-count" style="font-size: 1.1rem;">0</span>
+                                        </div>
                                             <div class="badge-count-item ra-card" id="ra-card"
                                                 style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
                                                 <span
@@ -399,6 +412,17 @@
                                     <option value="LATER">LATER</option>
                                 </select>
                                     </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label fw-semibold mb-2"
+                                            style="color: #475569; font-size: 0.8125rem;">
+                                            <i class="fa-solid fa-tags me-1" style="color: #64748b;"></i>NRL
+                                        </label>
+                                        <select id="nrl-filter" class="form-select form-select-md">
+                                            <option value="">All NRL</option>
+                                    <option value="NRL">NRL</option>
+                                    <option value="REQ">REQ</option>
+                                </select>
+                            </div>
                                     <div class="col-md-1">
                                         <label class="form-label fw-semibold mb-2 d-block"
                                             style="color: transparent; font-size: 0.8125rem;">Actions</label>
@@ -480,9 +504,11 @@
             let currentSkuType = 'sku'; // Default to SKU (hide PARENT by default)
             let showMissingOnly = false; // Filter for missing campaigns only
             let showNraMissingOnly = false; // Filter for NRA missing (yellow dots) only
+            let showNrlMissingOnly = false; // Filter for NRL missing (yellow dots) only
             let showZeroInvOnly = false; // Filter for zero/negative inventory only
             let showCampaignOnly = false; // Filter for campaigns only
             let showNraOnly = false; // Filter for NRA only
+            let showNrlOnly = false; // Filter for NRL only
             let showRaOnly = false; // Filter for RA only
             let showEbaySkuOnly = false; // Filter for eBay SKUs only
             let processedEbaySkus = new Set(); // Track processed SKUs when showing eBay SKUs only (for uniqueness)
@@ -519,9 +545,11 @@
                     let correctlyCount = 0;
                 let missingCount = 0;
                 let nraMissingCount = 0; // Count NRA missing (yellow dots)
+                let nrlMissingCount = 0; // Count NRL missing (yellow dots)
                 let zeroInvCount = 0; // Count zero and negative inventory
                 let totalCampaignCount = 0; // Count total campaigns
                 let nraCount = 0; // Count NRA
+                let nrlCount = 0; // Count NRL
                 let raCount = 0; // Count RA
                 let validSkuCount = 0; // Count only valid SKUs (not parent, not empty)
                 let ub7Count = 0; // Count 7UB
@@ -529,9 +557,11 @@
 
                 // Track processed SKUs to avoid counting duplicates
                 const processedSkusForNra = new Set(); // Track SKUs for NRA/RA counting
+                const processedSkusForNrl = new Set(); // Track SKUs for NRL/REQ counting
                 const processedSkusForCampaign = new Set(); // Track SKUs for campaign counting
                 const processedSkusForMissing = new Set(); // Track SKUs for missing counting
                 const processedSkusForNraMissing = new Set(); // Track SKUs for NRA missing counting
+                const processedSkusForNrlMissing = new Set(); // Track SKUs for NRL missing counting
                 const processedSkusForOver = new Set(); // Track SKUs for over-utilized counting
                 const processedSkusForUnder = new Set(); // Track SKUs for under-utilized counting
                 const processedSkusForCorrectly = new Set(); // Track SKUs for correctly-utilized counting
@@ -569,6 +599,17 @@
                             }
                             // Note: We don't increment raCount here - it will be calculated as Total - NRA
                         }
+                        
+                        // Count NRL only for valid SKUs and only once per SKU - BEFORE filters
+                        if (!processedSkusForNrl.has(sku)) {
+                            processedSkusForNrl.add(sku);
+                            // Note: Empty/null NRL defaults to "REQ" in the display
+                            // Count as NRL if value is 'NRL' or 'NR' (since dropdown stores 'NR' but database may have 'NRL')
+                            let rowNrl = row.NRL ? row.NRL.trim() : "";
+                            if (rowNrl === 'NRL' || rowNrl === 'NR') {
+                                nrlCount++;
+                            }
+                        }
 
                         const hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row
                             .campaign_id && row.campaignName);
@@ -587,18 +628,29 @@
                                 let rowNraForMissing = row.NR ? row.NR.trim() : "";
                                 let inv = parseFloat(row.INV || 0);
                                 
-                                // NRA missing (yellow dots) should count if:
-                                // 1. NRA='NRA' OR 2. NRL='NR'/'NRL' (because NRL='NR' means NRA should be 'NRA')
-                                if (rowNraForMissing === 'NRA' || rowNrlForMissing === 'NR' || rowNrlForMissing === 'NRL') {
-                                    // Count NRA missing (yellow dots) separately
-                                    if (!processedSkusForNraMissing.has(sku)) {
-                                        processedSkusForNraMissing.add(sku);
-                                        nraMissingCount++;
-                                    }
-                                } else {
-                                    // Count as missing (red dot) if neither NRL='NR'/'NRL' nor NRA='NRA' AND INV > 0
+                                // Only count as missing (red dot) if neither NRL='NRL'/'NR' nor NRA='NRA'
+                                if (rowNrlForMissing !== 'NRL' && rowNrlForMissing !== 'NR' && rowNraForMissing !== 'NRA') {
+                                    // Count as missing (red dot) if INV > 0
                                     if (inv > 0) {
                                         missingCount++;
+                                    }
+                                } else {
+                                    // Count NRL missing (yellow dots) separately - both 'NR' and 'NRL' are treated as NRL
+                                    // Count ALL rows where NRL is 'NRL' or 'NR' (regardless of NRA value)
+                                    if ((rowNrlForMissing === 'NRL' || rowNrlForMissing === 'NR') && !processedSkusForNrlMissing.has(sku)) {
+                                        processedSkusForNrlMissing.add(sku);
+                                        nrlMissingCount++;
+                                    }
+                                    // Count NRA missing (yellow dots) separately
+                                    // If NRL='NRL'/'NR', NRA should be 'NRA', so count it as NRA missing too
+                                    if (rowNraForMissing === 'NRA' && !processedSkusForNraMissing.has(sku)) {
+                                        processedSkusForNraMissing.add(sku);
+                                        nraMissingCount++;
+                                    } else if ((rowNrlForMissing === 'NRL' || rowNrlForMissing === 'NR') && !processedSkusForNraMissing.has(sku)) {
+                                        // If NRL='NRL'/'NR' but NRA is not 'NRA', still count as NRA missing
+                                        // because NRA should be 'NRA' when NRL is 'NRL'/'NR'
+                                        processedSkusForNraMissing.add(sku);
+                                        nraMissingCount++;
                                     }
                                 }
                             }
@@ -676,6 +728,12 @@
                     nraMissingCountEl.textContent = nraMissingCount;
                 }
 
+                // Update NRL missing count
+                const nrlMissingCountEl = document.getElementById('nrl-missing-count');
+                if (nrlMissingCountEl) {
+                    nrlMissingCountEl.textContent = nrlMissingCount;
+                }
+
                 // Update total campaign count - use backend count if available, otherwise use calculated count
                 const totalCampaignCountEl = document.getElementById('total-campaign-count');
                 if (totalCampaignCountEl) {
@@ -690,6 +748,12 @@
                 const nraCountEl = document.getElementById('nra-count');
                 if (nraCountEl) {
                     nraCountEl.textContent = nraCount;
+                }
+
+                // Update NRL count
+                const nrlCountEl = document.getElementById('nrl-count');
+                if (nrlCountEl) {
+                    nrlCountEl.textContent = nrlCount;
                 }
 
                 // Update RA count - RA = Total SKUs - NRA
@@ -842,6 +906,9 @@
                     // Reset NRA missing filter
                     showNraMissingOnly = false;
                     document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset NRL missing filter
+                    showNrlMissingOnly = false;
+                    document.getElementById('nrl-missing-card').style.boxShadow = '';
                     // Reset zero INV filter
                     showZeroInvOnly = false;
                     document.getElementById('zero-inv-card').style.boxShadow = '';
@@ -850,6 +917,9 @@
                     document.getElementById('nra-card').style.boxShadow = '';
                     showRaOnly = false;
                     document.getElementById('ra-card').style.boxShadow = '';
+                    // Reset NRL filter
+                    showNrlOnly = false;
+                    document.getElementById('nrl-card').style.boxShadow = '';
                     // Reset eBay SKU filter
                     showEbaySkuOnly = false;
                     document.getElementById('ebay-sku-card').style.boxShadow = '';
@@ -885,11 +955,17 @@
                     // Reset NRA missing filter
                     showNraMissingOnly = false;
                     document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset NRL missing filter
+                    showNrlMissingOnly = false;
+                    document.getElementById('nrl-missing-card').style.boxShadow = '';
                     // Reset NRA/RA filters
                     showNraOnly = false;
                     document.getElementById('nra-card').style.boxShadow = '';
                     showRaOnly = false;
                     document.getElementById('ra-card').style.boxShadow = '';
+                    // Reset NRL filter
+                    showNrlOnly = false;
+                    document.getElementById('nrl-card').style.boxShadow = '';
                     // Reset eBay SKU filter
                     showEbaySkuOnly = false;
                     document.getElementById('ebay-sku-card').style.boxShadow = '';
@@ -922,6 +998,9 @@
                     // Reset missing filter
                     showMissingOnly = false;
                     document.getElementById('missing-campaign-card').style.boxShadow = '';
+                    // Reset NRL missing filter
+                    showNrlMissingOnly = false;
+                    document.getElementById('nrl-missing-card').style.boxShadow = '';
                     // Reset zero INV filter
                     showZeroInvOnly = false;
                     document.getElementById('zero-inv-card').style.boxShadow = '';
@@ -930,6 +1009,9 @@
                     document.getElementById('nra-card').style.boxShadow = '';
                     showRaOnly = false;
                     document.getElementById('ra-card').style.boxShadow = '';
+                    // Reset NRL filter
+                    showNrlOnly = false;
+                    document.getElementById('nrl-card').style.boxShadow = '';
                     // Reset eBay SKU filter
                     showEbaySkuOnly = false;
                     document.getElementById('ebay-sku-card').style.boxShadow = '';
@@ -962,6 +1044,9 @@
                     // Reset NRA missing filter
                     showNraMissingOnly = false;
                     document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset NRL missing filter
+                    showNrlMissingOnly = false;
+                    document.getElementById('nrl-missing-card').style.boxShadow = '';
                     // Reset campaign filter
                     showCampaignOnly = false;
                     document.getElementById('total-campaign-card').style.boxShadow = '';
@@ -970,6 +1055,9 @@
                     document.getElementById('nra-card').style.boxShadow = '';
                     showRaOnly = false;
                     document.getElementById('ra-card').style.boxShadow = '';
+                    // Reset NRL filter
+                    showNrlOnly = false;
+                    document.getElementById('nrl-card').style.boxShadow = '';
                     // Reset eBay SKU filter
                     showEbaySkuOnly = false;
                     document.getElementById('ebay-sku-card').style.boxShadow = '';
@@ -1002,12 +1090,111 @@
                     // Reset NRA missing filter
                     showNraMissingOnly = false;
                     document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset NRL missing filter
+                    showNrlMissingOnly = false;
+                    document.getElementById('nrl-missing-card').style.boxShadow = '';
                     // Reset campaign filter
                     showCampaignOnly = false;
                     document.getElementById('total-campaign-card').style.boxShadow = '';
                     // Reset zero INV filter
                     showZeroInvOnly = false;
                     document.getElementById('zero-inv-card').style.boxShadow = '';
+                    // Reset NRL filter
+                    showNrlOnly = false;
+                    document.getElementById('nrl-card').style.boxShadow = '';
+                    // Reset RA filter
+                    showRaOnly = false;
+                    document.getElementById('ra-card').style.boxShadow = '';
+                    // Reset eBay SKU filter
+                    showEbaySkuOnly = false;
+                    document.getElementById('ebay-sku-card').style.boxShadow = '';
+                    this.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.5)';
+                } else {
+                    this.style.boxShadow = '';
+                }
+
+                if (typeof table !== 'undefined' && table) {
+                    // Clear processed SKUs set before filtering (filter will rebuild it)
+                    if (showEbaySkuOnly) {
+                        processedEbaySkus.clear();
+                    }
+                    table.setFilter(combinedFilter);
+                    table.redraw(true);
+                    updateButtonCounts();
+                }
+            });
+
+            // NRL missing card click handler
+            document.getElementById('nrl-missing-card').addEventListener('click', function() {
+                showNrlMissingOnly = !showNrlMissingOnly;
+                if (showNrlMissingOnly) {
+                    // Reset dropdown to "All" when showing NRL missing only
+                    document.getElementById('utilization-type-select').value = 'all';
+                    currentUtilizationType = 'all';
+                    // Reset campaign filter
+                    showCampaignOnly = false;
+                    document.getElementById('total-campaign-card').style.boxShadow = '';
+                    // Reset missing filter
+                    showMissingOnly = false;
+                    document.getElementById('missing-campaign-card').style.boxShadow = '';
+                    // Reset NRA missing filter
+                    showNraMissingOnly = false;
+                    document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset zero INV filter
+                    showZeroInvOnly = false;
+                    document.getElementById('zero-inv-card').style.boxShadow = '';
+                    // Reset NRA/RA filters
+                    showNraOnly = false;
+                    document.getElementById('nra-card').style.boxShadow = '';
+                    showRaOnly = false;
+                    document.getElementById('ra-card').style.boxShadow = '';
+                    // Reset NRL filter
+                    showNrlOnly = false;
+                    document.getElementById('nrl-card').style.boxShadow = '';
+                    // Reset eBay SKU filter
+                    showEbaySkuOnly = false;
+                    document.getElementById('ebay-sku-card').style.boxShadow = '';
+                    this.style.boxShadow = '0 4px 12px rgba(255, 193, 7, 0.5)';
+                } else {
+                    this.style.boxShadow = '';
+                }
+
+                if (typeof table !== 'undefined' && table) {
+                    // Clear processed SKUs set before filtering (filter will rebuild it)
+                    if (showEbaySkuOnly) {
+                        processedEbaySkus.clear();
+                    }
+                    table.setFilter(combinedFilter);
+                    table.redraw(true);
+                    updateButtonCounts();
+                }
+            });
+
+            // NRL card click handler
+            document.getElementById('nrl-card').addEventListener('click', function() {
+                showNrlOnly = !showNrlOnly;
+                if (showNrlOnly) {
+                    // Reset dropdown to "All" when showing NRL only
+                    document.getElementById('utilization-type-select').value = 'all';
+                    currentUtilizationType = 'all';
+                    // Reset missing filter
+                    showMissingOnly = false;
+                    document.getElementById('missing-campaign-card').style.boxShadow = '';
+                    // Reset NRA missing filter
+                    showNraMissingOnly = false;
+                    document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset NRL missing filter
+                    showNrlMissingOnly = false;
+                    document.getElementById('nrl-missing-card').style.boxShadow = '';
+                    // Reset campaign filter
+                    showCampaignOnly = false;
+                    document.getElementById('total-campaign-card').style.boxShadow = '';
+                    // Reset zero INV filter
+                    showZeroInvOnly = false;
+                    document.getElementById('zero-inv-card').style.boxShadow = '';
+                    // Reset NRA filter
+                    showNraOnly = false;
+                    document.getElementById('nra-card').style.boxShadow = '';
                     // Reset RA filter
                     showRaOnly = false;
                     document.getElementById('ra-card').style.boxShadow = '';
@@ -1043,6 +1230,9 @@
                     // Reset NRA missing filter
                     showNraMissingOnly = false;
                     document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset NRL missing filter
+                    showNrlMissingOnly = false;
+                    document.getElementById('nrl-missing-card').style.boxShadow = '';
                     // Reset campaign filter
                     showCampaignOnly = false;
                     document.getElementById('total-campaign-card').style.boxShadow = '';
@@ -1052,6 +1242,9 @@
                     // Reset NRA filter
                     showNraOnly = false;
                     document.getElementById('nra-card').style.boxShadow = '';
+                    // Reset NRL filter
+                    showNrlOnly = false;
+                    document.getElementById('nrl-card').style.boxShadow = '';
                     // Reset eBay SKU filter
                     showEbaySkuOnly = false;
                     document.getElementById('ebay-sku-card').style.boxShadow = '';
@@ -1088,6 +1281,9 @@
                     // Reset NRA missing filter
                     showNraMissingOnly = false;
                     document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset NRL missing filter
+                    showNrlMissingOnly = false;
+                    document.getElementById('nrl-missing-card').style.boxShadow = '';
                     // Reset campaign filter
                     showCampaignOnly = false;
                     document.getElementById('total-campaign-card').style.boxShadow = '';
@@ -1097,6 +1293,9 @@
                     // Reset NRA filter
                     showNraOnly = false;
                     document.getElementById('nra-card').style.boxShadow = '';
+                    // Reset NRL filter
+                    showNrlOnly = false;
+                    document.getElementById('nrl-card').style.boxShadow = '';
                     // Reset RA filter
                     showRaOnly = false;
                     document.getElementById('ra-card').style.boxShadow = '';
@@ -1259,8 +1458,8 @@
                                             data-sku="${sku}" 
                                         data-field="NRL"
                                         style="width: 50px; border: 1px solid gray; padding: 2px; font-size: 20px; text-align: center;">
-                                    <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>🟢</option>
-                                    <option value="NR" ${value === 'NR' || value === 'NRL' ? 'selected' : ''}>🔴</option>
+                                    <option value="REQ" ${(value === 'REQ' ? 'selected' : '')}>🟢</option>
+                                    <option value="NR" ${((value === 'NR' || value === 'NRL') ? 'selected' : '')}>🔴</option>
                                     </select>
                                 `;
                         },
@@ -1285,9 +1484,9 @@
                                         data-sku="${sku}" 
                                         data-field="NR"
                                         style="width: 50px; border: 1px solid gray; padding: 2px; font-size: 20px; text-align: center;">
-                                    <option value="RA" ${value === 'RA' ? 'selected' : ''}>🟢</option>
-                                    <option value="NRA" ${value === 'NRA' ? 'selected' : ''}>🔴</option>
-                                    <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>🟡</option>
+                                    <option value="RA" ${(value === 'RA' ? 'selected' : '')}>🟢</option>
+                                    <option value="NRA" ${(value === 'NRA' ? 'selected' : '')}>🔴</option>
+                                    <option value="LATER" ${(value === 'LATER' ? 'selected' : '')}>🟡</option>
                                 </select>
                             `;
                         },
@@ -2211,13 +2410,22 @@
                         const hasCampaign = data.hasCampaign !== undefined ? data.hasCampaign : (data.campaign_id &&
                             data.campaignName);
                         if (hasCampaign) return false;
-                        // Show only NRA missing (yellow dots) - if NRA='NRA' OR NRL='NR'/'NRL'
+                        // Show only NRA missing (yellow dots) - if NRA='NRA' OR NRL='NR'/'NRL' (because NRL='NR'/'NRL' means NRA should be 'NRA')
                         let rowNraForMissing = data.NR ? data.NR.trim() : "";
                         let rowNrlForMissing = data.NRL ? data.NRL.trim() : "";
-                        // Show if NRA='NRA' OR NRL='NR'/'NRL' (because NRL='NR' means NRA should be 'NRA')
+                        // Show if NRA='NRA' OR NRL='NR'/'NRL' (because NRL='NR'/'NRL' means NRA should be 'NRA')
                         if (rowNraForMissing !== 'NRA' && rowNrlForMissing !== 'NR' && rowNrlForMissing !== 'NRL') {
                             return false;
                         }
+                    }
+
+                    if (showNrlMissingOnly) {
+                        const hasCampaign = data.hasCampaign !== undefined ? data.hasCampaign : (data.campaign_id &&
+                            data.campaignName);
+                        if (hasCampaign) return false;
+                        // Show only NRL missing (yellow dots) - both 'NR' and 'NRL' are treated as NRL
+                        let rowNrlForMissing = data.NRL ? data.NRL.trim() : "";
+                        if (rowNrlForMissing !== 'NRL' && rowNrlForMissing !== 'NR') return false;
                     }
 
                     if (showCampaignOnly) {
@@ -2290,9 +2498,10 @@
                 // Apply NRA/RA filters first (if enabled)
                 // Note: Empty/null NRA defaults to "RA" in the display
                 let rowNra = data.NR ? data.NR.trim() : "";
+                let rowNrl = data.NRL ? data.NRL.trim() : "";
                 if (showNraOnly) {
-                    // Show only NRA (explicitly "NRA" only)
-                    if (rowNra !== 'NRA') return false;
+                    // Show only NRA: if NR='NRA' OR if NRL='NR'/'NRL' (since NRL='NR' means NRA should be 'NRA')
+                    if (rowNra !== 'NRA' && rowNrl !== 'NR' && rowNrl !== 'NRL') return false;
                 } else if (showRaOnly) {
                     // Show only RA (includes empty/null which defaults to "RA")
                     if (rowNra === 'NRA') return false;
@@ -2306,6 +2515,30 @@
                         } else {
                             // For "NRA" or "LATER", exact match
                             if (rowNra !== nraFilterVal) return false;
+                        }
+                    }
+                }
+
+                // Apply NRL/REQ filters first (if enabled)
+                // Note: Empty/null NRL defaults to "REQ" in the display
+                // rowNrl is already declared above
+                if (showNrlOnly) {
+                    // Show only NRL (both 'NRL' and 'NR' are treated as NRL)
+                    if (rowNrl !== 'NRL' && rowNrl !== 'NR') return false;
+                } else {
+                    // NRL filter from dropdown
+                    let nrlFilterVal = $("#nrl-filter").val();
+                if (nrlFilterVal) {
+                        if (nrlFilterVal === 'REQ') {
+                            // For "REQ" filter, include empty/null values too
+                            // Exclude both 'NRL' and 'NR'
+                            if (rowNrl === 'NRL' || rowNrl === 'NR') return false;
+                        } else if (nrlFilterVal === 'NR' || nrlFilterVal === 'NRL') {
+                            // For "NR" or "NRL" filter, match both 'NR' and 'NRL' values
+                            if (rowNrl !== 'NRL' && rowNrl !== 'NR') return false;
+                        } else {
+                            // For other values, exact match
+                            if (rowNrl !== nrlFilterVal) return false;
                         }
                     }
                 }
@@ -2373,7 +2606,7 @@
                     }, 300);
                 });
 
-                $("#status-filter, #inv-filter, #nra-filter").on("change", function() {
+                $("#status-filter, #inv-filter, #nra-filter, #nrl-filter").on("change", function() {
                     // Clear processed SKUs set before filtering (filter will rebuild it)
                     if (showEbaySkuOnly) {
                         processedEbaySkus.clear();
@@ -2418,8 +2651,7 @@
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')
-                                    .getAttribute('content')
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
                         },
                         body: JSON.stringify({
                             sku: sku,
@@ -2429,44 +2661,154 @@
                     })
                     .then(res => res.json())
                     .then(data => {
-                            // Update table data with response
-                            if (data.status === 200 && typeof table !== 'undefined' && table) {
-                                let row = table.searchRows('sku', '=', sku);
-                                if (row.length > 0) {
-                                    // If NRL is updated to "NR", also update NR to "NRA"
-                                    if (field === 'NRL' && (value === 'NR' || value === 'NRL')) {
-                                        row[0].update({
-                                            'NRL': value,
-                                            'NR': 'NRA'  // Automatically set NR to NRA when NRL is NR
-                                        });
-                                        // Reformat row and update counts after both fields are updated
+                        console.log('Ebay2 Update Response:', data); // Debug log
+                        // Update table data with response
+                        if (data.success && typeof table !== 'undefined' && table) {
+                            let row = table.searchRows('sku', '=', sku);
+                            if (row.length > 0) {
+                                // If NRL is set to "NRL" (or "NR" from dropdown), automatically set NRA to "NRA"
+                                if (field === 'NRL' && (value === 'NR' || value === 'NRL')) {
+                                    console.log('Ebay2: NRL set to', value, 'updating NRA...'); // Debug log
+                                    
+                                    // Get current row data BEFORE update
+                                    let rowData = row[0].getData();
+                                    let currentNra = rowData.NR ? String(rowData.NR).trim() : '';
+                                    
+                                    // Get NRA value from backend response (backend always sets it to 'NRA' when NRL is 'NRL')
+                                    let backendNra = '';
+                                    if (data.updated_json && data.updated_json.NR) {
+                                        backendNra = String(data.updated_json.NR).trim();
+                                    }
+                                    
+                                    console.log('Ebay2: Current NRA:', currentNra, 'Backend NRA:', backendNra); // Debug log
+                                    console.log('Ebay2: Updated JSON:', data.updated_json); // Debug log
+                                    
+                                    // Always update both NRL and NR when NRL is set to "NRL" or "NR"
+                                    // Backend always sets NR to "NRA" when NRL is "NRL"
+                                    let updateData = {
+                                        NRL: value === 'NR' ? 'NRL' : value, // Store as 'NRL' in data
+                                        NR: backendNra || 'NRA' // Use backend value (should be 'NRA') or default to 'NRA'
+                                    };
+                                    
+                                    console.log('Ebay2: Updating row with:', updateData); // Debug log
+                                    
+                                    // Update the row data immediately
+                                    row[0].update(updateData);
+                                    
+                                    // Immediately update NRA cell value
+                                    let nraCell = row[0].getCell('NR');
+                                    if (nraCell) {
+                                        nraCell.setValue('NRA');
+                                    }
+                                    
+                                    // Force immediate row reformat to trigger formatter re-run
+                                    row[0].reformat();
+                                    
+                                    // Directly replace the NRA select dropdown HTML to force visual update
+                                    setTimeout(function() {
+                                        let nraCell = row[0].getCell('NR');
+                                        if (nraCell) {
+                                            let cellElement = nraCell.getElement();
+                                            if (cellElement) {
+                                                let nraSelect = cellElement.querySelector('select[data-field="NR"]');
+                                                if (nraSelect) {
+                                                    // Store the current event listeners by cloning
+                                                    let sku = nraSelect.getAttribute('data-sku');
+                                                    
+                                                    // Replace the select with new HTML that has NRA selected
+                                                    let newSelectHTML = `
+                                                        <select class="form-select form-select-sm editable-select" 
+                                                                data-sku="${sku}" 
+                                                                data-field="NR"
+                                                                style="width: 50px; border: 1px solid gray; padding: 2px; font-size: 20px; text-align: center;">
+                                                            <option value="RA">🟢</option>
+                                                            <option value="NRA" selected>🔴</option>
+                                                            <option value="LATER">🟡</option>
+                                                        </select>
+                                                    `;
+                                                    cellElement.innerHTML = newSelectHTML;
+                                                    
+                                                    // The new select will automatically have the change event listener
+                                                    // because it has the 'editable-select' class
+                                                }
+                                            }
+                                        }
+                                    }, 10);
+                                    
+                                    // Second update with reformat
+                                    setTimeout(function() {
+                                        // Reformat again to ensure formatter runs with updated data
                                         row[0].reformat();
-                                        // Update counts after NRL update (with longer delay to ensure data is updated)
+                                        
+                                        // Double-check select is set to NRA
+                                        let nraCell = row[0].getCell('NR');
+                                        if (nraCell) {
+                                            let cellElement = nraCell.getElement();
+                                            if (cellElement) {
+                                                let nraSelect = cellElement.querySelector('select[data-field="NR"]');
+                                                if (nraSelect && nraSelect.value !== 'NRA') {
+                                                    nraSelect.value = 'NRA';
+                                                }
+                                            }
+                                        }
+                                    }, 50);
+                                    
+                                    // Final update with table redraw
+                                    setTimeout(function() {
+                                        // One more reformat
+                                        row[0].reformat();
+                                        
+                                        // Redraw entire table
+                                        if (typeof table !== 'undefined' && table) {
+                                            table.redraw(true);
+                                        }
+                                        
+                                        // Final select update check
+                                        let nraCell = row[0].getCell('NR');
+                                        if (nraCell) {
+                                            let cellElement = nraCell.getElement();
+                                            if (cellElement) {
+                                                let nraSelect = cellElement.querySelector('select[data-field="NR"]');
+                                                if (nraSelect && nraSelect.value !== 'NRA') {
+                                                    nraSelect.value = 'NRA';
+                                                }
+                                            }
+                                        }
+                                        
+                                        // Update counts
+                                        updateButtonCounts();
+                                        updateL30Totals();
+                                    }, 150);
+                                } else {
+                                    // Update the field from backend response
+                                    let updatedData = {};
+                                    if (data.updated_json && data.updated_json[field] !== undefined) {
+                                        updatedData[field] = data.updated_json[field];
+                                    } else {
+                                        updatedData[field] = value;
+                                    }
+                                    row[0].update(updatedData);
+                                    
+                                    // If NRL field is updated, reformat the row to update NRA column (which depends on NRL)
+                                    if (field === 'NRL') {
+                                        row[0].reformat();
+                                    }
+                                    
+                                    // Update counts after field update
+                                    if (field === 'NRL' || field === 'NR') {
                                         setTimeout(function() {
                                             updateButtonCounts();
-                        updateL30Totals();
-                                        }, 500);
-                                    } else {
-                                        // For other field updates (including NRL='REQ' or NR updates)
-                                        row[0].update({
-                                            [field]: value
-                                        });
-                                        // If NRL field is updated, reformat the row to update NRA column (which depends on NRL)
-                                        if (field === 'NRL') {
-                                            row[0].reformat();
-                                        }
-                                        // Update counts after field update
-                                        if (field === 'NRL' || field === 'NR') {
-                                            setTimeout(function() {
-                                                updateButtonCounts();
-                        updateL30Totals();
-                                            }, 300);
-                                        }
+                                            updateL30Totals();
+                                        }, 300);
                                     }
                                 }
                             }
+                        }
                     })
-                    .catch(err => console.error(err));
+                    .catch(err => {
+                        console.error('Error updating field:', err);
+                        alert('Error updating field. Please try again.');
+                    });
                 }
                 
                 // Handle SBID M input changes

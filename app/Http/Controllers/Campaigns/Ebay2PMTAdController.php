@@ -13,6 +13,7 @@ use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class Ebay2PMTAdController extends Controller
 {
@@ -584,14 +585,37 @@ class Ebay2PMTAdController extends Controller
 
         $ebayDataView = EbayTwoDataView::firstOrNew(['sku' => $sku]);
 
-        $jsonData = $ebayDataView->value ?? [];
+        // Decode existing value if it's a JSON string
+        $jsonData = is_array($ebayDataView->value) 
+            ? $ebayDataView->value 
+            : (json_decode($ebayDataView->value ?? '{}', true) ?: []);
 
+        // If json_decode returns null, initialize as empty array
+        if (!is_array($jsonData)) {
+            $jsonData = [];
+        }
+
+        // Save field value
         $jsonData[$field] = $value;
+
+        // If NRL is set to "NRL" or "NR", automatically set NRA to "NRA" (always, regardless of current value)
+        // Note: Dropdown sends 'NR' but database stores 'NRL', so handle both
+        if ($field === 'NRL' && ($value === 'NRL' || $value === 'NR')) {
+            Log::info('Ebay2: NRL set to ' . $value . ' for SKU ' . $sku);
+            // Always set NRA to "NRA" when NRL is "NRL" or "NR"
+            $jsonData['NR'] = 'NRA';
+            // Store as 'NRL' in database (normalize 'NR' to 'NRL')
+            $jsonData['NRL'] = 'NRL';
+            Log::info('Ebay2: Auto-set NR to NRA, NRL to NRL. Updated data: ' . json_encode($jsonData));
+        }
 
         $ebayDataView->value = $jsonData;
         $ebayDataView->save();
+        
+        Log::info('Ebay2: Saved data for SKU ' . $sku . ': ' . json_encode($jsonData));
 
         return response()->json([
+            'success' => true,
             'status' => 200,
             'message' => "Field updated successfully",
             'updated_json' => $jsonData
