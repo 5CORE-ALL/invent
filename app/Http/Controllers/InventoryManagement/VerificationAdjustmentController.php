@@ -1196,7 +1196,7 @@ class VerificationAdjustmentController extends Controller
     {
         $user = Auth::user();
         
-        if (!$user || !in_array($user->email, ['inventory@5core.com', 'president@5core.com'])) {
+        if (!$user || !in_array($user->email, ['inventory@5core.com', 'president@5core.com', 'software2@5core.com'])) {
             abort(404, 'Page not available');
         }
         
@@ -1207,7 +1207,7 @@ class VerificationAdjustmentController extends Controller
     {
         $user = Auth::user();
         
-        if (!$user || !in_array($user->email, ['inventory@5core.com', 'president@5core.com'])) {
+        if (!$user || !in_array($user->email, ['inventory@5core.com', 'president@5core.com', 'software2@5core.com'])) {
             abort(404, 'Page not available');
         }
         
@@ -1237,7 +1237,7 @@ class VerificationAdjustmentController extends Controller
     {
         $user = Auth::user();
         
-        if (!$user || !in_array($user->email, ['inventory@5core.com', 'president@5core.com'])) {
+        if (!$user || !in_array($user->email, ['inventory@5core.com', 'president@5core.com', 'software2@5core.com'])) {
             abort(404, 'Page not available');
         }
 
