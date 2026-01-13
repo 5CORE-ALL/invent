@@ -285,6 +285,43 @@ class TikTokShopService
         $stringToSign = $this->clientSecret . $urlWithoutSign . $body . $this->clientSecret;
         return hash('sha256', $stringToSign);
     }
+    
+    /**
+     * Generate signature from query string directly (Format 6)
+     */
+    protected function generateSignatureFromQueryString(string $path, string $queryString, string $body = ''): string
+    {
+        // Remove sign from query string if present
+        $queryString = preg_replace('/(^|&)sign=[^&]*/', '', $queryString);
+        $queryString = ltrim($queryString, '&');
+        
+        // String to sign: path + query + body
+        $stringToSign = $path;
+        if ($queryString) {
+            $stringToSign .= '?' . $queryString;
+        }
+        $stringToSign .= $body;
+        
+        // HMAC-SHA256
+        return hash_hmac('sha256', $stringToSign, $this->clientSecret);
+    }
+    
+    /**
+     * Generate signature with app_secret wrapper and query string (Format 7)
+     */
+    protected function generateSignatureFormat7(string $path, string $queryString, string $body = ''): string
+    {
+        $queryString = preg_replace('/(^|&)sign=[^&]*/', '', $queryString);
+        $queryString = ltrim($queryString, '&');
+        
+        $urlPart = $path;
+        if ($queryString) {
+            $urlPart .= '?' . $queryString;
+        }
+        
+        $stringToSign = $this->clientSecret . $urlPart . $body . $this->clientSecret;
+        return hash('sha256', $stringToSign);
+    }
 
     /**
      * Make authenticated API request
@@ -302,12 +339,26 @@ class TikTokShopService
         $timestamp = time();
         
         // Required parameters for all requests (must be in alphabetical order for signature)
+        // Try different parameter name variations
+        $params = [];
+        
+        // Try standard format first
         $params = [
             'access_token' => $this->accessToken,
             'app_key' => $this->clientKey,
-            'shop_id' => $this->shopId,
+            'shop_id' => (string)$this->shopId,
             'timestamp' => (string)$timestamp,
         ];
+        
+        // Verify credentials are loaded
+        if (empty($this->clientKey) || empty($this->clientSecret) || empty($this->shopId)) {
+            Log::error('TikTok API: Missing credentials', [
+                'has_client_key' => !empty($this->clientKey),
+                'has_client_secret' => !empty($this->clientSecret),
+                'has_shop_id' => !empty($this->shopId),
+            ]);
+            return ['code' => 999999, 'message' => 'Missing credentials', 'data' => null];
+        }
         
         // Merge additional query params
         $params = array_merge($params, $queryParams);
@@ -334,12 +385,36 @@ class TikTokShopService
         $params['sign'] = $sign;
 
         // Build URL with query parameters
-        $url = $this->apiBase . $path . '?' . http_build_query($params);
+        // Use the path as-is (caller should provide correct versioned path)
+        // Note: http_build_query may URL encode which could affect signature
+        // Try without encoding first for signature, then encode for URL
+        $queryString = http_build_query($params, '', '&', PHP_QUERY_RFC3986);
+        $url = $this->apiBase . $path . '?' . $queryString;
 
         try {
             $headers = [
                 'Content-Type' => 'application/json',
             ];
+            
+            // Output request details for debugging
+            if ($this->signatureCallback && is_callable($this->signatureCallback)) {
+                $debugParams = $params;
+                $debugParams['access_token'] = substr($debugParams['access_token'] ?? '', 0, 20) . '...';
+                $debugUrl = str_replace([$this->accessToken, $this->clientSecret], ['***TOKEN***', '***SECRET***'], $url);
+                call_user_func($this->signatureCallback, 'request_debug', [
+                    'method' => $method,
+                    'path' => $path,
+                    'full_url' => $debugUrl,
+                    'api_base' => $this->apiBase,
+                    'params' => array_keys($params),
+                    'param_values' => $debugParams,
+                    'has_body' => !empty($bodyJson),
+                    'body_preview' => !empty($bodyJson) ? substr($bodyJson, 0, 100) . '...' : '',
+                    'signature' => substr($sign, 0, 20) . '...',
+                    'client_key' => substr($this->clientKey ?? '', 0, 10) . '...',
+                    'shop_id' => $this->shopId
+                ]);
+            }
             
             // For POST requests, send body as JSON
             if ($method === 'GET') {
@@ -421,13 +496,25 @@ class TikTokShopService
                 }
                 
                 // Try Format 4: Sign by full URL (signByUrl style)
-                $urlWithoutSign = $this->apiBase . $path . '?' . http_build_query($params);
+                // Rebuild params without sign for Format 4
+                $paramsForSign4 = [
+                    'access_token' => $this->accessToken,
+                    'app_key' => $this->clientKey,
+                    'shop_id' => (string)$this->shopId,
+                    'timestamp' => (string)$timestamp,
+                ];
+                $paramsForSign4 = array_merge($paramsForSign4, $queryParams);
+                $paramsForSign4 = array_filter($paramsForSign4, function($value) {
+                    return $value !== null && $value !== '';
+                });
+                $urlWithoutSign = $this->apiBase . $path . '?' . http_build_query($paramsForSign4);
                 $altSign4 = $this->generateSignatureFormat4($urlWithoutSign, $bodyJson);
                 if ($this->signatureCallback && is_callable($this->signatureCallback)) {
                     call_user_func($this->signatureCallback, 'trying_format4', $altSign4);
                 }
-                $params['sign'] = $altSign4;
-                $url = $this->apiBase . $path . '?' . http_build_query($params);
+                $paramsForSign4['sign'] = $altSign4;
+                $url = $this->apiBase . $path . '?' . http_build_query($paramsForSign4);
+                $params = $paramsForSign4; // Update params for next attempts
                 
                 if ($method === 'GET') {
                     $response = Http::timeout(30)->withHeaders($headers)->get($url);
@@ -444,13 +531,24 @@ class TikTokShopService
                 }
                 
                 // Try Format 5: app_secret + URL + body + app_secret
-                $urlWithoutSign = $this->apiBase . $path . '?' . http_build_query($params);
+                // Rebuild params without sign for Format 5
+                $paramsForSign5 = [
+                    'access_token' => $this->accessToken,
+                    'app_key' => $this->clientKey,
+                    'shop_id' => (string)$this->shopId,
+                    'timestamp' => (string)$timestamp,
+                ];
+                $paramsForSign5 = array_merge($paramsForSign5, $queryParams);
+                $paramsForSign5 = array_filter($paramsForSign5, function($value) {
+                    return $value !== null && $value !== '';
+                });
+                $urlWithoutSign = $this->apiBase . $path . '?' . http_build_query($paramsForSign5);
                 $altSign5 = $this->generateSignatureFormat5($urlWithoutSign, $bodyJson);
                 if ($this->signatureCallback && is_callable($this->signatureCallback)) {
                     call_user_func($this->signatureCallback, 'trying_format5', $altSign5);
                 }
-                $params['sign'] = $altSign5;
-                $url = $this->apiBase . $path . '?' . http_build_query($params);
+                $paramsForSign5['sign'] = $altSign5;
+                $url = $this->apiBase . $path . '?' . http_build_query($paramsForSign5);
                 
                 if ($method === 'GET') {
                     $response = Http::timeout(30)->withHeaders($headers)->get($url);
@@ -462,6 +560,63 @@ class TikTokShopService
                 if (!isset($data['code']) || ($data['code'] != 106001 && $data['code'] != 36009004)) {
                     if ($this->signatureCallback && is_callable($this->signatureCallback)) {
                         call_user_func($this->signatureCallback, 'format5_success', $data);
+                    }
+                    return $data;
+                }
+                
+                // Try Format 6: Sign from query string directly (HMAC)
+                // Rebuild params without sign
+                $paramsForSign6 = [
+                    'access_token' => $this->accessToken,
+                    'app_key' => $this->clientKey,
+                    'shop_id' => (string)$this->shopId,
+                    'timestamp' => (string)$timestamp,
+                ];
+                $paramsForSign6 = array_merge($paramsForSign6, $queryParams);
+                $paramsForSign6 = array_filter($paramsForSign6, function($value) {
+                    return $value !== null && $value !== '';
+                });
+                ksort($paramsForSign6);
+                $queryStr = http_build_query($paramsForSign6, '', '&', PHP_QUERY_RFC3986);
+                $altSign6 = $this->generateSignatureFromQueryString($path, $queryStr, $bodyJson);
+                if ($this->signatureCallback && is_callable($this->signatureCallback)) {
+                    call_user_func($this->signatureCallback, 'trying_format6', $altSign6);
+                }
+                $paramsForSign6['sign'] = $altSign6;
+                $url = $this->apiBase . $path . '?' . http_build_query($paramsForSign6);
+                
+                if ($method === 'GET') {
+                    $response = Http::timeout(30)->withHeaders($headers)->get($url);
+                } else {
+                    $response = Http::timeout(30)->withHeaders($headers)->post($url, $body);
+                }
+                $data = $response->json();
+                
+                if (!isset($data['code']) || ($data['code'] != 106001 && $data['code'] != 36009004)) {
+                    if ($this->signatureCallback && is_callable($this->signatureCallback)) {
+                        call_user_func($this->signatureCallback, 'format6_success', $data);
+                    }
+                    return $data;
+                }
+                
+                // Try Format 7: app_secret + query string + body + app_secret
+                $altSign7 = $this->generateSignatureFormat7($path, $queryStr, $bodyJson);
+                if ($this->signatureCallback && is_callable($this->signatureCallback)) {
+                    call_user_func($this->signatureCallback, 'trying_format7', $altSign7);
+                }
+                $paramsForSign6['sign'] = $altSign7;
+                $url = $this->apiBase . $path . '?' . http_build_query($paramsForSign6);
+                
+                if ($method === 'GET') {
+                    $response = Http::timeout(30)->withHeaders($headers)->get($url);
+                } else {
+                    $response = Http::timeout(30)->withHeaders($headers)->post($url, $body);
+                }
+                $data = $response->json();
+                
+                if (!isset($data['code']) || ($data['code'] != 106001 && $data['code'] != 36009004)) {
+                    if ($this->signatureCallback && is_callable($this->signatureCallback)) {
+                        call_user_func($this->signatureCallback, 'format7_success', $data);
                     }
                     return $data;
                 }
@@ -572,8 +727,26 @@ class TikTokShopService
      */
     public function getShopInfo(): ?array
     {
-        $path = '/api/shop/get_authorized_shop';
-        return $this->apiRequest('GET', $path);
+        // Try multiple possible endpoint formats
+        $paths = [
+            '/api/shop/get_authorized_shop',
+            '/product/202309/shop/get_authorized_shop',
+            '/api/202309/shop/get_authorized_shop',
+            '/product/202312/shop/get_authorized_shop',
+        ];
+        
+        foreach ($paths as $path) {
+            $response = $this->apiRequest('GET', $path);
+            if ($response && isset($response['data'])) {
+                return $response;
+            }
+            // If we got a different error (not signature), stop trying
+            if ($response && isset($response['code']) && $response['code'] != 106001) {
+                return $response;
+            }
+        }
+        
+        return $response ?? null;
     }
 
     /**
@@ -701,9 +874,11 @@ class TikTokShopService
     {
         // Try different possible endpoints
         $paths = [
+            '/product/202309/products/inventory/query',
+            '/product/202312/products/inventory/query',
+            '/product/202401/products/inventory/query',
             '/api/products/inventory/query',
             '/api/inventory/query',
-            '/api/product/202309/inventory/query'
         ];
 
         $body = [
@@ -734,9 +909,10 @@ class TikTokShopService
     {
         // Try different possible endpoints
         $paths = [
+            '/product/202309/analytics/products/query',
+            '/product/202312/analytics/products/query',
             '/api/analytics/products/query',
             '/api/analytics/query',
-            '/api/product/202309/analytics/query'
         ];
         
         // Default to last 30 days if not specified

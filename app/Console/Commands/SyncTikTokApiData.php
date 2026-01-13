@@ -36,6 +36,24 @@ class SyncTikTokApiData extends Command
         // Set callback to output signature retry attempts to console
         $this->tiktokService->setSignatureCallback(function($event, $data) {
             switch ($event) {
+                case 'request_debug':
+                    $this->line('');
+                    $this->info('📋 Request Details:');
+                    $this->line('   Method: ' . ($data['method'] ?? 'N/A'));
+                    $this->line('   API Base: ' . ($data['api_base'] ?? 'N/A'));
+                    $this->line('   Path: ' . ($data['path'] ?? 'N/A'));
+                    $this->line('   Full URL: ' . ($data['full_url'] ?? 'N/A'));
+                    $this->line('   Parameters: ' . implode(', ', $data['params'] ?? []));
+                    $this->line('   App Key: ' . ($data['client_key'] ?? ($data['param_values']['app_key'] ?? 'N/A')));
+                    $this->line('   Shop ID: ' . ($data['shop_id'] ?? ($data['param_values']['shop_id'] ?? 'N/A')));
+                    $this->line('   Timestamp: ' . ($data['param_values']['timestamp'] ?? 'N/A'));
+                    $this->line('   Signature: ' . ($data['signature'] ?? 'N/A'));
+                    $this->line('   Has Body: ' . ($data['has_body'] ? 'Yes (' . strlen($data['body_preview'] ?? '') . ' chars)' : 'No'));
+                    if (!empty($data['body_preview'])) {
+                        $this->line('   Body Preview: ' . ($data['body_preview'] ?? ''));
+                    }
+                    $this->line('');
+                    break;
                 case 'format1_failed':
                     $this->warn('⚠ Signature Format 1 (SHA256) failed. Trying alternative formats...');
                     break;
@@ -63,8 +81,21 @@ class SyncTikTokApiData extends Command
                 case 'format5_success':
                     $this->info('✅ Signature Format 5 worked!');
                     break;
+                case 'trying_format6':
+                    $this->info('🔄 Trying Signature Format 6 (Sign from query string - HMAC)...');
+                    break;
+                case 'format6_success':
+                    $this->info('✅ Signature Format 6 (query string) worked!');
+                    break;
+                case 'trying_format7':
+                    $this->info('🔄 Trying Signature Format 7 (app_secret + query string + body + app_secret)...');
+                    break;
+                case 'format7_success':
+                    $this->info('✅ Signature Format 7 worked!');
+                    break;
                 case 'all_formats_failed':
                     $this->error('❌ All signature formats failed. Response: ' . json_encode($data));
+                    $this->warn('💡 Check TikTok API documentation: https://m.tiktok.shop/s/AIu6dbFhs2XW');
                     break;
             }
         });
