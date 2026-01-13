@@ -336,9 +336,12 @@ class TikTokShopService
             $this->client->setAccessToken($this->accessToken);
             
             // Use inventorySearch method from library
-            $this->output('info', 'Calling Product->inventorySearch() with ' . count($productIds) . ' product IDs');
+            // Ensure all product IDs are strings
+            $productIdList = array_map('strval', array_slice($productIds, 0, 50));
+            $this->output('info', 'Calling Product->inventorySearch() with ' . count($productIdList) . ' product IDs');
+            $this->output('info', 'Sample product IDs: ' . implode(', ', array_slice($productIdList, 0, 3)));
             $response = $this->client->Product->inventorySearch([
-                'product_id_list' => array_slice($productIds, 0, 50),
+                'product_id_list' => $productIdList,
             ]);
             $this->lastResponse = $response;
             
@@ -353,8 +356,9 @@ class TikTokShopService
             $this->output('info', 'getProductInventory: Token expired, refreshing...');
             if ($this->refreshAccessToken()) {
                 $this->client->setAccessToken($this->accessToken);
+                $productIdList = array_map('strval', array_slice($productIds, 0, 50));
                 $response = $this->client->Product->inventorySearch([
-                    'product_id_list' => array_slice($productIds, 0, 50),
+                    'product_id_list' => $productIdList,
                 ]);
                 $this->lastResponse = $response;
                 return $response;
@@ -527,58 +531,80 @@ class TikTokShopService
             $this->output('info', '✓ Fetched ' . count($products) . ' products');
 
             if (!empty($products)) {
-                $productIds = array_column($products, 'id');
-                $chunks = array_chunk($productIds, 50);
+                // Extract product IDs and ensure they're strings (TikTok API requires string IDs)
+                $productIds = array_map(function($product) {
+                    return (string)($product['id'] ?? $product['product_id'] ?? '');
+                }, array_filter($products, function($product) {
+                    return !empty($product['id'] ?? $product['product_id'] ?? null);
+                }));
                 
-                $this->output('info', 'Step 2: Fetching inventory for ' . count($productIds) . ' products in ' . count($chunks) . ' batches...');
-                $batchNum = 1;
-                
-                foreach ($chunks as $chunk) {
-                    $this->output('info', "  Batch {$batchNum}/" . count($chunks) . ": Fetching inventory for " . count($chunk) . " products...");
-                    $inventory = $this->getProductInventory($chunk);
+                if (empty($productIds)) {
+                    $this->output('warn', '⚠ No valid product IDs found in products');
+                } else {
+                    $chunks = array_chunk($productIds, 50);
                     
-                    if ($inventory) {
-                        $inventoryList = $inventory['data']['inventory_list'] ?? $inventory['inventory_list'] ?? [];
-                        if (!empty($inventoryList)) {
-                            $result['inventory'] = array_merge($result['inventory'], $inventoryList);
-                            $this->output('info', "  ✓ Batch {$batchNum}: Got " . count($inventoryList) . " inventory records");
+                    $this->output('info', 'Step 2: Fetching inventory for ' . count($productIds) . ' products in ' . count($chunks) . ' batches...');
+                    $batchNum = 1;
+                    
+                    foreach ($chunks as $chunk) {
+                        $this->output('info', "  Batch {$batchNum}/" . count($chunks) . ": Fetching inventory for " . count($chunk) . " products (IDs: " . substr(implode(', ', $chunk), 0, 50) . "...)");
+                        $inventory = $this->getProductInventory($chunk);
+                        
+                        if ($inventory) {
+                            $inventoryList = $inventory['data']['inventory_list'] ?? $inventory['inventory_list'] ?? [];
+                            if (!empty($inventoryList)) {
+                                $result['inventory'] = array_merge($result['inventory'], $inventoryList);
+                                $this->output('info', "  ✓ Batch {$batchNum}: Got " . count($inventoryList) . " inventory records");
+                            } else {
+                                $this->output('warn', "  ⚠ Batch {$batchNum}: No inventory_list in response. Response keys: " . implode(', ', array_keys($inventory)));
+                            }
                         } else {
-                            $this->output('warn', "  ⚠ Batch {$batchNum}: No inventory_list in response. Response keys: " . implode(', ', array_keys($inventory)));
+                            $this->output('error', "  ✗ Batch {$batchNum}: getProductInventory returned null");
                         }
-                    } else {
-                        $this->output('error', "  ✗ Batch {$batchNum}: getProductInventory returned null");
+                        $batchNum++;
+                        usleep(200000);
                     }
-                    $batchNum++;
-                    usleep(200000);
+                    $this->output('info', '✓ Completed inventory fetch: ' . count($result['inventory']) . ' total records');
                 }
-                $this->output('info', '✓ Completed inventory fetch: ' . count($result['inventory']) . ' total records');
             } else {
                 $this->output('warn', '⚠ No products to fetch inventory for');
             }
 
             $this->output('info', 'Step 3: Fetching analytics/views...');
-            $analytics = $this->getProductAnalytics();
-            if ($analytics) {
-                $result['analytics'] = $analytics['data']['product_performance_list'] ?? $analytics['product_performance_list'] ?? $analytics['data'] ?? [];
-                if (!empty($result['analytics'])) {
-                    $this->output('info', '✓ Fetched analytics for ' . count($result['analytics']) . ' products');
+            $this->output('warn', '⚠ Note: Analytics API requires API version 202405+. Skipping if unavailable.');
+            try {
+                $analytics = $this->getProductAnalytics();
+                if ($analytics) {
+                    $result['analytics'] = $analytics['data']['product_performance_list'] ?? $analytics['product_performance_list'] ?? $analytics['data'] ?? [];
+                    if (!empty($result['analytics'])) {
+                        $this->output('info', '✓ Fetched analytics for ' . count($result['analytics']) . ' products');
+                    } else {
+                        $this->output('warn', '⚠ Analytics response received but no product_performance_list found. Response keys: ' . implode(', ', array_keys($analytics)));
+                    }
                 } else {
-                    $this->output('warn', '⚠ Analytics response received but no product_performance_list found. Response keys: ' . implode(', ', array_keys($analytics)));
+                    $this->output('warn', '⚠ Analytics not available (API version requirement or endpoint issue). Skipping...');
                 }
-            } else {
-                $this->output('error', '✗ getProductAnalytics returned null');
+            } catch (\Exception $e) {
+                $this->output('warn', '⚠ Analytics fetch failed: ' . $e->getMessage() . '. Skipping...');
             }
             
             if (!empty($products)) {
-                $productIds = array_column($products, 'id');
-                $chunks = array_chunk($productIds, 50);
+                // Extract product IDs and ensure they're strings
+                $productIds = array_map(function($product) {
+                    return (string)($product['id'] ?? $product['product_id'] ?? '');
+                }, array_filter($products, function($product) {
+                    return !empty($product['id'] ?? $product['product_id'] ?? null);
+                }));
                 
-                $this->output('info', 'Step 4: Fetching reviews for ' . count($productIds) . ' products in ' . count($chunks) . ' batches...');
-                $batchNum = 1;
-                
-                foreach ($chunks as $chunk) {
-                    $this->output('info', "  Batch {$batchNum}/" . count($chunks) . ": Fetching reviews for " . count($chunk) . " products...");
-                    $reviews = $this->getProductReviews($chunk);
+                if (!empty($productIds)) {
+                    $chunks = array_chunk($productIds, 50);
+                    
+                    $this->output('info', 'Step 4: Fetching reviews for ' . count($productIds) . ' products in ' . count($chunks) . ' batches...');
+                    $batchNum = 1;
+                    
+                    foreach ($chunks as $chunk) {
+                        $this->output('info', "  Batch {$batchNum}/" . count($chunks) . ": Fetching reviews for " . count($chunk) . " products...");
+                        $reviews = $this->getProductReviews($chunk);
                     
                     if ($reviews) {
                         $reviewList = $reviews['reviews'] ?? $reviews['data']['reviews'] ?? $reviews['review_list'] ?? $reviews['data'] ?? [];
@@ -591,10 +617,13 @@ class TikTokShopService
                     } else {
                         $this->output('error', "  ✗ Batch {$batchNum}: getProductReviews returned null");
                     }
-                    $batchNum++;
-                    usleep(200000);
+                        $batchNum++;
+                        usleep(200000);
+                    }
+                    $this->output('info', '✓ Completed reviews fetch: ' . count($result['reviews']) . ' total reviews');
+                } else {
+                    $this->output('warn', '⚠ No valid product IDs found for reviews');
                 }
-                $this->output('info', '✓ Completed reviews fetch: ' . count($result['reviews']) . ' total reviews');
             } else {
                 $this->output('warn', '⚠ No products to fetch reviews for');
             }
