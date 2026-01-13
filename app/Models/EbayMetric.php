@@ -24,6 +24,7 @@ class EbayMetric extends Model
         'price_lmpa',
         'report_date',
         'listing_status',
+        'ebay_stock',
     ];
 
 }

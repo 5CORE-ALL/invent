@@ -24,6 +24,7 @@ class Inventory extends Model
         'approved_at',
         'remarks',
         'is_hide',
+        'is_ia',
         'type',
         'warehouse_id',
         'to_warehouse',

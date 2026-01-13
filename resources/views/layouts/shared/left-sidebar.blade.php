@@ -1584,6 +1584,9 @@
                             <a href="{{ route('verify-adjust') }}">Verifications & Adjustments</a>
                         </li>
                         <li>
+                            <a href="{{ route('lost-gain') }}">Lost/Gain</a>
+                        </li>
+                        <li>
                             <a href="{{ route('incoming.view') }}">Incoming</a>
                         </li>
                         <li>

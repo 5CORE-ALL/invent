@@ -512,6 +512,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     //verification & Adjustment
     Route::get('/verification-adjustment-data-view', [VerificationAdjustmentController::class, 'getViewVerificationAdjustmentData']);
     Route::get('/verification-adjustment-view', [VerificationAdjustmentController::class, 'index'])->name('verify-adjust');
+    Route::get('/lost-gain', [VerificationAdjustmentController::class, 'lostGain'])->name('lost-gain');
+    Route::post('/lost-gain-product-data', [VerificationAdjustmentController::class, 'getLostGainProductData']);
+    Route::post('/lost-gain-update-ia', [VerificationAdjustmentController::class, 'updateIAStatus']);
     Route::post('/update-verified-stock', [VerificationAdjustmentController::class, 'updateVerifiedStock']);
     Route::get('/get-verified-stock', [VerificationAdjustmentController::class, 'getVerifiedStock']);
     Route::post('/update-to-adjust', [ShopifyController::class, 'updateToAdjust']);
