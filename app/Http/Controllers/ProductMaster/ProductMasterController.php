@@ -10,8 +10,8 @@ use App\Models\ShopifySku;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class ProductMasterController extends Controller
@@ -26,7 +26,6 @@ class ProductMasterController extends Controller
     /**
      * Handle dynamic route parameters and return a view.
      */
-
     public function product_master_index(Request $request)
     {
         // Fetch all products sorted by ID first
@@ -38,7 +37,7 @@ class ProductMasterController extends Controller
 
         foreach ($allProducts as $product) {
             // If this product has a parent and we haven't processed this parent group yet
-            if ($product->parent && !in_array($product->parent, $processedParents)) {
+            if ($product->parent && ! in_array($product->parent, $processedParents)) {
                 // Get all products with this parent
                 $grouped = $allProducts->where('parent', $product->parent);
                 foreach ($grouped as $item) {
@@ -47,7 +46,7 @@ class ProductMasterController extends Controller
                 $processedParents[] = $product->parent;
             }
             // If this product doesn't have a parent and hasn't been added yet
-            elseif (!$product->parent && !in_array($product->id, array_column($sortedProducts, 'id'))) {
+            elseif (! $product->parent && ! in_array($product->id, array_column($sortedProducts, 'id'))) {
                 $sortedProducts[] = (array) $product; // Convert to array
             }
         }
@@ -97,17 +96,16 @@ class ProductMasterController extends Controller
         ]);
     }
 
-
     public function getViewProductData(Request $request)
     {
         // Fetch all products from the database ordered by parent and SKU
         $products = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END") 
+            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
             ->orderBy('sku', 'asc')
             ->get();
 
         // Fetch all shopify SKUs and normalize keys by replacing non-breaking spaces
-        $shopifySkus = ShopifySku::all()->keyBy(function($item) {
+        $shopifySkus = ShopifySku::all()->keyBy(function ($item) {
             // Normalize SKU: replace non-breaking spaces (\u00a0) with regular spaces
             return str_replace("\u{00a0}", ' ', $item->sku);
         });
@@ -162,11 +160,11 @@ class ProductMasterController extends Controller
             // Add Shopify inv and quantity if available
             // Normalize the product SKU for lookup
             $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
-            
+
             if (isset($shopifySkus[$normalizedSku])) {
                 $shopifyData = $shopifySkus[$normalizedSku];
-                $row['shopify_inv'] = $shopifyData->inv !== null ? (float)$shopifyData->inv : 0;
-                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float)$shopifyData->quantity : 0;
+                $row['shopify_inv'] = $shopifyData->inv !== null ? (float) $shopifyData->inv : 0;
+                $row['shopify_quantity'] = $shopifyData->quantity !== null ? (float) $shopifyData->quantity : 0;
                 $shopifyImage = $shopifyData->image_src ?? null;
             } else {
                 $row['shopify_inv'] = 0;
@@ -174,14 +172,22 @@ class ProductMasterController extends Controller
                 $shopifyImage = null;
             }
 
-
             $shopifyImage = $shopifySkus[$normalizedSku]->image_src ?? null;
             // image_path is inside $row (from Values JSON)
             $localImage = isset($row['image_path']) && $row['image_path'] ? $row['image_path'] : null;
-            if ($shopifyImage) {
+
+            // Priority: Manually uploaded local image > Shopify image
+            // If local image exists and is a storage path (manually uploaded), use it
+            // Otherwise, fall back to Shopify image
+            if ($localImage && (strpos($localImage, 'storage/') !== false || strpos($localImage, '/storage/') !== false)) {
+                // Manually uploaded image takes priority
+                $row['image_path'] = '/'.ltrim($localImage, '/'); // Use local path, ensure leading slash
+            } elseif ($shopifyImage) {
+                // Fall back to Shopify image if no manual upload
                 $row['image_path'] = $shopifyImage; // Use Shopify URL
             } elseif ($localImage) {
-                $row['image_path'] = '/' . ltrim($localImage, '/'); // Use local path, ensure leading slash
+                // Other local images (if any)
+                $row['image_path'] = '/'.ltrim($localImage, '/'); // Use local path, ensure leading slash
             } else {
                 $row['image_path'] = null;
             }
@@ -192,85 +198,89 @@ class ProductMasterController extends Controller
         return response()->json([
             'message' => 'Data loaded from database',
             'data' => $result,
-            'status' => 200
+            'status' => 200,
         ]);
     }
 
-
     public function getProductBySku(Request $request)
-{
-    // Get SKU from query param (with spaces)
-    $sku = $request->query('sku');
+    {
+        // Get SKU from query param (with spaces)
+        $sku = $request->query('sku');
 
-    if (!$sku) {
-        return response()->json([
-            'message' => 'SKU is required',
-            'status' => 400
-        ], 400);
-    }
-
-    // Normalize spaces (remove extra, keep inside)
-    $sku = preg_replace('/\s+/', ' ', trim($sku));
-
-    // Fetch product
-    $product = ProductMaster::where('sku', $sku)->first();
-
-    if (!$product) {
-        return response()->json([
-            'message' => "Product not found for SKU: {$sku}",
-            'status' => 404
-        ], 404);
-    }
-
-    // Shopify data - normalize SKU for lookup
-    $normalizedSku = str_replace("\u{00a0}", ' ', $sku);
-    $shopifySku = ShopifySku::where('sku', $normalizedSku)
-        ->orWhere('sku', str_replace(' ', "\u{00a0}", $sku))
-        ->first();
-
-    // Build response
-    $row = [
-        'id'     => $product->id,
-        'Parent' => $product->parent,
-        'SKU'    => $product->sku,
-    ];
-
-    // Merge values JSON
-    $values = $product->Values;
-    if (is_array($values)) {
-        $row = array_merge($row, $values);
-    } elseif (is_string($values)) {
-        $decoded = json_decode($values, true);
-        if (is_array($decoded)) {
-            $row = array_merge($row, $decoded);
+        if (! $sku) {
+            return response()->json([
+                'message' => 'SKU is required',
+                'status' => 400,
+            ], 400);
         }
+
+        // Normalize spaces (remove extra, keep inside)
+        $sku = preg_replace('/\s+/', ' ', trim($sku));
+
+        // Fetch product
+        $product = ProductMaster::where('sku', $sku)->first();
+
+        if (! $product) {
+            return response()->json([
+                'message' => "Product not found for SKU: {$sku}",
+                'status' => 404,
+            ], 404);
+        }
+
+        // Shopify data - normalize SKU for lookup
+        $normalizedSku = str_replace("\u{00a0}", ' ', $sku);
+        $shopifySku = ShopifySku::where('sku', $normalizedSku)
+            ->orWhere('sku', str_replace(' ', "\u{00a0}", $sku))
+            ->first();
+
+        // Build response
+        $row = [
+            'id' => $product->id,
+            'Parent' => $product->parent,
+            'SKU' => $product->sku,
+        ];
+
+        // Merge values JSON
+        $values = $product->Values;
+        if (is_array($values)) {
+            $row = array_merge($row, $values);
+        } elseif (is_string($values)) {
+            $decoded = json_decode($values, true);
+            if (is_array($decoded)) {
+                $row = array_merge($row, $decoded);
+            }
+        }
+
+        // Shopify fields
+        $row['shopify_inv'] = $shopifySku->inv ?? null;
+        $row['shopify_quantity'] = $shopifySku->quantity ?? null;
+
+        // Image - Priority: Manually uploaded local image > Shopify image
+        $shopifyImage = $shopifySku->image_src ?? null;
+        $localImage = $row['image_path'] ?? null;
+
+        // If local image exists and is a storage path (manually uploaded), use it
+        // Otherwise, fall back to Shopify image
+        if ($localImage && (strpos($localImage, 'storage/') !== false || strpos($localImage, '/storage/') !== false)) {
+            // Manually uploaded image takes priority
+            $row['image_path'] = '/'.ltrim($localImage, '/');
+        } elseif ($shopifyImage) {
+            // Fall back to Shopify image if no manual upload
+            $row['image_path'] = $shopifyImage;
+        } elseif ($localImage) {
+            // Other local images (if any)
+            $row['image_path'] = '/'.ltrim($localImage, '/');
+        } else {
+            $row['image_path'] = null;
+        }
+
+        return response()->json([
+            'message' => 'Product loaded successfully',
+            'data' => $row,
+            'status' => 200,
+        ]);
     }
 
-    // Shopify fields
-    $row['shopify_inv'] = $shopifySku->inv ?? null;
-    $row['shopify_quantity'] = $shopifySku->quantity ?? null;
-
-    // Image
-    $shopifyImage = $shopifySku->image_src ?? null;
-    $localImage = $row['image_path'] ?? null;
-    if ($shopifyImage) {
-        $row['image_path'] = $shopifyImage;
-    } elseif ($localImage) {
-        $row['image_path'] = '/' . ltrim($localImage, '/');
-    } else {
-        $row['image_path'] = null;
-    }
-
-    return response()->json([
-        'message' => 'Product loaded successfully',
-        'data' => $row,
-        'status' => 200
-    ]);
-}
-
-
-
-    
     /**
      * Store a newly created product in storage.
      */
@@ -294,22 +304,22 @@ class ProductMasterController extends Controller
         $values = [];
         if (isset($validated['Values']) && $validated['Values'] !== null) {
             $values = is_array($validated['Values']) ? $validated['Values'] : json_decode($validated['Values'], true);
-            
-            if (!is_array($values)) {
+
+            if (! is_array($values)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Invalid Values data format'
+                    'message' => 'Invalid Values data format',
                 ], 422);
             }
         }
 
         // Skip required field validation for PARENT SKUs
         // Only unit and sku are required, all other fields are optional
-        if (!$isParentSku) {
+        if (! $isParentSku) {
             // Validate numeric fields only if they are provided (optional validation)
             $numericFields = ['label_qty', 'cp', 'wt_act', 'wt_decl', 'w', 'l', 'h'];
             $invalidNumeric = [];
-            
+
             foreach ($numericFields as $field) {
                 if (isset($values[$field]) && $values[$field] !== '' && $values[$field] !== null) {
                     // Normalize value for validation: trim whitespace and remove commas if it's a string
@@ -317,22 +327,22 @@ class ProductMasterController extends Controller
                     if (is_string($valueToCheck)) {
                         $valueToCheck = trim(str_replace(',', '', $valueToCheck));
                     }
-                    
+
                     // Check if value is numeric and non-negative (>= 0)
-                    if (!is_numeric($valueToCheck) || floatval($valueToCheck) < 0) {
+                    if (! is_numeric($valueToCheck) || floatval($valueToCheck) < 0) {
                         $invalidNumeric[] = $field;
                     }
                 }
             }
 
-            if (!empty($invalidNumeric)) {
+            if (! empty($invalidNumeric)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'The following fields must be valid positive numbers: ' . implode(', ', $invalidNumeric),
-                    'errors' => $invalidNumeric
+                    'message' => 'The following fields must be valid positive numbers: '.implode(', ', $invalidNumeric),
+                    'errors' => $invalidNumeric,
                 ], 422);
             }
-            
+
             // Normalize numeric fields for storage (remove commas, trim whitespace)
             foreach ($numericFields as $field) {
                 if (isset($values[$field]) && $values[$field] !== '' && $values[$field] !== null && is_string($values[$field])) {
@@ -352,7 +362,7 @@ class ProductMasterController extends Controller
             if ($request->hasFile('image')) {
                 $image = $request->file('image');
                 $imagePath = $image->store('product_images', 'public');
-                $values['image_path'] = 'storage/' . $imagePath;
+                $values['image_path'] = 'storage/'.$imagePath;
             }
 
             if ($operation === 'update' && $originalSku) {
@@ -363,27 +373,27 @@ class ProductMasterController extends Controller
                 }
                 $product = $query->first();
 
-                if (!$product) {
+                if (! $product) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'Product not found for update.'
+                        'message' => 'Product not found for update.',
                     ], 404);
                 }
 
                 // Prepare for possible image deletion
                 $oldValues = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
-                $oldImagePath = !empty($oldValues['image_path']) ? public_path($oldValues['image_path']) : null;
+                $oldImagePath = ! empty($oldValues['image_path']) ? public_path($oldValues['image_path']) : null;
                 $newImageUploaded = false;
 
                 // Handle image upload if present
                 if ($request->hasFile('image')) {
                     $image = $request->file('image');
                     $imagePath = $image->store('product_images', 'public');
-                    $values['image_path'] = 'storage/' . $imagePath;
+                    $values['image_path'] = 'storage/'.$imagePath;
                     $newImageUploaded = true;
                 } else {
                     // Keep old image_path if not uploading a new image
-                    if (!empty($oldValues['image_path'])) {
+                    if (! empty($oldValues['image_path'])) {
                         $values['image_path'] = $oldValues['image_path'];
                     }
                 }
@@ -394,16 +404,16 @@ class ProductMasterController extends Controller
                         ->where('parent', $validated['parent'])
                         ->where('id', '!=', $product->id)
                         ->first();
-                    
+
                     if ($duplicate) {
                         return response()->json([
                             'success' => false,
                             'message' => 'Another product with this SKU already exists.',
-                            'data' => $duplicate
+                            'data' => $duplicate,
                         ], 409); // 409 Conflict status code
                     }
                 }
-                
+
                 $product->sku = $validated['sku'];
                 $product->parent = $validated['parent'];
                 $product->Values = $values;
@@ -414,10 +424,61 @@ class ProductMasterController extends Controller
                     @unlink($oldImagePath);
                 }
 
+                // Transform product data similar to getProductBySku for consistent response format
+                $row = [
+                    'id' => $product->id,
+                    'Parent' => $product->parent,
+                    'SKU' => $product->sku,
+                ];
+
+                // Merge values JSON
+                $values = $product->Values;
+                if (is_array($values)) {
+                    $row = array_merge($row, $values);
+                } elseif (is_string($values)) {
+                    $decoded = json_decode($values, true);
+                    if (is_array($decoded)) {
+                        $row = array_merge($row, $decoded);
+                    }
+                }
+
+                // Get Shopify image if available
+                $normalizedSku = str_replace("\u{00a0}", ' ', $product->sku);
+                $shopifySku = \App\Models\ShopifySku::where('sku', $normalizedSku)
+                    ->orWhere('sku', str_replace(' ', "\u{00a0}", $product->sku))
+                    ->first();
+
+                // Image path handling - prioritize manually uploaded local image, then Shopify
+                $shopifyImage = $shopifySku->image_src ?? null;
+                $localImage = $row['image_path'] ?? null;
+
+                // Priority: Manually uploaded local image > Shopify image
+                // If local image exists and is a storage path (manually uploaded), use it
+                // Otherwise, fall back to Shopify image
+                if ($localImage && (strpos($localImage, 'storage/') !== false || strpos($localImage, '/storage/') !== false)) {
+                    // Manually uploaded image takes priority
+                    $row['image_path'] = '/'.ltrim($localImage, '/');
+                } elseif ($shopifyImage) {
+                    // Fall back to Shopify image if no manual upload
+                    $row['image_path'] = $shopifyImage;
+                } elseif ($localImage) {
+                    // Other local images (if any)
+                    $row['image_path'] = '/'.ltrim($localImage, '/');
+                } else {
+                    $row['image_path'] = null;
+                }
+
+                // Add Shopify inventory fields
+                $row['shopify_inv'] = $shopifySku->inv ?? null;
+                $row['shopify_quantity'] = $shopifySku->quantity ?? null;
+
+                // Keep Values JSON for reference
+                $row['Values'] = $product->Values;
+
                 return response()->json([
                     'success' => true,
                     'message' => 'Product updated successfully',
-                    'data' => $product
+                    'data' => $row,
                 ]);
             } else {
                 // Check for soft-deleted product with same SKU and Parent
@@ -426,14 +487,14 @@ class ProductMasterController extends Controller
                     ->where('parent', $validated['parent'])
                     ->first();
 
-                if ($existing && !$existing->trashed()) {
+                if ($existing && ! $existing->trashed()) {
                     // Product already exists and is not deleted
                     return response()->json([
                         'success' => false,
                         'message' => 'A product with this SKU already exists in the database.',
-                        'data' => $existing
+                        'data' => $existing,
                     ], 409); // 409 Conflict status code
-                } else if ($existing && $existing->trashed()) {
+                } elseif ($existing && $existing->trashed()) {
                     // Restore and update
                     $existing->restore();
                     $existing->Values = $values;
@@ -449,8 +510,8 @@ class ProductMasterController extends Controller
                 }
 
                 // 2. Also create a row with parent = original parent, sku = 'PARENT {parent}', Values = null
-                if (!empty($validated['parent'])) {
-                    $parentSku = 'PARENT ' . $validated['parent'];
+                if (! empty($validated['parent'])) {
+                    $parentSku = 'PARENT '.$validated['parent'];
                     // Check for both existing and soft-deleted rows
                     $parentRow = ProductMaster::withTrashed()
                         ->where('sku', $parentSku)
@@ -461,7 +522,7 @@ class ProductMasterController extends Controller
                         if ($parentRow->trashed()) {
                             $parentRow->restore();
                         }
-                    } elseif (!$parentRow) {
+                    } elseif (! $parentRow) {
                         // Only create if it doesn't exist at all
                         ProductMaster::create([
                             'sku' => $parentSku,
@@ -474,30 +535,30 @@ class ProductMasterController extends Controller
                 return response()->json([
                     'success' => true,
                     'message' => 'Product saved successfully',
-                    'data' => $product
+                    'data' => $product,
                 ]);
             }
         } catch (\Exception $e) {
-            Log::error('Error saving product: ' . $e->getMessage());
-            
+            Log::error('Error saving product: '.$e->getMessage());
+
             // Check for duplicate entry error (integrity constraint violation)
-            if (strpos($e->getMessage(), 'Integrity constraint violation') !== false && 
+            if (strpos($e->getMessage(), 'Integrity constraint violation') !== false &&
                 strpos($e->getMessage(), 'Duplicate entry') !== false) {
-                
+
                 // Extract the duplicate SKU from the error message
                 preg_match("/Duplicate entry '(.+)' for/", $e->getMessage(), $matches);
                 $duplicateSku = isset($matches[1]) ? $matches[1] : 'this SKU';
-                
+
                 return response()->json([
                     'success' => false,
                     'message' => "Product with SKU '{$duplicateSku}' already exists in the database.",
-                    'error_type' => 'duplicate_entry'
+                    'error_type' => 'duplicate_entry',
                 ], 409); // Conflict status code
             }
-            
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error saving product: ' . $e->getMessage()
+                'message' => 'Error saving product: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -508,7 +569,7 @@ class ProductMasterController extends Controller
 
         // Validate based on whether it's an image upload or regular field
         $isImageField = $request->hasFile('image');
-        
+
         if ($isImageField) {
             $validated = $request->validate([
                 'sku' => 'required|string',
@@ -519,23 +580,23 @@ class ProductMasterController extends Controller
             $validated = $request->validate([
                 'sku' => 'required|string',
                 'field' => 'required|string',
-                'value' => 'required'
+                'value' => 'required',
             ]);
         }
 
         try {
             $product = ProductMaster::where('sku', $validated['sku'])->first();
 
-            if (!$product) {
+            if (! $product) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Product not found'
+                    'message' => 'Product not found',
                 ], 404);
             }
 
             // Get current Values
             $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
-            if (!is_array($values)) {
+            if (! is_array($values)) {
                 $values = [];
             }
 
@@ -545,13 +606,13 @@ class ProductMasterController extends Controller
             // Handle image upload
             if ($isImageField && $field === 'image_path') {
                 // Delete old image if exists
-                $oldImagePath = !empty($values['image_path']) ? public_path($values['image_path']) : null;
-                
+                $oldImagePath = ! empty($values['image_path']) ? public_path($values['image_path']) : null;
+
                 // Store new image
                 $image = $request->file('image');
                 $imagePath = $image->store('product_images', 'public');
-                $value = 'storage/' . $imagePath;
-                
+                $value = 'storage/'.$imagePath;
+
                 // Delete old image after successful upload
                 if ($oldImagePath && file_exists($oldImagePath)) {
                     @unlink($oldImagePath);
@@ -563,7 +624,7 @@ class ProductMasterController extends Controller
                 // Handle numeric fields
                 $numericFields = ['lp', 'cp', 'frght', 'wt_act', 'wt_decl', 'l', 'w', 'h', 'cbm', 'upc', 'label_qty', 'moq'];
                 if (in_array($field, $numericFields)) {
-                    $value = is_numeric($value) ? (float)$value : null;
+                    $value = is_numeric($value) ? (float) $value : null;
                 }
             }
 
@@ -580,15 +641,16 @@ class ProductMasterController extends Controller
                 'data' => [
                     'sku' => $product->sku,
                     'field' => $field,
-                    'value' => $value
-                ]
+                    'value' => $value,
+                ],
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error updating field: ' . $e->getMessage());
+            Log::error('Error updating field: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error updating field: ' . $e->getMessage()
+                'message' => 'Error updating field: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -602,22 +664,22 @@ class ProductMasterController extends Controller
 
         $validated = $request->validate([
             'sku' => 'required|string',
-            'verified_data' => 'required|integer|in:0,1'
+            'verified_data' => 'required|integer|in:0,1',
         ]);
 
         try {
             $product = ProductMaster::where('sku', $validated['sku'])->first();
 
-            if (!$product) {
+            if (! $product) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Product not found'
+                    'message' => 'Product not found',
                 ], 404);
             }
 
             // Get current Values
             $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
-            if (!is_array($values)) {
+            if (! is_array($values)) {
                 $values = [];
             }
 
@@ -633,15 +695,16 @@ class ProductMasterController extends Controller
                 'message' => 'Verified status updated successfully',
                 'data' => [
                     'sku' => $product->sku,
-                    'verified_data' => $validated['verified_data']
-                ]
+                    'verified_data' => $validated['verified_data'],
+                ],
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error updating verified data: ' . $e->getMessage());
+            Log::error('Error updating verified data: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Error updating verified status: ' . $e->getMessage()
+                'message' => 'Error updating verified status: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -654,17 +717,17 @@ class ProductMasterController extends Controller
         if ($value === null || $value === '') {
             return true;
         }
-        
-        $strValue = trim((string)$value);
-        
+
+        $strValue = trim((string) $value);
+
         // Empty string or dash means missing
         if ($strValue === '' || $strValue === '-' || $strValue === 'null' || $strValue === 'undefined') {
             return true;
         }
-        
+
         // For numeric fields
         if ($isNumeric) {
-            $numValue = is_numeric($strValue) ? (float)$strValue : null;
+            $numValue = is_numeric($strValue) ? (float) $strValue : null;
             if ($numValue === null || is_nan($numValue)) {
                 return true;
             }
@@ -673,29 +736,29 @@ class ProductMasterController extends Controller
                 return true;
             }
         }
-        
+
         return false;
     }
 
     public function import(Request $request)
     {
         $request->validate([
-            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240'
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240',
         ]);
 
         try {
             $file = $request->file('excel_file');
-            
+
             // Load spreadsheet - PhpSpreadsheet handles both Excel and CSV
             $spreadsheet = IOFactory::load($file->getPathName());
-            
+
             $sheet = $spreadsheet->getActiveSheet();
             $rows = $sheet->toArray();
 
             if (count($rows) < 2) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Excel file is empty or has no data rows'
+                    'message' => 'Excel file is empty or has no data rows',
                 ], 422);
             }
 
@@ -732,7 +795,7 @@ class ProductMasterController extends Controller
                 'upc' => 'upc',
                 'initial_quantity' => 'initial_quantity',
                 'shopify_inv' => 'shopify_inv',
-                'shopify_quantity' => 'shopify_quantity'
+                'shopify_quantity' => 'shopify_quantity',
             ];
 
             // Find column indices
@@ -744,10 +807,10 @@ class ProductMasterController extends Controller
                 }
             }
 
-            if (!isset($columnIndices['sku'])) {
+            if (! isset($columnIndices['sku'])) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'SKU column not found in the Excel file'
+                    'message' => 'SKU column not found in the Excel file',
                 ], 422);
             }
 
@@ -757,25 +820,26 @@ class ProductMasterController extends Controller
 
             foreach ($rows as $index => $row) {
                 $rowNumber = $index + 2; // +2 because we removed header and arrays are 0-indexed
-                
+
                 // Skip empty rows
                 if (empty($row[$columnIndices['sku']])) {
                     continue;
                 }
 
                 $sku = trim($row[$columnIndices['sku']]);
-                
+
                 // Find or create product by SKU
                 $product = ProductMaster::where('sku', $sku)->first();
-                
-                if (!$product) {
+
+                if (! $product) {
                     $errors[] = "Row {$rowNumber}: SKU '{$sku}' not found in database";
+
                     continue;
                 }
 
                 // Get existing Values - preserve all existing data
                 $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
-                if (!is_array($values)) {
+                if (! is_array($values)) {
                     $values = [];
                 }
 
@@ -795,28 +859,30 @@ class ProductMasterController extends Controller
 
                 // Process each column - only update fields that are currently MISSING in database
                 foreach ($columnIndices as $field => $colIndex) {
-                    if ($field === 'sku' || $field === 'parent') continue; // Skip SKU and parent (handled separately)
-                    
+                    if ($field === 'sku' || $field === 'parent') {
+                        continue;
+                    } // Skip SKU and parent (handled separately)
+
                     // Check if the cell has a value (not empty, not null, not just whitespace)
                     $cellValue = isset($row[$colIndex]) ? $row[$colIndex] : null;
-                    
+
                     // Skip if cell is empty, null, or only whitespace
                     if ($cellValue === null || $cellValue === '' || trim($cellValue) === '') {
                         continue; // Don't update this field - keep existing value
                     }
-                    
+
                     $value = trim($cellValue);
-                    
+
                     // Skip if value is still empty after trim
                     if ($value === '') {
                         continue; // Don't update this field - keep existing value
                     }
-                    
+
                     // Check if this field is currently MISSING in the database
                     $isCurrentlyMissing = false;
                     $currentValue = null;
                     $isNumeric = in_array($field, ['cp', 'lp', 'frght', 'ship', 'temu_ship', 'moq', 'ebay2_ship', 'label_qty', 'wt_act', 'wt_decl', 'l', 'w', 'h', 'cbm', 'upc', 'initial_quantity', 'shopify_inv', 'shopify_quantity']);
-                    
+
                     // Get current value from database
                     if (in_array($field, ['cp', 'lp', 'frght', 'ship', 'temu_ship', 'moq', 'ebay2_ship', 'label_qty', 'wt_act', 'wt_decl', 'l', 'w', 'h', 'cbm', 'upc', 'initial_quantity', 'image_path', 'status', 'unit'])) {
                         // All these fields are stored in Values JSON
@@ -826,31 +892,31 @@ class ProductMasterController extends Controller
                     } elseif ($field === 'shopify_quantity') {
                         $currentValue = $product->shopify_quantity;
                     }
-                    
+
                     // Check if current value is missing
                     $isCurrentlyMissing = $this->isDataMissing($currentValue, $isNumeric, $field);
-                    
+
                     // Only update if the field is currently MISSING in the database
-                    if (!$isCurrentlyMissing) {
+                    if (! $isCurrentlyMissing) {
                         continue; // Field already has a value - don't update it
                     }
-                    
+
                     // Convert to float for numeric fields
                     if ($isNumeric) {
                         // Only update if it's a valid number
                         if (is_numeric($value)) {
-                            $value = (float)$value;
+                            $value = (float) $value;
                         } else {
                             // Invalid numeric value - skip this field
                             continue;
                         }
                     }
-                    
+
                     // Only update fields that are currently missing and have values in Excel
                     // Store in Values array for most fields (including status and unit)
                     if (in_array($field, ['cp', 'lp', 'frght', 'ship', 'temu_ship', 'moq', 'ebay2_ship', 'label_qty', 'wt_act', 'wt_decl', 'l', 'w', 'h', 'cbm', 'upc', 'initial_quantity', 'image_path', 'status', 'unit'])) {
                         $values[$field] = $value;
-                    } 
+                    }
                     // Store directly on product for shopify fields
                     elseif ($field === 'shopify_inv') {
                         $product->shopify_inv = $value;
@@ -868,7 +934,7 @@ class ProductMasterController extends Controller
 
             $message = "Successfully imported {$imported} records. Only missing data fields were updated - existing values were preserved.";
             if (count($errors) > 0) {
-                $message .= " " . count($errors) . " error(s) occurred.";
+                $message .= ' '.count($errors).' error(s) occurred.';
             }
 
             return response()->json([
@@ -876,13 +942,14 @@ class ProductMasterController extends Controller
                 'message' => $message,
                 'imported' => $imported,
                 'updated' => $updated,
-                'errors' => $errors
+                'errors' => $errors,
             ]);
         } catch (\Exception $e) {
-            Log::error('Product Master Import Error: ' . $e->getMessage());
+            Log::error('Product Master Import Error: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Import failed: ' . $e->getMessage()
+                'message' => 'Import failed: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -901,7 +968,7 @@ class ProductMasterController extends Controller
             }
 
             // Convert to array if single ID is provided
-            if (!is_array($productIds)) {
+            if (! is_array($productIds)) {
                 $productIds = [$productIds];
             }
 
@@ -921,8 +988,8 @@ class ProductMasterController extends Controller
                 if ($product->image && File::exists(public_path($product->image))) {
                     File::delete(public_path($product->image));
                 }
-                
-                //Log the user who is deleting
+
+                // Log the user who is deleting
                 $product->deleted_by = auth()->id();
                 $product->save();
 
@@ -932,13 +999,14 @@ class ProductMasterController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => count($productIds) . ' product(s) archived successfully.',
+                'message' => count($productIds).' product(s) archived successfully.',
             ]);
         } catch (\Exception $e) {
-            Log::error('Error deleting product(s): ' . $e->getMessage());
+            Log::error('Error deleting product(s): '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to delete product(s). Please try again.'
+                'message' => 'Failed to delete product(s). Please try again.',
             ], 500);
         }
     }
@@ -978,7 +1046,7 @@ class ProductMasterController extends Controller
             'MAP' => 'map',
             'STATUS' => 'status',
             'UPC' => 'upc',
-            'Initial Quantity' => 'initial_quantity'
+            'Initial Quantity' => 'initial_quantity',
         ];
 
         foreach ($sheetData as $row) {
@@ -986,8 +1054,9 @@ class ProductMasterController extends Controller
                 $parent = $row['Parent'] ?? null;
                 $sku = $row['SKU'] ?? null;
 
-                if (!$sku) {
-                    $errors[] = 'SKU missing in row: ' . json_encode($row);
+                if (! $sku) {
+                    $errors[] = 'SKU missing in row: '.json_encode($row);
+
                     continue;
                 }
 
@@ -1006,7 +1075,7 @@ class ProductMasterController extends Controller
                 );
                 $imported++;
             } catch (\Exception $e) {
-                $errors[] = 'Error for SKU ' . ($row['SKU'] ?? 'N/A') . ': ' . $e->getMessage();
+                $errors[] = 'Error for SKU '.($row['SKU'] ?? 'N/A').': '.$e->getMessage();
             }
         }
 
@@ -1034,7 +1103,7 @@ class ProductMasterController extends Controller
             foreach ($data['items'] as $item) {
                 $product = ProductMaster::find($item['id']);
 
-                if (!$product) {
+                if (! $product) {
                     continue;
                 }
 
@@ -1045,7 +1114,7 @@ class ProductMasterController extends Controller
                     $field = $operation['field'];
                     $value = $operation['value'];
 
-                    if (!isset($values[$field])) {
+                    if (! isset($values[$field])) {
                         $values[$field] = 0; // Initialize if not present, this assumes numerical value for arithmetic operations
                     }
 
@@ -1079,41 +1148,40 @@ class ProductMasterController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Products updated successfully.'
+                'message' => 'Products updated successfully.',
             ], 200);
 
         } catch (\Exception $e) {
             DB::rollBack();
 
-            Log::error('Batch update failed: ' . $e->getMessage());
+            Log::error('Batch update failed: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to update products. Please try again.'
+                'message' => 'Failed to update products. Please try again.',
             ], 500);
         }
     }
-
-
 
     public function getArchived()
     {
         try {
             $archived = ProductMaster::onlyTrashed()
-            ->leftJoin('users', 'product_master.deleted_by', '=', 'users.id') 
-            ->select('product_master.*','users.name as deleted_by_name')
-            ->orderBy('product_master.deleted_at', 'desc')
-            ->get();
+                ->leftJoin('users', 'product_master.deleted_by', '=', 'users.id')
+                ->select('product_master.*', 'users.name as deleted_by_name')
+                ->orderBy('product_master.deleted_at', 'desc')
+                ->get();
 
             return response()->json([
                 'success' => true,
-                'data' => $archived
+                'data' => $archived,
             ]);
         } catch (\Exception $e) {
-            Log::error('Error fetching archived products: ' . $e->getMessage());
+            Log::error('Error fetching archived products: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch archived products.'
+                'message' => 'Failed to fetch archived products.',
             ], 500);
         }
     }
@@ -1126,27 +1194,28 @@ class ProductMasterController extends Controller
             if (empty($ids)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'No products selected for restoration.'
+                    'message' => 'No products selected for restoration.',
                 ], 400);
             }
 
-            if (!is_array($ids)) {
+            if (! is_array($ids)) {
                 $ids = [$ids];
             }
 
             ProductMaster::withTrashed()
-            ->whereIn('id', $ids)
-            ->update(['deleted_at' => null]);
+                ->whereIn('id', $ids)
+                ->update(['deleted_at' => null]);
 
             return response()->json([
                 'success' => true,
-                'message' => count($ids) . ' product(s) restored successfully.'
+                'message' => count($ids).' product(s) restored successfully.',
             ]);
         } catch (\Exception $e) {
-            Log::error('Error restoring products: ' . $e->getMessage());
+            Log::error('Error restoring products: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to restore products.'
+                'message' => 'Failed to restore products.',
             ], 500);
         }
     }
@@ -1167,10 +1236,10 @@ class ProductMasterController extends Controller
                 ->orWhere('sku', $validated['sku'])
                 ->first();
 
-            if (!$product) {
+            if (! $product) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Product with SKU "' . $validated['sku'] . '" not found in database.'
+                    'message' => 'Product with SKU "'.$validated['sku'].'" not found in database.',
                 ], 404);
             }
 
@@ -1183,13 +1252,14 @@ class ProductMasterController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Title data saved successfully for SKU: ' . $validated['sku']
+                'message' => 'Title data saved successfully for SKU: '.$validated['sku'],
             ]);
         } catch (\Exception $e) {
-            Log::error('Error saving title data: ' . $e->getMessage());
+            Log::error('Error saving title data: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to save title data: ' . $e->getMessage()
+                'message' => 'Failed to save title data: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -1213,10 +1283,10 @@ class ProductMasterController extends Controller
                 ->orWhere('sku', $validated['sku'])
                 ->first();
 
-            if (!$product) {
+            if (! $product) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Product with SKU "' . $validated['sku'] . '" not found in database.'
+                    'message' => 'Product with SKU "'.$validated['sku'].'" not found in database.',
                 ], 404);
             }
 
@@ -1232,13 +1302,14 @@ class ProductMasterController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Video data saved successfully for SKU: ' . $validated['sku']
+                'message' => 'Video data saved successfully for SKU: '.$validated['sku'],
             ]);
         } catch (\Exception $e) {
-            Log::error('Error saving video data: ' . $e->getMessage());
+            Log::error('Error saving video data: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to save video data: ' . $e->getMessage()
+                'message' => 'Failed to save video data: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -1260,20 +1331,20 @@ class ProductMasterController extends Controller
             $sellerId = env('AMAZON_SELLER_ID');
             $marketplaceId = env('SPAPI_MARKETPLACE_ID', 'ATVPDKIKX0DER');
 
-            if (!$clientId || !$clientSecret || !$refreshToken || !$sellerId) {
+            if (! $clientId || ! $clientSecret || ! $refreshToken || ! $sellerId) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Amazon SP-API credentials not configured properly in .env file'
+                    'message' => 'Amazon SP-API credentials not configured properly in .env file',
                 ], 500);
             }
 
             // Get LWA access token
             $lwaToken = $this->getAmazonAccessToken($clientId, $clientSecret, $refreshToken);
-            
-            if (!$lwaToken) {
+
+            if (! $lwaToken) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Failed to obtain Amazon LWA access token'
+                    'message' => 'Failed to obtain Amazon LWA access token',
                 ], 500);
             }
 
@@ -1287,9 +1358,10 @@ class ProductMasterController extends Controller
                     ->orWhere('sku', $sku)
                     ->first();
 
-                if (!$product) {
+                if (! $product) {
                     $errorCount++;
                     $errors[] = "SKU {$sku}: Product not found";
+
                     continue;
                 }
 
@@ -1300,9 +1372,9 @@ class ProductMasterController extends Controller
                 if ($product->title150) {
                     try {
                         // Use Listings Items API PATCH method
-                        $endpoint = "https://sellingpartnerapi-na.amazon.com";
+                        $endpoint = 'https://sellingpartnerapi-na.amazon.com';
                         $path = "/listings/2021-08-01/items/{$sellerId}/{$sku}";
-                        $url = $endpoint . $path . "?marketplaceIds={$marketplaceId}";
+                        $url = $endpoint.$path."?marketplaceIds={$marketplaceId}";
 
                         $payload = [
                             'productType' => 'PRODUCT',
@@ -1313,11 +1385,11 @@ class ProductMasterController extends Controller
                                     'value' => [
                                         [
                                             'value' => $product->title150,
-                                            'language_tag' => 'en_US'
-                                        ]
-                                    ]
-                                ]
-                            ]
+                                            'language_tag' => 'en_US',
+                                        ],
+                                    ],
+                                ],
+                            ],
                         ];
 
                         $response = \Illuminate\Support\Facades\Http::withHeaders([
@@ -1325,14 +1397,14 @@ class ProductMasterController extends Controller
                             'Content-Type' => 'application/json',
                             'Accept' => 'application/json',
                         ])
-                        ->timeout(30)
-                        ->patch($url, $payload);
+                            ->timeout(30)
+                            ->patch($url, $payload);
 
                         $statusCode = $response->status();
 
                         if ($statusCode == 200 || $statusCode == 202) {
                             $amazonSuccess = true;
-                            
+
                             // Update sync status
                             $product->amazon_last_sync = now();
                             $product->amazon_sync_status = 'success';
@@ -1340,16 +1412,16 @@ class ProductMasterController extends Controller
                             $product->save();
                         } else {
                             $errorMsg = $response->body();
-                            $errors[] = "Amazon - SKU {$sku}: {$statusCode} - " . substr($errorMsg, 0, 100);
-                            
+                            $errors[] = "Amazon - SKU {$sku}: {$statusCode} - ".substr($errorMsg, 0, 100);
+
                             // Update error status
                             $product->amazon_sync_status = 'failed';
                             $product->amazon_sync_error = substr($errorMsg, 0, 500);
                             $product->save();
                         }
                     } catch (\Exception $e) {
-                        $errors[] = "Amazon - SKU {$sku}: " . $e->getMessage();
-                        
+                        $errors[] = "Amazon - SKU {$sku}: ".$e->getMessage();
+
                         $product->amazon_sync_status = 'failed';
                         $product->amazon_sync_error = $e->getMessage();
                         $product->save();
@@ -1360,15 +1432,15 @@ class ProductMasterController extends Controller
                 if ($product->title100) {
                     // Add delay before Shopify API call to avoid rate limiting
                     usleep(500000); // 500ms delay
-                    
+
                     try {
                         $shopifySuccess = $this->updateShopifyTitle($sku, $product->title100);
-                        if (!$shopifySuccess) {
+                        if (! $shopifySuccess) {
                             $errors[] = "Shopify - SKU {$sku}: Update failed (check logs)";
                         }
                     } catch (\Exception $e) {
-                        $errors[] = "Shopify - SKU {$sku}: " . $e->getMessage();
-                        Log::error("Shopify update exception for SKU {$sku}: " . $e->getMessage());
+                        $errors[] = "Shopify - SKU {$sku}: ".$e->getMessage();
+                        Log::error("Shopify update exception for SKU {$sku}: ".$e->getMessage());
                     }
                 }
 
@@ -1384,20 +1456,21 @@ class ProductMasterController extends Controller
             }
 
             $message = count($errors) > 0 ? implode("\n", array_slice($errors, 0, 5)) : '';
-            
+
             return response()->json([
                 'success' => true,
                 'success_count' => $successCount,
                 'error_count' => $errorCount,
                 'message' => $message,
-                'total' => count($skus)
+                'total' => count($skus),
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error updating titles to Amazon: ' . $e->getMessage());
+            Log::error('Error updating titles to Amazon: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to update titles: ' . $e->getMessage()
+                'message' => 'Failed to update titles: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -1414,13 +1487,16 @@ class ProductMasterController extends Controller
 
             if ($response->successful()) {
                 $data = $response->json();
+
                 return $data['access_token'] ?? null;
             }
 
-            Log::error('Failed to get Amazon access token: ' . $response->body());
+            Log::error('Failed to get Amazon access token: '.$response->body());
+
             return null;
         } catch (\Exception $e) {
-            Log::error('Error getting Amazon access token: ' . $e->getMessage());
+            Log::error('Error getting Amazon access token: '.$e->getMessage());
+
             return null;
         }
     }
@@ -1429,19 +1505,20 @@ class ProductMasterController extends Controller
     {
         try {
             Log::info("Starting Shopify title update for SKU: {$sku}, Title: {$title}");
-            
+
             // Get Shopify credentials from env - try multiple variable names
             $shopifyDomain = env('SHOPIFY_DOMAIN') ?? env('SHOPIFY_STORE_URL') ?? env('SHOPIFY_5CORE_DOMAIN');
             $shopifyToken = env('SHOPIFY_ACCESS_TOKEN') ?? env('SHOPIFY_PASSWORD');
-            
+
             // Clean up domain (remove https://, trailing slashes)
             if ($shopifyDomain) {
                 $shopifyDomain = preg_replace('#^https?://#', '', $shopifyDomain);
                 $shopifyDomain = rtrim($shopifyDomain, '/');
             }
-            
-            if (!$shopifyDomain || !$shopifyToken) {
-                Log::warning("Shopify credentials not configured. SHOPIFY_DOMAIN: " . ($shopifyDomain ? 'set' : 'missing') . ", SHOPIFY_ACCESS_TOKEN: " . ($shopifyToken ? 'set' : 'missing'));
+
+            if (! $shopifyDomain || ! $shopifyToken) {
+                Log::warning('Shopify credentials not configured. SHOPIFY_DOMAIN: '.($shopifyDomain ? 'set' : 'missing').', SHOPIFY_ACCESS_TOKEN: '.($shopifyToken ? 'set' : 'missing'));
+
                 return false;
             }
 
@@ -1452,57 +1529,61 @@ class ProductMasterController extends Controller
                 ->orWhere('sku', strtoupper($sku))
                 ->orWhere('sku', strtolower($sku))
                 ->first();
-            
-            if (!$shopifySku || !$shopifySku->variant_id) {
+
+            if (! $shopifySku || ! $shopifySku->variant_id) {
                 Log::warning("No Shopify variant found for SKU: {$sku}");
+
                 return false;
             }
 
             $variantId = $shopifySku->variant_id;
             Log::info("Found Shopify variant ID: {$variantId} for SKU: {$sku}");
-            
+
             // Add delay before API call (3 seconds to safely respect Shopify's 2 calls/second limit)
             sleep(3);
-            
+
             // First, get the product ID from the variant with retry logic
             $variantUrl = "https://{$shopifyDomain}/admin/api/2024-01/variants/{$variantId}.json";
-            
+
             Log::info("Fetching variant from: {$variantUrl}");
-            
+
             $maxRetries = 3;
             $retryDelay = 2; // Start with 2 seconds
             $variantResponse = null;
-            
+
             for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
                 $variantResponse = \Illuminate\Support\Facades\Http::withHeaders([
                     'X-Shopify-Access-Token' => $shopifyToken,
                 ])->timeout(30)->get($variantUrl);
-                
+
                 if ($variantResponse->successful()) {
                     break; // Success, exit retry loop
                 }
-                
+
                 if ($variantResponse->status() == 429 && $attempt < $maxRetries) {
                     Log::warning("Rate limited on attempt {$attempt} for SKU {$sku}, waiting {$retryDelay} seconds...");
                     sleep($retryDelay);
                     $retryDelay *= 2; // Exponential backoff
+
                     continue;
                 }
-                
+
                 // Not rate limited or final attempt failed
                 break;
             }
-            
-            if (!$variantResponse->successful()) {
-                Log::error("Failed to fetch variant for SKU {$sku} after {$maxRetries} attempts. Status: " . $variantResponse->status() . ", Body: " . $variantResponse->body());
+
+            if (! $variantResponse->successful()) {
+                Log::error("Failed to fetch variant for SKU {$sku} after {$maxRetries} attempts. Status: ".$variantResponse->status().', Body: '.$variantResponse->body());
+
                 return false;
             }
-            
+
             $variantData = $variantResponse->json();
             $productId = $variantData['variant']['product_id'] ?? null;
-            
-            if (!$productId) {
-                Log::error("No product ID found in variant response for SKU: {$sku}. Response: " . json_encode($variantData));
+
+            if (! $productId) {
+                Log::error("No product ID found in variant response for SKU: {$sku}. Response: ".json_encode($variantData));
+
                 return false;
             }
 
@@ -1513,50 +1594,54 @@ class ProductMasterController extends Controller
 
             // Now update the product title with retry logic
             $productUrl = "https://{$shopifyDomain}/admin/api/2024-01/products/{$productId}.json";
-            
+
             Log::info("Updating product at: {$productUrl}");
 
             $maxRetries = 3;
             $retryDelay = 2;
             $response = null;
-            
+
             for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
                 $response = \Illuminate\Support\Facades\Http::withHeaders([
                     'X-Shopify-Access-Token' => $shopifyToken,
                     'Content-Type' => 'application/json',
                 ])
-                ->timeout(30)
-                ->put($productUrl, [
-                    'product' => [
-                        'id' => $productId,
-                        'title' => $title
-                    ]
-                ]);
-                
+                    ->timeout(30)
+                    ->put($productUrl, [
+                        'product' => [
+                            'id' => $productId,
+                            'title' => $title,
+                        ],
+                    ]);
+
                 if ($response->successful()) {
                     break; // Success, exit retry loop
                 }
-                
+
                 if ($response->status() == 429 && $attempt < $maxRetries) {
                     Log::warning("Rate limited on product update attempt {$attempt} for SKU {$sku}, waiting {$retryDelay} seconds...");
                     sleep($retryDelay);
                     $retryDelay *= 2; // Exponential backoff
+
                     continue;
                 }
-                
+
                 // Not rate limited or final attempt failed
                 break;
             }
 
             if ($response->successful()) {
                 Log::info("✓ Successfully updated Shopify title for SKU: {$sku} (Product ID: {$productId})");
+
                 return true;
             } else {
-                Log::error("✗ Failed to update Shopify title for SKU {$sku} after {$maxRetries} attempts. Status: " . $response->status() . ", Body: " . $response->body());
+                Log::error("✗ Failed to update Shopify title for SKU {$sku} after {$maxRetries} attempts. Status: ".$response->status().', Body: '.$response->body());
+
                 return false;
             }
         } catch (\Exception $e) {
-            Log::error("✗ Exception updating Shopify title for SKU {$sku}: " . $e->getMessage() . "\nTrace: " . $e->getTraceAsString());
+            Log::error("✗ Exception updating Shopify title for SKU {$sku}: ".$e->getMessage()."\nTrace: ".$e->getTraceAsString());
+
             return false;
         }
     }
@@ -1564,8 +1649,8 @@ class ProductMasterController extends Controller
     public function updateTitlesToPlatforms(Request $request)
     {
         try {
-            Log::info("=== updateTitlesToPlatforms called ===", $request->all());
-            
+            Log::info('=== updateTitlesToPlatforms called ===', $request->all());
+
             $validated = $request->validate([
                 'skus' => 'required|array',
                 'skus.*' => 'required|string',
@@ -1606,42 +1691,45 @@ class ProductMasterController extends Controller
                     ->orWhere('sku', $sku)
                     ->first();
 
-                if (!$product) {
+                if (! $product) {
                     $errors[] = "SKU {$sku}: Product not found";
                     foreach ($platforms as $platform) {
                         $results[$platform]['failed']++;
                     }
+
                     continue;
                 }
 
                 // Update each selected platform
                 foreach ($platforms as $platform) {
                     $titleField = $platformTitleMap[$platform] ?? null;
-                    
-                    if (!$titleField) {
-                        $errors[] = ucfirst($platform) . " - SKU {$sku}: Unknown platform";
+
+                    if (! $titleField) {
+                        $errors[] = ucfirst($platform)." - SKU {$sku}: Unknown platform";
                         $results[$platform]['failed']++;
+
                         continue;
                     }
 
                     $title = $product->{$titleField};
-                    
-                    if (!$title) {
-                        $errors[] = ucfirst($platform) . " - SKU {$sku}: No title available for {$titleField}";
+
+                    if (! $title) {
+                        $errors[] = ucfirst($platform)." - SKU {$sku}: No title available for {$titleField}";
                         $results[$platform]['failed']++;
+
                         continue;
                     }
 
                     // Call platform-specific update method
                     $success = $this->updatePlatformTitle($platform, $sku, $title);
-                    
+
                     if ($success) {
                         $results[$platform]['success']++;
                     } else {
                         $results[$platform]['failed']++;
-                        $errors[] = ucfirst($platform) . " - SKU {$sku}: Update failed";
+                        $errors[] = ucfirst($platform)." - SKU {$sku}: Update failed";
                     }
-                    
+
                     // Rate limiting delay - Shopify needs more time (2 calls per product)
                     if ($platform === 'shopify') {
                         sleep(5); // 5 seconds for Shopify to safely clear rate limit
@@ -1656,7 +1744,7 @@ class ProductMasterController extends Controller
             $totalFailed = array_sum(array_column($results, 'failed'));
 
             $message = count($errors) > 0 ? implode("\n", array_slice($errors, 0, 10)) : '';
-            
+
             return response()->json([
                 'success' => true,
                 'results' => $results,
@@ -1666,10 +1754,11 @@ class ProductMasterController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error updating titles to platforms: ' . $e->getMessage());
+            Log::error('Error updating titles to platforms: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to update titles: ' . $e->getMessage()
+                'message' => 'Failed to update titles: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -1677,57 +1766,60 @@ class ProductMasterController extends Controller
     private function updatePlatformTitle($platform, $sku, $title)
     {
         try {
-            file_put_contents(storage_path('logs/platform_debug.log'), date('Y-m-d H:i:s') . " - Platform: {$platform}, SKU: {$sku}\n", FILE_APPEND);
+            file_put_contents(storage_path('logs/platform_debug.log'), date('Y-m-d H:i:s')." - Platform: {$platform}, SKU: {$sku}\n", FILE_APPEND);
             Log::info("Updating {$platform} title for SKU: {$sku}");
 
             switch ($platform) {
                 case 'amazon':
                     return $this->updateAmazonTitle($sku, $title);
-                
+
                 case 'shopify':
                     return $this->updateShopifyTitle($sku, $title);
-                
+
                 case 'ebay1':
                 case 'ebay2':
                 case 'ebay3':
                     return $this->updateEbayTitle($platform, $sku, $title);
-                
+
                 case 'walmart':
                     Log::info("Updating walmart title for SKU: {$sku}");
+
                     return $this->updateWalmartTitle($sku, $title);
-                
+
                 case 'temu':
                     return $this->updateTemuTitle($sku, $title);
-                
+
                 case 'doba':
                     return $this->updateDobaTitle($sku, $title);
-                
+
                 case 'shein':
                     return $this->updateSheinTitle($sku, $title);
-                
+
                 case 'wayfair':
                     return $this->updateWayfairTitle($sku, $title);
-                
+
                 case 'reverb':
                     return $this->updateReverbTitle($sku, $title);
-                
+
                 case 'faire':
                     return $this->updateFaireTitle($sku, $title);
-                
+
                 case 'aliexpress':
                     return $this->updateAliexpressTitle($sku, $title);
-                
+
                 case 'tiktok':
                     return $this->updateTiktokTitle($sku, $title);
-                
+
                 default:
                     Log::warning("Unknown platform: {$platform}");
+
                     return false;
             }
         } catch (\Exception $e) {
             $error = $e->getMessage();
-            file_put_contents(storage_path('logs/platform_debug.log'), date('Y-m-d H:i:s') . " - ERROR in {$platform}: {$error}\n", FILE_APPEND);
-            Log::error("Error updating {$platform} title for SKU {$sku}: " . $error);
+            file_put_contents(storage_path('logs/platform_debug.log'), date('Y-m-d H:i:s')." - ERROR in {$platform}: {$error}\n", FILE_APPEND);
+            Log::error("Error updating {$platform} title for SKU {$sku}: ".$error);
+
             return false;
         }
     }
@@ -1742,15 +1834,17 @@ class ProductMasterController extends Controller
             $sellerId = env('AMAZON_SELLER_ID');
             $marketplaceId = env('SPAPI_MARKETPLACE_ID', 'ATVPDKIKX0DER');
 
-            if (!$clientId || !$clientSecret || !$refreshToken || !$sellerId) {
-                Log::warning("Amazon credentials not configured");
+            if (! $clientId || ! $clientSecret || ! $refreshToken || ! $sellerId) {
+                Log::warning('Amazon credentials not configured');
+
                 return false;
             }
 
             // Get access token
             $accessToken = $this->getAmazonAccessToken($clientId, $clientSecret, $refreshToken);
-            if (!$accessToken) {
-                Log::error("Failed to get Amazon access token");
+            if (! $accessToken) {
+                Log::error('Failed to get Amazon access token');
+
                 return false;
             }
 
@@ -1761,32 +1855,35 @@ class ProductMasterController extends Controller
                 'x-amz-access-token' => $accessToken,
                 'Content-Type' => 'application/json',
             ])
-            ->timeout(30)
-            ->patch($url, [
-                'productType' => 'PRODUCT',
-                'patches' => [
-                    [
-                        'op' => 'replace',
-                        'path' => '/attributes/item_name',
-                        'value' => [
-                            [
-                                'value' => $title,
-                                'marketplace_id' => $marketplaceId
-                            ]
-                        ]
-                    ]
-                ]
-            ]);
+                ->timeout(30)
+                ->patch($url, [
+                    'productType' => 'PRODUCT',
+                    'patches' => [
+                        [
+                            'op' => 'replace',
+                            'path' => '/attributes/item_name',
+                            'value' => [
+                                [
+                                    'value' => $title,
+                                    'marketplace_id' => $marketplaceId,
+                                ],
+                            ],
+                        ],
+                    ],
+                ]);
 
             if ($response->successful()) {
                 Log::info("✓ Successfully updated Amazon title for SKU: {$sku}");
+
                 return true;
             } else {
-                Log::error("✗ Failed to update Amazon title for SKU {$sku}: " . $response->body());
+                Log::error("✗ Failed to update Amazon title for SKU {$sku}: ".$response->body());
+
                 return false;
             }
         } catch (\Exception $e) {
-            Log::error("✗ Exception updating Amazon title for SKU {$sku}: " . $e->getMessage());
+            Log::error("✗ Exception updating Amazon title for SKU {$sku}: ".$e->getMessage());
+
             return false;
         }
     }
@@ -1795,26 +1892,28 @@ class ProductMasterController extends Controller
     {
         try {
             Log::info("Starting eBay {$account} title update for SKU: {$sku}, Title: {$title}");
-            
+
             // Get eBay credentials based on account
             $credentials = $this->getEbayCredentials($account);
-            
-            if (!$credentials) {
+
+            if (! $credentials) {
                 Log::warning("{$account} credentials not configured");
+
                 return false;
             }
 
             // Get OAuth access token from refresh token
             $accessToken = $this->getEbayAccessToken($credentials);
-            
-            if (!$accessToken) {
+
+            if (! $accessToken) {
                 Log::warning("Failed to get access token for {$account}");
+
                 return false;
             }
 
             // Find eBay listing by SKU using existing metrics tables
             $ebayMetricModel = null;
-            
+
             if ($account === 'ebay1') {
                 $ebayMetricModel = \App\Models\EbayMetric::class;
             } elseif ($account === 'ebay2') {
@@ -1822,23 +1921,25 @@ class ProductMasterController extends Controller
             } elseif ($account === 'ebay3') {
                 $ebayMetricModel = \App\Models\Ebay3Metric::class;
             }
-            
-            if (!$ebayMetricModel) {
+
+            if (! $ebayMetricModel) {
                 Log::warning("Unknown eBay account: {$account}");
+
                 return false;
             }
-            
+
             // Get item ID from metrics table
             $ebayListing = $ebayMetricModel::where('sku', $sku)
                 ->orWhere('sku', strtoupper($sku))
                 ->orWhere('sku', strtolower($sku))
                 ->first();
-                
-            if (!$ebayListing || !$ebayListing->item_id) {
+
+            if (! $ebayListing || ! $ebayListing->item_id) {
                 Log::info("No eBay listing found for SKU: {$sku} in {$account}");
+
                 return false;
             }
-            
+
             $itemId = $ebayListing->item_id;
             Log::info("Found eBay item ID: {$itemId} for SKU: {$sku} in {$account}");
 
@@ -1847,16 +1948,16 @@ class ProductMasterController extends Controller
 
             // eBay Trading API endpoint
             $apiUrl = 'https://api.ebay.com/ws/api.dll';
-            
+
             // Build XML request for ReviseItem
             $xmlRequest = '<?xml version="1.0" encoding="utf-8"?>
 <ReviseItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
     <RequesterCredentials>
-        <eBayAuthToken>' . $accessToken . '</eBayAuthToken>
+        <eBayAuthToken>'.$accessToken.'</eBayAuthToken>
     </RequesterCredentials>
     <Item>
-        <ItemID>' . $itemId . '</ItemID>
-        <Title>' . htmlspecialchars($title, ENT_XML1, 'UTF-8') . '</Title>
+        <ItemID>'.$itemId.'</ItemID>
+        <Title>'.htmlspecialchars($title, ENT_XML1, 'UTF-8').'</Title>
     </Item>
 </ReviseItemRequest>';
 
@@ -1869,29 +1970,30 @@ class ProductMasterController extends Controller
                 'X-EBAY-API-SITEID' => '0', // 0 = US
                 'Content-Type' => 'text/xml',
             ])
-            ->timeout(30)
-            ->send('POST', $apiUrl, ['body' => $xmlRequest]);
+                ->timeout(30)
+                ->send('POST', $apiUrl, ['body' => $xmlRequest]);
 
             if ($response->successful()) {
                 $responseBody = $response->body();
-                
+
                 // Parse XML response to check for success
                 $xml = simplexml_load_string($responseBody);
-                $ack = (string)$xml->Ack;
-                
+                $ack = (string) $xml->Ack;
+
                 if ($ack === 'Success' || $ack === 'Warning') {
                     Log::info("✓ Successfully updated {$account} title for SKU: {$sku}, Item ID: {$itemId}");
+
                     return true;
                 } else {
                     $errors = [];
                     $errorCodes = [];
                     if (isset($xml->Errors)) {
                         foreach ($xml->Errors as $error) {
-                            $errorCode = (string)$error->ErrorCode;
-                            $errorMsg = (string)$error->LongMessage;
+                            $errorCode = (string) $error->ErrorCode;
+                            $errorMsg = (string) $error->LongMessage;
                             $errors[] = $errorMsg;
                             $errorCodes[] = $errorCode;
-                            
+
                             // Special handling for common errors
                             if (strpos($errorMsg, 'ended listing') !== false) {
                                 Log::warning("✗ {$account} SKU {$sku} (Item {$itemId}): Listing has ended and cannot be revised");
@@ -1900,15 +2002,18 @@ class ProductMasterController extends Controller
                             }
                         }
                     }
-                    Log::error("✗ eBay API error for {$account} SKU {$sku}: " . implode(', ', $errors));
+                    Log::error("✗ eBay API error for {$account} SKU {$sku}: ".implode(', ', $errors));
+
                     return false;
                 }
             } else {
-                Log::error("✗ Failed to update {$account} title for SKU {$sku}: " . $response->body());
+                Log::error("✗ Failed to update {$account} title for SKU {$sku}: ".$response->body());
+
                 return false;
             }
         } catch (\Exception $e) {
-            Log::error("✗ Exception updating {$account} title for SKU {$sku}: " . $e->getMessage());
+            Log::error("✗ Exception updating {$account} title for SKU {$sku}: ".$e->getMessage());
+
             return false;
         }
     }
@@ -1916,15 +2021,16 @@ class ProductMasterController extends Controller
     private function getEbayCredentials($account)
     {
         // Map account names to env variable prefixes
-        $envPrefix = match($account) {
+        $envPrefix = match ($account) {
             'ebay1' => 'EBAY',
             'ebay2' => 'EBAY2',
             'ebay3' => 'EBAY_3',
             default => null
         };
 
-        if (!$envPrefix) {
+        if (! $envPrefix) {
             Log::warning("Invalid eBay account: {$account}");
+
             return null;
         }
 
@@ -1933,13 +2039,14 @@ class ProductMasterController extends Controller
         $devId = env("{$envPrefix}_DEV_ID");
         $refreshToken = env("{$envPrefix}_REFRESH_TOKEN");
 
-        Log::info("eBay credentials check for {$account}: APP_ID=" . ($appId ? 'SET' : 'MISSING') . 
-                  ", CERT_ID=" . ($certId ? 'SET' : 'MISSING') . 
-                  ", DEV_ID=" . ($devId ? 'SET' : 'MISSING') . 
-                  ", REFRESH_TOKEN=" . ($refreshToken ? 'SET' : 'MISSING'));
+        Log::info("eBay credentials check for {$account}: APP_ID=".($appId ? 'SET' : 'MISSING').
+                  ', CERT_ID='.($certId ? 'SET' : 'MISSING').
+                  ', DEV_ID='.($devId ? 'SET' : 'MISSING').
+                  ', REFRESH_TOKEN='.($refreshToken ? 'SET' : 'MISSING'));
 
-        if (!$appId || !$certId || !$devId || !$refreshToken) {
+        if (! $appId || ! $certId || ! $devId || ! $refreshToken) {
             Log::warning("Missing credentials for {$account}. Env prefix: {$envPrefix}");
+
             return null;
         }
 
@@ -1947,35 +2054,38 @@ class ProductMasterController extends Controller
             'app_id' => $appId,
             'cert_id' => $certId,
             'dev_id' => $devId,
-            'refresh_token' => trim($refreshToken, '"')
+            'refresh_token' => trim($refreshToken, '"'),
         ];
     }
 
     private function getEbayAccessToken($credentials)
     {
         try {
-            $authString = base64_encode($credentials['app_id'] . ':' . $credentials['cert_id']);
-            
+            $authString = base64_encode($credentials['app_id'].':'.$credentials['cert_id']);
+
             $response = \Illuminate\Support\Facades\Http::withHeaders([
                 'Content-Type' => 'application/x-www-form-urlencoded',
-                'Authorization' => 'Basic ' . $authString,
+                'Authorization' => 'Basic '.$authString,
             ])
-            ->asForm()
-            ->post('https://api.ebay.com/identity/v1/oauth2/token', [
-                'grant_type' => 'refresh_token',
-                'refresh_token' => $credentials['refresh_token'],
-                'scope' => 'https://api.ebay.com/oauth/api_scope'
-            ]);
+                ->asForm()
+                ->post('https://api.ebay.com/identity/v1/oauth2/token', [
+                    'grant_type' => 'refresh_token',
+                    'refresh_token' => $credentials['refresh_token'],
+                    'scope' => 'https://api.ebay.com/oauth/api_scope',
+                ]);
 
             if ($response->successful()) {
                 $data = $response->json();
+
                 return $data['access_token'] ?? null;
             }
 
-            Log::error("Failed to get eBay access token: " . $response->body());
+            Log::error('Failed to get eBay access token: '.$response->body());
+
             return null;
         } catch (\Exception $e) {
-            Log::error("Exception getting eBay access token: " . $e->getMessage());
+            Log::error('Exception getting eBay access token: '.$e->getMessage());
+
             return null;
         }
     }
@@ -1984,51 +2094,53 @@ class ProductMasterController extends Controller
     {
         try {
             Log::info("Starting Walmart title update for SKU: {$sku}, Title: {$title}");
-            
+
             $clientId = env('WALMART_CLIENT_ID');
             $clientSecret = env('WALMART_CLIENT_SECRET');
             $channelType = env('WALMART_CHANNEL_TYPE', '0f3e4dd4-0514-4346-b39d-af0e00ea066d');
             $baseUrl = env('WALMART_API_ENDPOINT', 'https://marketplace.walmartapis.com');
 
-            if (!$clientId || !$clientSecret) {
-                Log::warning("Walmart credentials not configured in .env file");
+            if (! $clientId || ! $clientSecret) {
+                Log::warning('Walmart credentials not configured in .env file');
+
                 return false;
             }
 
             // Get OAuth access token
             $accessToken = $this->getWalmartAccessToken($clientId, $clientSecret);
-            
-            if (!$accessToken) {
+
+            if (! $accessToken) {
                 Log::error("✗ Failed to get Walmart access token for SKU {$sku}");
+
                 return false;
             }
 
-            Log::info("✓ Successfully obtained Walmart access token");
+            Log::info('✓ Successfully obtained Walmart access token');
 
             // Build MP_ITEM feed XML for title update with processMode=UPDATE
             $feedXml = '<?xml version="1.0" encoding="UTF-8"?>
 <MPItemFeed xmlns="http://walmart.com/">
     <MPItemFeedHeader>
         <version>1.4</version>
-        <requestId>' . uniqid() . '</requestId>
-        <requestBatchId>' . uniqid() . '</requestBatchId>
+        <requestId>'.uniqid().'</requestId>
+        <requestBatchId>'.uniqid().'</requestBatchId>
     </MPItemFeedHeader>
     <MPItem>
         <processMode>UPDATE</processMode>
         <Item>
-            <sku>' . htmlspecialchars($sku, ENT_XML1) . '</sku>
-            <productName>' . htmlspecialchars($title, ENT_XML1) . '</productName>
+            <sku>'.htmlspecialchars($sku, ENT_XML1).'</sku>
+            <productName>'.htmlspecialchars($title, ENT_XML1).'</productName>
         </Item>
     </MPItem>
 </MPItemFeed>';
 
-            Log::info("Walmart MP_ITEM Feed XML: " . $feedXml);
+            Log::info('Walmart MP_ITEM Feed XML: '.$feedXml);
 
             sleep(2);
-            
+
             // Submit feed using MP_ITEM feedType for content updates
-            $feedsEndpoint = $baseUrl . '/v3/feeds?feedType=MP_ITEM';
-            
+            $feedsEndpoint = $baseUrl.'/v3/feeds?feedType=MP_ITEM';
+
             $response = \Illuminate\Support\Facades\Http::withoutVerifying()
                 ->withHeaders([
                     'WM_SEC.ACCESS_TOKEN' => $accessToken,
@@ -2042,37 +2154,41 @@ class ProductMasterController extends Controller
                 ->timeout(60)
                 ->post($feedsEndpoint);
 
-            Log::info("Walmart MP_ITEM Feed response status: " . $response->status());
-            Log::info("Walmart MP_ITEM Feed response: " . $response->body());
+            Log::info('Walmart MP_ITEM Feed response status: '.$response->status());
+            Log::info('Walmart MP_ITEM Feed response: '.$response->body());
 
             // Walmart Feeds API returns 202 Accepted for async processing
             if ($response->status() === 202) {
                 $responseBody = $response->body();
-                
+
                 // Parse feedId from XML response
                 preg_match('/<feedId>(.*?)<\/feedId>/', $responseBody, $matches);
                 $feedId = $matches[1] ?? null;
-                
+
                 if ($feedId) {
                     Log::info("✓ Walmart feed submitted successfully. FeedId: {$feedId}");
                     Log::info("⏳ Feed is processing asynchronously (15-60 min). Poll status: GET /v3/feeds/{$feedId}");
-                    
+
                     // Optionally poll feed status after a delay
                     // You can implement polling logic here or return success
                     return true;
                 } else {
-                    Log::warning("⚠ Feed submitted (202) but no feedId found in response");
+                    Log::warning('⚠ Feed submitted (202) but no feedId found in response');
+
                     return true; // Still consider it successful since it was accepted
                 }
             } elseif ($response->successful()) {
-                Log::info("✓ Walmart title feed submitted successfully");
+                Log::info('✓ Walmart title feed submitted successfully');
+
                 return true;
             } else {
                 Log::error("✗ Failed to submit Walmart MP_ITEM feed for SKU {$sku}. Status: {$response->status()}, Error: {$response->body()}");
+
                 return false;
             }
         } catch (\Exception $e) {
-            Log::error("✗ Exception updating Walmart title for SKU {$sku}: " . $e->getMessage());
+            Log::error("✗ Exception updating Walmart title for SKU {$sku}: ".$e->getMessage());
+
             return false;
         }
     }
@@ -2080,8 +2196,8 @@ class ProductMasterController extends Controller
     private function getWalmartAccessToken($clientId, $clientSecret)
     {
         try {
-            Log::info("Attempting to get Walmart access token...");
-            
+            Log::info('Attempting to get Walmart access token...');
+
             $authorization = base64_encode("{$clientId}:{$clientSecret}");
 
             $response = \Illuminate\Support\Facades\Http::withoutVerifying()
@@ -2096,43 +2212,46 @@ class ProductMasterController extends Controller
                     'grant_type' => 'client_credentials',
                 ]);
 
-            Log::info("Walmart token response status: " . $response->status());
+            Log::info('Walmart token response status: '.$response->status());
 
             if ($response->successful()) {
                 $tokenData = $response->json();
                 $accessToken = $tokenData['access_token'] ?? null;
-                
+
                 if ($accessToken) {
-                    Log::info("✓ Successfully obtained Walmart access token");
+                    Log::info('✓ Successfully obtained Walmart access token');
+
                     return $accessToken;
                 } else {
-                    Log::error("✗ Token response successful but no access_token found: " . json_encode($tokenData));
+                    Log::error('✗ Token response successful but no access_token found: '.json_encode($tokenData));
+
                     return null;
                 }
             }
 
             $errorBody = $response->json();
             Log::error("✗ Failed to get Walmart access token. Status: {$response->status()}");
-            Log::error("Error response: " . json_encode($errorBody));
-            
+            Log::error('Error response: '.json_encode($errorBody));
+
             if (isset($errorBody['error'])) {
                 $error = $errorBody['error'];
                 $errorDesc = $errorBody['error_description'] ?? 'No description';
-                
+
                 if ($error === 'invalid_client') {
-                    Log::error("INVALID CREDENTIALS: The WALMART_CLIENT_ID or WALMART_CLIENT_SECRET is incorrect.");
-                    Log::error("Please verify credentials at: https://seller.walmart.com > Settings > API Keys");
+                    Log::error('INVALID CREDENTIALS: The WALMART_CLIENT_ID or WALMART_CLIENT_SECRET is incorrect.');
+                    Log::error('Please verify credentials at: https://seller.walmart.com > Settings > API Keys');
                 } elseif ($error === 'unauthorized_client') {
-                    Log::error("UNAUTHORIZED: Client is not authorized for this grant type.");
+                    Log::error('UNAUTHORIZED: Client is not authorized for this grant type.');
                 } else {
                     Log::error("Error type: {$error}, Description: {$errorDesc}");
                 }
             }
-            
+
             return null;
         } catch (\Exception $e) {
-            Log::error("✗ Exception getting Walmart access token: " . $e->getMessage());
-            Log::error("Stack trace: " . $e->getTraceAsString());
+            Log::error('✗ Exception getting Walmart access token: '.$e->getMessage());
+            Log::error('Stack trace: '.$e->getTraceAsString());
+
             return null;
         }
     }
@@ -2142,9 +2261,9 @@ class ProductMasterController extends Controller
         try {
             $baseUrl = env('WALMART_API_ENDPOINT', 'https://marketplace.walmartapis.com');
             $channelType = env('WALMART_CHANNEL_TYPE', '0f3e4dd4-0514-4346-b39d-af0e00ea066d');
-            
+
             Log::info("Checking Walmart feed status for feedId: {$feedId}");
-            
+
             $response = \Illuminate\Support\Facades\Http::withoutVerifying()
                 ->withHeaders([
                     'WM_SEC.ACCESS_TOKEN' => $accessToken,
@@ -2154,29 +2273,31 @@ class ProductMasterController extends Controller
                     'Accept' => 'application/xml',
                 ])
                 ->timeout(30)
-                ->get($baseUrl . "/v3/feeds/{$feedId}");
-            
-            Log::info("Feed status response: " . $response->body());
-            
+                ->get($baseUrl."/v3/feeds/{$feedId}");
+
+            Log::info('Feed status response: '.$response->body());
+
             if ($response->successful()) {
                 $body = $response->body();
-                
+
                 // Parse feed status from XML
                 preg_match('/<feedStatus>(.*?)<\/feedStatus>/', $body, $matches);
                 $status = $matches[1] ?? 'UNKNOWN';
-                
+
                 Log::info("Feed Status: {$status}");
-                
+
                 return [
                     'status' => $status,
-                    'response' => $body
+                    'response' => $body,
                 ];
             } else {
                 Log::error("Failed to get feed status. Status: {$response->status()}");
+
                 return null;
             }
         } catch (\Exception $e) {
-            Log::error("Exception checking Walmart feed status: " . $e->getMessage());
+            Log::error('Exception checking Walmart feed status: '.$e->getMessage());
+
             return null;
         }
     }
@@ -2185,38 +2306,40 @@ class ProductMasterController extends Controller
     {
         try {
             Log::info("Starting Temu title update for SKU: {$sku}, Title: {$title}");
-            
+
             $appKey = env('TEMU_APP_KEY');
             $appSecret = env('TEMU_SECRET_KEY');
             $accessToken = env('TEMU_ACCESS_TOKEN');
 
-            if (!$appKey || !$appSecret || !$accessToken) {
-                Log::warning("Temu credentials not configured in .env file");
+            if (! $appKey || ! $appSecret || ! $accessToken) {
+                Log::warning('Temu credentials not configured in .env file');
+
                 return false;
             }
 
-            Log::info("✓ Temu credentials found");
+            Log::info('✓ Temu credentials found');
 
             // Check if product exists in your local DB/view
             $temuProduct = \App\Models\TemuDataView::where('sku', $sku)
                 ->orWhere('sku', strtoupper($sku))
                 ->orWhere('sku', strtolower($sku))
                 ->first();
-            
-            if (!$temuProduct) {
+
+            if (! $temuProduct) {
                 Log::error("SKU {$sku} not found in TemuDataView. Product may not be listed on Temu.");
+
                 return false;
             }
-            
+
             Log::info("Found Temu product for SKU: {$sku}");
 
             $timestamp = time();
 
             // Correct method type and fields for local goods update (US sellers)
-            $method = "bg.local.goods.update";
+            $method = 'bg.local.goods.update';
             $data = [
-                "goodsExternalId" => $sku,      // Your external SKU
-                "goodsName" => $title,         // Title field (max 200 chars)
+                'goodsExternalId' => $sku,      // Your external SKU
+                'goodsName' => $title,         // Title field (max 200 chars)
                 // Add more fields if needed, e.g., "goodsDesc" => "Updated description"
             ];
 
@@ -2226,7 +2349,7 @@ class ProductMasterController extends Controller
             $params = [
                 'app_key' => $appKey,
                 'access_token' => $accessToken,
-                'timestamp' => (string)$timestamp,
+                'timestamp' => (string) $timestamp,
                 'method' => $method,
                 'data' => $dataJson,
             ];
@@ -2237,11 +2360,11 @@ class ProductMasterController extends Controller
             // Concatenate key + value without separators
             $signString = '';
             foreach ($params as $key => $value) {
-                $signString .= $key . $value;
+                $signString .= $key.$value;
             }
 
             // Full sign: secret + concatenated + secret
-            $signStr = $appSecret . $signString . $appSecret;
+            $signStr = $appSecret.$signString.$appSecret;
             $sign = strtoupper(md5($signStr));
 
             // Add sign to params for sending
@@ -2258,7 +2381,7 @@ class ProductMasterController extends Controller
 
             $status = $response->status();
             $body = $response->body();
-            
+
             Log::info("Temu API response status: {$status}");
             Log::info("Temu API response body: {$body}");
 
@@ -2271,29 +2394,32 @@ class ProductMasterController extends Controller
 
                 if (($errorCode === 0 || $errorCode === 1000000) && $success) {
                     Log::info("✓ Successfully updated Temu title for SKU: {$sku}");
+
                     return true;
                 } else {
                     $errorMsg = $responseData['errorMsg'] ?? $responseData['message'] ?? 'Unknown error';
                     Log::error("✗ Temu update failed - Code: {$errorCode}, Message: {$errorMsg}");
-                    Log::error("Full response: " . json_encode($responseData));
+                    Log::error('Full response: '.json_encode($responseData));
+
                     return false;
                 }
             } else {
                 Log::error("✗ HTTP failure updating Temu title for SKU {$sku}. Status: {$status}, Body: {$body}");
 
                 if ($status == 401) {
-                    Log::error("Invalid access_token - regenerate in Seller Center > Apps and Services");
+                    Log::error('Invalid access_token - regenerate in Seller Center > Apps and Services');
                 } elseif ($status == 403) {
                     Log::error("Missing permissions - edit app, enable 'Local Product Management', regenerate token");
                 } elseif ($status == 429) {
-                    Log::error("Rate limited - wait and retry");
+                    Log::error('Rate limited - wait and retry');
                 }
 
                 return false;
             }
         } catch (\Exception $e) {
-            Log::error("✗ Exception updating Temu title for SKU {$sku}: " . $e->getMessage());
-            Log::error("Stack trace: " . $e->getTraceAsString());
+            Log::error("✗ Exception updating Temu title for SKU {$sku}: ".$e->getMessage());
+            Log::error('Stack trace: '.$e->getTraceAsString());
+
             return false;
         }
     }
@@ -2302,171 +2428,172 @@ class ProductMasterController extends Controller
     {
         try {
             Log::info("Starting Shein title update for SKU: {$sku}, Title: {$title}");
-            
+
             // Try to get credentials - check both possible variable names
             // First try OPEN_KEY_ID and SECRET_KEY (for signature generation)
             // If not found, try APP_ID and APP_SECRET/APP_S
             $openKeyId = env('SHEIN_OPEN_KEY_ID') ?: env('SHEIN_APP_ID');
             $secretKey = env('SHEIN_SECRET_KEY') ?: env('SHEIN_APP_SECRET') ?: env('SHEIN_APP_S');
 
-            if (!$openKeyId || !$secretKey) {
+            if (! $openKeyId || ! $secretKey) {
                 $missing = [];
-                if (!$openKeyId) {
+                if (! $openKeyId) {
                     $missing[] = 'SHEIN_OPEN_KEY_ID or SHEIN_APP_ID';
                 }
-                if (!$secretKey) {
+                if (! $secretKey) {
                     $missing[] = 'SHEIN_SECRET_KEY or SHEIN_APP_SECRET or SHEIN_APP_S';
                 }
-                
-                $errorMsg = "Shein credentials not configured. Missing: " . implode(', ', $missing);
+
+                $errorMsg = 'Shein credentials not configured. Missing: '.implode(', ', $missing);
                 Log::error($errorMsg);
-                Log::error("Please add the following to your .env file:");
-                Log::error("SHEIN_APP_ID=your_app_id");
-                Log::error("SHEIN_APP_SECRET=your_app_secret");
-                Log::error("OR use:");
-                Log::error("SHEIN_OPEN_KEY_ID=your_open_key_id");
-                Log::error("SHEIN_SECRET_KEY=your_secret_key");
-                
+                Log::error('Please add the following to your .env file:');
+                Log::error('SHEIN_APP_ID=your_app_id');
+                Log::error('SHEIN_APP_SECRET=your_app_secret');
+                Log::error('OR use:');
+                Log::error('SHEIN_OPEN_KEY_ID=your_open_key_id');
+                Log::error('SHEIN_SECRET_KEY=your_secret_key');
+
                 // Also log to platform_debug.log for easier debugging
-                file_put_contents(storage_path('logs/platform_debug.log'), 
-                    date('Y-m-d H:i:s') . " - SHEIN ERROR: {$errorMsg}\n", FILE_APPEND);
-                
+                file_put_contents(storage_path('logs/platform_debug.log'),
+                    date('Y-m-d H:i:s')." - SHEIN ERROR: {$errorMsg}\n", FILE_APPEND);
+
                 return false;
             }
 
-            Log::info("✓ Shein credentials found - Using: " . (env('SHEIN_OPEN_KEY_ID') ? 'SHEIN_OPEN_KEY_ID' : 'SHEIN_APP_ID'));
+            Log::info('✓ Shein credentials found - Using: '.(env('SHEIN_OPEN_KEY_ID') ? 'SHEIN_OPEN_KEY_ID' : 'SHEIN_APP_ID'));
 
             // Check if product exists in your local DB/view
             $sheinProduct = \App\Models\SheinDataView::where('sku', $sku)
                 ->orWhere('sku', strtoupper($sku))
                 ->orWhere('sku', strtolower($sku))
                 ->first();
-            
-            if (!$sheinProduct) {
+
+            if (! $sheinProduct) {
                 Log::error("SKU {$sku} not found in SheinDataView. Product may not be listed on Shein.");
+
                 return false;
             }
-            
+
             Log::info("Found Shein product for SKU: {$sku}");
 
             // Generate signature for the update endpoint
-            $endpoint = "/open-api/openapi-business-backend/product/update";
+            $endpoint = '/open-api/openapi-business-backend/product/update';
             $timestamp = round(microtime(true) * 1000);
             $random = \Illuminate\Support\Str::random(5);
-            
+
             // IMPORTANT: Shein API signature requires SHEIN_OPEN_KEY_ID and SHEIN_SECRET_KEY
             // These are DIFFERENT from SHEIN_APP_ID and SHEIN_APP_SECRET
             // Check if we have the correct credentials for signature
             $signatureOpenKeyId = env('SHEIN_OPEN_KEY_ID');
             $signatureSecretKey = env('SHEIN_SECRET_KEY');
-            
+
             // If we don't have OPEN_KEY_ID, try using APP_ID (they might be the same value)
             // But this will likely fail - user needs to add SHEIN_OPEN_KEY_ID to .env
-            if (!$signatureOpenKeyId) {
+            if (! $signatureOpenKeyId) {
                 $signatureOpenKeyId = $openKeyId; // Use APP_ID as fallback
-                Log::warning("⚠️ SHEIN_OPEN_KEY_ID not found, using SHEIN_APP_ID for signature.");
-                Log::warning("⚠️ This will likely cause signature errors. Please add SHEIN_OPEN_KEY_ID to .env file.");
+                Log::warning('⚠️ SHEIN_OPEN_KEY_ID not found, using SHEIN_APP_ID for signature.');
+                Log::warning('⚠️ This will likely cause signature errors. Please add SHEIN_OPEN_KEY_ID to .env file.');
             }
-            
-            if (!$signatureSecretKey) {
+
+            if (! $signatureSecretKey) {
                 $signatureSecretKey = $secretKey; // Use APP_SECRET as fallback
-                Log::warning("⚠️ SHEIN_SECRET_KEY not found, using SHEIN_APP_SECRET for signature.");
-                Log::warning("⚠️ This will likely cause signature errors. Please add SHEIN_SECRET_KEY to .env file.");
+                Log::warning('⚠️ SHEIN_SECRET_KEY not found, using SHEIN_APP_SECRET for signature.');
+                Log::warning('⚠️ This will likely cause signature errors. Please add SHEIN_SECRET_KEY to .env file.');
             }
-            
+
             // Generate signature using the credentials
             // Signature format: randomKey + base64(hmac_sha256(openKeyId & timestamp & path, secretKey + randomKey))
             // Note: The path should be the endpoint path without query parameters
-            $value = $signatureOpenKeyId . "&" . $timestamp . "&" . $endpoint;
-            $key = $signatureSecretKey . $random;
+            $value = $signatureOpenKeyId.'&'.$timestamp.'&'.$endpoint;
+            $key = $signatureSecretKey.$random;
             $hmacResult = hash_hmac('sha256', $value, $key, false); // false means return hexadecimal
             $base64Signature = base64_encode($hmacResult);
-            $signature = $random . $base64Signature;
-            
-            Log::info("Generated Shein signature - OpenKeyId: " . substr($signatureOpenKeyId, 0, 10) . "... (Using: " . (env('SHEIN_OPEN_KEY_ID') ? 'OPEN_KEY_ID' : 'APP_ID fallback') . ")");
-            
+            $signature = $random.$base64Signature;
+
+            Log::info('Generated Shein signature - OpenKeyId: '.substr($signatureOpenKeyId, 0, 10).'... (Using: '.(env('SHEIN_OPEN_KEY_ID') ? 'OPEN_KEY_ID' : 'APP_ID fallback').')');
+
             $baseUrl = env('SHEIN_BASE_URL', 'https://openapi.sheincorp.com');
-            $url = $baseUrl . $endpoint;
+            $url = $baseUrl.$endpoint;
 
             // Log all available fields from SheinDataView for debugging
             $sheinProductArray = $sheinProduct->toArray();
-            Log::info("SheinDataView fields for SKU {$sku}: " . json_encode($sheinProductArray));
-            
+            Log::info("SheinDataView fields for SKU {$sku}: ".json_encode($sheinProductArray));
+
             // Check if value field contains product data
             $valueData = $sheinProduct->value ?? [];
             if (is_string($valueData)) {
                 $valueData = json_decode($valueData, true) ?? [];
             }
-            Log::info("SheinDataView value data: " . json_encode($valueData));
-            
+            Log::info('SheinDataView value data: '.json_encode($valueData));
+
             // Get product identifier - Shein uses SKU code (sellerSku) for updates
             // Try multiple possible field names
-            $skuCode = $sheinProduct->sku_code 
-                ?? $sheinProduct->seller_sku 
-                ?? $sheinProduct->sellerSku 
-                ?? $valueData['skuCode'] 
-                ?? $valueData['sellerSku'] 
+            $skuCode = $sheinProduct->sku_code
+                ?? $sheinProduct->seller_sku
+                ?? $sheinProduct->sellerSku
+                ?? $valueData['skuCode']
+                ?? $valueData['sellerSku']
                 ?? $valueData['sku']
                 ?? $sku;
-            
-            $spuCode = $sheinProduct->spu_code 
-                ?? $sheinProduct->spu_id 
-                ?? $sheinProduct->spuCode 
-                ?? $valueData['spuCode'] 
-                ?? $valueData['spu_id'] 
+
+            $spuCode = $sheinProduct->spu_code
+                ?? $sheinProduct->spu_id
+                ?? $sheinProduct->spuCode
+                ?? $valueData['spuCode']
+                ?? $valueData['spu_id']
                 ?? $valueData['spu']
                 ?? null;
-            
-            Log::info("Using SKU Code: {$skuCode}, SPU Code: " . ($spuCode ?? 'null'));
+
+            Log::info("Using SKU Code: {$skuCode}, SPU Code: ".($spuCode ?? 'null'));
 
             // Shein API payload structure - try different formats
             // Format 1: Using skuCode (most common)
             $payload = [
-                "skuCode" => $skuCode,
-                "productName" => $title,
+                'skuCode' => $skuCode,
+                'productName' => $title,
             ];
-            
+
             // If we have SPU code, also include it (some endpoints require both)
             if ($spuCode) {
-                $payload["spuCode"] = $spuCode;
+                $payload['spuCode'] = $spuCode;
             }
 
             Log::info("Shein API call - Endpoint: {$endpoint}, SKU: {$sku}, SKU Code: {$skuCode}");
-            Log::info("Shein API payload: " . json_encode($payload));
+            Log::info('Shein API payload: '.json_encode($payload));
 
             sleep(2); // Gentle rate limiting
 
             // Use the signature OpenKeyId in the header (must match what was used for signature)
             $headerOpenKeyId = $signatureOpenKeyId ?? $openKeyId;
-            
-            Log::info("Sending request with headers - OpenKeyId: " . substr($headerOpenKeyId, 0, 10) . "...");
-            
+
+            Log::info('Sending request with headers - OpenKeyId: '.substr($headerOpenKeyId, 0, 10).'...');
+
             $response = \Illuminate\Support\Facades\Http::withoutVerifying()
                 ->withHeaders([
-                    "Language" => "en-us",
-                    "x-lt-openKeyId" => $headerOpenKeyId,
-                    "x-lt-timestamp" => $timestamp,
-                    "x-lt-signature" => $signature,
-                    "Content-Type" => "application/json",
+                    'Language' => 'en-us',
+                    'x-lt-openKeyId' => $headerOpenKeyId,
+                    'x-lt-timestamp' => $timestamp,
+                    'x-lt-signature' => $signature,
+                    'Content-Type' => 'application/json',
                 ])
                 ->timeout(30)
                 ->post($url, $payload);
 
             $status = $response->status();
             $body = $response->body();
-            
+
             Log::info("Shein API response status: {$status}");
             Log::info("Shein API response body: {$body}");
 
             if ($response->successful()) {
                 $responseData = $response->json();
-                Log::info("Shein API response data: " . json_encode($responseData));
+                Log::info('Shein API response data: '.json_encode($responseData));
 
                 // Check for success indicators in Shein API response
                 // Shein API typically returns: { "code": 0, "message": "success", "data": {...} }
                 $code = $responseData['code'] ?? $responseData['errorCode'] ?? $responseData['status'] ?? null;
                 $message = $responseData['message'] ?? $responseData['errorMsg'] ?? $responseData['msg'] ?? '';
-                
+
                 // Check if there's an info object with status
                 if (isset($responseData['info'])) {
                     $infoCode = $responseData['info']['code'] ?? null;
@@ -2478,21 +2605,23 @@ class ProductMasterController extends Controller
                 }
 
                 // Success codes: 0, 200, or success status
-                if ($code === 0 || $code === 200 || $code === '0' || 
+                if ($code === 0 || $code === 200 || $code === '0' ||
                     (isset($responseData['success']) && $responseData['success']) ||
                     (isset($responseData['info']['success']) && $responseData['info']['success'])) {
                     Log::info("✓ Successfully updated Shein title for SKU: {$sku}");
+
                     return true;
                 } else {
                     Log::error("✗ Shein update failed - Code: {$code}, Message: {$message}");
-                    Log::error("Full response: " . json_encode($responseData, JSON_PRETTY_PRINT));
+                    Log::error('Full response: '.json_encode($responseData, JSON_PRETTY_PRINT));
+
                     return false;
                 }
             } else {
                 Log::error("✗ HTTP failure updating Shein title for SKU {$sku}. Status: {$status}, Body: {$body}");
 
                 if ($status == 401) {
-                    $errorMsg = "Authentication failed (401). This usually means:";
+                    $errorMsg = 'Authentication failed (401). This usually means:';
                     $errorMsg .= "\n1. Signature verification failed - The signature was generated incorrectly";
                     $errorMsg .= "\n2. Wrong credentials - SHEIN_OPEN_KEY_ID and SHEIN_SECRET_KEY are required for API calls";
                     $errorMsg .= "\n3. SHEIN_APP_ID and SHEIN_APP_SECRET are DIFFERENT from SHEIN_OPEN_KEY_ID and SHEIN_SECRET_KEY";
@@ -2502,16 +2631,17 @@ class ProductMasterController extends Controller
                     $errorMsg .= "\n- These are different from SHEIN_APP_ID and SHEIN_APP_SECRET";
                     Log::error($errorMsg);
                 } elseif ($status == 403) {
-                    Log::error("Missing permissions - check API permissions in Shein Seller Center");
+                    Log::error('Missing permissions - check API permissions in Shein Seller Center');
                 } elseif ($status == 429) {
-                    Log::error("Rate limited - wait and retry");
+                    Log::error('Rate limited - wait and retry');
                 }
 
                 return false;
             }
         } catch (\Exception $e) {
-            Log::error("✗ Exception updating Shein title for SKU {$sku}: " . $e->getMessage());
-            Log::error("Stack trace: " . $e->getTraceAsString());
+            Log::error("✗ Exception updating Shein title for SKU {$sku}: ".$e->getMessage());
+            Log::error('Stack trace: '.$e->getTraceAsString());
+
             return false;
         }
     }
@@ -2520,16 +2650,17 @@ class ProductMasterController extends Controller
     {
         try {
             Log::info("Starting Wayfair title update for SKU: {$sku}, Title: {$title}");
-            
+
             // Get Wayfair credentials from env (similar to Amazon approach)
             $clientId = env('WAYFAIR_CLIENT_ID');
             $clientSecret = env('WAYFAIR_CLIENT_SECRET');
-            
-            if (!$clientId || !$clientSecret) {
-                Log::warning("Wayfair credentials not configured");
+
+            if (! $clientId || ! $clientSecret) {
+                Log::warning('Wayfair credentials not configured');
+
                 return false;
             }
-            
+
             // Authenticate and get access token (similar to Amazon)
             $authResponse = \Illuminate\Support\Facades\Http::withoutVerifying()
                 ->asForm()
@@ -2538,21 +2669,23 @@ class ProductMasterController extends Controller
                     'client_id' => $clientId,
                     'client_secret' => $clientSecret,
                 ]);
-            
-            if (!$authResponse->successful()) {
-                Log::error("Failed to authenticate with Wayfair API. Status: " . $authResponse->status());
+
+            if (! $authResponse->successful()) {
+                Log::error('Failed to authenticate with Wayfair API. Status: '.$authResponse->status());
+
                 return false;
             }
-            
+
             $accessToken = $authResponse->json('access_token');
-            if (!$accessToken) {
-                Log::error("Failed to get Wayfair access token");
+            if (! $accessToken) {
+                Log::error('Failed to get Wayfair access token');
+
                 return false;
             }
-            
+
             // Get supplier ID from env (if available)
             $supplierId = env('WAYFAIR_SUPPLIER_ID');
-            
+
             // Use GraphQL mutation to update product name (Wayfair's direct API method)
             $graphqlMutation = <<<'GRAPHQL'
 mutation UpdateProductName($inventory: [inventoryInput!]!) {
@@ -2571,78 +2704,83 @@ mutation UpdateProductName($inventory: [inventoryInput!]!) {
   }
 }
 GRAPHQL;
-            
+
             // Build inventory input
             $inventoryInput = [
                 [
                     'supplierPartNumber' => $sku,
                     'productNameAndOptions' => $title,
-                ]
+                ],
             ];
-            
+
             // Add supplierId if available
             if ($supplierId) {
                 $inventoryInput[0]['supplierId'] = $supplierId;
             }
-            
+
             // Make GraphQL request (similar to Amazon's direct PATCH)
             $response = \Illuminate\Support\Facades\Http::withoutVerifying()
                 ->withHeaders([
-                    'Authorization' => 'Bearer ' . $accessToken,
+                    'Authorization' => 'Bearer '.$accessToken,
                     'Content-Type' => 'application/json',
                 ])
                 ->timeout(30)
                 ->post('https://api.wayfair.com/v1/graphql', [
                     'query' => $graphqlMutation,
                     'variables' => [
-                        'inventory' => $inventoryInput
+                        'inventory' => $inventoryInput,
                     ],
                 ]);
-            
+
             // Check response (similar to Amazon's success check)
             if ($response->successful()) {
                 $responseData = $response->json();
-                
+
                 // Check for GraphQL errors
-                if (isset($responseData['errors']) && !empty($responseData['errors'])) {
+                if (isset($responseData['errors']) && ! empty($responseData['errors'])) {
                     $errorMsg = $responseData['errors'][0]['message'] ?? 'Unknown error';
-                    Log::error("✗ Failed to update Wayfair title for SKU {$sku}: " . $errorMsg);
-                    
+                    Log::error("✗ Failed to update Wayfair title for SKU {$sku}: ".$errorMsg);
+
                     // Provide helpful message for verification errors
                     if (strpos($errorMsg, 'not been verified') !== false || strpos($errorMsg, 'verification') !== false) {
-                        Log::error("⚠️ Wayfair API Verification Required. Contact Wayfair support to enable product update permissions.");
+                        Log::error('⚠️ Wayfair API Verification Required. Contact Wayfair support to enable product update permissions.');
                     }
-                    
+
                     return false;
                 }
-                
+
                 // Check inventory save result
                 $inventoryResult = $responseData['data']['inventory']['save'] ?? null;
-                
+
                 if ($inventoryResult) {
                     // Check for errors in the save result
                     $saveErrors = $inventoryResult['errors'] ?? [];
-                    if (!empty($saveErrors)) {
+                    if (! empty($saveErrors)) {
                         $errorMsg = $saveErrors[0]['message'] ?? 'Unknown error';
-                        Log::error("✗ Failed to update Wayfair title for SKU {$sku}: " . $errorMsg);
+                        Log::error("✗ Failed to update Wayfair title for SKU {$sku}: ".$errorMsg);
+
                         return false;
                     }
-                    
+
                     // Success - similar to Amazon's success check
                     if (isset($inventoryResult['handle']) || isset($inventoryResult['submittedAt'])) {
                         Log::info("✓ Successfully updated Wayfair title for SKU: {$sku}");
+
                         return true;
                     }
                 }
-                
+
                 Log::error("✗ Failed to update Wayfair title for SKU {$sku}: Unexpected response structure");
+
                 return false;
             } else {
-                Log::error("✗ Failed to update Wayfair title for SKU {$sku}: " . $response->body());
+                Log::error("✗ Failed to update Wayfair title for SKU {$sku}: ".$response->body());
+
                 return false;
             }
         } catch (\Exception $e) {
-            Log::error("✗ Exception updating Wayfair title for SKU {$sku}: " . $e->getMessage());
+            Log::error("✗ Exception updating Wayfair title for SKU {$sku}: ".$e->getMessage());
+
             return false;
         }
     }
@@ -2651,23 +2789,24 @@ GRAPHQL;
     {
         try {
             Log::info("Starting Reverb title update for SKU: {$sku}, Title: {$title}");
-            
+
             // Get Reverb API token from env or config
             $reverbToken = env('REVERB_TOKEN') ?? config('services.reverb.token');
-            
-            if (!$reverbToken) {
-                Log::warning("Reverb token not configured in .env file");
-                Log::warning("Required: REVERB_TOKEN or set in config/services.php");
+
+            if (! $reverbToken) {
+                Log::warning('Reverb token not configured in .env file');
+                Log::warning('Required: REVERB_TOKEN or set in config/services.php');
+
                 return false;
             }
-            
-            Log::info("✓ Reverb token found");
-            
+
+            Log::info('✓ Reverb token found');
+
             // Step 1: Get listing by SKU to find the listing ID
             $listingsUrl = 'https://api.reverb.com/api/my/listings';
             $listingsResponse = \Illuminate\Support\Facades\Http::withoutVerifying()
                 ->withHeaders([
-                    'Authorization' => 'Bearer ' . $reverbToken,
+                    'Authorization' => 'Bearer '.$reverbToken,
                     'Accept' => 'application/hal+json',
                     'Accept-Version' => '3.0',
                     'Content-Type' => 'application/hal+json',
@@ -2677,20 +2816,22 @@ GRAPHQL;
                     'sku' => $sku,
                     'state' => 'all', // Get all states (active, draft, etc.)
                 ]);
-            
-            if (!$listingsResponse->successful()) {
-                Log::error("Failed to fetch Reverb listings for SKU {$sku}. Status: " . $listingsResponse->status() . ", Body: " . $listingsResponse->body());
+
+            if (! $listingsResponse->successful()) {
+                Log::error("Failed to fetch Reverb listings for SKU {$sku}. Status: ".$listingsResponse->status().', Body: '.$listingsResponse->body());
+
                 return false;
             }
-            
+
             $listingsData = $listingsResponse->json();
             $listings = $listingsData['listings'] ?? [];
-            
+
             if (empty($listings)) {
                 Log::warning("No Reverb listing found for SKU: {$sku}");
+
                 return false;
             }
-            
+
             // Find the listing with matching SKU (in case there are multiple)
             $listing = null;
             foreach ($listings as $item) {
@@ -2699,30 +2840,32 @@ GRAPHQL;
                     break;
                 }
             }
-            
-            if (!$listing) {
+
+            if (! $listing) {
                 Log::warning("No matching Reverb listing found for SKU: {$sku}");
+
                 return false;
             }
-            
+
             $listingId = $listing['id'] ?? null;
-            
-            if (!$listingId) {
+
+            if (! $listingId) {
                 Log::error("Reverb listing found but no ID available for SKU: {$sku}");
+
                 return false;
             }
-            
+
             Log::info("Found Reverb listing ID: {$listingId} for SKU: {$sku}");
-            
+
             // Step 2: Update the listing title using PUT request
             $updateUrl = "https://api.reverb.com/api/listings/{$listingId}";
-            
+
             // Rate limiting delay
             sleep(1);
-            
+
             $updateResponse = \Illuminate\Support\Facades\Http::withoutVerifying()
                 ->withHeaders([
-                    'Authorization' => 'Bearer ' . $reverbToken,
+                    'Authorization' => 'Bearer '.$reverbToken,
                     'Accept' => 'application/hal+json',
                     'Accept-Version' => '3.0',
                     'Content-Type' => 'application/hal+json',
@@ -2731,30 +2874,32 @@ GRAPHQL;
                 ->put($updateUrl, [
                     'title' => $title,
                 ]);
-            
+
             $status = $updateResponse->status();
             $body = $updateResponse->body();
-            
+
             Log::info("Reverb API update response status: {$status}");
             Log::info("Reverb API update response body: {$body}");
-            
+
             if ($updateResponse->successful()) {
                 $responseData = $updateResponse->json();
-                
+
                 // Reverb API returns listing data nested under 'listing' key
                 $listing = $responseData['listing'] ?? $responseData;
-                
+
                 // Check if title was updated successfully
                 if (isset($listing['title'])) {
                     // Verify the title matches (or at least we got a listing back)
                     if ($listing['title'] === $title || isset($listing['id'])) {
                         Log::info("✓ Successfully updated Reverb title for SKU: {$sku}, Listing ID: {$listingId}");
-                        Log::info("Updated title: " . $listing['title']);
+                        Log::info('Updated title: '.$listing['title']);
+
                         return true;
                     }
                 } elseif (isset($responseData['id'])) {
                     // If we got a listing object back directly, assume success
                     Log::info("✓ Successfully updated Reverb title for SKU: {$sku}, Listing ID: {$listingId}");
+
                     return true;
                 } elseif (isset($responseData['message'])) {
                     // Sometimes Reverb returns a message indicating success
@@ -2764,31 +2909,34 @@ GRAPHQL;
                         // Even if message says "sold out", if we got 200 and listing data, it's a success
                         if (isset($responseData['listing']['id'])) {
                             Log::info("✓ Successfully updated Reverb title for SKU: {$sku}, Listing ID: {$listingId} (Message: {$message})");
+
                             return true;
                         }
                     }
                 }
-                
-                Log::warning("Reverb update response structure unexpected: " . json_encode($responseData));
+
+                Log::warning('Reverb update response structure unexpected: '.json_encode($responseData));
+
                 return false;
             } else {
                 Log::error("✗ HTTP failure updating Reverb title for SKU {$sku}. Status: {$status}, Body: {$body}");
-                
+
                 if ($status == 401) {
-                    Log::error("Authentication failed (401). Check REVERB_TOKEN in .env file");
+                    Log::error('Authentication failed (401). Check REVERB_TOKEN in .env file');
                 } elseif ($status == 403) {
-                    Log::error("Permission denied (403). Check API permissions in Reverb account");
+                    Log::error('Permission denied (403). Check API permissions in Reverb account');
                 } elseif ($status == 404) {
                     Log::error("Listing not found (404). Listing ID: {$listingId}");
                 } elseif ($status == 429) {
-                    Log::error("Rate limited (429) - wait and retry");
+                    Log::error('Rate limited (429) - wait and retry');
                 }
-                
+
                 return false;
             }
         } catch (\Exception $e) {
-            Log::error("✗ Exception updating Reverb title for SKU {$sku}: " . $e->getMessage());
-            Log::error("Stack trace: " . $e->getTraceAsString());
+            Log::error("✗ Exception updating Reverb title for SKU {$sku}: ".$e->getMessage());
+            Log::error('Stack trace: '.$e->getTraceAsString());
+
             return false;
         }
     }
@@ -2797,25 +2945,25 @@ GRAPHQL;
     {
         try {
             Log::info("Starting Faire title update for SKU: {$sku}, New Title: {$newTitle}");
-            
+
             // Get Faire credentials from .env
             $appId = env('FAIRE_APP_ID');
             $appSecret = env('FAIRE_APP_SECRET');
             $redirectUrl = env('FAIRE_REDIRECT_URL');
-            
+
             // Try to get access token - first check for direct token, then try OAuth
-            $token = env('FAIRE_BEARER_TOKEN') 
-                ?? env('FAIRE_ACCESS_TOKEN') 
+            $token = env('FAIRE_BEARER_TOKEN')
+                ?? env('FAIRE_ACCESS_TOKEN')
                 ?? env('FAIRE_TOKEN');
-            
+
             // If no direct token and we have OAuth credentials, try to get access token
-            if (!$token && $appId && $appSecret) {
-                Log::info("No direct token found, attempting to get access token via OAuth...");
-                
+            if (! $token && $appId && $appSecret) {
+                Log::info('No direct token found, attempting to get access token via OAuth...');
+
                 // Check if we have a refresh token or authorization code
                 $refreshToken = env('FAIRE_REFRESH_TOKEN');
                 $authCode = env('FAIRE_AUTH_CODE') ?? env('code'); // Also check 'code' variable from .env
-                
+
                 if ($refreshToken) {
                     // Use refresh token to get new access token
                     try {
@@ -2826,26 +2974,26 @@ GRAPHQL;
                                 'grantType' => 'REFRESH_TOKEN',
                                 'refreshToken' => $refreshToken,
                             ]);
-                        
+
                         if ($tokenResponse->successful()) {
                             $token = $tokenResponse->json('access_token');
                             if ($token) {
-                                Log::info("✓ Successfully obtained Faire access token via OAuth refresh");
+                                Log::info('✓ Successfully obtained Faire access token via OAuth refresh');
                             }
                         } else {
-                            Log::warning("OAuth token refresh failed. Status: " . $tokenResponse->status() . ", Body: " . $tokenResponse->body());
+                            Log::warning('OAuth token refresh failed. Status: '.$tokenResponse->status().', Body: '.$tokenResponse->body());
                         }
                     } catch (\Exception $e) {
-                        Log::warning("OAuth token refresh exception: " . $e->getMessage());
+                        Log::warning('OAuth token refresh exception: '.$e->getMessage());
                     }
                 } elseif ($authCode) {
                     // Use authorization code to get access token
                     try {
                         // Ensure redirectUrl has proper format
-                        if ($redirectUrl && !preg_match('/^https?:\/\//', $redirectUrl)) {
-                            $redirectUrl = 'http://' . $redirectUrl;
+                        if ($redirectUrl && ! preg_match('/^https?:\/\//', $redirectUrl)) {
+                            $redirectUrl = 'http://'.$redirectUrl;
                         }
-                        
+
                         $oauthPayload = [
                             'applicationId' => $appId,
                             'applicationSecret' => $appSecret,
@@ -2854,44 +3002,45 @@ GRAPHQL;
                             'grantType' => 'AUTHORIZATION_CODE',
                             'authorizationCode' => $authCode,
                         ];
-                        
-                        Log::info("Attempting OAuth token exchange with authorization code (code length: " . strlen($authCode) . ")");
-                        
+
+                        Log::info('Attempting OAuth token exchange with authorization code (code length: '.strlen($authCode).')');
+
                         $tokenResponse = \Illuminate\Support\Facades\Http::withoutVerifying()
                             ->post('https://www.faire.com/api/external-api-oauth2/token', $oauthPayload);
-                        
+
                         if ($tokenResponse->successful()) {
                             $token = $tokenResponse->json('access_token');
                             if ($token) {
-                                Log::info("✓ Successfully obtained Faire access token via OAuth authorization code");
+                                Log::info('✓ Successfully obtained Faire access token via OAuth authorization code');
                             } else {
-                                Log::warning("OAuth response successful but no access_token in response: " . $tokenResponse->body());
+                                Log::warning('OAuth response successful but no access_token in response: '.$tokenResponse->body());
                             }
                         } else {
-                            Log::warning("OAuth authorization code exchange failed. Status: " . $tokenResponse->status() . ", Body: " . $tokenResponse->body());
-                            Log::warning("OAuth payload sent: " . json_encode(array_merge($oauthPayload, ['applicationSecret' => '***HIDDEN***', 'authorizationCode' => '***HIDDEN***'])));
+                            Log::warning('OAuth authorization code exchange failed. Status: '.$tokenResponse->status().', Body: '.$tokenResponse->body());
+                            Log::warning('OAuth payload sent: '.json_encode(array_merge($oauthPayload, ['applicationSecret' => '***HIDDEN***', 'authorizationCode' => '***HIDDEN***'])));
                         }
                     } catch (\Exception $e) {
-                        Log::warning("OAuth authorization code exchange exception: " . $e->getMessage());
-                        Log::warning("Exception trace: " . $e->getTraceAsString());
+                        Log::warning('OAuth authorization code exchange exception: '.$e->getMessage());
+                        Log::warning('Exception trace: '.$e->getTraceAsString());
                     }
                 }
             }
-            
-            if (!$token) {
-                Log::warning("Faire access token not available");
-                Log::warning("Configured credentials: FAIRE_APP_ID=" . ($appId ? "✓" : "✗") . ", FAIRE_APP_SECRET=" . ($appSecret ? "✓" : "✗"));
-                Log::warning("Please ensure you have either:");
-                Log::warning("  - FAIRE_BEARER_TOKEN or FAIRE_ACCESS_TOKEN (direct token)");
-                Log::warning("  - FAIRE_REFRESH_TOKEN (for OAuth refresh)");
-                Log::warning("  - FAIRE_AUTH_CODE (for OAuth authorization code exchange)");
+
+            if (! $token) {
+                Log::warning('Faire access token not available');
+                Log::warning('Configured credentials: FAIRE_APP_ID='.($appId ? '✓' : '✗').', FAIRE_APP_SECRET='.($appSecret ? '✓' : '✗'));
+                Log::warning('Please ensure you have either:');
+                Log::warning('  - FAIRE_BEARER_TOKEN or FAIRE_ACCESS_TOKEN (direct token)');
+                Log::warning('  - FAIRE_REFRESH_TOKEN (for OAuth refresh)');
+                Log::warning('  - FAIRE_AUTH_CODE (for OAuth authorization code exchange)');
+
                 return false;
             }
 
-            Log::info("✓ Faire token found (length: " . strlen($token) . " characters)");
+            Log::info('✓ Faire token found (length: '.strlen($token).' characters)');
 
             $baseUrl = 'https://www.faire.com/external-api/v2';
-            
+
             // Try both header formats - Faire API may accept either
             $headerFormats = [
                 [
@@ -2900,10 +3049,10 @@ GRAPHQL;
                     'Accept' => 'application/json',
                 ],
                 [
-                    'Authorization' => 'Bearer ' . $token,
+                    'Authorization' => 'Bearer '.$token,
                     'Content-Type' => 'application/json',
                     'Accept' => 'application/json',
-                ]
+                ],
             ];
 
             // Step 1: Try to get product ID from FaireDataView first (faster)
@@ -2912,7 +3061,7 @@ GRAPHQL;
                 ->orWhere('sku', strtoupper($sku))
                 ->orWhere('sku', strtolower($sku))
                 ->first();
-            
+
             if ($faireDataView && $faireDataView->value) {
                 $value = is_array($faireDataView->value) ? $faireDataView->value : json_decode($faireDataView->value, true);
                 if (is_array($value)) {
@@ -2925,9 +3074,9 @@ GRAPHQL;
             }
 
             // Step 2: If no product ID from database, fetch from API with pagination
-            if (!$productId) {
-                Log::info("Product ID not found in FaireDataView, fetching from Faire API...");
-                
+            if (! $productId) {
+                Log::info('Product ID not found in FaireDataView, fetching from Faire API...');
+
                 $limit = 50;
                 $cursor = null;
                 $found = false;
@@ -2935,40 +3084,43 @@ GRAPHQL;
 
                 // Try both header formats for product listing
                 foreach ($headerFormats as $headerIndex => $testHeaders) {
-                    Log::info("Trying header format " . ($headerIndex + 1) . " for product list...");
-                    
+                    Log::info('Trying header format '.($headerIndex + 1).' for product list...');
+
                     do {
                         $query = ['limit' => $limit];
-                        if ($cursor) $query['cursor'] = $cursor;
+                        if ($cursor) {
+                            $query['cursor'] = $cursor;
+                        }
 
                         $listResponse = \Illuminate\Support\Facades\Http::withoutVerifying()
                             ->withHeaders($testHeaders)
                             ->timeout(30)
                             ->get("{$baseUrl}/products", $query);
 
-                        if (!$listResponse->successful()) {
+                        if (! $listResponse->successful()) {
                             $status = $listResponse->status();
                             $body = $listResponse->body();
-                            
+
                             if ($status == 401 && $headerIndex == 0) {
                                 // Try next header format if first one fails with 401
-                                Log::warning("Product list failed with 401 using header format 1, trying format 2...");
+                                Log::warning('Product list failed with 401 using header format 1, trying format 2...');
                                 break; // Break out of do-while, try next header format
                             }
-                            
+
                             Log::error("Product list failed. Status: {$status}, Body: {$body}");
-                            
+
                             if ($status == 401) {
-                                Log::error("Authentication failed (401). Check Faire token in .env file - token may be invalid or expired");
-                                Log::error("Verify token is valid in Faire Brand Portal > Settings > API");
+                                Log::error('Authentication failed (401). Check Faire token in .env file - token may be invalid or expired');
+                                Log::error('Verify token is valid in Faire Brand Portal > Settings > API');
                             } elseif ($status == 403) {
-                                Log::error("Permission denied (403). Check API permissions in Faire Brand Portal");
+                                Log::error('Permission denied (403). Check API permissions in Faire Brand Portal');
                             }
-                            
+
                             if ($headerIndex == count($headerFormats) - 1) {
                                 // Last header format failed, return false
                                 return false;
                             }
+
                             continue; // Try next header format
                         }
 
@@ -2982,7 +3134,7 @@ GRAPHQL;
                                 $found = true;
                                 break 3; // Found - break out of do-while, foreach, and header format loop
                             }
-                            
+
                             // Check variants for matching SKU
                             foreach ($product['variants'] ?? [] as $variant) {
                                 if (($variant['sku'] ?? '') === $sku || strtoupper(trim($variant['sku'] ?? '')) === strtoupper(trim($sku))) {
@@ -2994,15 +3146,16 @@ GRAPHQL;
                         }
 
                         $cursor = $data['pagination']['next_cursor'] ?? null;
-                    } while ($cursor && !$found && $listSuccess);
-                    
+                    } while ($cursor && ! $found && $listSuccess);
+
                     if ($found || $listSuccess) {
                         break; // Found product or got successful response, stop trying header formats
                     }
                 }
 
-                if (!$productId) {
+                if (! $productId) {
                     Log::error("No product found for SKU: {$sku} in Faire API");
+
                     return false;
                 }
 
@@ -3013,7 +3166,7 @@ GRAPHQL;
             Log::info("Fetching Faire product details for ID: {$productId}");
             $currentProduct = null;
             $workingHeaders = null;
-            
+
             // Try both header formats to get product details
             foreach ($headerFormats as $headerIndex => $testHeaders) {
                 $getProductResponse = \Illuminate\Support\Facades\Http::withoutVerifying()
@@ -3024,15 +3177,15 @@ GRAPHQL;
                 if ($getProductResponse->successful()) {
                     $currentProduct = $getProductResponse->json();
                     $workingHeaders = $testHeaders; // Remember which header format worked
-                    Log::info("Faire product structure: " . json_encode(array_keys($currentProduct ?? [])));
+                    Log::info('Faire product structure: '.json_encode(array_keys($currentProduct ?? [])));
                     break; // Found working header format
                 } else {
-                    Log::warning("Could not fetch product details with header format " . ($headerIndex + 1) . ", trying next...");
+                    Log::warning('Could not fetch product details with header format '.($headerIndex + 1).', trying next...');
                 }
             }
-            
-            if (!$currentProduct) {
-                Log::warning("Could not fetch product details with any header format, proceeding with update anyway");
+
+            if (! $currentProduct) {
+                Log::warning('Could not fetch product details with any header format, proceeding with update anyway');
                 $workingHeaders = $headerFormats[0]; // Use first header format as default
             }
 
@@ -3047,20 +3200,20 @@ GRAPHQL;
                 [
                     'method' => 'PATCH',
                     'payload' => ['name' => $newTitle],
-                    'description' => 'PATCH with name only'
+                    'description' => 'PATCH with name only',
                 ],
                 [
                     'method' => 'PATCH',
                     'payload' => [
                         'name' => $newTitle,
-                        'short_description' => $newTitle
+                        'short_description' => $newTitle,
                     ],
-                    'description' => 'PATCH with name and short_description'
+                    'description' => 'PATCH with name and short_description',
                 ],
                 [
                     'method' => 'PUT',
                     'payload' => ['name' => $newTitle],
-                    'description' => 'PUT with name only'
+                    'description' => 'PUT with name only',
                 ],
             ];
 
@@ -3071,18 +3224,18 @@ GRAPHQL;
                     if (isset($variant['id'])) {
                         $variantUpdates[] = [
                             'id' => $variant['id'],
-                            'name' => $newTitle
+                            'name' => $newTitle,
                         ];
                     }
                 }
-                if (!empty($variantUpdates)) {
+                if (! empty($variantUpdates)) {
                     $updateAttempts[] = [
                         'method' => 'PATCH',
                         'payload' => [
                             'name' => $newTitle,
-                            'variants' => $variantUpdates
+                            'variants' => $variantUpdates,
                         ],
-                        'description' => 'PATCH with name and variant updates'
+                        'description' => 'PATCH with name and variant updates',
                     ];
                 }
             }
@@ -3090,7 +3243,7 @@ GRAPHQL;
             // Also try updating variants directly if product has variants
             if ($currentProduct && isset($currentProduct['variants']) && is_array($currentProduct['variants'])) {
                 foreach ($currentProduct['variants'] as $variant) {
-                    if (isset($variant['id']) && isset($variant['sku']) && 
+                    if (isset($variant['id']) && isset($variant['sku']) &&
                         (strtoupper(trim($variant['sku'])) === strtoupper(trim($sku)))) {
                         // Found matching variant, try updating it directly
                         $variantId = $variant['id'];
@@ -3099,7 +3252,7 @@ GRAPHQL;
                             'payload' => ['name' => $newTitle],
                             'description' => "PATCH variant {$variantId} name directly",
                             'is_variant' => true,
-                            'variant_id' => $variantId
+                            'variant_id' => $variantId,
                         ];
                         Log::info("Found matching variant ID: {$variantId} for SKU: {$sku}");
                     }
@@ -3109,14 +3262,14 @@ GRAPHQL;
             $lastError = null;
             foreach ($updateAttempts as $attempt) {
                 Log::info("Trying Faire update: {$attempt['description']}");
-                
+
                 // Try both header formats for each update attempt
                 $updateSuccess = false;
                 foreach ($headerFormats as $headerIndex => $testHeaders) {
                     $httpClient = \Illuminate\Support\Facades\Http::withoutVerifying()
                         ->withHeaders($testHeaders)
                         ->timeout(30);
-                    
+
                     // Determine endpoint - variant or product
                     if (isset($attempt['is_variant']) && $attempt['is_variant']) {
                         $endpoint = "{$baseUrl}/products/{$productId}/variants/{$attempt['variant_id']}";
@@ -3133,24 +3286,27 @@ GRAPHQL;
                     $status = $updateResponse->status();
                     $body = $updateResponse->body();
 
-                    Log::info("Faire update status: {$status} (method: {$attempt['method']}, header format: " . ($headerIndex + 1) . ", endpoint: {$endpoint})");
+                    Log::info("Faire update status: {$status} (method: {$attempt['method']}, header format: ".($headerIndex + 1).", endpoint: {$endpoint})");
                     Log::info("Faire update body: {$body}");
 
                     if ($updateResponse->successful()) {
                         $responseData = $updateResponse->json();
-                        
+
                         // Check if title was updated successfully
                         if (isset($responseData['name']) && $responseData['name'] === $newTitle) {
-                            Log::info("✓ Successfully updated Faire title for SKU: {$sku}, Product ID: {$productId} using {$attempt['description']} with header format " . ($headerIndex + 1));
+                            Log::info("✓ Successfully updated Faire title for SKU: {$sku}, Product ID: {$productId} using {$attempt['description']} with header format ".($headerIndex + 1));
+
                             return true;
                         } elseif (isset($responseData['id'])) {
                             // If we got a product/variant object back, assume success
-                            Log::info("✓ Successfully updated Faire title for SKU: {$sku}, Product ID: {$productId} using {$attempt['description']} with header format " . ($headerIndex + 1));
+                            Log::info("✓ Successfully updated Faire title for SKU: {$sku}, Product ID: {$productId} using {$attempt['description']} with header format ".($headerIndex + 1));
+
                             return true;
                         } else {
                             // Still consider it successful if status was 200/204
                             if ($status == 200 || $status == 204) {
-                                Log::info("✓ Faire update returned {$status} - assuming success with header format " . ($headerIndex + 1));
+                                Log::info("✓ Faire update returned {$status} - assuming success with header format ".($headerIndex + 1));
+
                                 return true;
                             }
                         }
@@ -3163,39 +3319,41 @@ GRAPHQL;
                             'method' => $attempt['method'],
                             'description' => $attempt['description'],
                             'header_format' => $headerIndex + 1,
-                            'endpoint' => $endpoint
+                            'endpoint' => $endpoint,
                         ];
-                        
+
                         // If 401 with first header format, try second
                         if ($status == 401 && $headerIndex == 0) {
-                            Log::warning("Faire update failed with 401 using header format 1, trying format 2...");
+                            Log::warning('Faire update failed with 401 using header format 1, trying format 2...');
+
                             continue; // Try next header format
                         }
-                        
+
                         // If it's a 400 error, try next method/header combination
                         if ($status == 400) {
-                            Log::warning("Faire update failed with 400 using {$attempt['description']} with header format " . ($headerIndex + 1));
+                            Log::warning("Faire update failed with 400 using {$attempt['description']} with header format ".($headerIndex + 1));
                             if ($headerIndex == count($headerFormats) - 1) {
                                 // Last header format, try next method
                                 break; // Break out of header format loop, continue to next attempt
                             }
+
                             continue; // Try next header format
                         }
-                        
+
                         // For other errors, log but continue
-                        Log::warning("Faire update failed with {$status} using {$attempt['description']} with header format " . ($headerIndex + 1));
-                        
+                        Log::warning("Faire update failed with {$status} using {$attempt['description']} with header format ".($headerIndex + 1));
+
                         if ($headerIndex == count($headerFormats) - 1) {
                             // Last header format failed, move to next attempt
                             break;
                         }
                     }
                 }
-                
+
                 if ($updateSuccess) {
                     break; // Success, stop trying other attempts
                 }
-                
+
                 // Small delay between attempts
                 sleep(1);
             }
@@ -3203,27 +3361,28 @@ GRAPHQL;
             // If we get here, all attempts failed
             if ($lastError) {
                 Log::error("✗ All Faire update attempts failed. Last error - Status: {$lastError['status']}, Method: {$lastError['method']}, Body: {$lastError['body']}");
-                
+
                 if ($lastError['status'] == 401) {
-                    Log::error("Authentication failed (401). Check Faire token in .env file - token may be invalid or expired");
-                    Log::error("Try regenerating token in Faire Brand Portal > Settings > API");
+                    Log::error('Authentication failed (401). Check Faire token in .env file - token may be invalid or expired');
+                    Log::error('Try regenerating token in Faire Brand Portal > Settings > API');
                 } elseif ($lastError['status'] == 403) {
-                    Log::error("Permission denied (403). Check API permissions in Faire Brand Portal - ensure product update permissions are enabled");
+                    Log::error('Permission denied (403). Check API permissions in Faire Brand Portal - ensure product update permissions are enabled');
                 } elseif ($lastError['status'] == 404) {
                     Log::error("Product not found (404). Product ID: {$productId} may not exist or be accessible");
                 } elseif ($lastError['status'] == 400) {
-                    Log::error("Bad request (400). The API may require additional fields or a different payload format");
+                    Log::error('Bad request (400). The API may require additional fields or a different payload format');
                     Log::error("Response: {$lastError['body']}");
                 } elseif ($lastError['status'] == 429) {
-                    Log::error("Rate limited (429) - wait and retry");
+                    Log::error('Rate limited (429) - wait and retry');
                 }
             }
-            
+
             return false;
 
         } catch (\Exception $e) {
-            Log::error("✗ Exception updating Faire title for SKU {$sku}: " . $e->getMessage());
-            Log::error("Stack trace: " . $e->getTraceAsString());
+            Log::error("✗ Exception updating Faire title for SKU {$sku}: ".$e->getMessage());
+            Log::error('Stack trace: '.$e->getTraceAsString());
+
             return false;
         }
     }
@@ -3232,27 +3391,28 @@ GRAPHQL;
     {
         try {
             Log::info("Starting AliExpress title update for SKU: {$sku}, Title: {$newTitle}");
-            
+
             $appKey = env('ALIEXPRESS_APP_KEY');
             $appSecret = env('ALIEXPRESS_APP_SECRET');
             $accessToken = env('ALIEXPRESS_ACCESS_TOKEN');
-            
-            if (!$appKey || !$appSecret || !$accessToken) {
-                Log::warning("AliExpress credentials missing in .env");
-                Log::warning("Required: ALIEXPRESS_APP_KEY, ALIEXPRESS_APP_SECRET, and ALIEXPRESS_ACCESS_TOKEN");
+
+            if (! $appKey || ! $appSecret || ! $accessToken) {
+                Log::warning('AliExpress credentials missing in .env');
+                Log::warning('Required: ALIEXPRESS_APP_KEY, ALIEXPRESS_APP_SECRET, and ALIEXPRESS_ACCESS_TOKEN');
+
                 return false;
             }
 
-            Log::info("✓ AliExpress credentials found (access token length: " . strlen($accessToken) . " characters)");
+            Log::info('✓ AliExpress credentials found (access token length: '.strlen($accessToken).' characters)');
 
             // Step 1: Try to get product_id from database first (faster)
             $productId = null;
-            
+
             $aliexpressDataView = \App\Models\AliexpressDataView::where('sku', $sku)
                 ->orWhere('sku', strtoupper($sku))
                 ->orWhere('sku', strtolower($sku))
                 ->first();
-            
+
             if ($aliexpressDataView && $aliexpressDataView->value) {
                 $value = is_array($aliexpressDataView->value) ? $aliexpressDataView->value : json_decode($aliexpressDataView->value, true);
                 if (is_array($value)) {
@@ -3264,9 +3424,10 @@ GRAPHQL;
             }
 
             // Step 2: If no product ID from database, we need it to update
-            if (!$productId) {
+            if (! $productId) {
                 Log::error("Product ID not found for SKU: {$sku} in AliexpressDataView");
-                Log::error("AliExpress API requires product_id to update title. Please ensure product is synced to AliexpressDataView.");
+                Log::error('AliExpress API requires product_id to update title. Please ensure product is synced to AliexpressDataView.');
+
                 return false;
             }
 
@@ -3295,7 +3456,7 @@ GRAPHQL;
             $signStr = $appSecret;
             foreach ($paramsForSign as $key => $val) {
                 if ($val !== null && $val !== '') {
-                    $signStr .= $key . $val;
+                    $signStr .= $key.$val;
                 }
             }
             $signStr .= $appSecret;
@@ -3321,16 +3482,18 @@ GRAPHQL;
 
             if ($updateResponse->successful()) {
                 $responseData = $updateResponse->json();
-                
+
                 // Check response structure (Aliexpress API response format)
                 if (isset($responseData['aliexpress_solution_product_edit_response'])) {
                     $result = $responseData['aliexpress_solution_product_edit_response'];
                     if (isset($result['result']) && isset($result['result']['success']) && $result['result']['success'] == true) {
                         Log::info("✓ Successfully updated AliExpress title for SKU: {$sku}, Product ID: {$productId}");
+
                         return true;
                     } else {
                         $errorMsg = $result['result']['error_message'] ?? $result['result']['error_msg'] ?? 'Unknown error';
                         Log::error("✗ AliExpress update failed: {$errorMsg}");
+
                         return false;
                     }
                 } elseif (isset($responseData['error_response'])) {
@@ -3338,31 +3501,35 @@ GRAPHQL;
                     $errorMsg = $error['msg'] ?? $error['message'] ?? 'Unknown error';
                     $errorCode = $error['code'] ?? 'N/A';
                     Log::error("✗ AliExpress API error [{$errorCode}]: {$errorMsg}");
+
                     return false;
                 } elseif (strpos($body, '"success":true') !== false || strpos($body, '"success": true') !== false) {
                     Log::info("✓ Successfully updated AliExpress title for SKU: {$sku}, Product ID: {$productId}");
+
                     return true;
                 } else {
-                    Log::error("✗ Update failed - unexpected response structure. Response: " . json_encode($responseData));
+                    Log::error('✗ Update failed - unexpected response structure. Response: '.json_encode($responseData));
+
                     return false;
                 }
             } else {
                 Log::error("✗ AliExpress update failed. Status: {$status}, Body: {$body}");
-                
+
                 if ($status == 401) {
-                    Log::error("Authentication failed (401). Check ALIEXPRESS_ACCESS_TOKEN - may be invalid or expired");
+                    Log::error('Authentication failed (401). Check ALIEXPRESS_ACCESS_TOKEN - may be invalid or expired');
                 } elseif ($status == 403) {
-                    Log::error("Permission denied (403). Check API permissions in AliExpress Open Platform");
+                    Log::error('Permission denied (403). Check API permissions in AliExpress Open Platform');
                 } elseif ($status == 400) {
-                    Log::error("Bad request (400). Check request parameters and signature");
+                    Log::error('Bad request (400). Check request parameters and signature');
                 }
-                
+
                 return false;
             }
 
         } catch (\Exception $e) {
-            Log::error("✗ Exception updating AliExpress title for SKU {$sku}: " . $e->getMessage());
-            Log::error("Stack trace: " . $e->getTraceAsString());
+            Log::error("✗ Exception updating AliExpress title for SKU {$sku}: ".$e->getMessage());
+            Log::error('Stack trace: '.$e->getTraceAsString());
+
             return false;
         }
     }
@@ -3371,36 +3538,37 @@ GRAPHQL;
     {
         try {
             Log::info("Starting TikTok title update for SKU: {$sku}, Title: {$newTitle}");
-            
+
             // Get TikTok Shop API credentials from .env - try multiple variable name formats
-            $appKey = env('TIKTOK_APP_KEY') 
-                ?? env('TIKTOK_CLIENT_KEY') 
+            $appKey = env('TIKTOK_APP_KEY')
+                ?? env('TIKTOK_CLIENT_KEY')
                 ?? env('TIKTOK_APP_ID')
                 ?? env('TIKTOK_KEY');
-            $appSecret = env('TIKTOK_APP_SECRET') 
-                ?? env('TIKTOK_CLIENT_SECRET') 
+            $appSecret = env('TIKTOK_APP_SECRET')
+                ?? env('TIKTOK_CLIENT_SECRET')
                 ?? env('TIKTOK_SECRET');
             $accessToken = env('TIKTOK_ACCESS_TOKEN')
                 ?? env('TIKTOK_TOKEN')
                 ?? env('TIKTOK_BEARER_TOKEN');
-            
-            if (!$appKey || !$appSecret || !$accessToken) {
-                Log::warning("TikTok credentials missing in .env");
-                Log::warning("Required: TIKTOK_APP_KEY (or TIKTOK_CLIENT_KEY/TIKTOK_APP_ID), TIKTOK_APP_SECRET (or TIKTOK_CLIENT_SECRET), and TIKTOK_ACCESS_TOKEN (or TIKTOK_TOKEN)");
-                Log::warning("Please check your .env file and ensure TikTok credentials are configured");
+
+            if (! $appKey || ! $appSecret || ! $accessToken) {
+                Log::warning('TikTok credentials missing in .env');
+                Log::warning('Required: TIKTOK_APP_KEY (or TIKTOK_CLIENT_KEY/TIKTOK_APP_ID), TIKTOK_APP_SECRET (or TIKTOK_CLIENT_SECRET), and TIKTOK_ACCESS_TOKEN (or TIKTOK_TOKEN)');
+                Log::warning('Please check your .env file and ensure TikTok credentials are configured');
+
                 return false;
             }
 
-            Log::info("✓ TikTok credentials found (access token length: " . strlen($accessToken) . " characters)");
+            Log::info('✓ TikTok credentials found (access token length: '.strlen($accessToken).' characters)');
 
             // Step 1: Try to get product_id from database first (faster)
             $productId = null;
-            
+
             $tiktokDataView = \App\Models\TiktokShopDataView::where('sku', $sku)
                 ->orWhere('sku', strtoupper($sku))
                 ->orWhere('sku', strtolower($sku))
                 ->first();
-            
+
             if ($tiktokDataView && $tiktokDataView->value) {
                 $value = is_array($tiktokDataView->value) ? $tiktokDataView->value : json_decode($tiktokDataView->value, true);
                 if (is_array($value)) {
@@ -3412,9 +3580,10 @@ GRAPHQL;
             }
 
             // Step 2: If no product ID from database, we need it to update
-            if (!$productId) {
+            if (! $productId) {
                 Log::error("Product ID not found for SKU: {$sku} in TiktokShopDataView");
-                Log::error("TikTok API requires product_id to update title. Please ensure product is synced to TiktokShopDataView.");
+                Log::error('TikTok API requires product_id to update title. Please ensure product is synced to TiktokShopDataView.');
+
                 return false;
             }
 
@@ -3424,10 +3593,10 @@ GRAPHQL;
             // TikTok Shop API endpoint for updating product
             $baseUrl = 'https://open-api.tiktokglobalshop.com';
             $shopId = env('TIKTOK_SHOP_ID'); // Optional, may be required for some endpoints
-            
+
             // TikTok Shop API uses Bearer token authentication
             $headers = [
-                'Authorization' => 'Bearer ' . $accessToken,
+                'Authorization' => 'Bearer '.$accessToken,
                 'Content-Type' => 'application/json',
                 'Accept' => 'application/json',
             ];
@@ -3447,13 +3616,13 @@ GRAPHQL;
             $endpoints = [
                 "/product/202309/products/{$productId}",
                 "/api/products/{$productId}",
-                "/open_api/v1/product/update",
+                '/open_api/v1/product/update',
             ];
 
             $success = false;
             foreach ($endpoints as $endpoint) {
-                $url = $baseUrl . $endpoint;
-                
+                $url = $baseUrl.$endpoint;
+
                 Log::info("Trying TikTok endpoint: {$url}");
 
                 $updateResponse = \Illuminate\Support\Facades\Http::withoutVerifying()
@@ -3469,7 +3638,7 @@ GRAPHQL;
 
                 if ($updateResponse->successful()) {
                     $responseData = $updateResponse->json();
-                    
+
                     // Check for success indicators
                     if (isset($responseData['data']) || isset($responseData['success']) || isset($responseData['message'])) {
                         Log::info("✓ Successfully updated TikTok title for SKU: {$sku}, Product ID: {$productId}");
@@ -3485,25 +3654,26 @@ GRAPHQL;
                 }
             }
 
-            if (!$success) {
+            if (! $success) {
                 Log::error("✗ TikTok update failed for all endpoints. Last status: {$status}, Body: {$body}");
-                
+
                 if ($status == 401) {
-                    Log::error("Authentication failed (401). Check TIKTOK_ACCESS_TOKEN - may be invalid or expired");
+                    Log::error('Authentication failed (401). Check TIKTOK_ACCESS_TOKEN - may be invalid or expired');
                 } elseif ($status == 403) {
-                    Log::error("Permission denied (403). Check API permissions in TikTok Shop Developer Portal");
+                    Log::error('Permission denied (403). Check API permissions in TikTok Shop Developer Portal');
                 } elseif ($status == 400) {
-                    Log::error("Bad request (400). Check request parameters and payload format");
+                    Log::error('Bad request (400). Check request parameters and payload format');
                 }
-                
+
                 return false;
             }
 
             return true;
 
         } catch (\Exception $e) {
-            Log::error("✗ Exception updating TikTok title for SKU {$sku}: " . $e->getMessage());
-            Log::error("Stack trace: " . $e->getTraceAsString());
+            Log::error("✗ Exception updating TikTok title for SKU {$sku}: ".$e->getMessage());
+            Log::error('Stack trace: '.$e->getTraceAsString());
+
             return false;
         }
     }
@@ -3512,56 +3682,58 @@ GRAPHQL;
     {
         try {
             Log::info("Starting Doba title update for SKU: {$sku}, Title: {$title}");
-            
+
             $publicKey = env('DOBA_PUBLIC_KEY');
             $privateKey = env('DOBA_PRIVATE_KEY');
             $appKey = env('DOBA_APP_KEY');
-            
-            if (!$publicKey || !$privateKey || !$appKey) {
-                Log::warning("Doba credentials not configured in .env file");
+
+            if (! $publicKey || ! $privateKey || ! $appKey) {
+                Log::warning('Doba credentials not configured in .env file');
+
                 return false;
             }
 
-            Log::info("✓ Doba credentials found");
+            Log::info('✓ Doba credentials found');
 
             // Try to find Doba product by SKU
             $dobaProduct = \App\Models\DobaDataView::where('sku', $sku)
                 ->orWhere('sku', strtoupper($sku))
                 ->orWhere('sku', strtolower($sku))
                 ->first();
-            
+
             // Use doba_product_id if found, otherwise use SKU as fallback
             $dobaProductId = $dobaProduct && isset($dobaProduct->doba_product_id)
-                ? $dobaProduct->doba_product_id 
+                ? $dobaProduct->doba_product_id
                 : $sku;
-            
+
             if ($dobaProduct) {
                 Log::info("Found Doba Product ID: {$dobaProductId} for SKU: {$sku}");
             } else {
                 Log::info("SKU not found in DobaDataView, using SKU as product identifier: {$dobaProductId}");
             }
-            
+
             // Doba API uses RSA signature authentication
             $timestamp = time();
             $nonce = uniqid();
-            
+
             // Format private key for OpenSSL (convert from string to PEM format if needed)
             $privateKeyFormatted = $privateKey;
             if (strpos($privateKey, '-----BEGIN') === false) {
                 // If key doesn't have PEM headers, add them
-                $privateKeyFormatted = "-----BEGIN PRIVATE KEY-----\n" . 
-                    chunk_split($privateKey, 64, "\n") . 
-                    "-----END PRIVATE KEY-----";
+                $privateKeyFormatted = "-----BEGIN PRIVATE KEY-----\n".
+                    chunk_split($privateKey, 64, "\n").
+                    '-----END PRIVATE KEY-----';
             }
-            
+
             // Get the key resource
             $keyResource = openssl_pkey_get_private($privateKeyFormatted);
-            
-            if (!$keyResource) {
-                Log::error("Failed to load Doba private key. OpenSSL error: " . openssl_error_string());
+
+            if (! $keyResource) {
+                Log::error('Failed to load Doba private key. OpenSSL error: '.openssl_error_string());
+
                 return false;
             }
-            
+
             // Build request data
             $requestData = [
                 'product_id' => $dobaProductId,
@@ -3570,38 +3742,39 @@ GRAPHQL;
                 'timestamp' => $timestamp,
                 'nonce' => $nonce,
             ];
-            
+
             // Sort parameters for signature
             ksort($requestData);
             $signString = http_build_query($requestData);
-            
+
             // Generate RSA signature
             $signature = '';
             $signResult = openssl_sign($signString, $signature, $keyResource, OPENSSL_ALGO_SHA256);
-            
-            if (!$signResult) {
-                Log::error("Failed to sign Doba request. OpenSSL error: " . openssl_error_string());
+
+            if (! $signResult) {
+                Log::error('Failed to sign Doba request. OpenSSL error: '.openssl_error_string());
                 openssl_free_key($keyResource);
+
                 return false;
             }
-            
+
             $signBase64 = base64_encode($signature);
             openssl_free_key($keyResource);
-            
+
             Log::info("Doba API call - Product ID: {$dobaProductId}");
-            
+
             sleep(2); // Rate limiting
-            
+
             // Doba API endpoint
             $apiUrl = 'https://api.doba.com/v1/products/update';
-            
+
             $response = \Illuminate\Support\Facades\Http::withHeaders([
-                    'Content-Type' => 'application/json',
-                    'X-Doba-App-Key' => $appKey,
-                    'X-Doba-Timestamp' => $timestamp,
-                    'X-Doba-Nonce' => $nonce,
-                    'X-Doba-Signature' => $signBase64,
-                ])
+                'Content-Type' => 'application/json',
+                'X-Doba-App-Key' => $appKey,
+                'X-Doba-Timestamp' => $timestamp,
+                'X-Doba-Nonce' => $nonce,
+                'X-Doba-Signature' => $signBase64,
+            ])
                 ->timeout(30)
                 ->post($apiUrl, [
                     'product_id' => $dobaProductId,
@@ -3610,42 +3783,46 @@ GRAPHQL;
 
             $status = $response->status();
             $body = $response->body();
-            
-            Log::info("Doba API response status: " . $status);
-            Log::info("Doba API response body: " . $body);
+
+            Log::info('Doba API response status: '.$status);
+            Log::info('Doba API response body: '.$body);
 
             if ($response->successful()) {
                 $responseData = $response->json();
-                
+
                 if (isset($responseData['success']) && $responseData['success'] === true) {
                     Log::info("✓ Successfully updated Doba title for SKU: {$sku}");
+
                     return true;
                 } elseif (isset($responseData['status']) && $responseData['status'] === 'success') {
                     Log::info("✓ Successfully updated Doba title for SKU: {$sku}");
+
                     return true;
                 } else {
                     $errorMsg = $responseData['message'] ?? $responseData['error'] ?? 'Unknown error';
                     Log::error("✗ Doba API returned error: {$errorMsg}");
-                    Log::error("Full response: " . json_encode($responseData));
+                    Log::error('Full response: '.json_encode($responseData));
+
                     return false;
                 }
             } else {
                 Log::error("✗ Failed to update Doba title for SKU {$sku}. Status: {$status}, Error: {$body}");
-                
+
                 if ($status == 401) {
-                    Log::error("Authentication failed. Check Doba credentials in .env");
+                    Log::error('Authentication failed. Check Doba credentials in .env');
                 } elseif ($status == 403) {
-                    Log::error("Permission denied. Verify your Doba account has product update permissions");
+                    Log::error('Permission denied. Verify your Doba account has product update permissions');
                 } elseif ($status == 404) {
-                    Log::error("Product not found or API endpoint incorrect");
+                    Log::error('Product not found or API endpoint incorrect');
                     Log::error("Current endpoint: {$apiUrl}");
                 }
-                
+
                 return false;
             }
         } catch (\Exception $e) {
-            Log::error("✗ Exception updating Doba title for SKU {$sku}: " . $e->getMessage());
-            Log::error("Stack trace: " . $e->getTraceAsString());
+            Log::error("✗ Exception updating Doba title for SKU {$sku}: ".$e->getMessage());
+            Log::error('Stack trace: '.$e->getTraceAsString());
+
             return false;
         }
     }
@@ -3664,10 +3841,10 @@ GRAPHQL;
 
             $product = ProductMaster::where('sku', $validated['sku'])->first();
 
-            if (!$product) {
+            if (! $product) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Product not found.'
+                    'message' => 'Product not found.',
                 ], 404);
             }
 
@@ -3680,13 +3857,14 @@ GRAPHQL;
 
             return response()->json([
                 'success' => true,
-                'message' => 'Bullet points saved successfully.'
+                'message' => 'Bullet points saved successfully.',
             ]);
         } catch (\Exception $e) {
-            Log::error('Error saving bullet data: ' . $e->getMessage());
+            Log::error('Error saving bullet data: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to save bullet data: ' . $e->getMessage()
+                'message' => 'Failed to save bullet data: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -3701,10 +3879,10 @@ GRAPHQL;
 
             $product = ProductMaster::where('sku', $validated['sku'])->first();
 
-            if (!$product) {
+            if (! $product) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Product not found.'
+                    'message' => 'Product not found.',
                 ], 404);
             }
 
@@ -3713,13 +3891,14 @@ GRAPHQL;
 
             return response()->json([
                 'success' => true,
-                'message' => 'Product description saved successfully.'
+                'message' => 'Product description saved successfully.',
             ]);
         } catch (\Exception $e) {
-            Log::error('Error saving description data: ' . $e->getMessage());
+            Log::error('Error saving description data: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to save description data: ' . $e->getMessage()
+                'message' => 'Failed to save description data: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -3737,10 +3916,10 @@ GRAPHQL;
 
             $product = ProductMaster::where('sku', $validated['sku'])->first();
 
-            if (!$product) {
+            if (! $product) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Product not found.'
+                    'message' => 'Product not found.',
                 ], 404);
             }
 
@@ -3752,13 +3931,14 @@ GRAPHQL;
 
             return response()->json([
                 'success' => true,
-                'message' => 'Features saved successfully.'
+                'message' => 'Features saved successfully.',
             ]);
         } catch (\Exception $e) {
-            Log::error('Error saving features data: ' . $e->getMessage());
+            Log::error('Error saving features data: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to save features data: ' . $e->getMessage()
+                'message' => 'Failed to save features data: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -3786,10 +3966,10 @@ GRAPHQL;
 
             $product = ProductMaster::where('sku', $validated['sku'])->first();
 
-            if (!$product) {
+            if (! $product) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Product not found.'
+                    'message' => 'Product not found.',
                 ], 404);
             }
 
@@ -3811,16 +3991,15 @@ GRAPHQL;
 
             return response()->json([
                 'success' => true,
-                'message' => 'Images saved successfully.'
+                'message' => 'Images saved successfully.',
             ]);
         } catch (\Exception $e) {
-            Log::error('Error saving images data: ' . $e->getMessage());
+            Log::error('Error saving images data: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to save images data: ' . $e->getMessage()
+                'message' => 'Failed to save images data: '.$e->getMessage(),
             ], 500);
         }
     }
-
-
 }

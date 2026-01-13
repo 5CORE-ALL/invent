@@ -16,6 +16,7 @@ use App\Models\ADVMastersData;
 use App\Models\EbayPriorityReport;
 use App\Models\ProductMaster; 
 use App\Models\EbaySkuDailyData;
+use App\Models\AmazonDatasheet;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Models\EbayListingStatus;
@@ -234,6 +235,10 @@ class EbayController extends Controller
             ->get()
             ->keyBy('sku');
 
+        // Fetch Amazon prices for comparison
+        $amazonPrices = AmazonDatasheet::whereIn('sku', $skus)
+            ->pluck('price', 'sku');
+
         $campaignListings = DB::connection('apicentral')
             ->table('ebay_campaign_ads_listings')
             ->select('listing_id', 'bid_percentage', 'suggested_bid')
@@ -381,6 +386,9 @@ class EbayController extends Controller
             $row['price_lmpa'] = $ebayMetric->price_lmpa ?? null;
             $row['eBay_item_id'] = $ebayMetric->item_id ?? null;
             $row['views'] = $ebayMetric->views ?? 0;
+
+            // Amazon Price for comparison
+            $row['A Price'] = isset($amazonPrices[$pm->sku]) ? floatval($amazonPrices[$pm->sku]) : 0;
 
             // Get bid percentage from campaign listings
             if ($ebayMetric && isset($campaignListings[$ebayMetric->item_id])) {
@@ -1756,6 +1764,46 @@ class EbayController extends Controller
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to fetch ads spend data'
+            ], 500);
+        }
+    }
+
+    /**
+     * Get KW and PMT spend totals from reports (matches KW/PMP ads pages exactly)
+     * Uses the same queries as EbayKwAdsController and EbayPMPAdsController
+     */
+    public function getKwPmtSpendTotals()
+    {
+        try {
+            $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30);
+
+            // KW Spend: From ebay_priority_reports (L30 range)
+            $kwSpend = DB::table('ebay_priority_reports')
+                ->where('report_range', 'L30')
+                ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
+                ->selectRaw('SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")) as total_spend')
+                ->value('total_spend') ?? 0;
+
+            // PMT Spend: From ebay_general_reports (L30 range)
+            $pmtSpend = DB::table('ebay_general_reports')
+                ->where('report_range', 'L30')
+                ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
+                ->selectRaw('SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")) as total_spend')
+                ->value('total_spend') ?? 0;
+
+            $totalSpend = floatval($kwSpend) + floatval($pmtSpend);
+
+            return response()->json([
+                'success' => true,
+                'kw_spend' => floatval($kwSpend),
+                'pmt_spend' => floatval($pmtSpend),
+                'total_spend' => $totalSpend,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching eBay KW/PMT spend totals: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to fetch spend totals'
             ], 500);
         }
     }
