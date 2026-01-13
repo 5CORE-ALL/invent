@@ -1145,6 +1145,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay-data-json', [EbayController::class, 'ebayDataJson'])->name('ebay.data.json');
     Route::get('/ebay-metrics-history', [EbayController::class, 'getMetricsHistory'])->name('ebay.metrics.history');
     Route::get('/ebay-ads-spend', [EbayController::class, 'getEbayAdsSpend'])->name('ebay.ads.spend');
+    Route::get('/ebay-kw-pmt-spend-totals', [EbayController::class, 'getKwPmtSpendTotals'])->name('ebay.kw.pmt.spend.totals');
     Route::post('/update-ebay-rating', [EbayController::class, 'updateEbayRating']);
     Route::get('/ebay-ratings-sample', [EbayController::class, 'downloadEbayRatingsSample'])->name('ebay.ratings.sample');
     Route::post('/import-ebay-ratings', [EbayController::class, 'importEbayRatings']);

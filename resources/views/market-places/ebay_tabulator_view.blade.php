@@ -167,6 +167,25 @@
                         <option value="100plus">100%+</option>
                     </select>
 
+                    <!-- DIL Filter -->
+                    <div class="dropdown d-inline-block">
+                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="dilFilterDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <span class="status-circle default"></span> DIL%
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="dilFilterDropdown">
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="all">
+                                    <span class="status-circle default"></span> All DIL</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="red">
+                                    <span class="status-circle red"></span> Red (&lt;16.7%)</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="yellow">
+                                    <span class="status-circle yellow"></span> Yellow (16.7-25%)</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="green">
+                                    <span class="status-circle green"></span> Green (25-50%)</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="pink">
+                                    <span class="status-circle pink"></span> Pink (50%+)</a></li>
+                        </ul>
+                    </div>
+
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
@@ -190,25 +209,6 @@
                         <i class="fas fa-arrow-up"></i> Increase Mode
                     </button>
 
-                    <!-- DIL Filter -->
-                    <div class="dropdown d-inline-block">
-                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="dilFilterDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                            <span class="status-circle default"></span> DIL%
-                        </button>
-                        <ul class="dropdown-menu" aria-labelledby="dilFilterDropdown">
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="all">
-                                    <span class="status-circle default"></span> All DIL</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="red">
-                                    <span class="status-circle red"></span> Red (&lt;16.7%)</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="yellow">
-                                    <span class="status-circle yellow"></span> Yellow (16.7-25%)</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="green">
-                                    <span class="status-circle green"></span> Green (25-50%)</a></li>
-                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="pink">
-                                    <span class="status-circle pink"></span> Pink (50%+)</a></li>
-                        </ul>
-                    </div>
-
                     <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#exportModal">
                         <i class="fa fa-file-excel"></i> Export
                     </button>
@@ -220,51 +220,35 @@
                     <a href="{{ url('/ebay-ratings-sample') }}" class="btn btn-sm btn-info">
                         <i class="fas fa-download"></i> Sample CSV
                     </a>
-                    
-                    <button id="toggle-chart-btn" class="btn btn-sm btn-secondary" style="display: none;">
-                        <i class="fa fa-eye-slash"></i> Hide Chart
-                    </button>
-                </div>
-
-                <!-- Metrics Chart Section -->
-                <div id="metrics-chart-section" class="mt-2 p-2 bg-white rounded border" style="display: none;">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h6 class="mb-0">Metrics Trend</h6>
-                        <select id="chart-days-filter" class="form-select form-select-sm" style="width: auto;">
-                            <option value="7" >Last 7 Days</option>
-                            <option value="14">Last 14 Days</option>
-                            <option value="30" selected>Last 30 Days</option>
-                            <option value="60">Last 60 Days</option>
-                        </select>
-                    </div>
-                    <div style="height: 200px;">
-                        <canvas id="metricsChart"></canvas>
-                    </div>
                 </div>
 
                 <!-- Summary Stats -->
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary Statistics (85% Margin)</h6>
+                    <h6 class="mb-3">Summary (INV > 0)</h6>
                     <div class="d-flex flex-wrap gap-2">
-                        <!-- Top Metrics -->
-                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold;">Total PFT: $0</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total Sales: $0</span>
-                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">AVG GPFT: 0%</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
-                        <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">Avg CVR: 0.00%</span>
-                        
-                        <!-- eBay Metrics -->
-                        <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color: black; font-weight: bold;">Total INV: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-fba-l30-badge" style="color: black; font-weight: bold;">Total eBay L30: 0</span>
+                        <!-- Sold Filter Badges (Clickable) -->
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items (INV>0)">0 Sold: 0</span>
                         <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales (INV>0)">> 0 Sold: 0</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-dil-badge" style="color: black; font-weight: bold;">DIL%: 0%</span>
                         
                         <!-- Financial Metrics -->
-                        <span class="badge bg-info fs-6 p-2" id="total-cogs-badge" style="color: black; font-weight: bold;">COGS: $0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI%: 0%</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold;">Total PFT: $0</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total Sales: $0</span>
+                        <span class="badge bg-info fs-6 p-2" id="kw-spend-badge" style="color: black; font-weight: bold;">KW Spend: $0</span>
+                        <span class="badge bg-warning fs-6 p-2" id="pmt-spend-badge" style="color: black; font-weight: bold;">PMT Spend: $0</span>
                         <span class="badge bg-danger fs-6 p-2" id="total-spend-badge" style="color: black; font-weight: bold;">Total Spend: $0.00</span>
+                        
+                        <!-- Percentage Metrics -->
+                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">GPFT: 0%</span>
+                        <span class="badge bg-info fs-6 p-2" id="avg-pft-badge" style="color: black; font-weight: bold;">NPFT: 0%</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="groi-percent-badge" style="color: black; font-weight: bold;">GROI: 0%</span>
+                        <span class="badge bg-primary fs-6 p-2" id="nroi-percent-badge" style="color: black; font-weight: bold;">NROI: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2" id="tacos-percent-badge" style="color: black; font-weight: bold;">TACOS: 0%</span>
+                        
+                        <!-- eBay Metrics -->
+                        <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
+                        <span class="badge bg-danger fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">CVR: 0.00%</span>
+                        <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
+                        <span class="badge bg-primary fs-6 p-2" id="total-inv-badge" style="color: black; font-weight: bold;">INV: 0</span>
                         
                         <!-- Badge Filters -->
                         <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing SKUs (INV>0)">Missing: 0</span>
@@ -413,7 +397,6 @@
     @section('script-bottom')
     <script>
         const COLUMN_VIS_KEY = "ebay_tabulator_column_visibility";
-        let metricsChart = null;
         let skuMetricsChart = null;
         let currentSku = null;
         let table = null; // Global table reference
@@ -450,165 +433,6 @@
             const bsToast = new bootstrap.Toast(toast);
             bsToast.show();
             toast.addEventListener('hidden.bs.toast', () => toast.remove());
-        }
-
-        // Initialize Metrics Chart
-        function initMetricsChart() {
-            const ctx = document.getElementById('metricsChart').getContext('2d');
-            metricsChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: [],
-                    datasets: [
-                        {
-                            label: 'Avg Price ($)',
-                            data: [],
-                            borderColor: 'rgb(75, 192, 192)',
-                            backgroundColor: 'rgba(75, 192, 192, 0.1)',
-                            borderWidth: 2,
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                            yAxisID: 'y',
-                            tension: 0.4
-                        },
-                        {
-                            label: 'Total Views',
-                            data: [],
-                            borderColor: 'rgb(54, 162, 235)',
-                            backgroundColor: 'rgba(54, 162, 235, 0.1)',
-                            borderWidth: 2,
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                            yAxisID: 'y1',
-                            tension: 0.4
-                        },
-                        {
-                            label: 'Avg CVR%',
-                            data: [],
-                            borderColor: 'rgb(255, 206, 86)',
-                            backgroundColor: 'rgba(255, 206, 86, 0.1)',
-                            borderWidth: 2,
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                            yAxisID: 'y',
-                            tension: 0.4
-                        },
-                        {
-                            label: 'Avg AD%',
-                            data: [],
-                            borderColor: 'rgb(255, 99, 132)',
-                            backgroundColor: 'rgba(255, 99, 132, 0.1)',
-                            borderWidth: 2,
-                            pointRadius: 4,
-                            pointHoverRadius: 6,
-                            yAxisID: 'y',
-                            tension: 0.4
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: {
-                        mode: 'index',
-                        intersect: false,
-                    },
-                    plugins: {
-                        legend: {
-                            position: 'top',
-                            labels: {
-                                usePointStyle: true,
-                                padding: 10
-                            }
-                        },
-                        title: {
-                            display: false
-                        },
-                        tooltip: {
-                            enabled: true,
-                            mode: 'index',
-                            intersect: false,
-                            callbacks: {
-                                label: function(context) {
-                                    let label = context.dataset.label || '';
-                                    let value = context.parsed.y || 0;
-                                    
-                                    // Format based on dataset label
-                                    if (label.includes('Price') || label.includes('price')) {
-                                        return label + ': $' + value.toFixed(2);
-                                    } else if (label.includes('Views') || label.includes('views')) {
-                                        return label + ': ' + value.toLocaleString();
-                                    } else if (label.includes('CVR')) {
-                                        return label + ': ' + value.toFixed(1) + '%';
-                                    } else if (label.includes('AD') || label.includes('%')) {
-                                        return label + ': ' + Math.round(value) + '%';
-                                    }
-                                    return label + ': ' + value;
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        y: {
-                            type: 'linear',
-                            display: true,
-                            position: 'left',
-                            title: {
-                                display: true,
-                                text: 'Price / Percentages'
-                            },
-                            beginAtZero: false,
-                            ticks: {
-                                callback: function(value, index, values) {
-                                    // Format based on value range
-                                    if (value >= 0 && value <= 200) {
-                                        return value.toFixed(0) + '%';
-                                    } else {
-                                        return '$' + value.toFixed(0);
-                                    }
-                                }
-                            }
-                        },
-                        y1: {
-                            type: 'linear',
-                            display: true,
-                            position: 'right',
-                            title: {
-                                display: true,
-                                text: 'Views'
-                            },
-                            beginAtZero: true,
-                            grid: {
-                                drawOnChartArea: false,
-                            },
-                            ticks: {
-                                callback: function(value) {
-                                    return value.toLocaleString();
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-        }
-
-        // Load Metrics Data
-        function loadMetricsData(days = 30) {
-            fetch(`/ebay-metrics-history?days=${days}`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.length > 0 && metricsChart) {
-                        metricsChart.data.labels = data.map(d => d.date_formatted || d.date || '');
-                        metricsChart.data.datasets[0].data = data.map(d => d.avg_price || 0);
-                        metricsChart.data.datasets[1].data = data.map(d => d.total_views || 0);
-                        metricsChart.data.datasets[2].data = data.map(d => d.avg_cvr_percent || 0);
-                        metricsChart.data.datasets[3].data = data.map(d => d.avg_ad_percent || 0);
-                        metricsChart.update();
-                    }
-                })
-                .catch(error => {
-                    console.error('Error loading metrics data:', error);
-                });
         }
 
         // SKU-specific chart
@@ -831,46 +655,30 @@
                 });
         }
 
-        // Load eBay Ads Spend from marketplace_daily_metrics
-        function loadEbayAdsSpend() {
-            fetch('/ebay-ads-spend')
+        // Load eBay KW and PMT spend totals from reports (matches KW/PMP ads pages exactly)
+        function loadEbayKwPmtSpendTotals() {
+            fetch('/ebay-kw-pmt-spend-totals')
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        $('#total-kw-spend-l30-badge').text('KW Spend L30: $' + Math.round(data.kw_spent).toLocaleString());
-                        $('#total-pmt-spend-l30-badge').text('PMT Spend L30: $' + Math.round(data.pmt_spent).toLocaleString());
+                        // Update spend badges with grand totals from reports
+                        $('#kw-spend-badge').text('KW Spend: $' + Math.round(data.kw_spend).toLocaleString());
+                        $('#pmt-spend-badge').text('PMT Spend: $' + Math.round(data.pmt_spend).toLocaleString());
+                        $('#total-spend-badge').text('Total Spend: $' + Math.round(data.total_spend).toLocaleString());
+                        console.log('Loaded spend totals:', data);
                     }
                 })
                 .catch(error => {
-                    console.error('Error loading eBay ads spend:', error);
+                    console.error('Error loading eBay KW/PMT spend totals:', error);
                 });
         }
 
         $(document).ready(function() {
-            // Initialize charts
-            initMetricsChart();
-            loadMetricsData(30);
+            // Initialize SKU-specific chart
             initSkuMetricsChart();
             
-            // Load eBay ads spend from marketplace_daily_metrics
-            loadEbayAdsSpend();
-
-            // Toggle chart button
-            $('#toggle-chart-btn').on('click', function() {
-                const $chartSection = $('#metrics-chart-section');
-                const $btn = $(this);
-                
-                if ($chartSection.is(':visible')) {
-                    $chartSection.slideUp();
-                    $btn.html('<i class="fa fa-eye"></i> Show Chart');
-                } else {
-                    $chartSection.slideDown();
-                    $btn.html('<i class="fa fa-eye-slash"></i> Hide Chart');
-                }
-            });
-
-            // Show chart button by default on first load
-            $('#toggle-chart-btn').show();
+            // Load eBay KW and PMT spend totals (grand totals from reports - matches KW/PMP ads pages)
+            loadEbayKwPmtSpendTotals();
 
             // Discount type dropdown change handler
             $('#discount-type-select').on('change', function() {
@@ -1080,12 +888,6 @@
                 e.preventDefault();
                 e.stopPropagation();
                 window.applyAllSelectedPrices();
-            });
-
-            // Chart days filter
-            $('#chart-days-filter').on('change', function() {
-                const days = $(this).val();
-                loadMetricsData(days);
             });
 
             // SKU chart days filter
@@ -2283,12 +2085,11 @@
                             const percent = parseFloat(value);
                             let color = '';
                             
-                            // getPftColor logic from inc/dec page (same as PFT)
                             if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
-                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
+                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
+                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink (50% and above)
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
@@ -2349,12 +2150,11 @@
                             const percent = gpft - ad;
                             let color = '';
                             
-                            // getPftColor logic from inc/dec page
                             if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
-                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
+                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
+                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink (50% and above)
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
@@ -2366,7 +2166,7 @@
                         width: 50
                     },
                     {
-                        title: "ROI%",
+                        title: "GROI%",
                         field: "ROI%",
                         hozAlign: "center",
                         sorter: "number",
@@ -2691,10 +2491,10 @@
                             let color = '';
                             // Same as GPFT% color logic
                             if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
-                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
+                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
+                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink (50% and above)
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
@@ -2717,10 +2517,10 @@
                             let color = '';
                             // Same as PFT% color logic
                             if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
-                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
+                            else if (percent >= 10 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent < 30) color = '#ffc107'; // yellow
+                            else if (percent >= 30 && percent < 50) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink (50% and above)
                             
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
@@ -2771,7 +2571,7 @@
                         width: 90
                     },
 
-                    {
+                        {
                         title: "KW SPEND L30",
                         field: "kw_spend_L30",
                         hozAlign: "center",
@@ -2786,7 +2586,25 @@
                             const value = cell.getValue();
                             return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
                         },
-                        width: 100
+                        width: 110
+                    },
+
+                    {
+                        title: "PMT SPEND L30",
+                        field: "pmt_spend_L30",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            return `$${value.toFixed(2)}`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
+                        },
+                        width: 110
                     },
 
                   
@@ -3170,10 +2988,28 @@
                 // const avgRoi = sumLp > 0 ? (totalProfit / sumLp) * 100 : 0;
             }
 
-            // Update summary badges for INV > 0
+            // Update summary badges - use ALL data (not filtered) to match KW/PMP ads pages
             function updateSummary() {
-                const data = table.getData("active");
-                let totalSpendL30 = 0;
+                // Use getData("all") to get ALL data without filters
+                const allData = table.getData("all");
+                const filteredData = table.getData("active");
+                
+                // Grand totals from ALL data (matches KW/PMP ads pages)
+                let grandTotalKwSpend = 0;
+                let grandTotalPmtSpend = 0;
+                let grandTotalSpend = 0;
+                
+                // Calculate grand totals from ALL data (no filters)
+                allData.forEach(row => {
+                    const inv = parseFloat(row.INV || 0);
+                    if (inv > 0) {
+                        grandTotalKwSpend += parseFloat(row['kw_spend_L30'] || 0);
+                        grandTotalPmtSpend += parseFloat(row['pmt_spend_L30'] || 0);
+                        grandTotalSpend += parseFloat(row['AD_Spend_L30'] || 0);
+                    }
+                });
+                
+                // Filtered data metrics (for other badges)
                 let totalPftAmt = 0;
                 let totalSalesAmt = 0;
                 let totalLpAmt = 0;
@@ -3189,12 +3025,11 @@
                 let lessAmzCount = 0;
                 let moreAmzCount = 0;
 
-                data.forEach(row => {
+                filteredData.forEach(row => {
                     const inv = parseFloat(row.INV || 0);
                     const ebayL30 = parseFloat(row['eBay L30'] || 0);
                     
                     if (inv > 0) {
-                        totalSpendL30 += parseFloat(row['AD_Spend_L30'] || 0);
                         totalPftAmt += parseFloat(row['Total_pft'] || 0);
                         totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
                         totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * ebayL30;
@@ -3245,7 +3080,7 @@
 
                 let totalWeightedPrice = 0;
                 let totalL30 = 0;
-                data.forEach(row => {
+                filteredData.forEach(row => {
                     if (parseFloat(row.INV) > 0) {
                         const price = parseFloat(row['eBay Price'] || 0);
                         const l30 = parseFloat(row['eBay L30'] || 0);
@@ -3254,34 +3089,48 @@
                     }
                 });
                 const avgPrice = totalL30 > 0 ? totalWeightedPrice / totalL30 : 0;
-                $('#avg-price-badge').text('Avg Price: $' + Math.round(avgPrice));
+                $('#avg-price-badge').text('Avg Price: $' + Math.round(avgPrice).toFixed(2));
 
                 let totalViews = 0;
-                data.forEach(row => {
+                filteredData.forEach(row => {
                     if (parseFloat(row.INV) > 0) {
                         totalViews += parseFloat(row.views || 0);
                     }
                 });
                 const avgCVR = totalViews > 0 ? (totalL30 / totalViews * 100) : 0;
-                const avgDilPercent = dilCount > 0 ? (totalDilPercent / dilCount) : 0;
-                const roiPercent = totalLpAmt > 0 ? Math.round((totalPftAmt / totalLpAmt) * 100) : 0;
-                const avgGpft = totalSalesAmt > 0 ? ((totalPftAmt / totalSalesAmt) * 100).toFixed(1) : '0.0';
                 
-                // Update all badges
+                // Calculate TACOS% = (Total Spend / Total Sales) * 100
+                const tacosPercent = totalSalesAmt > 0 ? ((grandTotalSpend / totalSalesAmt) * 100) : 0;
+                
+                // GROI% = (Total PFT / Total COGS) * 100
+                const groiPercent = totalLpAmt > 0 ? ((totalPftAmt / totalLpAmt) * 100) : 0;
+                
+                // GPFT% = (Total PFT / Total Sales) * 100
+                const avgGpft = totalSalesAmt > 0 ? ((totalPftAmt / totalSalesAmt) * 100) : 0;
+                
+                // NPFT% = GPFT% - TACOS%
+                const npftPercent = avgGpft - tacosPercent;
+                
+                // NROI% = GROI% - TACOS%
+                const nroiPercent = groiPercent - tacosPercent;
+                
+                // Update all badges (spend badges are loaded separately via AJAX to match KW/PMP pages)
                 $('#total-pft-amt-badge').text('Total PFT: $' + Math.round(totalPftAmt).toLocaleString());
                 $('#total-sales-amt-badge').text('Total Sales: $' + Math.round(totalSalesAmt).toLocaleString());
-                $('#avg-gpft-badge').text('AVG GPFT: ' + avgGpft + '%');
+                
+                $('#avg-gpft-badge').text('GPFT: ' + avgGpft.toFixed(1) + '%');
+                $('#avg-pft-badge').text('NPFT: ' + npftPercent.toFixed(1) + '%');
+                $('#groi-percent-badge').text('GROI: ' + groiPercent.toFixed(1) + '%');
+                $('#nroi-percent-badge').text('NROI: ' + nroiPercent.toFixed(1) + '%');
+                $('#tacos-percent-badge').text('TACOS: ' + tacosPercent.toFixed(1) + '%');
+                
                 $('#avg-price-badge').text('Avg Price: $' + avgPrice.toFixed(2));
-                $('#avg-cvr-badge').text('Avg CVR: ' + avgCVR.toFixed(1) + '%');
-                $('#total-inv-badge').text('Total INV: ' + Math.round(totalFbaInv).toLocaleString());
-                $('#total-fba-l30-badge').text('Total eBay L30: ' + Math.round(totalFbaL30).toLocaleString());
+                $('#avg-cvr-badge').text('CVR: ' + avgCVR.toFixed(1) + '%');
+                $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
+                $('#total-inv-badge').text('INV: ' + Math.round(totalFbaInv).toLocaleString());
+                
                 $('#zero-sold-count-badge').text('0 Sold: ' + zeroSoldCount.toLocaleString());
                 $('#more-sold-count-badge').text('> 0 Sold: ' + moreSoldCount.toLocaleString());
-                $('#avg-dil-badge').text('DIL%: ' + Math.round(avgDilPercent) + '%');
-                $('#total-cogs-badge').text('COGS: $' + Math.round(totalLpAmt).toLocaleString());
-                $('#roi-percent-badge').text('ROI%: ' + roiPercent + '%');
-                $('#total-views-badge').text('Views: ' + totalViews.toLocaleString());
-                $('#total-spend-badge').text('Total Spend: $' + totalSpendL30.toFixed(2));
                 $('#missing-count-badge').text('Missing: ' + missingCount.toLocaleString());
                 $('#map-count-badge').text('Map: ' + mapCount.toLocaleString());
                 $('#not-map-count-badge').text('N MP: ' + notMapCount.toLocaleString());
@@ -3440,7 +3289,7 @@
             // Toggle SPEND L30 breakdown columns
             document.addEventListener("click", function(e) {
                 if (e.target.classList.contains("toggle-spendL30-btn")) {
-                    let colsToToggle = ["kw_spend_L30", "kw_percent", "pmt_spend_L30", "pmt_percent"];
+                    let colsToToggle = ["kw_spend_L30", "pmt_spend_L30"];
 
                     colsToToggle.forEach(colField => {
                         let col = table.getColumn(colField);
@@ -3512,9 +3361,13 @@
                 'E Dil%': 'Dil%',
                 'eBay L30': 'eBay L30',
                 'eBay L60': 'eBay L60',
+                'eBay Stock': 'eBay Stock',
+                'Missing': 'Missing',
+                'MAP': 'MAP',
                 'eBay Price': 'eBay Price',
+                'A Price': 'A Price',
                 'lmp_price': 'LMP',
-                'AD_Spend_L30': 'AD Spend L30',
+                'AD_Spend_L30': 'Total Spend L30',
                 'AD_Sales_L30': 'AD Sales L30',
                 'AD_Units_L30': 'AD Units L30',
                 'AD%': 'AD%',
@@ -3522,7 +3375,7 @@
                 'T_Sale_l30': 'Total Sales L30',
                 'Total_pft': 'Total Profit',
                 'PFT %': 'PFT %',
-                'ROI%': 'ROI%',
+                'ROI%': 'GROI%',
                 'GPFT%': 'GPFT%',
                 'views': 'Views',
                 'nr_req': 'NR/REQ',
@@ -3534,7 +3387,9 @@
                 'Live': 'Live',
                 'SCVR': 'SCVR',
                 'kw_spend_L30': 'KW Spend L30',
-                'pmt_spend_L30': 'PMT Spend L30'
+                'pmt_spend_L30': 'PMT Spend L30',
+                'ebay2_ship': 'eBay2 Ship',
+                'LP_productmaster': 'LP'
             };
 
             // Build export columns list

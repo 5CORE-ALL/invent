@@ -1760,6 +1760,46 @@ class EbayController extends Controller
         }
     }
 
+    /**
+     * Get KW and PMT spend totals from reports (matches KW/PMP ads pages exactly)
+     * Uses the same queries as EbayKwAdsController and EbayPMPAdsController
+     */
+    public function getKwPmtSpendTotals()
+    {
+        try {
+            $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30);
+
+            // KW Spend: From ebay_priority_reports (L30 range)
+            $kwSpend = DB::table('ebay_priority_reports')
+                ->where('report_range', 'L30')
+                ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
+                ->selectRaw('SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")) as total_spend')
+                ->value('total_spend') ?? 0;
+
+            // PMT Spend: From ebay_general_reports (L30 range)
+            $pmtSpend = DB::table('ebay_general_reports')
+                ->where('report_range', 'L30')
+                ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
+                ->selectRaw('SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")) as total_spend')
+                ->value('total_spend') ?? 0;
+
+            $totalSpend = floatval($kwSpend) + floatval($pmtSpend);
+
+            return response()->json([
+                'success' => true,
+                'kw_spend' => floatval($kwSpend),
+                'pmt_spend' => floatval($pmtSpend),
+                'total_spend' => $totalSpend,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching eBay KW/PMT spend totals: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to fetch spend totals'
+            ], 500);
+        }
+    }
+
     public function updateEbayRating(Request $request)
     {
         $sku = strtoupper(trim($request->input('sku')));
