@@ -4394,6 +4394,10 @@
                     formData.append('operation', 'update');
                     formData.append('original_sku', this.getAttribute('data-original-sku'));
                     formData.append('original_parent', this.getAttribute('data-original-parent'));
+                    
+                    // Check if image is being updated
+                    const imageFileInput = document.getElementById('productImage');
+                    const isImageUpdate = imageFileInput && imageFileInput.files && imageFileInput.files.length > 0;
 
                     try {
                         const response = await fetch('/product_master/store', {
@@ -4442,27 +4446,80 @@
                         if (data.data) {
                             const updatedProduct = data.data;
                             
+                            // Debug logging
+                            console.log('Raw server response:', updatedProduct);
+                            console.log('Values type:', typeof updatedProduct.Values);
+                            console.log('Values value:', updatedProduct.Values);
+                            
                             // Extract Values JSON and flatten to top level for table rendering
                             let valuesObj = {};
                             if (updatedProduct.Values) {
                                 if (typeof updatedProduct.Values === 'string') {
                                     try {
                                         valuesObj = JSON.parse(updatedProduct.Values);
+                                        console.log('Parsed Values JSON:', valuesObj);
                                     } catch (e) {
+                                        console.error('Error parsing Values JSON:', e);
                                         valuesObj = {};
                                     }
-                                } else if (typeof updatedProduct.Values === 'object') {
+                                } else if (typeof updatedProduct.Values === 'object' && updatedProduct.Values !== null) {
                                     valuesObj = updatedProduct.Values;
+                                    console.log('Values is already object:', valuesObj);
                                 }
+                            } else {
+                                console.log('No Values in response');
                             }
                             
                             // Merge Values JSON fields into top level for easier access
                             const flattenedProduct = {...updatedProduct};
+                            
+                            // Process all Values fields
                             Object.keys(valuesObj).forEach(key => {
                                 if (valuesObj[key] !== null && valuesObj[key] !== undefined && valuesObj[key] !== '') {
-                                    flattenedProduct[key] = valuesObj[key];
+                                    // Special handling for image_path - ensure proper path format
+                                    if (key === 'image_path') {
+                                        let imagePath = valuesObj[key];
+                                        // Ensure path starts with / if it's a local path (not URL)
+                                        if (imagePath && typeof imagePath === 'string') {
+                                            // Remove any existing leading slash to avoid double slashes
+                                            imagePath = imagePath.trim();
+                                            if (!imagePath.startsWith('http://') && !imagePath.startsWith('https://') && !imagePath.startsWith('/')) {
+                                                imagePath = '/' + imagePath;
+                                            } else if (imagePath.startsWith('storage/')) {
+                                                // If it starts with storage/, ensure it has leading slash
+                                                imagePath = '/' + imagePath;
+                                            }
+                                        }
+                                        flattenedProduct[key] = imagePath;
+                                    } else {
+                                        flattenedProduct[key] = valuesObj[key];
+                                    }
                                 }
                             });
+                            
+                            // Also ensure image_path is at top level if it exists in Values but wasn't set above
+                            if (valuesObj.image_path && (!flattenedProduct.image_path || flattenedProduct.image_path === updatedProduct.image_path)) {
+                                let imagePath = valuesObj.image_path;
+                                if (imagePath && typeof imagePath === 'string') {
+                                    imagePath = imagePath.trim();
+                                    if (!imagePath.startsWith('http://') && !imagePath.startsWith('https://') && !imagePath.startsWith('/')) {
+                                        imagePath = '/' + imagePath;
+                                    } else if (imagePath.startsWith('storage/')) {
+                                        imagePath = '/' + imagePath;
+                                    }
+                                }
+                                flattenedProduct.image_path = imagePath;
+                            }
+                            
+                            // If image_path is already at top level, ensure it has proper format
+                            if (flattenedProduct.image_path && typeof flattenedProduct.image_path === 'string') {
+                                let imagePath = flattenedProduct.image_path.trim();
+                                if (!imagePath.startsWith('http://') && !imagePath.startsWith('https://') && !imagePath.startsWith('/')) {
+                                    flattenedProduct.image_path = '/' + imagePath;
+                                } else if (imagePath.startsWith('storage/')) {
+                                    flattenedProduct.image_path = '/' + imagePath;
+                                }
+                            }
                             
                             // Update tableData - ensure all fields are properly updated
                             const existingIndex = tableData.findIndex(p => {
@@ -4523,15 +4580,25 @@
                                 productMap.set(sku, flattenedProduct);
                             }
                             
-                            // Force immediate re-render with updated data
-                            // Reapply filters immediately to show updated data
-                            applyFilters();
-                            
-                            // Also setup edit/delete buttons again after re-render in case table was recreated
-                            setTimeout(() => {
-                                setupEditButtons();
-                                setupDeleteButtons();
-                            }, 100);
+                            // If image was updated, reload data to ensure proper image path from server
+                            // Server handles image path formatting (Shopify URLs, local paths with proper slashes, etc.)
+                            if (isImageUpdate) {
+                                console.log('Image was updated, reloading data...');
+                                console.log('Flattened product image_path:', flattenedProduct.image_path);
+                                // Reload data to get properly formatted image path from server
+                                // This ensures image shows correctly after update
+                                loadData();
+                            } else {
+                                // Force immediate re-render with updated data
+                                // Reapply filters immediately to show updated data
+                                applyFilters();
+                                
+                                // Also setup edit/delete buttons again after re-render in case table was recreated
+                                setTimeout(() => {
+                                    setupEditButtons();
+                                    setupDeleteButtons();
+                                }, 100);
+                            }
                         } else {
                             // If no data returned, reload with filters preserved
                             loadData();
