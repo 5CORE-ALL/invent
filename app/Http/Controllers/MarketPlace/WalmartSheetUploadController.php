@@ -12,6 +12,8 @@ use App\Models\WalmartCampaignReport;
 use App\Models\ShopifySku;
 use App\Models\AmazonDatasheet;
 use App\Models\WalmartDataView;
+use App\Models\ProductStockMapping;
+use App\Models\WalmartListingStatus;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -401,6 +403,15 @@ class WalmartSheetUploadController extends Controller
             // Fetch Walmart data view for sprice and other saved data
             $walmartDataView = WalmartDataView::whereIn('sku', $skus)->get()->keyBy('sku');
             
+            // Fetch product stock mappings for inventory_walmart
+            $productStockMappings = ProductStockMapping::whereIn('sku', $skus)->get()->keyBy('sku');
+            
+            // Fetch Walmart listing status for RL/NRL data
+            $walmartListingStatus = WalmartListingStatus::whereIn('sku', $skus)
+                ->orderBy('updated_at', 'desc')
+                ->get()
+                ->keyBy('sku');
+            
             // Fetch spend data from WalmartCampaignReport (L30) - campaign name matches SKU
             $normalizeSku = fn($sku) => strtoupper(trim(preg_replace('/\s+/', ' ', str_replace("\xc2\xa0", ' ', $sku))));
             $normalizedSkus = collect($skus)->map($normalizeSku)->values()->all();
@@ -423,6 +434,15 @@ class WalmartSheetUploadController extends Controller
                 $shopify = $shopifyData->get($sku);
                 $amazon = $amazonData->get($sku);
                 $dataView = $walmartDataView->get($sku);
+                $stockMapping = $productStockMappings->get($sku);
+                $listingStatus = $walmartListingStatus->get($sku);
+                
+                // Get RL/NRL from listing status
+                $rlNrl = null;
+                if ($listingStatus) {
+                    $statusValue = is_array($listingStatus->value) ? $listingStatus->value : (json_decode($listingStatus->value, true) ?? []);
+                    $rlNrl = $statusValue['rl_nrl'] ?? null;
+                }
                 
                 // Get campaign data
                 $normalizedSku = $normalizeSku($sku);
@@ -535,12 +555,43 @@ class WalmartSheetUploadController extends Controller
                 
                 // Ad metrics (from WalmartCampaignReport L30)
                 $spend = $adSpendL30;
+                
+                // Get inventory
+                $inv = $shopify ? intval($shopify->inv) : 0;
+                
+                // Get Walmart inventory (treat "Not Listed" as 0)
+                $wInv = $stockMapping ? ($stockMapping->inventory_walmart ?? 'Not Listed') : 'Not Listed';
+                $wInvNumeric = ($wInv === 'Not Listed' || $wInv === null || $wInv === '') ? 0 : intval($wInv);
+                
+                // Check if SKU is missing in Walmart
+                // M is only shown when: INV > 0 AND product is not in Walmart
+                $isMissing = !$price && $inv > 0;
+                
+                // Map status logic (only when INV > 0)
+                $mapStatus = '';
+                if ($inv > 0) {
+                    if ($isMissing) {
+                        // If product is missing in Walmart, don't show Nmap
+                        $mapStatus = '';
+                    } else {
+                        // Compare INV with W INV
+                        if ($inv == $wInvNumeric) {
+                            $mapStatus = 'Map';
+                        } else {
+                            $mapStatus = 'Nmap';
+                        }
+                    }
+                }
 
                 $row = [
                     'sku' => $pm->sku, // Use original SKU from ProductMaster
                     'parent' => $parent, // Add parent field (same as BestBuy)
-                    'INV' => $shopify ? intval($shopify->inv) : 0,
+                    'missing' => $isMissing ? 'M' : '', // M if missing in Walmart AND has inventory
+                    'map_status' => $mapStatus, // Map/Nmap status
+                    'rl_nrl' => $rlNrl ?? '', // RL/NRL from listing status
+                    'INV' => $inv,
                     'L30' => $shopify ? intval($shopify->quantity) : 0,
+                    'inventory_walmart' => $wInv,
                     'product_name' => $price->product_name ?? $listing->product_name ?? null,
                     'lp' => $lp,
                     'ship' => $ship,
@@ -838,13 +889,54 @@ class WalmartSheetUploadController extends Controller
             }
             
             // Allowed fields to update
-            $allowedFields = ['sprice'];
+            $allowedFields = ['sprice', 'rl_nrl'];
             
             if (!in_array($field, $allowedFields)) {
                 return response()->json(['error' => 'Field not allowed for update'], 400);
             }
             
-            // Find or create walmart_data_view record
+            // Handle rl_nrl field separately (save to walmart_listing_status)
+            if ($field === 'rl_nrl') {
+                Log::info('Updating RL/NRL', ['sku' => $sku, 'value' => $value]);
+                
+                // Get or create walmart_listing_status record
+                $listingStatus = WalmartListingStatus::where('sku', $sku)
+                    ->orderBy('updated_at', 'desc')
+                    ->first();
+                
+                if ($listingStatus) {
+                    $existingValue = is_array($listingStatus->value) ? $listingStatus->value : (json_decode($listingStatus->value, true) ?? []);
+                    Log::info('Existing listing status found', ['existing_value' => $existingValue]);
+                } else {
+                    $existingValue = [];
+                    Log::info('No existing listing status, creating new');
+                }
+                
+                // Update rl_nrl field
+                $existingValue['rl_nrl'] = $value;
+                
+                Log::info('Updated value', ['updated_value' => $existingValue]);
+                
+                // Delete any duplicates and create fresh record
+                WalmartListingStatus::where('sku', $sku)->delete();
+                $created = WalmartListingStatus::create([
+                    'sku' => $sku,
+                    'value' => $existingValue
+                ]);
+                
+                Log::info('RL/NRL saved successfully', ['id' => $created->id, 'sku' => $sku, 'value' => $existingValue]);
+                
+                return response()->json([
+                    'success' => true,
+                    'message' => 'RL/NRL updated successfully',
+                    'data' => [
+                        'sku' => $sku,
+                        'rl_nrl' => $value
+                    ]
+                ]);
+            }
+            
+            // Handle other fields (like sprice) - save to walmart_data_view
             $dataView = WalmartDataView::firstOrNew(['sku' => $sku]);
             
             // Get existing value array or create new one
