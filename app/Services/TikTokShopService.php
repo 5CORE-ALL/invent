@@ -131,7 +131,7 @@ class TikTokShopService
 
     /**
      * Generate signature for API request
-     * TikTok Shop API signature format: clientSecret + path + sorted_params + body + clientSecret
+     * TikTok Shop API signature: clientSecret + path + sorted_keyvalue_params + body + clientSecret, then SHA256
      */
     protected function generateSignature(string $path, array $params, string $body = ''): string
     {
@@ -147,7 +147,7 @@ class TikTokShopService
         // Append sorted parameters (key + value)
         foreach ($params as $key => $value) {
             if ($value !== null && $value !== '') {
-                $stringToSign .= $key . $value;
+                $stringToSign .= $key . (string)$value;
             }
         }
         
@@ -158,6 +158,37 @@ class TikTokShopService
         
         // Append clientSecret at the end
         $stringToSign .= $this->clientSecret;
+        
+        // Generate SHA256 hash (not HMAC, just hash)
+        return hash('sha256', $stringToSign);
+    }
+
+    /**
+     * Generate signature using alternative format (HMAC-SHA256)
+     * This is a fallback if the standard format doesn't work
+     */
+    protected function generateSignatureAlternative(string $path, array $params, string $body = ''): string
+    {
+        // Remove sign from params
+        unset($params['sign']);
+        
+        // Sort parameters alphabetically by key
+        ksort($params);
+        
+        // Build string to sign: path + sorted_params + body
+        $stringToSign = $path;
+        
+        // Append sorted parameters (key + value)
+        foreach ($params as $key => $value) {
+            if ($value !== null && $value !== '') {
+                $stringToSign .= $key . (string)$value;
+            }
+        }
+        
+        // Append body if exists
+        if (!empty($body)) {
+            $stringToSign .= $body;
+        }
         
         // Generate HMAC-SHA256 signature
         return hash_hmac('sha256', $stringToSign, $this->clientSecret);
@@ -178,17 +209,34 @@ class TikTokShopService
 
         $timestamp = time();
         
-        // Required parameters for all requests (order matters for signature)
-        $params = array_merge([
+        // Required parameters for all requests (must be in alphabetical order for signature)
+        $params = [
             'access_token' => $this->accessToken,
             'app_key' => $this->clientKey,
             'shop_id' => $this->shopId,
-            'timestamp' => (string)$timestamp, // Ensure it's a string
-        ], $queryParams);
+            'timestamp' => (string)$timestamp,
+        ];
+        
+        // Merge additional query params
+        $params = array_merge($params, $queryParams);
+        
+        // Remove any null or empty values before signature calculation
+        $params = array_filter($params, function($value) {
+            return $value !== null && $value !== '';
+        });
 
         // Generate signature BEFORE adding sign to params
         $bodyJson = !empty($body) ? json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : '';
         $sign = $this->generateSignature($path, $params, $bodyJson);
+        
+        // Log signature calculation for debugging
+        Log::debug('TikTok Signature Calculation', [
+            'path' => $path,
+            'params_count' => count($params),
+            'params_keys' => array_keys($params),
+            'body_length' => strlen($bodyJson),
+            'signature' => $sign
+        ]);
         
         // Add sign to params AFTER calculation
         $params['sign'] = $sign;
@@ -211,16 +259,51 @@ class TikTokShopService
                     ->withHeaders($headers)
                     ->post($url, $body);
             }
-            
-            // Log request for debugging
-            Log::debug('TikTok API Request', [
-                'method' => $method,
-                'url' => $url,
-                'status' => $response->status(),
-                'response' => $response->json()
-            ]);
 
             $data = $response->json();
+            
+            // Log request for debugging (hide sensitive data)
+            $logUrl = str_replace($this->accessToken, '***', $url);
+            Log::debug('TikTok API Request', [
+                'method' => $method,
+                'path' => $path,
+                'url' => $logUrl,
+                'status' => $response->status(),
+                'response_code' => $data['code'] ?? null,
+                'response_message' => $data['message'] ?? null
+            ]);
+            
+            // If signature error, log more details and try alternative signature format
+            if (isset($data['code']) && ($data['code'] == 106001 || (isset($data['message']) && strpos($data['message'], 'sign') !== false))) {
+                Log::error('TikTok Signature Error Details', [
+                    'path' => $path,
+                    'method' => $method,
+                    'params_keys' => array_keys($params),
+                    'signature_length' => strlen($sign),
+                    'body_length' => strlen($bodyJson),
+                    'response' => $data
+                ]);
+                
+                // Try alternative signature format (HMAC-SHA256 instead of SHA256)
+                $altSign = $this->generateSignatureAlternative($path, $params, $bodyJson);
+                if ($altSign !== $sign) {
+                    Log::info('Trying alternative signature format', ['alt_signature' => $altSign]);
+                    $params['sign'] = $altSign;
+                    $url = $this->apiBase . $path . '?' . http_build_query($params);
+                    
+                    if ($method === 'GET') {
+                        $response = Http::timeout(30)->withHeaders($headers)->get($url);
+                    } else {
+                        $response = Http::timeout(30)->withHeaders($headers)->post($url, $body);
+                    }
+                    $data = $response->json();
+                    
+                    if (!isset($data['code']) || $data['code'] != 106001) {
+                        Log::info('Alternative signature format worked!');
+                        return $data;
+                    }
+                }
+            }
 
             // Check for token expiry
             if (isset($data['code']) && $data['code'] === 105001) {
