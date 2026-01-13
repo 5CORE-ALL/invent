@@ -32,7 +32,22 @@ class SyncTikTokApiData extends Command
     public function handle()
     {
         $this->tiktokService = new TikTokShopService();
-
+        
+        // Set output callback to print debug info to console
+        $this->tiktokService->setOutputCallback(function($type, $message) {
+            switch ($type) {
+                case 'info':
+                    $this->line($message);
+                    break;
+                case 'error':
+                    $this->error($message);
+                    break;
+                case 'warn':
+                    $this->warn($message);
+                    break;
+            }
+        });
+        
         // Try to load tokens from env if not in cache
         if (!$this->tiktokService->isAuthenticated()) {
             $accessToken = env('TIKTOK_ACCESS_TOKEN');
@@ -126,6 +141,8 @@ class SyncTikTokApiData extends Command
             }
             
             // Proceed with syncing product data even if shop info fails
+            $this->info('');
+            $this->info('Fetching products from TikTok API...');
             $data = $this->tiktokService->syncAllProductData();
 
             if (!empty($data['errors'])) {
@@ -139,15 +156,22 @@ class SyncTikTokApiData extends Command
                 $this->warn('');
                 $this->warn('⚠ No data retrieved. Checking for API errors...');
                 $lastResponse = $this->tiktokService->getLastResponse();
-                if ($lastResponse && isset($lastResponse['code']) && $lastResponse['code'] != 0) {
-                    $this->error('API Error Code: ' . $lastResponse['code']);
-                    $this->error('API Error Message: ' . ($lastResponse['message'] ?? 'No message'));
-                    if (isset($lastResponse['validation_failures'])) {
-                        $this->error('Validation Failures: ' . json_encode($lastResponse['validation_failures'], JSON_PRETTY_PRINT));
+                if ($lastResponse) {
+                    if (isset($lastResponse['code']) && $lastResponse['code'] != 0) {
+                        $this->error('API Error Code: ' . $lastResponse['code']);
+                        $this->error('API Error Message: ' . ($lastResponse['message'] ?? 'No message'));
+                        if (isset($lastResponse['validation_failures'])) {
+                            $this->error('Validation Failures: ' . json_encode($lastResponse['validation_failures'], JSON_PRETTY_PRINT));
+                        }
+                        if (isset($lastResponse['request_id'])) {
+                            $this->line('Request ID: ' . $lastResponse['request_id']);
+                        }
+                    } else {
+                        $this->info('Last API Response (no error code):');
+                        $this->line(json_encode($lastResponse, JSON_PRETTY_PRINT));
                     }
-                    if (isset($lastResponse['request_id'])) {
-                        $this->line('Request ID: ' . $lastResponse['request_id']);
-                    }
+                } else {
+                    $this->warn('No last response available. Check logs for details.');
                 }
             }
 

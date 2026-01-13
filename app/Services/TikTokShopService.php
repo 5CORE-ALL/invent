@@ -17,6 +17,7 @@ class TikTokShopService
     protected $refreshToken;
     protected $lastResponse = null;
     protected $lastResponseCode = null;
+    protected $outputCallback = null;
 
     public function __construct()
     {
@@ -109,19 +110,29 @@ class TikTokShopService
     }
 
     /**
+     * Set output callback for console output
+     */
+    public function setOutputCallback(callable $callback): void
+    {
+        $this->outputCallback = $callback;
+    }
+
+    /**
      * Get products list using the library
      */
     public function getProducts(int $pageSize = 20, string $cursor = '', int $status = 0, $outputCallback = null): ?array
     {
+        $callback = $outputCallback ?? $this->outputCallback;
+        
         try {
             if (!$this->accessToken) {
+                if ($callback) $callback('error', 'No access token available');
                 return null;
             }
             
             $this->client->setAccessToken($this->accessToken);
             
             // Build request body with required page_size
-            // Library method likely expects body as single parameter (like inventorySearch)
             $body = [
                 'page_size' => min($pageSize, 50),
             ];
@@ -134,26 +145,54 @@ class TikTokShopService
                 $body['product_status'] = $status;
             }
 
-            // Call searchProducts with body as single parameter (consistent with inventorySearch)
+            if ($callback) {
+                $callback('info', 'Calling Product->searchProducts() with body: ' . json_encode($body));
+            }
+
+            // Call searchProducts with body as single parameter
             $response = $this->client->Product->searchProducts($body);
             $this->lastResponse = $response;
             
+            if ($callback) {
+                $callback('info', 'Response received. Keys: ' . implode(', ', array_keys($response)));
+                if (isset($response['code'])) {
+                    $callback('info', 'Response code: ' . $response['code']);
+                }
+            }
+            
+            // Check for error in response
+            if (isset($response['code']) && $response['code'] != 0) {
+                $errorMsg = 'API Error Code: ' . $response['code'] . ', Message: ' . ($response['message'] ?? 'No message');
+                if ($callback) {
+                    $callback('error', $errorMsg);
+                    $callback('error', 'Full response: ' . json_encode($response, JSON_PRETTY_PRINT));
+                }
+            }
+            
             return $response;
         } catch (\EcomPHP\TiktokShop\Errors\TokenException $e) {
+            if ($callback) {
+                $callback('info', 'Token expired, attempting to refresh...');
+            }
             // Token expired - refresh and retry
             if ($this->refreshAccessToken()) {
                 $this->client->setAccessToken($this->accessToken);
                 $response = $this->client->Product->searchProducts($body);
                 $this->lastResponse = $response;
+                if ($callback) {
+                    $callback('info', 'Token refreshed, retry successful');
+                }
                 return $response;
             }
-            Log::error('TikTok getProducts failed', ['error' => $e->getMessage()]);
+            if ($callback) {
+                $callback('error', 'Failed to refresh token: ' . $e->getMessage());
+            }
             return null;
         } catch (\Exception $e) {
-            if ($outputCallback) {
-                $outputCallback('error', 'Error getting products: ' . $e->getMessage());
+            if ($callback) {
+                $callback('error', 'Exception getting products: ' . $e->getMessage());
+                $callback('error', 'Exception class: ' . get_class($e));
             }
-            Log::error('TikTok getProducts failed', ['error' => $e->getMessage()]);
             return null;
         }
     }
@@ -169,29 +208,94 @@ class TikTokShopService
         $page = 1;
 
         while ($hasMore) {
-            $response = $this->getProducts(50, $cursor, $status);
+            if ($this->outputCallback) {
+                $this->outputCallback('info', "Fetching products page {$page}...");
+            }
+
+            $response = $this->getProducts(50, $cursor, $status, $this->outputCallback);
 
             if (!$response) {
-                Log::error('TikTok getAllProducts failed', ['page' => $page]);
+                if ($this->outputCallback) {
+                    $this->outputCallback('error', "Page {$page}: No response received");
+                }
+                break;
+            }
+
+            // Debug first response structure
+            if ($page === 1) {
+                if ($this->outputCallback) {
+                    $this->outputCallback('info', 'First response structure:');
+                    $this->outputCallback('info', '  Response keys: ' . implode(', ', array_keys($response)));
+                    $this->outputCallback('info', '  Has "data" key: ' . (isset($response['data']) ? 'Yes' : 'No'));
+                    $this->outputCallback('info', '  Has "products" key: ' . (isset($response['products']) ? 'Yes' : 'No'));
+                    if (isset($response['data']) && is_array($response['data'])) {
+                        $this->outputCallback('info', '  Data keys: ' . implode(', ', array_keys($response['data'])));
+                    }
+                    $this->outputCallback('info', '  Full response: ' . json_encode($response, JSON_PRETTY_PRINT));
+                }
+            }
+
+            // Check for error in response
+            if (isset($response['code']) && $response['code'] != 0) {
+                if ($this->outputCallback) {
+                    $this->outputCallback('error', "API Error on page {$page}: Code {$response['code']}, Message: " . ($response['message'] ?? 'No message'));
+                }
                 break;
             }
 
             // Library returns data in different format
-            $products = $response['data']['products'] ?? $response['products'] ?? [];
+            $products = $response['data']['products'] ?? $response['products'] ?? $response['data'] ?? [];
+            
+            // Handle case where products might be directly in response
+            if (empty($products) && isset($response['data']) && is_array($response['data'])) {
+                // Try to find products array in nested structure
+                foreach ($response['data'] as $key => $value) {
+                    if (is_array($value) && isset($value[0]) && (isset($value[0]['id']) || isset($value[0]['product_id']))) {
+                        $products = $value;
+                        if ($this->outputCallback) {
+                            $this->outputCallback('info', "Found products in data.{$key} key");
+                        }
+                        break;
+                    }
+                }
+            }
+
             if (!empty($products)) {
                 $allProducts = array_merge($allProducts, $products);
+                if ($this->outputCallback) {
+                    $this->outputCallback('info', "Page {$page}: Found " . count($products) . " products (Total: " . count($allProducts) . ")");
+                }
+            } else {
+                if ($this->outputCallback) {
+                    $this->outputCallback('warn', "Page {$page}: No products found in response");
+                    $this->outputCallback('info', 'Response structure: ' . json_encode($response, JSON_PRETTY_PRINT));
+                }
             }
 
             $hasMore = isset($response['data']['more']) && $response['data']['more'];
             $cursor = $response['data']['next_cursor'] ?? $response['data']['cursor'] ?? $response['next_cursor'] ?? '';
 
+            // If no cursor and no more flag, assume no more pages
+            if (empty($cursor) && !$hasMore) {
+                if ($this->outputCallback) {
+                    $this->outputCallback('info', 'No more pages (no cursor and more=false)');
+                }
+                break;
+            }
+
             if (count($allProducts) > 10000) {
-                Log::warning('TikTok getAllProducts: Reached safety limit of 10000 products');
+                if ($this->outputCallback) {
+                    $this->outputCallback('warn', 'Reached safety limit of 10000 products');
+                }
                 break;
             }
 
             $page++;
             usleep(200000);
+        }
+
+        if ($this->outputCallback) {
+            $this->outputCallback('info', "Completed fetching products: " . count($allProducts) . " total products from " . ($page - 1) . " pages");
         }
 
         return $allProducts;
