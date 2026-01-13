@@ -159,6 +159,33 @@ class TikTokShopService
     }
 
     /**
+     * Generate signature with URL-encoded parameter values
+     * Some TikTok API versions require URL encoding in signature
+     */
+    protected function generateSignatureWithUrlEncoding(string $path, array $params, string $body = ''): string
+    {
+        unset($params['sign']);
+        ksort($params);
+        
+        $stringToSign = $this->clientSecret . $path;
+        
+        // Use URL-encoded values in signature
+        foreach ($params as $key => $value) {
+            if ($value !== null && $value !== '') {
+                $stringToSign .= $key . rawurlencode((string)$value);
+            }
+        }
+        
+        if (!empty($body)) {
+            $stringToSign .= $body;
+        }
+        
+        $stringToSign .= $this->clientSecret;
+        
+        return hash('sha256', $stringToSign);
+    }
+
+    /**
      * Make authenticated API request - EXACT format from working orders endpoint
      */
     protected function apiRequest(string $method, string $path, array $queryParams = [], array $body = [], bool $includeShopId = true, $outputCallback = null): ?array
@@ -196,8 +223,12 @@ class TikTokShopService
         $bodyJson = !empty($body) ? json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : '';
         $bodyJsonForSign = !empty($bodyJson) ? preg_replace('/\s+/', '', $bodyJson) : '';
         
+        // CRITICAL: Sort params BEFORE signature calculation (TikTok requirement)
+        ksort($params);
+        
         // Generate signature BEFORE adding sign to params
-        $sign = $this->generateSignature($path, $params, $bodyJsonForSign);
+        // Try with URL-encoded parameter values (TikTok might require this)
+        $sign = $this->generateSignatureWithUrlEncoding($path, $params, $bodyJsonForSign);
         
         // Add sign to params AFTER calculation
         $params['sign'] = $sign;
