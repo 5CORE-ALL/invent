@@ -1392,6 +1392,42 @@
                         width: 80
                     },
                     {
+                        title: "GPFT",
+                        field: "GPFT",
+                        hozAlign: "right",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return value.toFixed(2);
+                        },
+                        sorter: "number",
+                        width: 80
+                    },
+                    {
+                        title: "SPRICE",
+                        field: "SPRICE",
+                        hozAlign: "right",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return "$" + value.toFixed(2);
+                        },
+                        sorter: "number",
+                        width: 90
+                    },
+                    {
+                        title: "SGPFT",
+                        field: "SGPFT",
+                        hozAlign: "right",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return value.toFixed(2);
+                        },
+                        sorter: "number",
+                        width: 80
+                    },
+                    {
                         title: "FBA",
                         field: "FBA",
                         formatter: function(cell) {
@@ -2181,7 +2217,7 @@
                         }
                     }
                     
-                    // Price info icon toggle for PFT% and ROI%
+                    // Price info icon toggle for PFT%, ROI%, GPFT, SPRICE, SGPFT
                     if (e.target.classList.contains('info-icon-price-toggle')) {
                         e.stopPropagation();
                         var pftCol = table.getColumn('PFT');
@@ -2191,9 +2227,15 @@
                         if (pftCol.isVisible()) {
                             table.hideColumn('PFT');
                             table.hideColumn('roi');
+                            table.hideColumn('GPFT');
+                            table.hideColumn('SPRICE');
+                            table.hideColumn('SGPFT');
                         } else {
                             table.showColumn('PFT');
                             table.showColumn('roi');
+                            table.showColumn('GPFT');
+                            table.showColumn('SPRICE');
+                            table.showColumn('SGPFT');
                         }
                     }
 
