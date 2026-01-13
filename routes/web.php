@@ -186,7 +186,7 @@ use App\Http\Controllers\Campaigns\Ebay3RunningAdsController;
 use App\Http\Controllers\Campaigns\Ebay3UtilizedAdsController;
 use App\Http\Controllers\Campaigns\Ebay2UtilizedAdsController;
 use App\Http\Controllers\Campaigns\EbayKwAdsController;
-use App\Http\Controllers\Campaigns\TemuPmtAdsController;
+use App\Http\Controllers\TemuAdsController;
 use App\Http\Controllers\Campaigns\EbayOverUtilizedBgtController;
 use App\Http\Controllers\Campaigns\EbayPinkDilAdController;
 use App\Http\Controllers\Campaigns\EbayPMPAdsController;
@@ -2951,10 +2951,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/update-google-nr-data', 'updateGoogleNrData');
     });
 
-    Route::controller(TemuPmtAdsController::class)->group(function () {
+    Route::controller(TemuAdsController::class)->group(function () {
         Route::get('/temu/ads', 'index')->name('temu.ads');
-        Route::get('/temu/ads/data', 'getTemuPmtAdsData');
-        Route::post('/temu/ads/update', 'updateTemuPmtAds')->name('temu.ads.update');
+        Route::get('/temu/ads/data', 'getTemuAdsData');
+        Route::post('/temu/ads/update', 'updateTemuAds')->name('temu.ads.update');
+        Route::post('/temu/ads/upload-campaign-report', 'uploadCampaignReport')->name('temu.ads.upload.campaign');
     });
 
     Route::controller(TiktokAdsController::class)->group(function () {

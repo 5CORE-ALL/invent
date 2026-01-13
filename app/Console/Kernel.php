@@ -70,6 +70,8 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\MetaAdsImportRawCommand::class,
         \App\Console\Commands\MetaAdsAutomationCommand::class,
         \App\Console\Commands\MetaAdsSyncAdsCommand::class,
+        \App\Console\Commands\MetaAdsProcessQueue::class,
+        \App\Console\Commands\MetaAdsProcessQueuePriority::class,
         \App\Console\Commands\SyncFbaShipmentStatus::class,
         \App\Console\Commands\StoreAmazonUtilizationCounts::class,
         \App\Console\Commands\StoreAmazonFbaUtilizationCounts::class,
