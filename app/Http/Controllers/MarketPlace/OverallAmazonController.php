@@ -2246,6 +2246,70 @@ class OverallAmazonController extends Controller
     }
 
     /**
+     * Clear SPRICE for selected SKUs
+     */
+    public function clearAmazonSprice(Request $request)
+    {
+        try {
+            $updates = $request->input('updates', []);
+            
+            if (empty($updates)) {
+                return response()->json(['error' => 'No SKUs provided'], 400);
+            }
+
+            $clearedCount = 0;
+            
+            foreach ($updates as $update) {
+                $sku = strtoupper($update['sku'] ?? '');
+                
+                if (empty($sku)) {
+                    continue;
+                }
+                
+                // Find the amazon_data_view record
+                $amazonDataView = AmazonDataView::where('sku', $sku)->first();
+                
+                if ($amazonDataView) {
+                    // Decode value column safely
+                    $existing = is_array($amazonDataView->value)
+                        ? $amazonDataView->value
+                        : (json_decode($amazonDataView->value ?? '{}', true) ?? []);
+                    
+                    // Clear SPRICE related fields
+                    $existing['SPRICE'] = null;
+                    $existing['SPFT'] = null;
+                    $existing['SROI'] = null;
+                    $existing['SGPFT'] = null;
+                    $existing['SPRICE_STATUS'] = null;
+                    
+                    $amazonDataView->value = $existing;
+                    $amazonDataView->save();
+                    
+                    $clearedCount++;
+                }
+            }
+            
+            Log::info('SPRICE cleared successfully', ['count' => $clearedCount]);
+            
+            return response()->json([
+                'success' => true,
+                'message' => "SPRICE cleared for {$clearedCount} SKU(s)",
+                'cleared_count' => $clearedCount
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error clearing SPRICE', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'error' => 'Failed to clear SPRICE: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Apply Amazon price with automatic verification
      * 
      * IMPORTANT FIX: The AmazonSpApiService now includes automatic verification
@@ -2847,6 +2911,11 @@ class OverallAmazonController extends Controller
     public function exportAmazonPricingCVR(Request $request)
     {
         return $this->amazonDataService->exportPricingCVRToCSV($request);
+    }
+
+    public function exportAmazonSpriceUpload(Request $request)
+    {
+        return $this->amazonDataService->exportSpriceForUpload($request);
     }
 
     public function downloadAmazonRatingsSample(Request $request)
