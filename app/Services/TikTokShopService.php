@@ -130,7 +130,8 @@ class TikTokShopService
     }
 
     /**
-     * Generate signature for API request - EXACT format from working orders endpoint
+     * Generate signature for API request
+     * TikTok Shop API signature format per documentation: https://m.tiktok.shop/s/AIu6dbFhs2XW
      * Format: app_secret + path + sorted_params(key+value) + body + app_secret, then SHA256
      */
     protected function generateSignature(string $path, array $params, string $body = ''): string
@@ -152,13 +153,15 @@ class TikTokShopService
         
         $stringToSign .= $this->clientSecret;
         
-        return hash('sha256', $stringToSign);
+        $signature = hash('sha256', $stringToSign);
+        
+        return $signature;
     }
 
     /**
      * Make authenticated API request - EXACT format from working orders endpoint
      */
-    protected function apiRequest(string $method, string $path, array $queryParams = [], array $body = [], bool $includeShopId = true): ?array
+    protected function apiRequest(string $method, string $path, array $queryParams = [], array $body = [], bool $includeShopId = true, $outputCallback = null): ?array
     {
         if (!$this->accessToken) {
             if (!$this->refreshAccessToken()) {
@@ -189,13 +192,51 @@ class TikTokShopService
             return $value !== null && $value !== '';
         });
 
+        // For signature: body must be minified JSON (no spaces, no newlines)
         $bodyJson = !empty($body) ? json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : '';
         $bodyJsonForSign = !empty($bodyJson) ? preg_replace('/\s+/', '', $bodyJson) : '';
+        
+        // Generate signature BEFORE adding sign to params
         $sign = $this->generateSignature($path, $params, $bodyJsonForSign);
         
+        // Add sign to params AFTER calculation
         $params['sign'] = $sign;
-        $queryString = http_build_query($params);
+        
+        // Build query string - ensure proper encoding
+        $queryString = http_build_query($params, '', '&', PHP_QUERY_RFC3986);
         $url = $this->apiBase . $path . '?' . $queryString;
+        
+        // DEBUG OUTPUT
+        if ($outputCallback) {
+            $outputCallback('info', '');
+            $outputCallback('info', '=== TikTok API Request Debug ===');
+            $outputCallback('info', 'Method: ' . $method);
+            $outputCallback('info', 'Path: ' . $path);
+            $outputCallback('info', 'Params (before sign): ' . json_encode($params, JSON_PRETTY_PRINT));
+            $outputCallback('info', 'Body JSON: ' . ($bodyJson ?: '(empty)'));
+            $outputCallback('info', 'Body for signature: ' . ($bodyJsonForSign ?: '(empty)'));
+            
+            // Show signature calculation
+            $debugParams = $params;
+            unset($debugParams['sign']);
+            ksort($debugParams);
+            $stringToSign = $this->clientSecret . $path;
+            foreach ($debugParams as $key => $value) {
+                if ($value !== null && $value !== '') {
+                    $stringToSign .= $key . (string)$value;
+                }
+            }
+            if (!empty($bodyJsonForSign)) {
+                $stringToSign .= $bodyJsonForSign;
+            }
+            $stringToSign .= $this->clientSecret;
+            
+            $outputCallback('info', 'String to sign (length: ' . strlen($stringToSign) . '): ' . substr($stringToSign, 0, 200) . '...');
+            $outputCallback('info', 'Generated Signature: ' . $sign);
+            $outputCallback('info', 'Client Secret (first 10 chars): ' . substr($this->clientSecret, 0, 10) . '...');
+            $outputCallback('info', 'Full URL: ' . $url);
+            $outputCallback('info', '===============================');
+        }
 
         try {
             $headers = ['Content-Type' => 'application/json'];
@@ -210,27 +251,22 @@ class TikTokShopService
             $this->lastResponse = $data;
             $this->lastResponseCode = $data['code'] ?? null;
             
-            if (isset($data['code']) && $data['code'] != 0) {
-                Log::error('TikTok API Error', [
-                    'code' => $data['code'] ?? 'unknown',
-                    'message' => $data['message'] ?? 'No message',
-                    'path' => $path,
-                    'method' => $method,
-                ]);
+            if ($outputCallback && isset($data['code']) && $data['code'] != 0) {
+                $outputCallback('error', 'API Response Code: ' . ($data['code'] ?? 'unknown'));
+                $outputCallback('error', 'API Response Message: ' . ($data['message'] ?? 'No message'));
             }
 
             if (isset($data['code']) && $data['code'] === 105001) {
                 if ($this->refreshAccessToken()) {
-                    return $this->apiRequest($method, $path, $queryParams, $body, $includeShopId);
+                    return $this->apiRequest($method, $path, $queryParams, $body, $includeShopId, $outputCallback);
                 }
             }
 
             return $data;
         } catch (\Exception $e) {
-            Log::error('TikTok API request failed', [
-                'path' => $path,
-                'error' => $e->getMessage()
-            ]);
+            if ($outputCallback) {
+                $outputCallback('error', 'Exception: ' . $e->getMessage());
+            }
             return null;
         }
     }
@@ -265,16 +301,16 @@ class TikTokShopService
     /**
      * Get shop info - using same pattern as orders
      */
-    public function getShopInfo(): ?array
+    public function getShopInfo($outputCallback = null): ?array
     {
         $path = '/api/shop/get_authorized_shop';
-        return $this->apiRequest('GET', $path, [], [], false);
+        return $this->apiRequest('GET', $path, [], [], false, $outputCallback);
     }
 
     /**
      * Get products list - using EXACT same pattern as orders
      */
-    public function getProducts(int $pageSize = 20, string $cursor = '', int $status = 0): ?array
+    public function getProducts(int $pageSize = 20, string $cursor = '', int $status = 0, $outputCallback = null): ?array
     {
         $path = '/api/products/search';
 
@@ -290,7 +326,7 @@ class TikTokShopService
             $body['product_status'] = $status;
         }
 
-        return $this->apiRequest('POST', $path, [], $body);
+        return $this->apiRequest('POST', $path, [], $body, true, $outputCallback);
     }
 
     /**

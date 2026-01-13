@@ -59,6 +59,25 @@ class SyncTikTokApiData extends Command
             $this->info($this->tiktokService->getAuthorizationUrl());
             return 1;
         }
+        
+        // Verify credentials are loaded
+        $this->info('Verifying credentials...');
+        $clientKey = config('services.tiktok.client_key');
+        $clientSecret = config('services.tiktok.client_secret');
+        $shopId = config('services.tiktok.shop_id');
+        
+        if (empty($clientKey) || empty($clientSecret)) {
+            $this->error('❌ Missing TikTok credentials in config!');
+            $this->info('Please check your .env file has:');
+            $this->info('  TIKTOK_CLIENT_KEY');
+            $this->info('  TIKTOK_CLIENT_SECRET');
+            return 1;
+        }
+        
+        $this->info('✓ Client Key: ' . substr($clientKey, 0, 10) . '...');
+        $this->info('✓ Client Secret: ' . (strlen($clientSecret) > 0 ? substr($clientSecret, 0, 10) . '...' : 'MISSING'));
+        $this->info('✓ Shop ID: ' . ($shopId ?? 'NOT SET'));
+        $this->info('✓ Access Token: ' . (strlen(env('TIKTOK_ACCESS_TOKEN') ?? '') > 0 ? substr(env('TIKTOK_ACCESS_TOKEN'), 0, 20) . '...' : 'MISSING'));
 
         $this->info('Starting TikTok API data sync...');
 
@@ -67,7 +86,17 @@ class SyncTikTokApiData extends Command
             $this->info('Fetching products, inventory, analytics, and reviews from TikTok API...');
             
             // First, test shop info to verify connection (non-blocking)
-            $shopInfo = $this->tiktokService->getShopInfo();
+            $this->info('');
+            $this->info('Testing shop info endpoint...');
+            $command = $this;
+            $shopInfo = $this->tiktokService->getShopInfo(function($type, $message) use ($command) {
+                if ($type === 'info') {
+                    $command->line($message);
+                } elseif ($type === 'error') {
+                    $command->error($message);
+                }
+            });
+            
             if ($shopInfo && isset($shopInfo['data'])) {
                 $this->info('✓ Connected to TikTok Shop API');
             } else {
