@@ -98,6 +98,38 @@
             opacity: 0.8 !important;
         }
 
+        /* Inventory table header styling */
+        #inventoryDataTable thead th {
+            background-color: #2c6ed5 !important;
+            color: white !important;
+            font-weight: 700 !important;
+            font-size: 20px !important;
+            position: sticky !important;
+            top: 0 !important;
+            z-index: 10 !important;
+            padding: 12px 15px !important;
+            border-bottom: 2px solid #1a56b7 !important;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1) !important;
+        }
+
+        #inventoryDataTable thead th:hover {
+            background-color: #1a56b7 !important;
+        }
+
+        #inventoryDataTable tbody td {
+            padding: 10px 15px !important;
+            vertical-align: middle !important;
+            border-bottom: 1px solid #e0e0e0 !important;
+        }
+
+        #inventoryDataTable tbody tr:nth-child(even) {
+            background-color: #f8fafc !important;
+        }
+
+        #inventoryDataTable tbody tr:hover {
+            background-color: #ebf2fb !important;
+        }
+
         /* Large Error Display */
         .error-alert-large {
             position: fixed;
@@ -202,6 +234,87 @@
             font-size: 22px;
         }
 
+        /* DIL% Color Rules - matching verification-adjustment view */
+        .dil-percent-value {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+
+        .dil-percent-value.red {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        .dil-percent-value.yellow {
+            background-color: #ffc107;
+            color: #212529;
+        }
+
+        .dil-percent-value.green {
+            background-color: #28a745;
+            color: white;
+        }
+
+        .dil-percent-value.pink {
+            background-color: #e83e8c;
+            color: white;
+        }
+
+
+        /* Two column layout adjustments */
+        .col-md-6 {
+            padding-right: 10px;
+            padding-left: 10px;
+        }
+
+        #inventoryTableContainer {
+            height: calc(100vh - 250px);
+            max-height: calc(100vh - 250px);
+        }
+
+        /* Stock Balance Form Container Styling */
+        .stock-balance-form-container {
+            height: calc(100vh - 250px);
+            max-height: calc(100vh - 250px);
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            background-color: #fff;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .stock-balance-form-header {
+            background-color: #2c6ed5;
+            color: white;
+            padding: 12px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #1a56b7;
+            font-weight: 700;
+            font-size: 20px;
+        }
+
+        .stock-balance-form-header .btn-close {
+            background-color: transparent;
+            border: none;
+            opacity: 1;
+            filter: invert(1) grayscale(100%) brightness(200%);
+        }
+
+        .stock-balance-form-header .btn-close:hover {
+            opacity: 0.8;
+        }
+
+        .stock-balance-form-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+        }
+
     </style>
 @endsection
 
@@ -220,7 +333,7 @@
                     <!-- Search Box and Add Button-->
                     <div class="row mb-3">
                         <div class="col-md-6 d-flex align-items-center">
-                            <button type="button" class="btn btn-primary" id="openAddWarehouseModal" data-bs-toggle="modal" data-bs-target="#addWarehouseModal">
+                            <button type="button" class="btn btn-primary" id="toggleStockBalanceForm">
                                 <i class="fas fa-plus me-1"></i> CREATE STOCK BALANCE
                             </button>
                             <div class="dataTables_length ms-3"></div>
@@ -246,130 +359,6 @@
                         </button>
                     </div> -->
 
-                    <!-- Transfer Modal -->
-                    <!-- Transfer Stock Modal -->
-                    <div class="modal fade" id="addWarehouseModal" tabindex="-1" aria-labelledby="transferStockModalLabel" aria-hidden="true">
-                    <div class="modal-dialog modal-xl">
-                        <div class="modal-content">
-
-                        <div class="modal-header">
-                            <h5 class="modal-title"> Stock Balance</h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                        </div>
-
-                        <div class="modal-body">
-                            <form id="stockBalanceForm">
-                                @csrf
-
-                            <div class="row">
-                                <!-- From Warehouse Section -->
-                                <div class="col-md-6 p-3">
-                                <h5><strong>From</strong></h5>
-
-                                
-                                <!-- <div class="mb-3">
-                                    <label>SKU</label>
-                                    <select name="to_sku" class="form-control">
-                                    <option value="">Select SKU</option>
-                                    </select>
-                                </div> -->
-
-                                <div class="mb-3">
-                                    <label for="to_sku" class="form-label fw-bold">SKU</label>
-                                    <select class="form-select" id="to_sku" name="to_sku" required>
-                                        <option selected disabled>Select SKU</option>
-                                        @foreach($skus as $item)
-                                            <option value="{{ $item->sku }}" data-parent="{{ $item->parent }}" data-to_available_qty="{{ $item->available_quantity }}" data-to_dil="{{ $item->dil }}">{{ $item->sku }}</option>
-                                        @endforeach
-                                    </select>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="to_parent_name" class="form-label fw-bold">Parent</label>
-                                    <input type="text" class="form-control" id="to_parent_name" name="to_parent_name" readonly>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="to_available_qty" class="form-label fw-bold">Available Qty</label>
-                                    <input type="number" id="to_available_qty" name="to_available_qty" class="form-control" readonly>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="to_dil_percent" class="form-label fw-bold">Dil%</label>
-                                    <input type="number" id="to_dil_percent" name="to_dil_percent" class="form-control" min="0" max="100" step="0.01">
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="to_adjust_qty" class="form-label fw-bold">Qty Adj</label>
-                                    <input type="number" id="to_adjust_qty" name="to_adjust_qty" class="form-control" min="1" required>
-                                </div>
-                                </div>
-
-                                <!-- To Warehouse Section -->
-                                <div class="col-md-6 p-3">
-                                <h5><strong> TO </strong></h5>
-
-                                <div class="mb-3">
-                                    <label for="from_sku" class="form-label fw-bold">SKU</label>
-                                    <select class="form-select" id="from_sku" name="from_sku" required>
-                                        <option selected disabled>Select SKU</option>
-                                        @foreach($skus as $item)
-                                            <option value="{{ $item->sku }}" data-parent="{{ $item->parent }}"  data-available_qty="{{ $item->available_quantity }}" data-dil="{{ $item->dil }}">{{ $item->sku }}</option>
-                                        @endforeach
-                                    </select>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="from_parent_name" class="form-label fw-bold">Parent</label>
-                                    <input type="text" class="form-control" id="from_parent_name" name="from_parent_name" readonly>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="from_available_qty" class="form-label fw-bold">Available Qty</label>
-                                    <input type="number" id="from_available_qty" name="from_available_qty" class="form-control" readonly>
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="from_dil_percent" class="form-label fw-bold">Dil%</label>
-                                    <input type="number" id="from_dil_percent" name="from_dil_percent" class="form-control" min="0" max="100" step="0.01">
-                                </div>
-
-                                <div class="mb-3">
-                                    <label for="from_adjust_qty" class="form-label fw-bold">Qty Adj</label>
-                                    <input type="number" id="from_adjust_qty" name="from_adjust_qty" class="form-control" min="1" required>
-                                    <small class="text-muted" id="from_qty_hint"></small>
-                                </div>
-
-                                <!-- <div class="mb-3 text-center">
-                                    <label><strong>To</strong></label>
-                                </div> -->
-                                </div>
-                            </div>
-
-                            <div class="row">
-                                <div class="col-12 p-3">
-                                    <div class="mb-3">
-                                        <label for="ratio" class="form-label fw-bold">Ratio</label>
-                                        <select class="form-select" id="ratio" name="ratio">
-                                            <option value="1:4">1:4 ratio</option>
-                                            <option value="1:2">1:2 ratio</option>
-                                            <option value="1:1" selected>1:1 ratio</option>
-                                            <option value="2:1">2:1 ratio</option>
-                                            <option value="4:1">4:1 ratio</option>
-                                        </select>
-                                    </div>
-                                    <div class="mt-3 text-end">
-                                        <button type="submit" class="btn btn-success">Submit</button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            </form>
-                        </div>
-
-                        </div>
-                    </div>
-                    </div>
 
 
 
@@ -395,8 +384,168 @@
                         </div>
                     </div>
 
-                    <!-- DataTable -->
-                    <div class="table-responsive">
+                    <!-- History and Inventory Buttons -->
+                    <div class="row mb-3">
+                        <div class="col-12 d-flex align-items-center">
+                            <button type="button" class="btn btn-secondary me-2" id="toggleHistoryBtn">
+                                <i class="fas fa-history me-1"></i> Show History
+                            </button>
+                            <button type="button" class="btn btn-info me-2" id="toggleInventoryBtn">
+                                <i class="fas fa-boxes me-1"></i> Hide Inventory
+                            </button>
+                            
+                            <!-- Parent Navigation Controls -->
+                            <div class="btn-group time-navigation-group ms-2" role="group" aria-label="Parent navigation">
+                                <button id="play-backward" class="btn btn-light rounded-circle" title="Previous parent">
+                                    <i class="fas fa-step-backward"></i>
+                                </button>
+                                <button id="play-pause" class="btn btn-light rounded-circle" title="Pause" style="display: none;">
+                                    <i class="fas fa-pause"></i>
+                                </button>
+                                <button id="play-auto" class="btn btn-light rounded-circle" title="Play">
+                                    <i class="fas fa-play"></i>
+                                </button>
+                                <button id="play-forward" class="btn btn-light rounded-circle" title="Next parent">
+                                    <i class="fas fa-step-forward"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Two Column Layout -->
+                    <div class="row">
+                        <!-- Left Column: Inventory Table (50%) -->
+                        <div class="col-md-6">
+                            <div id="inventoryTableContainer" class="table-responsive mb-3">
+                                <table id="inventoryDataTable" class="table dt-responsive nowrap w-100">
+                                    <thead>
+                                        <tr>
+                                            <th>IMG</th>
+                                            <th>PARENT</th>
+                                            <th>SKU</th>
+                                            <th>INV</th>
+                                            <th>SOLD</th>
+                                            <th>DIL%</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="inventory-data-table-body">
+                                        <!-- Rows will be dynamically inserted here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Right Column: Stock Balance Form Container (50%) -->
+                        <div class="col-md-6">
+                            <div id="stockBalanceFormContainer" class="stock-balance-form-container" style="display: none;">
+                                <div class="stock-balance-form-header">
+                                    <h5 class="mb-0">Stock Balance</h5>
+                                    <button type="button" class="btn-close" id="closeStockBalanceForm" aria-label="Close"></button>
+                                </div>
+                                <div class="stock-balance-form-body">
+                                    <form id="stockBalanceForm">
+                                        @csrf
+
+                                        <div class="row">
+                                            <!-- From Warehouse Section -->
+                                            <div class="col-md-6 p-3">
+                                                <h5><strong>From</strong></h5>
+
+                                                <div class="mb-3">
+                                                    <label for="to_sku" class="form-label fw-bold">SKU</label>
+                                                    <select class="form-select" id="to_sku" name="to_sku" required>
+                                                        <option selected disabled>Select SKU</option>
+                                                        @foreach($skus as $item)
+                                                            <option value="{{ $item->sku }}" data-parent="{{ $item->parent }}" data-to_available_qty="{{ $item->available_quantity }}" data-to_dil="{{ $item->dil }}">{{ $item->sku }}</option>
+                                                        @endforeach
+                                                    </select>
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label for="to_parent_name" class="form-label fw-bold">Parent</label>
+                                                    <input type="text" class="form-control" id="to_parent_name" name="to_parent_name" readonly>
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label for="to_available_qty" class="form-label fw-bold">Available Qty</label>
+                                                    <input type="number" id="to_available_qty" name="to_available_qty" class="form-control" readonly>
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label for="to_dil_percent" class="form-label fw-bold">Dil%</label>
+                                                    <input type="number" id="to_dil_percent" name="to_dil_percent" class="form-control" min="0" max="100" step="0.01">
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label for="to_adjust_qty" class="form-label fw-bold">Qty Adj (From)</label>
+                                                    <input type="number" id="to_adjust_qty" name="to_adjust_qty" class="form-control" min="1" required>
+                                                </div>
+                                            </div>
+
+                                            <!-- To Warehouse Section -->
+                                            <div class="col-md-6 p-3">
+                                                <h5><strong> TO </strong></h5>
+
+                                                <div class="mb-3">
+                                                    <label for="from_sku" class="form-label fw-bold">SKU</label>
+                                                    <select class="form-select" id="from_sku" name="from_sku" required>
+                                                        <option selected disabled>Select SKU</option>
+                                                        @foreach($skus as $item)
+                                                            <option value="{{ $item->sku }}" data-parent="{{ $item->parent }}"  data-available_qty="{{ $item->available_quantity }}" data-dil="{{ $item->dil }}">{{ $item->sku }}</option>
+                                                        @endforeach
+                                                    </select>
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label for="from_parent_name" class="form-label fw-bold">Parent</label>
+                                                    <input type="text" class="form-control" id="from_parent_name" name="from_parent_name" readonly>
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label for="from_available_qty" class="form-label fw-bold">Available Qty</label>
+                                                    <input type="number" id="from_available_qty" name="from_available_qty" class="form-control" readonly>
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label for="from_dil_percent" class="form-label fw-bold">Dil%</label>
+                                                    <input type="number" id="from_dil_percent" name="from_dil_percent" class="form-control" min="0" max="100" step="0.01">
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label for="from_adjust_qty" class="form-label fw-bold">Qty Adj (To)</label>
+                                                    <input type="number" id="from_adjust_qty" name="from_adjust_qty" class="form-control" min="1" required>
+                                                    <small class="text-muted" id="from_qty_hint"></small>
+                                                    <div class="text-danger" id="ratio_calculation_error" style="display: none; font-size: 14px; margin-top: 5px;"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="row">
+                                            <div class="col-12 p-3">
+                                                <div class="mb-3">
+                                                    <label for="ratio" class="form-label fw-bold">Ratio</label>
+                                                    <select class="form-select" id="ratio" name="ratio">
+                                                        <option value="1:4">1:4 ratio</option>
+                                                        <option value="1:2">1:2 ratio</option>
+                                                        <option value="1:1" selected>1:1 ratio</option>
+                                                        <option value="2:1">2:1 ratio</option>
+                                                        <option value="4:1">4:1 ratio</option>
+                                                    </select>
+                                                </div>
+                                                <div class="mt-3 text-end">
+                                                    <button type="submit" class="btn btn-success">Submit</button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- History DataTable (Hidden by default) -->
+                    <div id="historyTableContainer" class="table-responsive" style="display: none;">
                         <table id="inventoryTable" class="table dt-responsive nowrap w-100">
                             <thead>
                                 <tr>
@@ -574,30 +723,397 @@
 
             $(document).ready(function () {
 
+                // History button toggle functionality
+                $('#toggleHistoryBtn').on('click', function() {
+                    const tableContainer = $('#historyTableContainer');
+                    const isVisible = tableContainer.is(':visible');
+                    
+                    if (isVisible) {
+                        tableContainer.slideUp(300);
+                        $(this).html('<i class="fas fa-history me-1"></i> Show History');
+                    } else {
+                        tableContainer.slideDown(300);
+                        $(this).html('<i class="fas fa-history me-1"></i> History');
+                    }
+                });
+
+                // Inventory button toggle functionality
+                let inventoryData = [];
+                let inventoryDataLoaded = false;
+
+                // Parent Navigation System
+                let currentParentIndex = -1; // -1 means showing all products
+                let uniqueParents = [];
+                let isNavigationActive = false;
+                let filteredInventoryData = [];
+
+                // Function to get DIL color based on value
+                function getDilColor(value) {
+                    const percent = parseFloat(value) * 100;
+                    if (percent < 16.66) return 'red';
+                    if (percent >= 16.66 && percent < 25) return 'yellow';
+                    if (percent >= 25 && percent < 50) return 'green';
+                    return 'pink';
+                }
+
+                // Load inventory data from API
+                function loadInventoryData() {
+                    $.ajax({
+                        url: '/stock-balance-inventory-data',
+                        method: 'GET',
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                        },
+                        beforeSend: function () {
+                            $('#inventory-data-table-body').html('<tr><td colspan="6" class="text-center">Loading...</td></tr>');
+                        },
+                        success: function (response) {
+                            if (response && response.data) {
+                                inventoryData = response.data;
+                                inventoryDataLoaded = true;
+                                // Initialize parent navigation
+                                initPlaybackControls();
+                                renderInventoryTable(inventoryData);
+                            }
+                        },
+                        error: function(xhr) {
+                            console.error("Load inventory error:", xhr.responseText);
+                            $('#inventory-data-table-body').html('<tr><td colspan="6" class="text-center text-danger">Error loading inventory data</td></tr>');
+                        }
+                    });
+                }
+
+                // Render inventory table
+                function renderInventoryTable(data) {
+                    const tbody = document.getElementById('inventory-data-table-body');
+                    tbody.innerHTML = '';
+
+                    // Use filtered data if navigation is active, otherwise use all data
+                    const dataToRender = isNavigationActive && filteredInventoryData.length > 0 
+                        ? filteredInventoryData 
+                        : data;
+
+                    if (dataToRender.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="6" class="text-center">No records found</td></tr>';
+                        return;
+                    }
+
+                    dataToRender.forEach(item => {
+                        const row = document.createElement('tr');
+                        
+                        // IMG
+                        const imgCell = document.createElement('td');
+                        imgCell.innerHTML = item.IMAGE_URL 
+                            ? `<img src="${item.IMAGE_URL}" style="width:40px;height:auto;" alt="${item.SKU}">` 
+                            : '';
+                        row.appendChild(imgCell);
+
+                        // PARENT
+                        const parentCell = document.createElement('td');
+                        parentCell.textContent = item.Parent || '-';
+                        row.appendChild(parentCell);
+
+                        // SKU with select button
+                        const skuCell = document.createElement('td');
+                        const skuContainer = document.createElement('div');
+                        skuContainer.style.display = 'flex';
+                        skuContainer.style.alignItems = 'center';
+                        skuContainer.style.gap = '8px';
+                        
+                        const skuText = document.createElement('span');
+                        skuText.textContent = item.SKU || '-';
+                        skuContainer.appendChild(skuText);
+                        
+                        // Small round button to select SKU
+                        const selectBtn = document.createElement('button');
+                        selectBtn.type = 'button';
+                        selectBtn.className = 'btn btn-sm btn-primary rounded-circle p-0';
+                        selectBtn.style.width = '20px';
+                        selectBtn.style.height = '20px';
+                        selectBtn.style.fontSize = '10px';
+                        selectBtn.style.lineHeight = '1';
+                        selectBtn.innerHTML = '<i class="fas fa-arrow-right"></i>';
+                        selectBtn.title = 'Select as From SKU';
+                        selectBtn.setAttribute('data-sku', item.SKU || '');
+                        selectBtn.setAttribute('data-parent', item.Parent || '');
+                        selectBtn.setAttribute('data-inv', item.INV || 0);
+                        selectBtn.setAttribute('data-dil', item.DIL || 0);
+                        
+                        // Click handler to auto-select SKU in form
+                        selectBtn.addEventListener('click', function() {
+                            const sku = this.getAttribute('data-sku');
+                            const parent = this.getAttribute('data-parent');
+                            const inv = this.getAttribute('data-inv');
+                            const dil = parseFloat(this.getAttribute('data-dil')) || 0;
+                            
+                            // Show stock balance form if hidden
+                            const formContainer = $('#stockBalanceFormContainer');
+                            if (!formContainer.is(':visible')) {
+                                formContainer.slideDown(300);
+                            }
+                            
+                            // Set the to_sku dropdown value (in FROM section)
+                            $('#to_sku').val(sku).trigger('change');
+                            
+                            // Also set parent, available qty, and dil if not auto-filled
+                            setTimeout(function() {
+                                if ($('#to_parent_name').val() === '') {
+                                    $('#to_parent_name').val(parent || '');
+                                }
+                                if ($('#to_available_qty').val() === '' || $('#to_available_qty').val() === '0') {
+                                    $('#to_available_qty').val(inv || 0);
+                                }
+                                if ($('#to_dil_percent').val() === '' || $('#to_dil_percent').val() === '0') {
+                                    const dilPercent = dil > 0 ? (dil * 100) : 0;
+                                    $('#to_dil_percent').val(dilPercent > 100 ? 100 : dilPercent);
+                                }
+                            }, 100);
+                        });
+                        
+                        skuContainer.appendChild(selectBtn);
+                        skuCell.appendChild(skuContainer);
+                        row.appendChild(skuCell);
+
+                        // INV
+                        const invCell = document.createElement('td');
+                        invCell.textContent = item.INV || 0;
+                        row.appendChild(invCell);
+
+                        // SOLD
+                        const soldCell = document.createElement('td');
+                        soldCell.textContent = item.SOLD || 0;
+                        row.appendChild(soldCell);
+
+                        // DIL%
+                        const dilCell = document.createElement('td');
+                        const dilValue = parseFloat(item.DIL) || 0;
+                        if (dilValue <= 0) {
+                            dilCell.innerHTML = '<span>-</span>';
+                        } else {
+                            const dilPercent = Math.round(dilValue * 100);
+                            const dilClass = getDilColor(dilValue);
+                            dilCell.innerHTML = `<span class="dil-percent-value ${dilClass}">${dilPercent}%</span>`;
+                        }
+                        row.appendChild(dilCell);
+
+                        tbody.appendChild(row);
+                    });
+                }
+
+                // Parent Navigation Functions
+                function initPlaybackControls() {
+                    // Get all unique parent ASINs
+                    uniqueParents = [...new Set(inventoryData.map(item => item.Parent))].filter(p => p && p !== '(No Parent)');
+                    
+                    // Set up event handlers
+                    $('#play-forward').off('click').on('click', nextParent);
+                    $('#play-backward').off('click').on('click', previousParent);
+                    $('#play-pause').off('click').on('click', stopNavigation);
+                    $('#play-auto').off('click').on('click', startNavigation);
+                    
+                    // Initialize button states
+                    updateButtonStates();
+                }
+
+                function startNavigation() {
+                    if (uniqueParents.length === 0) return;
+                    
+                    isNavigationActive = true;
+                    currentParentIndex = 0;
+                    showCurrentParent();
+                    
+                    // Update button visibility
+                    $('#play-auto').hide();
+                    $('#play-pause').show().removeClass('btn-light');
+                }
+
+                function stopNavigation() {
+                    isNavigationActive = false;
+                    currentParentIndex = -1;
+                    
+                    // Update button visibility and reset color
+                    $('#play-pause').hide();
+                    $('#play-auto').show()
+                        .removeClass('btn-success btn-warning btn-danger')
+                        .addClass('btn-light');
+                    
+                    // Show all products
+                    filteredInventoryData = [];
+                    renderInventoryTable(inventoryData);
+                    updateButtonStates();
+                }
+
+                function nextParent() {
+                    if (!isNavigationActive) return;
+                    if (currentParentIndex >= uniqueParents.length - 1) return;
+                    
+                    currentParentIndex++;
+                    showCurrentParent();
+                }
+
+                function previousParent() {
+                    if (!isNavigationActive) return;
+                    if (currentParentIndex <= 0) return;
+                    
+                    currentParentIndex--;
+                    showCurrentParent();
+                }
+
+                function showCurrentParent() {
+                    if (!isNavigationActive || currentParentIndex === -1) return;
+                    
+                    // Filter data to show only current parent's products
+                    filteredInventoryData = inventoryData.filter(item => item.Parent === uniqueParents[currentParentIndex]);
+                    
+                    // Update UI
+                    renderInventoryTable(inventoryData);
+                    updateButtonStates();
+                }
+
+                function updateButtonStates() {
+                    // Enable/disable navigation buttons based on position
+                    $('#play-backward').prop('disabled', !isNavigationActive || currentParentIndex <= 0);
+                    $('#play-forward').prop('disabled', !isNavigationActive || currentParentIndex >= uniqueParents.length - 1);
+                    
+                    // Update button tooltips
+                    $('#play-auto').attr('title', isNavigationActive ? 'Show all products' : 'Start parent navigation');
+                    $('#play-pause').attr('title', 'Stop navigation and show all');
+                    $('#play-forward').attr('title', isNavigationActive ? 'Next parent' : 'Start navigation first');
+                    $('#play-backward').attr('title', isNavigationActive ? 'Previous parent' : 'Start navigation first');
+                    
+                    // Update button colors based on state
+                    if (isNavigationActive) {
+                        $('#play-forward, #play-backward').removeClass('btn-light').addClass('btn-primary');
+                    } else {
+                        $('#play-forward, #play-backward').removeClass('btn-primary').addClass('btn-light');
+                    }
+                }
+
+                // Load inventory data on page load (since table is visible by default)
+                function loadInventoryDataOnInit() {
+                    if (!inventoryDataLoaded) {
+                        loadInventoryData();
+                    }
+                }
+
+                // Load inventory data immediately on page load since table is visible by default
+                loadInventoryDataOnInit();
+
+                $('#toggleInventoryBtn').on('click', function() {
+                    const tableContainer = $('#inventoryTableContainer');
+                    const isVisible = tableContainer.is(':visible');
+                    
+                    if (isVisible) {
+                        tableContainer.slideUp(300);
+                        $(this).html('<i class="fas fa-boxes me-1"></i> Show Inventory');
+                    } else {
+                        tableContainer.slideDown(300);
+                        $(this).html('<i class="fas fa-boxes me-1"></i> Hide Inventory');
+                        
+                        // Load inventory data if not already loaded
+                        if (!inventoryDataLoaded) {
+                            loadInventoryData();
+                        } else {
+                            renderInventoryTable(inventoryData);
+                        }
+                    }
+                });
+
+                // Function to get DIL color based on value
+                function getDilColor(value) {
+                    const percent = parseFloat(value) * 100;
+                    if (percent < 16.66) return 'red';
+                    if (percent >= 16.66 && percent < 25) return 'yellow';
+                    if (percent >= 25 && percent < 50) return 'green';
+                    return 'pink';
+                }
+
+                // Load inventory data from API
+                function loadInventoryData() {
+                    $.ajax({
+                        url: '/stock-balance-inventory-data',
+                        method: 'GET',
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                        },
+                        beforeSend: function () {
+                            $('#inventory-data-table-body').html('<tr><td colspan="6" class="text-center">Loading...</td></tr>');
+                        },
+                        success: function (response) {
+                            if (response && response.data) {
+                                inventoryData = response.data;
+                                inventoryDataLoaded = true;
+                                // Initialize parent navigation
+                                initPlaybackControls();
+                                renderInventoryTable(inventoryData);
+                            }
+                        },
+                        error: function(xhr) {
+                            console.error("Load inventory error:", xhr.responseText);
+                            $('#inventory-data-table-body').html('<tr><td colspan="6" class="text-center text-danger">Error loading inventory data</td></tr>');
+                        }
+                    });
+                }
+
                 $('#stockBalanceForm').on('submit', function (e) {
                     e.preventDefault();
                     
-                    // Validate inventory before submitting
-                    const fromQty = parseInt($('#from_adjust_qty').val()) || 0;
-                    const availableQty = parseInt($('#from_available_qty').val()) || 0;
-                    const fromSku = $('#from_sku option:selected').text();
+                    // Validate ratio calculation first - ensure calculated value is a whole number
+                    const fromQtyAdj = parseFloat($('#to_adjust_qty').val()) || 0;
+                    const ratio = $('#ratio').val() || '1:1';
                     
-                    if (fromQty > availableQty) {
+                    if (fromQtyAdj > 0 && ratio) {
+                        const ratioParts = ratio.split(':');
+                        if (ratioParts.length === 2) {
+                            const firstRatio = parseFloat(ratioParts[0]);
+                            const secondRatio = parseFloat(ratioParts[1]);
+                            
+                            if (firstRatio > 0) {
+                                const calculatedQty = fromQtyAdj * (secondRatio / firstRatio);
+                                
+                                // Check if the result is a whole number
+                                if (calculatedQty % 1 !== 0) {
+                                    showLargeErrorAlert(
+                                        'Invalid Quantity Calculation',
+                                        `The calculated "Qty Adj (To)" value (<strong>${calculatedQty.toFixed(2)}</strong>) is not a whole number.<br><br>` +
+                                        `Please adjust the "Qty Adj (From)" value or select a different ratio to get a whole number result.`
+                                    );
+                                    return false;
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Validate inventory before submitting - check FROM SKU (Qty Adj (From))
+                    const fromAvailableQty = parseInt($('#to_available_qty').val()) || 0;
+                    const fromSku = $('#to_sku option:selected').text();
+                    
+                    if (fromQtyAdj > fromAvailableQty) {
                         showLargeErrorAlert(
                             'Insufficient Inventory',
-                            `Cannot transfer <strong>${fromQty} units</strong> from SKU: <strong>${fromSku}</strong><br><br>` +
-                            `<strong>Available Quantity:</strong> ${availableQty} units<br>` +
-                            `<strong>Requested Transfer:</strong> ${fromQty} units<br><br>` +
-                            `You need <strong>${fromQty - availableQty} more units</strong> to complete this transfer.<br><br>` +
+                            `Cannot transfer <strong>${fromQtyAdj} units</strong> from SKU: <strong>${fromSku}</strong><br><br>` +
+                            `<strong>Available Quantity:</strong> ${fromAvailableQty} units<br>` +
+                            `<strong>Requested Transfer:</strong> ${fromQtyAdj} units<br><br>` +
+                            `You need <strong>${fromQtyAdj - fromAvailableQty} more units</strong> to complete this transfer.<br><br>` +
                             `<em>Please adjust the quantity or select a different SKU.</em>`
                         );
                         return false;
                     }
                     
-                    if (fromQty <= 0) {
+                    if (fromQtyAdj <= 0) {
                         showLargeErrorAlert(
                             'Invalid Quantity',
-                            'Transfer quantity must be greater than 0.'
+                            'Qty Adj (From) must be greater than 0.'
+                        );
+                        return false;
+                    }
+                    
+                    // Also validate TO SKU quantity
+                    const toQtyAdj = parseInt($('#from_adjust_qty').val()) || 0;
+                    if (toQtyAdj <= 0) {
+                        showLargeErrorAlert(
+                            'Invalid Quantity',
+                            'Qty Adj (To) must be greater than 0.'
                         );
                         return false;
                     }
@@ -614,7 +1130,7 @@
                         timeout: 120000, // 120 second timeout (2 minutes)
                         success: function (response) {
                             $submitBtn.prop('disabled', false).text(originalText);
-                            $('#addWarehouseModal').modal('hide');
+                            $('#stockBalanceFormContainer').slideUp(300);
                             loadData(); // Reload after store
                             $('#stockBalanceForm')[0].reset();
                             showSuccessAlert(response.message || 'Stock transferred successfully!');
@@ -679,11 +1195,22 @@
                 });
 
                 $('#from_sku').select2({
-                    dropdownParent: $('#addWarehouseModal'),
+                    dropdownParent: $('#stockBalanceFormContainer'),
                     placeholder: "Select SKU",
-                    allowClear: true
+                    allowClear: true,
+                    minimumInputLength: 0
                 });
                 
+                // Make the dropdown field act as search box - focus search input immediately when opened
+                $('#from_sku').on('select2:open', function() {
+                    setTimeout(function() {
+                        const searchField = document.querySelector('#stockBalanceFormContainer .select2-search__field');
+                        if (searchField) {
+                            searchField.focus();
+                        }
+                    }, 10);
+                });
+
                 // Auto-fill Parent when select sku
                 // $('#sku').on('change', function () {
                 //     const parent = $(this).find('option:selected').data('parent');
@@ -691,9 +1218,20 @@
                 // });
 
                 $('#to_sku').select2({
-                    dropdownParent: $('#addWarehouseModal'),
+                    dropdownParent: $('#stockBalanceFormContainer'),
                     placeholder: "Select SKU",
-                    allowClear: true
+                    allowClear: true,
+                    minimumInputLength: 0
+                });
+                
+                // Make the dropdown field act as search box - focus search input immediately when opened
+                $('#to_sku').on('select2:open', function() {
+                    setTimeout(function() {
+                        const searchField = document.querySelector('#stockBalanceFormContainer .select2-search__field');
+                        if (searchField) {
+                            searchField.focus();
+                        }
+                    }, 10);
                 });
                 
                 // Auto-fill Parent when select sku_to
@@ -773,33 +1311,75 @@
                     $('#to_dil_percent').val(toDil);
                 });
 
+                // Calculate Qty Adj (To) based on Qty Adj (From) and ratio
+                function calculateToQtyAdj() {
+                    const fromQty = parseFloat($('#to_adjust_qty').val()) || 0;
+                    const ratio = $('#ratio').val() || '1:1';
+                    const errorDiv = $('#ratio_calculation_error');
+                    const toQtyInput = $('#from_adjust_qty');
+                    
+                    // Clear previous errors
+                    errorDiv.hide().text('');
+                    toQtyInput.removeClass('is-invalid');
+                    
+                    if (fromQty > 0 && ratio) {
+                        // Parse ratio (e.g., "2:1" -> [2, 1])
+                        const ratioParts = ratio.split(':');
+                        if (ratioParts.length === 2) {
+                            const firstRatio = parseFloat(ratioParts[0]);
+                            const secondRatio = parseFloat(ratioParts[1]);
+                            
+                            if (firstRatio > 0) {
+                                // Calculate: to_qty = from_qty * (second_ratio / first_ratio)
+                                const calculatedQty = fromQty * (secondRatio / firstRatio);
+                                
+                                // Check if the result is a whole number
+                                if (calculatedQty % 1 !== 0) {
+                                    // Not a whole number - show error
+                                    const roundedQty = Math.round(calculatedQty);
+                                    errorDiv.text(`⚠️ Calculated quantity (${calculatedQty.toFixed(2)}) is not a whole number. Expected: ${roundedQty} (rounded). Please adjust the "Qty Adj (From)" value.`).show();
+                                    toQtyInput.addClass('is-invalid').val('');
+                                    return false;
+                                } else {
+                                    // Valid whole number
+                                    toQtyInput.val(calculatedQty);
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                    return true;
+                }
+
+                // Trigger calculation when Qty Adj (From) changes
+                $('#to_adjust_qty').on('input', function() {
+                    calculateToQtyAdj();
+                });
+
+                // Trigger calculation when ratio changes
+                $('#ratio').on('change', function() {
+                    calculateToQtyAdj();
+                });
+
                
-                $(document).on('click', '#openAddWarehouseModal', function () {
-                    $('#stockBalanceForm')[0].reset(); // Only resets for add
-                    $('#warehouseId').val('');
-                    $('#warehouseModalLabel').text('Create Stock Transfer');
-                    // $('#warehouseGroup').val('').trigger('change');
+                // Toggle Stock Balance Form
+                $('#toggleStockBalanceForm').on('click', function () {
+                    const formContainer = $('#stockBalanceFormContainer');
+                    const isVisible = formContainer.is(':visible');
+                    
+                    if (isVisible) {
+                        formContainer.slideUp(300);
+                    } else {
+                        // Reset form when showing
+                        $('#stockBalanceForm')[0].reset();
+                        $('#warehouseId').val('');
+                        formContainer.slideDown(300);
+                    }
+                });
 
-                    // Auto-fill PO number and date when modal is shown
-                   
-                    const ohioTime = new Date(
-                        new Intl.DateTimeFormat('en-US', {
-                            timeZone: 'America/New_York',
-                            year: 'numeric',
-                            month: '2-digit',
-                            day: '2-digit',
-                        }).format(new Date())
-                    );
-
-                    // Format to YYYY-MM-DD for input field
-                    const yyyy = ohioTime.getFullYear();
-                    const mm = String(ohioTime.getMonth() + 1).padStart(2, '0');
-                    const dd = String(ohioTime.getDate()).padStart(2, '0');
-                    const formattedDate = `${yyyy}-${mm}-${dd}`;
-
-                    $('#date').val(formattedDate);
-
-                    $('#addWarehouseModal').modal('show');
+                // Close button handler
+                $('#closeStockBalanceForm').on('click', function () {
+                    $('#stockBalanceFormContainer').slideUp(300);
                 });
 
             });
@@ -823,6 +1403,7 @@
                     },
                     error: function(xhr) {
                         console.error("Load error:", xhr.responseText);
+                        $('#rainbow-loader').hide();
                     }
                 });
             }
