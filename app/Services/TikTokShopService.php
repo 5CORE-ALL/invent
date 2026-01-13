@@ -531,7 +531,21 @@ class TikTokShopService
             $this->output('info', '✓ Fetched ' . count($products) . ' products');
 
             if (!empty($products)) {
-                // Extract product IDs and ensure they're strings (TikTok API requires string IDs)
+                // First, try to extract inventory from product data itself
+                $inventoryFromProducts = [];
+                foreach ($products as $product) {
+                    // Check if inventory is already in product data
+                    if (isset($product['stock_infos']) || isset($product['inventory']) || isset($product['stock'])) {
+                        $inventoryFromProducts[] = $product;
+                    }
+                }
+                
+                if (!empty($inventoryFromProducts)) {
+                    $this->output('info', 'Found inventory data in ' . count($inventoryFromProducts) . ' products');
+                    $result['inventory'] = $inventoryFromProducts;
+                }
+                
+                // Also try fetching via API (in case bulk fetch doesn't work, try individual products)
                 $productIds = array_map(function($product) {
                     return (string)($product['id'] ?? $product['product_id'] ?? '');
                 }, array_filter($products, function($product) {
@@ -541,29 +555,41 @@ class TikTokShopService
                 if (empty($productIds)) {
                     $this->output('warn', '⚠ No valid product IDs found in products');
                 } else {
-                    $chunks = array_chunk($productIds, 50);
+                    // Try fetching inventory for smaller batches (maybe 1-5 at a time)
+                    $this->output('info', 'Step 2: Attempting to fetch inventory via API for ' . count($productIds) . ' products...');
+                    $this->output('info', '  Trying smaller batches (1 product at a time) to isolate the issue...');
                     
-                    $this->output('info', 'Step 2: Fetching inventory for ' . count($productIds) . ' products in ' . count($chunks) . ' batches...');
-                    $batchNum = 1;
+                    // Try with just 1 product first to test
+                    $testProductId = $productIds[0];
+                    $this->output('info', "  Testing with single product ID: {$testProductId}");
+                    $testInventory = $this->getProductInventory([$testProductId]);
                     
-                    foreach ($chunks as $chunk) {
-                        $this->output('info', "  Batch {$batchNum}/" . count($chunks) . ": Fetching inventory for " . count($chunk) . " products (IDs: " . substr(implode(', ', $chunk), 0, 50) . "...)");
-                        $inventory = $this->getProductInventory($chunk);
+                    if ($testInventory && !isset($testInventory['code'])) {
+                        $this->output('info', "  ✓ Single product inventory fetch works! Fetching remaining products...");
+                        $chunks = array_chunk($productIds, 10); // Use smaller chunks
+                        $batchNum = 1;
                         
-                        if ($inventory) {
-                            $inventoryList = $inventory['data']['inventory_list'] ?? $inventory['inventory_list'] ?? [];
-                            if (!empty($inventoryList)) {
-                                $result['inventory'] = array_merge($result['inventory'], $inventoryList);
-                                $this->output('info', "  ✓ Batch {$batchNum}: Got " . count($inventoryList) . " inventory records");
-                            } else {
-                                $this->output('warn', "  ⚠ Batch {$batchNum}: No inventory_list in response. Response keys: " . implode(', ', array_keys($inventory)));
+                        foreach ($chunks as $chunk) {
+                            $this->output('info', "  Batch {$batchNum}/" . count($chunks) . ": Fetching inventory for " . count($chunk) . " products...");
+                            $inventory = $this->getProductInventory($chunk);
+                            
+                            if ($inventory && !isset($inventory['code'])) {
+                                $inventoryList = $inventory['data']['inventory_list'] ?? $inventory['inventory_list'] ?? [];
+                                if (!empty($inventoryList)) {
+                                    $result['inventory'] = array_merge($result['inventory'], $inventoryList);
+                                    $this->output('info', "  ✓ Batch {$batchNum}: Got " . count($inventoryList) . " inventory records");
+                                }
                             }
-                        } else {
-                            $this->output('error', "  ✗ Batch {$batchNum}: getProductInventory returned null");
+                            $batchNum++;
+                            usleep(200000);
                         }
-                        $batchNum++;
-                        usleep(200000);
+                    } else {
+                        $this->output('warn', '  ⚠ Inventory API not working. Inventory may be included in product data or requires different approach.');
+                        if ($testInventory && isset($testInventory['code'])) {
+                            $this->output('warn', '  Error details: Code ' . $testInventory['code'] . ', Message: ' . ($testInventory['message'] ?? 'No message'));
+                        }
                     }
+                    
                     $this->output('info', '✓ Completed inventory fetch: ' . count($result['inventory']) . ' total records');
                 }
             } else {
