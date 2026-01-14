@@ -375,6 +375,70 @@ class TikTokShopService
     }
 
     /**
+     * Get all product inventory in batches
+     */
+    public function getAllProductInventory(array $products): array
+    {
+        $allInventory = [];
+        
+        if (empty($products)) {
+            $this->output('warn', 'getAllProductInventory: No products provided');
+            return $allInventory;
+        }
+        
+        // Extract product IDs from products
+        $productIds = [];
+        foreach ($products as $product) {
+            $productId = $product['id'] ?? $product['product_id'] ?? null;
+            if ($productId) {
+                $productIds[] = (string)$productId;
+            }
+        }
+        
+        if (empty($productIds)) {
+            $this->output('warn', 'getAllProductInventory: No product IDs found');
+            return $allInventory;
+        }
+        
+        $this->output('info', 'getAllProductInventory: Fetching inventory for ' . count($productIds) . ' products');
+        
+        // Process in batches of 50 (API limit)
+        $batches = array_chunk($productIds, 50);
+        $batchNum = 1;
+        
+        foreach ($batches as $batch) {
+            $this->output('info', "getAllProductInventory: Processing batch {$batchNum}/" . count($batches) . " (" . count($batch) . " products)");
+            
+            $response = $this->getProductInventory($batch);
+            
+            if ($response && isset($response['code']) && $response['code'] == 0) {
+                // Extract inventory data from response
+                $inventoryList = $response['data']['inventory_list'] ?? $response['inventory_list'] ?? $response['data'] ?? [];
+                
+                if (is_array($inventoryList)) {
+                    foreach ($inventoryList as $item) {
+                        $productId = $item['product_id'] ?? null;
+                        if ($productId) {
+                            $allInventory[] = $item;
+                        }
+                    }
+                }
+            } else {
+                $this->output('warn', "getAllProductInventory: Batch {$batchNum} failed or returned no data");
+            }
+            
+            $batchNum++;
+            // Small delay between batches to avoid rate limiting
+            if ($batchNum <= count($batches)) {
+                usleep(200000); // 200ms delay
+            }
+        }
+        
+        $this->output('info', 'getAllProductInventory: Retrieved inventory for ' . count($allInventory) . ' products');
+        return $allInventory;
+    }
+
+    /**
      * Get product analytics using the library
      */
     public function getProductAnalytics(int $startTime = null, int $endTime = null, array $productIds = []): ?array
@@ -548,15 +612,23 @@ class TikTokShopService
             $result['products'] = $products;
             $this->output('info', '✓ Fetched ' . count($products) . ' products');
 
-            // Inventory, Analytics: Not available with current TikTok API/library
-            // - Inventory API: Doesn't work with current library version
+            // Fetch inventory for products
+            $this->output('info', 'Step 2: Fetching inventory data...');
+            $inventoryData = $this->getAllProductInventory($products);
+            $result['inventory'] = $inventoryData;
+            if (!empty($inventoryData)) {
+                $this->output('info', '✓ Fetched inventory for ' . count($inventoryData) . ' products');
+            } else {
+                $this->output('warn', '⚠ No inventory data retrieved');
+            }
+            
+            // Analytics: Not available with current TikTok API/library
             // - Analytics API: Requires API version 202405+ (not available)
-            $this->output('info', 'Step 2: Inventory/Analytics not available with current API/library. Skipping.');
-            $result['inventory'] = [];
+            $this->output('info', 'Step 3: Analytics not available with current API/library. Skipping.');
             $result['analytics'] = [];
             
             // Reviews: Extract review_count and rating from product data (TikTok provides aggregated stats, not individual reviews)
-            $this->output('info', 'Step 3: Extracting review data from products...');
+            $this->output('info', 'Step 4: Extracting review data from products...');
             $reviews = $this->getProductReviews($products);
             if ($reviews && !empty($reviews['reviews'])) {
                 $result['reviews'] = $reviews['reviews'];
