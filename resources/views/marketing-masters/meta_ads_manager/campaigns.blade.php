@@ -58,6 +58,9 @@
                             <thead>
                                 <tr>
                                     <th>ID</th>
+                                    <th>AD Type</th>
+                                    <th>Groups</th>
+                                    <th>Parents</th>
                                     <th>Name</th>
                                     <th>Status</th>
                                     <th>Objective</th>
@@ -77,6 +80,66 @@
                         </table>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create New Group Modal -->
+    <div class="modal fade" id="createGroupModal" tabindex="-1" aria-labelledby="createGroupModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="createGroupModalLabel">
+                        <i class="mdi mdi-plus-circle me-2"></i>Create New Group
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="createGroupForm">
+                    @csrf
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="groupName" class="form-label">Group Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="groupName" name="name" required placeholder="Enter group name">
+                            <div class="invalid-feedback"></div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="mdi mdi-check me-1"></i>Create Group
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create New Ad Type Modal -->
+    <div class="modal fade" id="createAdTypeModal" tabindex="-1" aria-labelledby="createAdTypeModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="createAdTypeModalLabel">
+                        <i class="mdi mdi-plus-circle me-2"></i>Create New Ad Type
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form id="createAdTypeForm">
+                    @csrf
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="adTypeName" class="form-label">Ad Type Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="adTypeName" name="name" required placeholder="Enter ad type name">
+                            <div class="invalid-feedback"></div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="mdi mdi-check me-1"></i>Create Ad Type
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -157,6 +220,94 @@
                         if (adAccountId) {
                             url += '?ad_account_id=' + adAccountId;
                         }
+                        
+                        // Get ad types list
+                        var adTypes = @json($adTypes ?? []);
+                        // Get groups list
+                        var groups = @json($groups ?? []);
+                        // Get parents list
+                        var parents = @json($parents ?? []);
+                        
+                        // Function to update campaign group
+                        function updateCampaignGroup(campaignId, groupValue, $select) {
+                            $.ajax({
+                                url: '{{ url("/meta-ads-manager/campaigns") }}/' + campaignId + '/group',
+                                method: 'POST',
+                                data: {
+                                    group: groupValue,
+                                    _token: $('meta[name="csrf-token"]').attr('content')
+                                },
+                                success: function(response) {
+                                    if (response.success) {
+                                        // Success - dropdown already has the value selected
+                                        console.log('Group updated successfully');
+                                    }
+                                },
+                                error: function(xhr) {
+                                    // Revert dropdown
+                                    $select.val('');
+                                    var errorMsg = 'Failed to update group';
+                                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                                        errorMsg = xhr.responseJSON.message;
+                                    }
+                                    alert(errorMsg);
+                                }
+                            });
+                        }
+                        
+                        // Function to update campaign ad type
+                        function updateCampaignAdType(campaignId, adTypeValue, $select) {
+                            $.ajax({
+                                url: '{{ url("/meta-ads-manager/campaigns") }}/' + campaignId + '/ad-type',
+                                method: 'POST',
+                                data: {
+                                    ad_type: adTypeValue,
+                                    _token: $('meta[name="csrf-token"]').attr('content')
+                                },
+                                success: function(response) {
+                                    if (response.success) {
+                                        // Success - dropdown already has the value selected
+                                        console.log('Ad Type updated successfully');
+                                    }
+                                },
+                                error: function(xhr) {
+                                    // Revert dropdown
+                                    $select.val('');
+                                    var errorMsg = 'Failed to update ad type';
+                                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                                        errorMsg = xhr.responseJSON.message;
+                                    }
+                                    alert(errorMsg);
+                                }
+                            });
+                        }
+                        
+                        // Function to update campaign parent
+                        function updateCampaignParent(campaignId, parentValue, $select) {
+                            $.ajax({
+                                url: '{{ url("/meta-ads-manager/campaigns") }}/' + campaignId + '/parent',
+                                method: 'POST',
+                                data: {
+                                    parent: parentValue,
+                                    _token: $('meta[name="csrf-token"]').attr('content')
+                                },
+                                success: function(response) {
+                                    if (response.success) {
+                                        // Success - dropdown already has the value selected
+                                        console.log('Parent updated successfully');
+                                    }
+                                },
+                                error: function(xhr) {
+                                    // Revert dropdown
+                                    $select.val('');
+                                    var errorMsg = 'Failed to update parent';
+                                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                                        errorMsg = xhr.responseJSON.message;
+                                    }
+                                    alert(errorMsg);
+                                }
+                            });
+                        }
 
                         var table = $('#campaignsTable').DataTable({
                             processing: true,
@@ -174,6 +325,56 @@
                             },
                             columns: [
                                 { data: 'id', name: 'id', width: '60px' },
+                                { 
+                                    data: 'ad_type', 
+                                    name: 'ad_type',
+                                    orderable: false,
+                                    searchable: false,
+                                    render: function(data, type, row) {
+                                        var selectHtml = '<select class="form-select form-select-sm campaign-ad-type-select" data-campaign-id="' + row.id + '" style="min-width: 200px;">';
+                                        selectHtml += '<option value="">Select AD Type</option>';
+                                        adTypes.forEach(function(adType) {
+                                            var selected = (data === adType) ? 'selected' : '';
+                                            selectHtml += '<option value="' + adType + '" ' + selected + '>' + adType + '</option>';
+                                        });
+                                        selectHtml += '<option value="__NEW__" class="text-primary fw-bold">+ New Ad Type</option>';
+                                        selectHtml += '</select>';
+                                        return selectHtml;
+                                    }
+                                },
+                                { 
+                                    data: 'group', 
+                                    name: 'group',
+                                    orderable: false,
+                                    searchable: false,
+                                    render: function(data, type, row) {
+                                        var selectHtml = '<select class="form-select form-select-sm campaign-group-select" data-campaign-id="' + row.id + '" style="min-width: 200px;">';
+                                        selectHtml += '<option value="">Select Group</option>';
+                                        groups.forEach(function(group) {
+                                            var selected = (data === group) ? 'selected' : '';
+                                            selectHtml += '<option value="' + group + '" ' + selected + '>' + group + '</option>';
+                                        });
+                                        selectHtml += '<option value="__NEW__" class="text-primary fw-bold">+ New Group</option>';
+                                        selectHtml += '</select>';
+                                        return selectHtml;
+                                    }
+                                },
+                                { 
+                                    data: 'parent', 
+                                    name: 'parent',
+                                    orderable: false,
+                                    searchable: false,
+                                    render: function(data, type, row) {
+                                        var selectHtml = '<select class="form-select form-select-sm campaign-parent-select" data-campaign-id="' + row.id + '" style="min-width: 200px;">';
+                                        selectHtml += '<option value="">Select Parent</option>';
+                                        parents.forEach(function(parent) {
+                                            var selected = (data === parent) ? 'selected' : '';
+                                            selectHtml += '<option value="' + parent + '" ' + selected + '>' + parent + '</option>';
+                                        });
+                                        selectHtml += '</select>';
+                                        return selectHtml;
+                                    }
+                                },
                                 { 
                                     data: 'name', 
                                     name: 'name',
@@ -257,7 +458,7 @@
                                     }
                                 }
                             ],
-                            order: [[7, 'desc']],
+                            order: [[10, 'desc']],
                             pageLength: 25,
                             lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
                             dom: 'frtip',
@@ -298,6 +499,172 @@
                                 $(printBtn).click();
                             }).show();
                         }
+                        
+                        // Handle group dropdown changes (event delegation)
+                        $(document).on('change', '.campaign-group-select', function() {
+                            var $select = $(this);
+                            var campaignId = $select.data('campaign-id');
+                            var selectedValue = $select.val();
+                            
+                            if (selectedValue === '__NEW__') {
+                                // Open create group modal
+                                var modal = new bootstrap.Modal(document.getElementById('createGroupModal'));
+                                modal.show();
+                                
+                                // Store the select element and campaign ID for later use
+                                $('#createGroupModal').data('select-element', $select);
+                                $('#createGroupModal').data('campaign-id', campaignId);
+                                
+                                // Reset dropdown
+                                $select.val('');
+                            } else {
+                                // Update campaign group
+                                updateCampaignGroup(campaignId, selectedValue, $select);
+                            }
+                        });
+                        
+                        // Handle ad type dropdown changes (event delegation)
+                        $(document).on('change', '.campaign-ad-type-select', function() {
+                            var $select = $(this);
+                            var campaignId = $select.data('campaign-id');
+                            var selectedValue = $select.val();
+                            
+                            if (selectedValue === '__NEW__') {
+                                // Open create ad type modal
+                                var modal = new bootstrap.Modal(document.getElementById('createAdTypeModal'));
+                                modal.show();
+                                
+                                // Store the select element and campaign ID for later use
+                                $('#createAdTypeModal').data('select-element', $select);
+                                $('#createAdTypeModal').data('campaign-id', campaignId);
+                                
+                                // Reset dropdown
+                                $select.val('');
+                            } else {
+                                // Update campaign ad type
+                                updateCampaignAdType(campaignId, selectedValue, $select);
+                            }
+                        });
+                        
+                        // Handle parent dropdown changes (event delegation)
+                        $(document).on('change', '.campaign-parent-select', function() {
+                            var $select = $(this);
+                            var campaignId = $select.data('campaign-id');
+                            var selectedValue = $select.val();
+                            
+                            // Update campaign parent
+                            updateCampaignParent(campaignId, selectedValue, $select);
+                        });
+                        
+                        // Handle create group form submission
+                        $('#createGroupForm').on('submit', function(e) {
+                            e.preventDefault();
+                            
+                            var formData = {
+                                name: $('#groupName').val()
+                            };
+                            
+                            $.ajax({
+                                url: '{{ route("meta.ads.manager.campaigns.groups.store") }}',
+                                method: 'POST',
+                                data: formData,
+                                headers: {
+                                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                                },
+                                success: function(response) {
+                                    if (response.success) {
+                                        // Add new group to the list
+                                        groups.push(response.group);
+                                        
+                                        // Close modal
+                                        var modal = bootstrap.Modal.getInstance(document.getElementById('createGroupModal'));
+                                        modal.hide();
+                                        
+                                        // Clear form
+                                        $('#createGroupForm')[0].reset();
+                                        
+                                        // Get the stored select element and campaign ID
+                                        var $select = $('#createGroupModal').data('select-element');
+                                        var campaignId = $('#createGroupModal').data('campaign-id');
+                                        
+                                        // Update the campaign with the new group
+                                        if ($select && campaignId) {
+                                            updateCampaignGroup(campaignId, response.group, $select);
+                                        }
+                                        
+                                        // Reload table to show new group in all dropdowns
+                                        table.ajax.reload();
+                                        
+                                        // Show success message
+                                        alert('Group created and assigned successfully!');
+                                    }
+                                },
+                                error: function(xhr) {
+                                    var errorMsg = 'Failed to create group';
+                                    if (xhr.responseJSON && xhr.responseJSON.errors) {
+                                        errorMsg = Object.values(xhr.responseJSON.errors).flat().join(', ');
+                                    } else if (xhr.responseJSON && xhr.responseJSON.message) {
+                                        errorMsg = xhr.responseJSON.message;
+                                    }
+                                    alert(errorMsg);
+                                }
+                            });
+                        });
+                        
+                        // Handle create ad type form submission
+                        $('#createAdTypeForm').on('submit', function(e) {
+                            e.preventDefault();
+                            
+                            var formData = {
+                                name: $('#adTypeName').val()
+                            };
+                            
+                            $.ajax({
+                                url: '{{ route("meta.ads.manager.campaigns.ad-types.store") }}',
+                                method: 'POST',
+                                data: formData,
+                                headers: {
+                                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                                },
+                                success: function(response) {
+                                    if (response.success) {
+                                        // Add new ad type to the list
+                                        adTypes.push(response.ad_type);
+                                        
+                                        // Close modal
+                                        var modal = bootstrap.Modal.getInstance(document.getElementById('createAdTypeModal'));
+                                        modal.hide();
+                                        
+                                        // Clear form
+                                        $('#createAdTypeForm')[0].reset();
+                                        
+                                        // Get the stored select element and campaign ID
+                                        var $select = $('#createAdTypeModal').data('select-element');
+                                        var campaignId = $('#createAdTypeModal').data('campaign-id');
+                                        
+                                        // Update the campaign with the new ad type
+                                        if ($select && campaignId) {
+                                            updateCampaignAdType(campaignId, response.ad_type, $select);
+                                        }
+                                        
+                                        // Reload table to show new ad type in all dropdowns
+                                        table.ajax.reload();
+                                        
+                                        // Show success message
+                                        alert('Ad Type created and assigned successfully!');
+                                    }
+                                },
+                                error: function(xhr) {
+                                    var errorMsg = 'Failed to create ad type';
+                                    if (xhr.responseJSON && xhr.responseJSON.errors) {
+                                        errorMsg = Object.values(xhr.responseJSON.errors).flat().join(', ');
+                                    } else if (xhr.responseJSON && xhr.responseJSON.message) {
+                                        errorMsg = xhr.responseJSON.message;
+                                    }
+                                    alert(errorMsg);
+                                }
+                            });
+                        });
                     });
                 } catch(e) {
                     console.error('Error initializing table:', e);

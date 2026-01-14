@@ -1558,7 +1558,8 @@ class AmazonSpBudgetController extends Controller
 
         return response()->json([
             'status' => 200,
-            'message' => "...",
+            'message' => "Data updated successfully",
+            'success' => true,
             'updated_json' => $jsonData
         ]);
 

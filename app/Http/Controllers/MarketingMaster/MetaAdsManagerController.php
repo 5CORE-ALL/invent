@@ -11,6 +11,9 @@ use App\Models\MetaInsightDaily;
 use App\Models\MetaSyncRun;
 use App\Models\MetaActionLog;
 use App\Models\MetaAutomationRule;
+use App\Models\MetaCampaignGroup;
+use App\Models\MetaCampaignAdType;
+use App\Models\ProductMaster;
 use App\Services\MetaAdsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -234,11 +237,71 @@ class MetaAdsManagerController extends Controller
     {
         $adAccountId = $request->get('ad_account_id');
         $adAccounts = MetaAdAccount::when(Auth::id(), fn($q) => $q->where('user_id', Auth::id()))->get();
+        
+        // Get predefined groups and custom groups
+        $predefinedGroups = $this->getPredefinedGroups();
+        $customGroups = MetaCampaignGroup::orderBy('name')->pluck('name')->toArray();
+        $allGroups = array_merge($predefinedGroups, $customGroups);
+        
+        // Get unique parent values from productmaster table that start with 'PARENT'
+        $parents = ProductMaster::whereNotNull('parent')
+            ->where('parent', '!=', '')
+            ->distinct()
+            ->orderBy('parent')
+            ->pluck('parent')
+            ->toArray();
+        
+        // Get predefined ad types and custom ad types
+        $predefinedAdTypes = $this->getPredefinedAdTypes();
+        $customAdTypes = MetaCampaignAdType::orderBy('name')->pluck('name')->toArray();
+        $allAdTypes = array_merge($predefinedAdTypes, $customAdTypes);
 
         return view('marketing-masters.meta_ads_manager.campaigns', [
             'adAccounts' => $adAccounts,
             'selectedAdAccountId' => $adAccountId,
+            'groups' => $allGroups,
+            'parents' => $parents,
+            'adTypes' => $allAdTypes,
         ]);
+    }
+    
+    /**
+     * Get predefined groups list
+     */
+    private function getPredefinedGroups()
+    {
+        return [
+            'DRUM THRONE',
+            'KEYBOARD & PIANO BENCHES',
+            'DYNAMIC MICROPHONES',
+            'MIC STAND',
+            'FLOOR GUITAR STANDS',
+            'SPEAKER STANDS',
+            'ALL MICROPHONES',
+            'INSTRUMENT MICS',
+            'WIRELESS MICS',
+            'ALL STANDS',
+            'STOOLS AND BENCHES',
+            'GUITAR ACCESSORIES',
+            'MIXERS',
+        ];
+    }
+    
+    /**
+     * Get predefined ad types list
+     */
+    private function getPredefinedAdTypes()
+    {
+        return [
+            'IN GRP CAR IMG',
+            'IN GRP VID',
+            'IN PAR CAR IMG',
+            'IN PAR VID',
+            'FB GRP CAR IMG',
+            'FB GRP VID',
+            'FB PAR CAR IMG',
+            'FB PAR VID',
+        ];
     }
 
     /**
@@ -269,6 +332,9 @@ class MetaAdsManagerController extends Controller
             $data[] = [
                 'id' => $campaign->id,
                 'meta_id' => $campaign->meta_id,
+                'ad_type' => $campaign->ad_type,
+                'group' => $campaign->group,
+                'parent' => $campaign->parent,
                 'name' => $campaign->name,
                 'status' => $campaign->status,
                 'effective_status' => $campaign->effective_status,
@@ -692,6 +758,105 @@ class MetaAdsManagerController extends Controller
         // This is a placeholder - implement CSV export based on type
         return response()->json([
             'message' => 'Export functionality to be implemented',
+        ]);
+    }
+    
+    /**
+     * Store a new campaign group
+     */
+    public function storeGroup(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255|unique:meta_campaign_groups,name',
+        ]);
+
+        $group = MetaCampaignGroup::create([
+            'user_id' => Auth::id(),
+            'name' => $request->name,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Group created successfully',
+            'group' => $group->name,
+        ]);
+    }
+    
+    /**
+     * Store a new campaign ad type
+     */
+    public function storeAdType(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255|unique:meta_campaign_ad_types,name',
+        ]);
+
+        $adType = MetaCampaignAdType::create([
+            'user_id' => Auth::id(),
+            'name' => $request->name,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Ad Type created successfully',
+            'ad_type' => $adType->name,
+        ]);
+    }
+    
+    /**
+     * Update campaign group
+     */
+    public function updateCampaignGroup(Request $request, $campaignId)
+    {
+        $request->validate([
+            'group' => 'nullable|string|max:255',
+        ]);
+
+        $campaign = MetaCampaign::findOrFail($campaignId);
+        $campaign->group = $request->group;
+        $campaign->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Campaign group updated successfully',
+        ]);
+    }
+    
+    /**
+     * Update campaign parent
+     */
+    public function updateCampaignParent(Request $request, $campaignId)
+    {
+        $request->validate([
+            'parent' => 'nullable|string|max:255',
+        ]);
+
+        $campaign = MetaCampaign::findOrFail($campaignId);
+        $campaign->parent = $request->parent;
+        $campaign->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Campaign parent updated successfully',
+        ]);
+    }
+    
+    /**
+     * Update campaign ad type
+     */
+    public function updateCampaignAdType(Request $request, $campaignId)
+    {
+        $request->validate([
+            'ad_type' => 'nullable|string|max:255',
+        ]);
+
+        $campaign = MetaCampaign::findOrFail($campaignId);
+        $campaign->ad_type = $request->ad_type;
+        $campaign->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Campaign ad type updated successfully',
         ]);
     }
 }

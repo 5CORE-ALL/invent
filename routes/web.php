@@ -2544,6 +2544,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         // Campaigns
         Route::get('/meta-ads-manager/campaigns', 'campaigns')->name('meta.ads.manager.campaigns');
         Route::get('/meta-ads-manager/campaigns/data', 'campaignsData')->name('meta.ads.manager.campaigns.data');
+        Route::post('/meta-ads-manager/campaigns/groups', 'storeGroup')->name('meta.ads.manager.campaigns.groups.store');
+        Route::post('/meta-ads-manager/campaigns/ad-types', 'storeAdType')->name('meta.ads.manager.campaigns.ad-types.store');
+        Route::post('/meta-ads-manager/campaigns/{campaignId}/group', 'updateCampaignGroup')->name('meta.ads.manager.campaigns.group.update');
+        Route::post('/meta-ads-manager/campaigns/{campaignId}/parent', 'updateCampaignParent')->name('meta.ads.manager.campaigns.parent.update');
+        Route::post('/meta-ads-manager/campaigns/{campaignId}/ad-type', 'updateCampaignAdType')->name('meta.ads.manager.campaigns.ad-type.update');
         
         // AdSets
         Route::get('/meta-ads-manager/adsets', 'adsets')->name('meta.ads.manager.adsets');

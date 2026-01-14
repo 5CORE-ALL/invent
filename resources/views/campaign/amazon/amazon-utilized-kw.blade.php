@@ -585,6 +585,13 @@
                         }
                     }
                     
+                    // Check if campaign is missing (red or yellow) - exclude from utilization type counts
+                    const hasCampaignForUtil = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                    if (!hasCampaignForUtil) {
+                        // This is a missing item (red or yellow), skip utilization type counting
+                        return;
+                    }
+                    
                     // Now calculate utilization and count
                     let budget = parseFloat(row.campaignBudgetAmount) || 0;
                     let l7_spend = parseFloat(row.l7_spend || 0);
@@ -2193,15 +2200,20 @@
                 // Apply utilization type filter (Amazon rules)
                 if (currentUtilizationType === 'all') {
                     // Show all data (no filter on utilization)
-                } else if (currentUtilizationType === 'over') {
-                    // Over-utilized: ub7 > 99 && ub1 > 99
-                    if (!(ub7 > 99 && ub1 > 99)) return false;
-                } else if (currentUtilizationType === 'under') {
-                    // Under-utilized: ub7 < 66
-                    if (!(ub7 < 66 && ub1 < 66)) return false;
-                } else if (currentUtilizationType === 'correctly') {
-                    // Correctly-utilized: ub7 >= 66 && ub7 <= 99
-                    if (!(ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99)) return false;
+                } else {
+                    // When utilization type is selected (over/under/correctly), exclude missing items (red and yellow)
+                    if (!hasCampaign) return false;
+                    
+                    if (currentUtilizationType === 'over') {
+                        // Over-utilized: ub7 > 99 && ub1 > 99
+                        if (!(ub7 > 99 && ub1 > 99)) return false;
+                    } else if (currentUtilizationType === 'under') {
+                        // Under-utilized: ub7 < 66
+                        if (!(ub7 < 66 && ub1 < 66)) return false;
+                    } else if (currentUtilizationType === 'correctly') {
+                        // Correctly-utilized: ub7 >= 66 && ub7 <= 99
+                        if (!(ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99)) return false;
+                    }
                 }
 
                 // Global search filter
