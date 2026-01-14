@@ -211,7 +211,7 @@
                                         <strong>Instructions:</strong>
                                         <ol class="mb-0 mt-2">
                                             <li>Download the sample file below</li>
-                                            <li>Fill in the Q&A data (Question1, Answer1, Question2, Answer2, ... Question10, Answer10)</li>
+                                            <li>Fill in the Q&A data (FAQ 1, ANS 1, FAQ 2, ANS 2, ... FAQ 10, ANS 10)</li>
                                             <li>Upload the completed file</li>
                                         </ol>
                                     </div>
@@ -1007,7 +1007,7 @@
                 downloadSampleBtn.addEventListener('click', function() {
                     // Create sample data with headers
                     const sampleData = [
-                        ['SKU', 'Question1', 'Answer1', 'Question2', 'Answer2', 'Question3', 'Answer3', 'Question4', 'Answer4', 'Question5', 'Answer5', 'Question6', 'Answer6', 'Question7', 'Answer7', 'Question8', 'Answer8', 'Question9', 'Answer9', 'Question10', 'Answer10']
+                        ['Seller SKU', 'FAQ 1', 'ANS 1', 'FAQ 2', 'ANS 2', 'FAQ 3', 'ANS 3', 'FAQ 4', 'ANS 4', 'FAQ 5', 'ANS 5', 'FAQ 6', 'ANS 6', 'FAQ 7', 'ANS 7', 'FAQ 8', 'ANS 8', 'FAQ 9', 'ANS 9', 'FAQ 10', 'ANS 10']
                     ];
                     
                     // Add example rows

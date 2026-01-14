@@ -3176,158 +3176,159 @@
 
 
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const SIDEBAR_SELECTOR = '.side-nav'; // root sidebar container
-        const ITEM_SELECTOR = '.side-nav-item'; // each menu li
-        const SUBMENU_SELECTOR = 'ul'; // submenu inside li
-
-        // Create single floating container reused for all submenus
-        const floatWrap = document.createElement('div');
-        floatWrap.setAttribute('aria-hidden', 'true');
-        // inline styles only — no external CSS
-        Object.assign(floatWrap.style, {
-            position: 'absolute',
-            display: 'none',
-            zIndex: 99999,
-            minWidth: '180px',
-            background: '#1f1f1f',
-            padding: '6px 0',
-            borderRadius: '6px',
-            boxShadow: '0 6px 18px rgba(0,0,0,0.25)',
-            overflow: 'hidden',
-            maxHeight: '80vh',
-            overflowY: 'auto',
-            transition: 'opacity 160ms ease',
-            opacity: '0'
-        });
-        document.body.appendChild(floatWrap);
-
-        let hideTimer = null;
-        let currentOwner = null; // li that owns current flyout
-
-        // Helper: copy submenu (<ul>) into floatWrap
-        function showFlyoutFor(ownerLi) {
-            const submenu = ownerLi.querySelector(SUBMENU_SELECTOR);
-            if (!submenu) return;
-
-            // clone so original remains untouched
-            const clone = submenu.cloneNode(true);
-
-            // normalize links in clone to display as blocks with padding via inline styles
-            Array.from(clone.querySelectorAll('a')).forEach(a => {
-                Object.assign(a.style, {
-                    display: 'block',
-                    padding: '8px 14px',
-                    color: '#fff',
-                    textDecoration: 'none',
-                    whiteSpace: 'nowrap'
-                });
-                // small hover effect using mouse events (inline styles)
-                a.addEventListener('mouseenter', () => a.style.background = '#333');
-                a.addEventListener('mouseleave', () => a.style.background = 'transparent');
-            });
-
-            // clear and append
-            floatWrap.innerHTML = '';
-            floatWrap.appendChild(clone);
-
-            // compute position: to the right of the owner li (or left if insufficient space)
-            const ownerRect = ownerLi.getBoundingClientRect();
-            const bodyRect = document.body.getBoundingClientRect();
-            const scrollY = window.scrollY || window.pageYOffset;
-            const floatWidth = Math.max(180, Math.min(320, ownerRect.width * 1.25)); // reasonable width
-            floatWrap.style.minWidth = floatWidth + 'px';
-
-            const desiredLeft = Math.round(ownerRect.right + 6 + window.scrollX); // 6px gap
-            const viewportRight = window.innerWidth;
-            let left = desiredLeft;
-            // if not enough space on right, show to left of owner
-            if (desiredLeft + floatWidth > viewportRight - 8) {
-                left = Math.round(ownerRect.left - floatWidth - 6 + window.scrollX);
-                if (left < 8) left = 8;
-            }
-
-            // top: align top of owner; but keep within viewport (with some margin)
-            let top = Math.round(ownerRect.top + scrollY);
-            const maxTop = (window.innerHeight + scrollY) - (floatWrap.offsetHeight || 300) - 10;
-            if (top > maxTop) top = Math.max(8 + scrollY, maxTop);
-
-            Object.assign(floatWrap.style, {
-                left: left + 'px',
-                top: top + 'px',
-                display: 'block'
-            });
-
-            // force reflow then fade in
-            requestAnimationFrame(() => {
-                floatWrap.style.opacity = '1';
-            });
-
-            currentOwner = ownerLi;
-        }
-
-        function hideFlyoutImmediate() {
-            floatWrap.style.opacity = '0';
-            // hide after transition time
-            setTimeout(() => {
-                floatWrap.style.display = 'none';
-                floatWrap.innerHTML = '';
-            }, 180);
-            currentOwner = null;
-        }
-
-        // attach listeners to all side-nav-item elements that include a submenu UL
-        const sidebar = document.querySelector(SIDEBAR_SELECTOR) || document.body;
-        const items = sidebar.querySelectorAll(ITEM_SELECTOR);
-
-        items.forEach(li => {
-            const submenu = li.querySelector(SUBMENU_SELECTOR);
-            if (!submenu) return; // skip items without submenu
-
-            // show on mouseenter of LI or its link
-            li.addEventListener('mouseenter', (ev) => {
-                if (hideTimer) {
-                    clearTimeout(hideTimer);
-                    hideTimer = null;
-                }
-                showFlyoutFor(li);
-            });
-
-            // start hide timer on mouseleave (so user can move into flyout without it vanishing)
-            li.addEventListener('mouseleave', () => {
-                if (hideTimer) clearTimeout(hideTimer);
-                hideTimer = setTimeout(() => {
-                    // only hide if mouse not inside floatWrap
-                    if (!floatWrap.matches(':hover')) hideFlyoutImmediate();
-                }, 160);
-            });
-        });
-
-        // keep flyout visible while hovering over it, hide when leaving
-        floatWrap.addEventListener('mouseenter', () => {
-            if (hideTimer) {
-                clearTimeout(hideTimer);
-                hideTimer = null;
-            }
-        });
-        floatWrap.addEventListener('mouseleave', () => {
-            if (hideTimer) clearTimeout(hideTimer);
-            hideTimer = setTimeout(() => hideFlyoutImmediate(), 160);
-        });
-
-        // Close on ESC key
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') hideFlyoutImmediate();
-        });
-
-        // Recompute position on resize/scroll if visible
-        window.addEventListener('resize', () => {
-            if (currentOwner) showFlyoutFor(currentOwner);
-        });
-        window.addEventListener('scroll', () => {
-            if (currentOwner) showFlyoutFor(currentOwner);
-        });
-    });
+    // Flyout menu functionality disabled - submenus will use standard collapse/expand behavior
+    // document.addEventListener('DOMContentLoaded', function() {
+    //     const SIDEBAR_SELECTOR = '.side-nav'; // root sidebar container
+    //     const ITEM_SELECTOR = '.side-nav-item'; // each menu li
+    //     const SUBMENU_SELECTOR = 'ul'; // submenu inside li
+    //
+    //     // Create single floating container reused for all submenus
+    //     const floatWrap = document.createElement('div');
+    //     floatWrap.setAttribute('aria-hidden', 'true');
+    //     // inline styles only — no external CSS
+    //     Object.assign(floatWrap.style, {
+    //         position: 'absolute',
+    //         display: 'none',
+    //         zIndex: 99999,
+    //         minWidth: '180px',
+    //         background: '#1f1f1f',
+    //         padding: '6px 0',
+    //         borderRadius: '6px',
+    //         boxShadow: '0 6px 18px rgba(0,0,0,0.25)',
+    //         overflow: 'hidden',
+    //         maxHeight: '80vh',
+    //         overflowY: 'auto',
+    //         transition: 'opacity 160ms ease',
+    //         opacity: '0'
+    //     });
+    //     document.body.appendChild(floatWrap);
+    //
+    //     let hideTimer = null;
+    //     let currentOwner = null; // li that owns current flyout
+    //
+    //     // Helper: copy submenu (<ul>) into floatWrap
+    //     function showFlyoutFor(ownerLi) {
+    //         const submenu = ownerLi.querySelector(SUBMENU_SELECTOR);
+    //         if (!submenu) return;
+    //
+    //         // clone so original remains untouched
+    //         const clone = submenu.cloneNode(true);
+    //
+    //         // normalize links in clone to display as blocks with padding via inline styles
+    //         Array.from(clone.querySelectorAll('a')).forEach(a => {
+    //             Object.assign(a.style, {
+    //                 display: 'block',
+    //                 padding: '8px 14px',
+    //                 color: '#fff',
+    //                 textDecoration: 'none',
+    //                 whiteSpace: 'nowrap'
+    //             });
+    //             // small hover effect using mouse events (inline styles)
+    //             a.addEventListener('mouseenter', () => a.style.background = '#333');
+    //             a.addEventListener('mouseleave', () => a.style.background = 'transparent');
+    //         });
+    //
+    //         // clear and append
+    //         floatWrap.innerHTML = '';
+    //         floatWrap.appendChild(clone);
+    //
+    //         // compute position: to the right of the owner li (or left if insufficient space)
+    //         const ownerRect = ownerLi.getBoundingClientRect();
+    //         const bodyRect = document.body.getBoundingClientRect();
+    //         const scrollY = window.scrollY || window.pageYOffset;
+    //         const floatWidth = Math.max(180, Math.min(320, ownerRect.width * 1.25)); // reasonable width
+    //         floatWrap.style.minWidth = floatWidth + 'px';
+    //
+    //         const desiredLeft = Math.round(ownerRect.right + 6 + window.scrollX); // 6px gap
+    //         const viewportRight = window.innerWidth;
+    //         let left = desiredLeft;
+    //         // if not enough space on right, show to left of owner
+    //         if (desiredLeft + floatWidth > viewportRight - 8) {
+    //             left = Math.round(ownerRect.left - floatWidth - 6 + window.scrollX);
+    //             if (left < 8) left = 8;
+    //         }
+    //
+    //         // top: align top of owner; but keep within viewport (with some margin)
+    //         let top = Math.round(ownerRect.top + scrollY);
+    //         const maxTop = (window.innerHeight + scrollY) - (floatWrap.offsetHeight || 300) - 10;
+    //         if (top > maxTop) top = Math.max(8 + scrollY, maxTop);
+    //
+    //         Object.assign(floatWrap.style, {
+    //             left: left + 'px',
+    //             top: top + 'px',
+    //             display: 'block'
+    //         });
+    //
+    //         // force reflow then fade in
+    //         requestAnimationFrame(() => {
+    //             floatWrap.style.opacity = '1';
+    //         });
+    //
+    //         currentOwner = ownerLi;
+    //     }
+    //
+    //     function hideFlyoutImmediate() {
+    //         floatWrap.style.opacity = '0';
+    //         // hide after transition time
+    //         setTimeout(() => {
+    //             floatWrap.style.display = 'none';
+    //             floatWrap.innerHTML = '';
+    //         }, 180);
+    //         currentOwner = null;
+    //     }
+    //
+    //     // attach listeners to all side-nav-item elements that include a submenu UL
+    //     const sidebar = document.querySelector(SIDEBAR_SELECTOR) || document.body;
+    //     const items = sidebar.querySelectorAll(ITEM_SELECTOR);
+    //
+    //     items.forEach(li => {
+    //         const submenu = li.querySelector(SUBMENU_SELECTOR);
+    //         if (!submenu) return; // skip items without submenu
+    //
+    //         // show on mouseenter of LI or its link
+    //         li.addEventListener('mouseenter', (ev) => {
+    //             if (hideTimer) {
+    //                 clearTimeout(hideTimer);
+    //                 hideTimer = null;
+    //             }
+    //             showFlyoutFor(li);
+    //         });
+    //
+    //         // start hide timer on mouseleave (so user can move into flyout without it vanishing)
+    //         li.addEventListener('mouseleave', () => {
+    //             if (hideTimer) clearTimeout(hideTimer);
+    //             hideTimer = setTimeout(() => {
+    //                 // only hide if mouse not inside floatWrap
+    //                 if (!floatWrap.matches(':hover')) hideFlyoutImmediate();
+    //             }, 160);
+    //         });
+    //     });
+    //
+    //     // keep flyout visible while hovering over it, hide when leaving
+    //     floatWrap.addEventListener('mouseenter', () => {
+    //         if (hideTimer) {
+    //             clearTimeout(hideTimer);
+    //             hideTimer = null;
+    //         }
+    //     });
+    //     floatWrap.addEventListener('mouseleave', () => {
+    //         if (hideTimer) clearTimeout(hideTimer);
+    //         hideTimer = setTimeout(() => hideFlyoutImmediate(), 160);
+    //     });
+    //
+    //     // Close on ESC key
+    //     document.addEventListener('keydown', (e) => {
+    //         if (e.key === 'Escape') hideFlyoutImmediate();
+    //     });
+    //
+    //     // Recompute position on resize/scroll if visible
+    //     window.addEventListener('resize', () => {
+    //         if (currentOwner) showFlyoutFor(currentOwner);
+    //     });
+    //     window.addEventListener('scroll', () => {
+    //         if (currentOwner) showFlyoutFor(currentOwner);
+    //     });
+    // });
 </script>
 
 <script>
