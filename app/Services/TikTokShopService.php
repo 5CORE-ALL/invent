@@ -375,6 +375,75 @@ class TikTokShopService
     }
 
     /**
+     * Get all product inventory - extract from product data (skus array)
+     * TikTok product data includes SKU-level inventory information
+     */
+    public function getAllProductInventory(array $products): array
+    {
+        $allInventory = [];
+        
+        if (empty($products)) {
+            $this->output('warn', 'getAllProductInventory: No products provided');
+            return $allInventory;
+        }
+        
+        $this->output('info', 'getAllProductInventory: Extracting inventory from ' . count($products) . ' products');
+        
+        // Extract inventory from product data (skus array contains inventory info)
+        foreach ($products as $product) {
+            $productId = $product['id'] ?? $product['product_id'] ?? null;
+            if (!$productId) {
+                continue;
+            }
+            
+            // Check if product has skus array with inventory data
+            $skus = $product['skus'] ?? [];
+            
+            if (!empty($skus) && is_array($skus)) {
+                // Sum up inventory from all SKUs for this product
+                $totalStock = 0;
+                foreach ($skus as $sku) {
+                    // Try different fields for stock quantity
+                    $stock = $sku['available_stock'] 
+                        ?? $sku['stock'] 
+                        ?? $sku['inventory_quantity'] 
+                        ?? $sku['quantity'] 
+                        ?? $sku['inventory']['available_stock'] 
+                        ?? 0;
+                    $totalStock += (int)$stock;
+                }
+                
+                // Create inventory record for this product
+                if ($totalStock > 0 || isset($skus[0])) {
+                    $allInventory[] = [
+                        'product_id' => (string)$productId,
+                        'available_stock' => $totalStock,
+                        'stock' => $totalStock,
+                    ];
+                }
+            } else {
+                // Try to get inventory from product-level fields
+                $stock = $product['available_stock'] 
+                    ?? $product['stock'] 
+                    ?? $product['inventory_quantity'] 
+                    ?? $product['inventory']['available_stock'] 
+                    ?? 0;
+                
+                if ($stock > 0) {
+                    $allInventory[] = [
+                        'product_id' => (string)$productId,
+                        'available_stock' => (int)$stock,
+                        'stock' => (int)$stock,
+                    ];
+                }
+            }
+        }
+        
+        $this->output('info', 'getAllProductInventory: Extracted inventory for ' . count($allInventory) . ' products');
+        return $allInventory;
+    }
+
+    /**
      * Get product analytics using the library
      */
     public function getProductAnalytics(int $startTime = null, int $endTime = null, array $productIds = []): ?array
@@ -548,15 +617,23 @@ class TikTokShopService
             $result['products'] = $products;
             $this->output('info', '✓ Fetched ' . count($products) . ' products');
 
-            // Inventory, Analytics: Not available with current TikTok API/library
-            // - Inventory API: Doesn't work with current library version
+            // Fetch inventory for products
+            $this->output('info', 'Step 2: Fetching inventory data...');
+            $inventoryData = $this->getAllProductInventory($products);
+            $result['inventory'] = $inventoryData;
+            if (!empty($inventoryData)) {
+                $this->output('info', '✓ Fetched inventory for ' . count($inventoryData) . ' products');
+            } else {
+                $this->output('warn', '⚠ No inventory data retrieved');
+            }
+            
+            // Analytics: Not available with current TikTok API/library
             // - Analytics API: Requires API version 202405+ (not available)
-            $this->output('info', 'Step 2: Inventory/Analytics not available with current API/library. Skipping.');
-            $result['inventory'] = [];
+            $this->output('info', 'Step 3: Analytics not available with current API/library. Skipping.');
             $result['analytics'] = [];
             
             // Reviews: Extract review_count and rating from product data (TikTok provides aggregated stats, not individual reviews)
-            $this->output('info', 'Step 3: Extracting review data from products...');
+            $this->output('info', 'Step 4: Extracting review data from products...');
             $reviews = $this->getProductReviews($products);
             if ($reviews && !empty($reviews['reviews'])) {
                 $result['reviews'] = $reviews['reviews'];

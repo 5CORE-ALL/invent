@@ -55,6 +55,21 @@
             font-size: 0.875rem;
             line-height: 1.5;
         }
+        .bg-danger {
+            background-color: #dc3545 !important;
+            color: #fff;
+        }
+        .text-danger {
+            color: #dc3545 !important;
+        }
+        @media (max-width: 1200px) {
+            .table-container {
+                font-size: 0.875rem;
+            }
+            .table th, .table td {
+                padding: 0.5rem;
+            }
+        }
     </style>
 @endsection
 
@@ -102,17 +117,10 @@
                                 <input type="date" id="dateToFilter" class="form-control form-control-sm">
                             </div>
                         </div>
-                        <div class="row g-3 mb-3">
-                            <div class="col-md-12">
-                                <button id="iaFilterBtn" class="btn btn-outline-secondary btn-sm">
-                                    <i class="fas fa-filter"></i> I&A (<span id="iaFilterCount">0</span>)
-                                </button>
-                            </div>
-                        </div>
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div class="d-flex align-items-center gap-3">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
                                 <div>
-                                    <input type="text" id="lostGainSearch" class="form-control" placeholder="Search all columns">
+                                    <input type="text" id="lostGainSearch" class="form-control form-control-sm" placeholder="Search all columns" style="min-width: 200px;">
                                 </div>
                                 <div>
                                     <span class="badge bg-info badge-sm">
@@ -120,7 +128,7 @@
                                     </span>
                                 </div>
                                 <div>
-                                    <span class="badge bg-primary badge-sm">
+                                    <span class="badge bg-primary badge-sm" id="lostGainBadge">
                                         Loss/Gain: <span id="lostGainTotal">0</span>
                                     </span>
                                 </div>
@@ -128,6 +136,11 @@
                                     <span class="badge bg-secondary badge-sm">
                                         I&A Total: <span id="iaTotal">0</span>
                                     </span>
+                                </div>
+                                <div>
+                                    <button id="iaFilterBtn" class="btn btn-outline-secondary btn-sm">
+                                        <i class="fas fa-filter"></i> I&A (<span id="iaFilterCount">0</span>)
+                                    </button>
                                 </div>
                                 <div>
                                     <button id="bulkIABtn" class="btn btn-dark btn-sm" disabled>
@@ -367,6 +380,11 @@
                     
                     const iaChecked = row.isIA ? 'checked' : '';
                     const iaClass = row.isIA ? 'btn-warning' : 'btn-outline-secondary';
+                    // Apply red color for negative loss/gain values
+                    const lossGainClass = row.loss_gain < 0 ? 'text-danger fw-bold' : '';
+                    const lossGainDisplay = row.formatted_loss_gain !== '-' 
+                        ? `<span class="${lossGainClass}">${row.formatted_loss_gain}</span>` 
+                        : row.formatted_loss_gain;
                     tableBody.append(`
                         <tr data-row-index="${index}" ${row.isIA ? 'class="table-warning"' : ''}>
                             <td class="text-center">
@@ -376,7 +394,7 @@
                             <td>${row.sku}</td>
                             <td>${row.verified_stock}</td>
                             <td>${row.to_adjust}</td>
-                            <td class="loss-gain-column">${row.formatted_loss_gain}</td>
+                            <td class="loss-gain-column">${lossGainDisplay}</td>
                             <td>${row.reason}</td>
                             <td>${row.approved_by}</td>
                             <td>${row.approved_at}</td>
@@ -421,13 +439,34 @@
                         },
                         success: function(res) {
                             if (res.success) {
-                                tableRows[rowIndex].isIA = newIAStatus;
-                                renderTableRows(tableRows);
-                                updateTotals();
+                                if (res.updated > 0) {
+                                    // Update ALL rows with the same SKU (not just the clicked one)
+                                    tableRows.forEach((row, idx) => {
+                                        if (row.sku === sku) {
+                                            row.isIA = newIAStatus;
+                                        }
+                                    });
+                                    
+                                    renderTableRows(tableRows);
+                                    updateTotals();
+                                    
+                                    // Show success message if there were any issues
+                                    if (res.not_found && res.not_found.length > 0) {
+                                        alert('Warning: ' + res.message);
+                                    }
+                                } else {
+                                    alert('Failed to update: SKU not found in database.');
+                                }
+                            } else {
+                                alert('Failed to save I&A status: ' + (res.message || 'Unknown error'));
                             }
                         },
-                        error: function() {
-                            alert('Failed to save I&A status. Please try again.');
+                        error: function(xhr) {
+                            let errorMsg = 'Failed to save I&A status. Please try again.';
+                            if (xhr.responseJSON && xhr.responseJSON.message) {
+                                errorMsg = xhr.responseJSON.message;
+                            }
+                            alert(errorMsg);
                         }
                     });
                 }
@@ -455,6 +494,14 @@
                 $('#iaTotal').text(`${Math.trunc(iaTotal)}`);
                 $('#adjustedTotal').text(`${Math.trunc(adjustedTotal)}`);
                 $('#iaFilterCount').text(iaCount);
+                
+                // Update badge color based on value (red for negative)
+                const lostGainBadge = $('#lostGainBadge');
+                if (lossGainTotal < 0) {
+                    lostGainBadge.removeClass('bg-primary').addClass('bg-danger');
+                } else {
+                    lostGainBadge.removeClass('bg-danger').addClass('bg-primary');
+                }
             }
 
             function updateBulkButtonState() {
@@ -477,6 +524,9 @@
                     return;
                 }
 
+                // Disable button during processing
+                $('#bulkIABtn').prop('disabled', true).text('Processing...');
+
                 // Save to database
                 $.ajax({
                     url: '/lost-gain-update-ia',
@@ -488,12 +538,17 @@
                     },
                     success: function(res) {
                         if (res.success) {
-                            // Mark all selected rows as I&A
-                            selectedRows.forEach(rowIndex => {
-                                if (tableRows[rowIndex]) {
-                                    tableRows[rowIndex].isIA = true;
-                                }
-                            });
+                            if (res.updated > 0) {
+                                // Get unique SKUs from selected rows
+                                const selectedSkuSet = new Set(selectedSkus);
+                                
+                                // Update ALL rows with the same SKU (not just the selected ones)
+                                tableRows.forEach((row, idx) => {
+                                    if (selectedSkuSet.has(row.sku)) {
+                                        row.isIA = true;
+                                    }
+                                });
+                            }
 
                             // Re-render table and update totals
                             renderTableRows(tableRows);
@@ -503,10 +558,27 @@
                             $('.row-checkbox').prop('checked', false);
                             $('#selectAllCheckbox').prop('checked', false);
                             updateBulkButtonState();
+                            
+                            // Show message if there were issues
+                            if (res.not_found && res.not_found.length > 0) {
+                                alert('Warning: ' + res.message);
+                            } else if (res.updated === 0) {
+                                alert('Failed to update: No records found for the selected SKUs.');
+                            }
+                        } else {
+                            alert('Failed to save I&A status: ' + (res.message || 'Unknown error'));
                         }
                     },
-                    error: function() {
-                        alert('Failed to save I&A status. Please try again.');
+                    error: function(xhr) {
+                        let errorMsg = 'Failed to save I&A status. Please try again.';
+                        if (xhr.responseJSON && xhr.responseJSON.message) {
+                            errorMsg = xhr.responseJSON.message;
+                        }
+                        alert(errorMsg);
+                    },
+                    complete: function() {
+                        // Re-enable button
+                        $('#bulkIABtn').prop('disabled', false).html('<i class="fas fa-archive"></i> Mark Selected as I&A');
                     }
                 });
             }
@@ -585,10 +657,10 @@
                             visibleAdjustedTotal += adjustedValue;
                         }
                         
-                        const lossGainText = $row.find('td:eq(5)').text().trim();
-                        const lossGainValue = parseFloat(lossGainText);
-                        if (!isNaN(lossGainValue)) {
-                            if (tableRows[rowIndex] && tableRows[rowIndex].isIA) {
+                        // Get loss/gain value from tableRows data (more reliable than parsing HTML)
+                        if (tableRows[rowIndex]) {
+                            const lossGainValue = tableRows[rowIndex].loss_gain || 0;
+                            if (tableRows[rowIndex].isIA) {
                                 visibleIATotal += lossGainValue;
                             } else {
                                 visibleLossGainTotal += lossGainValue;
@@ -601,6 +673,14 @@
                 $('#lostGainTotal').text(`${Math.trunc(visibleLossGainTotal)}`);
                 $('#iaTotal').text(`${Math.trunc(visibleIATotal)}`);
                 $('#adjustedTotal').text(`${Math.trunc(visibleAdjustedTotal)}`);
+                
+                // Update badge color based on value (red for negative)
+                const lostGainBadge = $('#lostGainBadge');
+                if (visibleLossGainTotal < 0) {
+                    lostGainBadge.removeClass('bg-primary').addClass('bg-danger');
+                } else {
+                    lostGainBadge.removeClass('bg-danger').addClass('bg-primary');
+                }
             }
 
             // Search functionality

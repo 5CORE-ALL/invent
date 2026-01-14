@@ -1250,24 +1250,64 @@ class VerificationAdjustmentController extends Controller
         $isIA = filter_var($request->input('is_ia'), FILTER_VALIDATE_BOOLEAN);
 
         $updated = 0;
+        $notFound = [];
+        
         foreach ($validated['skus'] as $sku) {
-            $inventory = Inventory::where('sku', $sku)
+            // Normalize SKU (trim and handle case-insensitive matching)
+            $normalizedSku = trim($sku);
+            
+            // Try exact match first - update ALL matching records (not just the first one)
+            $inventories = Inventory::where('sku', $normalizedSku)
                 ->where('type', null)
                 ->where('is_approved', true)
-                ->latest()
-                ->first();
+                ->get();
             
-            if ($inventory) {
-                $inventory->is_ia = $isIA;
-                $inventory->save();
-                $updated++;
+            // If not found, try case-insensitive match
+            if ($inventories->isEmpty()) {
+                $inventories = Inventory::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper($normalizedSku)])
+                    ->where('type', null)
+                    ->where('is_approved', true)
+                    ->get();
+            }
+            
+            if ($inventories->isNotEmpty()) {
+                // Update ALL matching records for this SKU
+                $inventoryIds = [];
+                foreach ($inventories as $inventory) {
+                    $inventory->is_ia = $isIA;
+                    $inventory->save();
+                    $inventoryIds[] = $inventory->id;
+                    $updated++;
+                }
+                
+                Log::info('I&A status updated for all matching records', [
+                    'sku' => $normalizedSku,
+                    'is_ia' => $isIA,
+                    'inventory_ids' => $inventoryIds,
+                    'count' => count($inventoryIds)
+                ]);
+            } else {
+                $notFound[] = $normalizedSku;
+                Log::warning('I&A update failed: SKU not found', [
+                    'sku' => $normalizedSku,
+                    'is_ia' => $isIA
+                ]);
+            }
+        }
+
+        $message = "Updated {$updated} record(s).";
+        if (count($notFound) > 0) {
+            $message .= " " . count($notFound) . " SKU(s) not found: " . implode(', ', array_slice($notFound, 0, 5));
+            if (count($notFound) > 5) {
+                $message .= " and " . (count($notFound) - 5) . " more.";
             }
         }
 
         return response()->json([
             'success' => true,
-            'message' => "Updated {$updated} record(s).",
-            'updated' => $updated
+            'message' => $message,
+            'updated' => $updated,
+            'not_found' => $notFound
         ]);
     }
 
