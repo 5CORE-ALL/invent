@@ -230,6 +230,11 @@
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items (INV>0)">0 Sold: 0</span>
                         <span class="badge fs-6 p-2" id="more-sold-count-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter items with sales (INV>0)">> 0 Sold: 0</span>
                         
+                        <!-- Price Comparison Badge -->
+                        <span class="badge bg-danger fs-6 p-2 price-filter-badge" data-filter="prc-gt-lmp" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter items where Prc > LMP">
+                            Prc > LMP: <span id="prc-gt-lmp-count">0</span>
+                        </span>
+                        
                         <!-- Financial Metrics -->
                         <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold;">Total PFT: $0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total Sales: $0</span>
@@ -412,6 +417,7 @@
         let notMapFilterActive = false;
         let lessAmzFilterActive = false;
         let moreAmzFilterActive = false;
+        let priceFilterActive = false; // Track price filter state: true = show only Prc > LMP
         
         // Toast notification function
         function showToast(message, type = 'info') {
@@ -796,6 +802,22 @@
             $('#more-sold-count-badge').on('click', function() {
                 moreSoldFilterActive = !moreSoldFilterActive;
                 zeroSoldFilterActive = false;
+                applyFilters();
+            });
+
+            // Price filter badge click handler
+            $('.price-filter-badge').on('click', function() {
+                // Toggle the price filter
+                priceFilterActive = !priceFilterActive;
+                
+                // Update badge appearance
+                if (priceFilterActive) {
+                    $(this).removeClass('bg-danger').addClass('bg-warning').css('color', 'black');
+                } else {
+                    $(this).removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
+                }
+                
+                // Re-apply filters
                 applyFilters();
             });
 
@@ -2041,12 +2063,18 @@
                             const value = parseFloat(cell.getValue() || 0);
                             const rowData = cell.getRow().getData();
                             const amazonPrice = parseFloat(rowData['A Price']) || 0;
+                            const lmpPrice = parseFloat(rowData['lmp_price'] || 0);
                             
                             if (value === 0) {
                                 return `<span style="color: #a00211; font-weight: 600;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
                             }
                             
-                            // Color code based on Amazon price comparison
+                            // Priority 1: Check if price > LMP (highest priority - red)
+                            if (lmpPrice > 0 && value > lmpPrice) {
+                                return `<span style="color: #dc3545; font-weight: 600;">$${value.toFixed(2)}</span>`;
+                            }
+                            
+                            // Priority 2: Color code based on Amazon price comparison
                             if (amazonPrice > 0 && value > 0) {
                                 if (value < amazonPrice) {
                                     return `<span style="color: #a00211; font-weight: 600;">$${value.toFixed(2)}</span>`;
@@ -2952,6 +2980,16 @@
                         return inv > 0 && amazonPrice > 0 && ebayPrice > 0 && ebayPrice > amazonPrice;
                     });
                 }
+
+                // Price filter (Prc > LMP)
+                if (priceFilterActive) {
+                    table.addFilter(function(data) {
+                        const inv = parseFloat(data['INV']) || 0;
+                        const ebayPrice = parseFloat(data['eBay Price']) || 0;
+                        const lmpPrice = parseFloat(data['lmp_price']) || 0;
+                        return inv > 0 && lmpPrice > 0 && ebayPrice > lmpPrice;
+                    });
+                }
                 
                 updateCalcValues();
                 updateSummary();
@@ -3024,6 +3062,7 @@
                 let notMapCount = 0;
                 let lessAmzCount = 0;
                 let moreAmzCount = 0;
+                let prcGtLmpCount = 0;
 
                 filteredData.forEach(row => {
                     const inv = parseFloat(row.INV || 0);
@@ -3074,6 +3113,12 @@
                             } else if (ebayPrice > amazonPrice) {
                                 moreAmzCount++;
                             }
+                        }
+                        
+                        // Count Prc > LMP (only INV > 0)
+                        const lmpPrice = parseFloat(row['lmp_price'] || 0);
+                        if (lmpPrice > 0 && ebayPrice > lmpPrice) {
+                            prcGtLmpCount++;
                         }
                     }
                 });
@@ -3131,6 +3176,10 @@
                 
                 $('#zero-sold-count-badge').text('0 Sold: ' + zeroSoldCount.toLocaleString());
                 $('#more-sold-count-badge').text('> 0 Sold: ' + moreSoldCount.toLocaleString());
+                
+                // Update Prc > LMP count
+                $('#prc-gt-lmp-count').text(prcGtLmpCount.toLocaleString());
+                
                 $('#missing-count-badge').text('Missing: ' + missingCount.toLocaleString());
                 $('#map-count-badge').text('Map: ' + mapCount.toLocaleString());
                 $('#not-map-count-badge').text('N MP: ' + notMapCount.toLocaleString());
