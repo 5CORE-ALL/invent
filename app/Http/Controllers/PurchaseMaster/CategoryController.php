@@ -6177,7 +6177,10 @@ class CategoryController extends Controller
 
             // Clean headers - normalize to lowercase and replace spaces/special chars
             $headers = array_map(function ($header) {
-                return strtolower(trim(preg_replace('/[^a-zA-Z0-9_]/', '_', $header)));
+                if ($header === null) {
+                    return '';
+                }
+                return strtolower(trim(preg_replace('/[^a-zA-Z0-9_]/', '_', (string)$header)));
             }, $rows[0]);
 
             // Remove header row
@@ -6186,22 +6189,29 @@ class CategoryController extends Controller
             // Expected column mappings
             $columnIndices = [];
             
-            // Find SKU column
+            // Find SKU column (support "sku", "seller_sku", and variations)
             foreach ($headers as $index => $header) {
-                if ($header === 'sku') {
+                if (!empty($header) && strpos($header, 'sku') !== false) {
                     $columnIndices['sku'] = $index;
                     break;
                 }
             }
             
-            // Find Question and Answer columns (Question1 through Question10, Answer1 through Answer10)
+            // Find Question and Answer columns
+            // Support both formats: Question1/Answer1 and FAQ 1/ANS 1
             for ($i = 1; $i <= 10; $i++) {
                 $questionKey = "question{$i}";
                 $answerKey = "answer{$i}";
                 
-                // Find Question column
+                // Find Question column - try multiple patterns
                 foreach ($headers as $index => $header) {
+                    // Standard format: question1, question_1, question 1
                     if (in_array($header, [$questionKey, "question_{$i}", "question{$i}"])) {
+                        $columnIndices[$questionKey] = $index;
+                        break;
+                    }
+                    // FAQ format: faq_1, faq1
+                    if (in_array($header, ["faq_{$i}", "faq{$i}"])) {
                         $columnIndices[$questionKey] = $index;
                         break;
                     }
@@ -6210,16 +6220,24 @@ class CategoryController extends Controller
                 // If not found, try partial match
                 if (!isset($columnIndices[$questionKey])) {
                     foreach ($headers as $index => $header) {
-                        if (strpos($header, 'question') !== false && (strpos($header, (string)$i) !== false || preg_match('/question\s*' . $i . '/i', $header))) {
+                        // Match question/FAQ with number
+                        if ((strpos($header, 'question') !== false || strpos($header, 'faq') !== false) && 
+                            (strpos($header, (string)$i) !== false || preg_match('/(question|faq)\s*' . $i . '/i', $header))) {
                             $columnIndices[$questionKey] = $index;
                             break;
                         }
                     }
                 }
                 
-                // Find Answer column
+                // Find Answer column - try multiple patterns
                 foreach ($headers as $index => $header) {
+                    // Standard format: answer1, answer_1, answer 1
                     if (in_array($header, [$answerKey, "answer_{$i}", "answer{$i}"])) {
+                        $columnIndices[$answerKey] = $index;
+                        break;
+                    }
+                    // ANS format: ans_1, ans1
+                    if (in_array($header, ["ans_{$i}", "ans{$i}"])) {
                         $columnIndices[$answerKey] = $index;
                         break;
                     }
@@ -6228,7 +6246,9 @@ class CategoryController extends Controller
                 // If not found, try partial match
                 if (!isset($columnIndices[$answerKey])) {
                     foreach ($headers as $index => $header) {
-                        if (strpos($header, 'answer') !== false && (strpos($header, (string)$i) !== false || preg_match('/answer\s*' . $i . '/i', $header))) {
+                        // Match answer/ANS with number
+                        if ((strpos($header, 'answer') !== false || strpos($header, 'ans') !== false) && 
+                            (strpos($header, (string)$i) !== false || preg_match('/(answer|ans)\s*' . $i . '/i', $header))) {
                             $columnIndices[$answerKey] = $index;
                             break;
                         }
