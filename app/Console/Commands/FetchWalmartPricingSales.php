@@ -545,6 +545,32 @@ class FetchWalmartPricingSales extends Command
         }
 
         $this->info("  Stored data for " . count($allSkus) . " SKUs");
+        
+        // Also update walmart_metrics in apicentral for sync command
+        $this->updateWalmartMetrics($bulkData);
+    }
+    
+    /**
+     * Update walmart_metrics table in apicentral with latest data
+     */
+    protected function updateWalmartMetrics(array $data): void
+    {
+        foreach ($data as $item) {
+            DB::connection('apicentral')->table('walmart_metrics')->updateOrInsert(
+                ['sku' => $item['sku']],
+                [
+                    'l30' => $item['l30_qty'] ?? 0,
+                    'l30_amt' => $item['l30_revenue'] ?? 0,
+                    'l60' => $item['l60_qty'] ?? 0,
+                    'l60_amt' => $item['l60_revenue'] ?? 0,
+                    'price' => $item['current_price'] ?? 0,
+                    'stock' => $item['inventory_count'] ?? 0,  // Inventory from API
+                    'updated_at' => now(),
+                ]
+            );
+        }
+        
+        $this->info("  Updated walmart_metrics in apicentral with inventory data");
     }
 
     /**

@@ -215,8 +215,15 @@
                         </select>
                     </div>
 
-                    <!-- BB Issue Filter -->
-                 
+                    <!-- RL/NRL Dropdown Filter -->
+                    <div>
+                        <select id="rl-nrl-filter" class="form-select form-select-sm" style="width: 120px;">
+                            <option value="all">All RL/NRL</option>
+                            <option value="RL" selected style="color: #28a745; font-weight: bold;">RL</option>
+                            <option value="NRL" style="color: #dc3545; font-weight: bold;">NRL</option>
+                        </select>
+                    </div>
+
                     <!-- DIL Filter -->
                     <div class="dropdown manual-dropdown-container">
                         <button class="btn btn-light dropdown-toggle" type="button" id="dilFilterDropdown">
@@ -287,8 +294,15 @@
                         <!-- Walmart Metrics -->
                         <span class="badge bg-primary fs-6 p-2" id="total-products-badge" style="color: black; font-weight: bold;">Total Products: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: black; font-weight: bold;">Total Quantity: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: black; font-weight: bold;">0 Sold Count: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="bb-issue-count-badge" style="color: black; font-weight: bold;">BB Issue: 0</span>
+                        <!-- Clickable Filter Badges -->
+                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer; transition: all 0.3s;" title="Click to filter: 0 Sold items">0 Sold: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="more-than-zero-sold-badge" style="color: white; font-weight: bold; cursor: pointer; transition: all 0.3s;" title="Click to filter: >0 Sold items">&gt;0 Sold: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer; transition: all 0.3s;" title="Click to filter: Missing items">Missing: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="map-count-badge" style="color: white; font-weight: bold; cursor: pointer; transition: all 0.3s;" title="Click to filter: Mapped items">Map: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="nmap-count-badge" style="color: white; font-weight: bold; cursor: pointer; transition: all 0.3s;" title="Click to filter: Not mapped items">Nmap: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="gt-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: W Price > Amazon">&gt; AMZ: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="lt-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: W Price < Amazon">&lt; AMZ: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="bb-issue-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: BB Issue items">BB Issue: 0</span>
                         
                         <!-- Financial Metrics -->
                         <span class="badge bg-warning fs-6 p-2" id="total-spend-badge" style="color: black; font-weight: bold;">Total SPEND L30: $0.00</span>
@@ -454,6 +468,16 @@
     let decreaseModeActive = false;
     let increaseModeActive = false;
     let selectedSkus = new Set();
+    
+    // Badge filter states
+    let zeroSoldFilterActive = false;
+    let moreThanZeroSoldFilterActive = false;
+    let missingFilterActive = false;
+    let mapFilterActive = false;
+    let nmapFilterActive = false;
+    let gtAmzFilterActive = false;
+    let ltAmzFilterActive = false;
+    let bbIssueFilterActive = false;
     
     function showToast(message, type = 'info') {
         const toastContainer = document.querySelector('.toast-container');
@@ -1220,6 +1244,12 @@
             let totalDilPercent = 0;
             let dilCount = 0;
             let bbIssueCount = 0; // Count of items where W Price < A Price
+            let missingCount = 0; // Count of items missing in Walmart
+            let mapCount = 0; // Count of items with inventory mapped
+            let nmapCount = 0; // Count of items with inventory not mapped
+            let moreThanZeroSoldCount = 0; // Count of items with sales > 0
+            let gtAmzCount = 0; // Count of items where W Price > Amazon Price
+            let ltAmzCount = 0; // Count of items where W Price < Amazon Price
             
             data.forEach(row => {
                 const qty = parseInt(row['total_qty']) || 0;
@@ -1266,17 +1296,43 @@
                 // Walmart L30 (total sales value from actual orders)
                 totalWalmartL30 += salesAmt;
                 
-                // Count if W Price < A Price (BB Issue)
+                // Count if W Price < A Price (BB Issue) and price comparisons
                 const wPrice = parseFloat(row['w_price']) || 0;
                 const aPrice = parseFloat(row['a_price']) || 0;
-                if (wPrice > 0 && aPrice > 0 && wPrice < aPrice) {
-                    bbIssueCount++;
+                
+                if (wPrice > 0 && aPrice > 0) {
+                    // BB Issue: W Price < A Price
+                    if (wPrice < aPrice) {
+                        bbIssueCount++;
+                    }
+                    
+                    // Price comparison with Amazon
+                    if (wPrice > aPrice) {
+                        gtAmzCount++;
+                    } else if (wPrice < aPrice) {
+                        ltAmzCount++;
+                    }
                 }
                 
-                // Count SKUs with 0 sold
+                // Count missing items
+                if (row['missing'] === 'M') {
+                    missingCount++;
+                }
+                
+                // Count Map/Nmap items
+                if (row['map_status'] === 'Map') {
+                    mapCount++;
+                } else if (row['map_status'] === 'Nmap') {
+                    nmapCount++;
+                }
+                
+                // Count SKUs with 0 sold and more than 0 sold
                 if (qty === 0) {
                     zeroSoldCount++;
+                } else if (qty > 0) {
+                    moreThanZeroSoldCount++;
                 }
+                
             });
             
             // ===== MATCH AMAZON SUMMARY CALCULATIONS =====
@@ -1322,7 +1378,52 @@
             // Walmart specific badges
             $('#total-products-badge').text('Total Products: ' + totalProducts.toLocaleString());
             $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
-            $('#zero-sold-count-badge').text('0 Sold Count: ' + zeroSoldCount.toLocaleString());
+            
+            // 0 Sold badge (Red when count > 0)
+            const zeroSoldBadge = $('#zero-sold-count-badge');
+            zeroSoldBadge.text('0 Sold: ' + zeroSoldCount.toLocaleString());
+            if (zeroSoldCount === 0) {
+                zeroSoldBadge.removeClass('bg-danger').addClass('bg-success');
+            } else {
+                zeroSoldBadge.removeClass('bg-success').addClass('bg-danger');
+            }
+            
+            // More than 0 Sold badge (always green)
+            $('#more-than-zero-sold-badge').text('>0 Sold: ' + moreThanZeroSoldCount.toLocaleString());
+            
+            // Update Missing badge with green color when count is 0
+            const missingBadge = $('#missing-count-badge');
+            missingBadge.text('Missing: ' + missingCount.toLocaleString());
+            if (missingCount === 0) {
+                missingBadge.removeClass('bg-danger').addClass('bg-success');
+            } else {
+                missingBadge.removeClass('bg-success').addClass('bg-danger');
+            }
+            
+            // Update Map badge
+            const mapBadge = $('#map-count-badge');
+            mapBadge.text('Map: ' + mapCount.toLocaleString());
+            
+            // Update Nmap badge with green color when count is 0
+            const nmapBadge = $('#nmap-count-badge');
+            nmapBadge.text('Nmap: ' + nmapCount.toLocaleString());
+            if (nmapCount === 0) {
+                nmapBadge.removeClass('bg-danger').addClass('bg-success');
+            } else {
+                nmapBadge.removeClass('bg-success').addClass('bg-danger');
+            }
+            
+            // Update Amazon price comparison badges
+            const gtAmzBadge = $('#gt-amz-badge');
+            gtAmzBadge.text('> AMZ: ' + gtAmzCount.toLocaleString());
+            if (gtAmzCount === 0) {
+                gtAmzBadge.removeClass('bg-danger').addClass('bg-success');
+            } else {
+                gtAmzBadge.removeClass('bg-success').addClass('bg-danger');
+            }
+            
+            const ltAmzBadge = $('#lt-amz-badge');
+            ltAmzBadge.text('< AMZ: ' + ltAmzCount.toLocaleString());
             
             // Update BB Issue badge with green color when count is 0
             const bbIssueBadge = $('#bb-issue-count-badge');
@@ -1425,6 +1526,28 @@
                     sorter: "number"
                 },
                 {
+                    title: "W INV",
+                    field: "inventory_walmart",
+                    hozAlign: "center",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value === 'Not Listed' || value === null || value === undefined || value === '') {
+                            return '<span style="color: #dc3545; font-weight: bold;" title="Not Listed on Walmart">0</span>';
+                        }
+                        const numValue = parseInt(value);
+                        if (numValue === 0) {
+                            return '<span style="color: #ffc107; font-weight: bold;">0</span>';
+                        }
+                        return '<span style="color: #28a745; font-weight: bold;">' + numValue + '</span>';
+                    },
+                    sorter: function(a, b) {
+                        // Custom sorter to handle 'Not Listed' and numeric values
+                        if (a === 'Not Listed') a = 0;
+                        if (b === 'Not Listed') b = 0;
+                        return parseInt(a || 0) - parseInt(b || 0);
+                    }
+                },
+                {
                     title: "Dil",
                     field: "dil_calculated", // Calculate DIL from OV L30/INV
                     hozAlign: "center",
@@ -1465,6 +1588,84 @@
                     hozAlign: "center",
                     sorter: "number",
                     sorterParams: {dir: "asc"}
+                },
+                {
+                    title: "M",
+                    field: "missing",
+                    hozAlign: "center",
+                    width: 50,
+                    headerSort: true,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value === 'M') {
+                            return '<span style="color: #dc3545; font-weight: bold; font-size: 14px;" title="Missing in Walmart - Product exists in Product Master but not listed on Walmart">M</span>';
+                        }
+                        return '';
+                    },
+                    sorter: function(a, b) {
+                        // M values come first
+                        if (a === 'M' && b !== 'M') return -1;
+                        if (a !== 'M' && b === 'M') return 1;
+                        return 0;
+                    }
+                },
+                {
+                    title: "Map",
+                    field: "map_status",
+                    hozAlign: "center",
+                    width: 80,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (!value) return '';
+                        
+                        if (value === 'Map') {
+                            return '<span style="color: #28a745; font-weight: bold; background-color: #d4edda; padding: 4px 8px; border-radius: 4px;" title="Inventory is mapped correctly">Map</span>';
+                        } else if (value === 'Nmap') {
+                            return '<span style="color: #dc3545; font-weight: bold; background-color: #f8d7da; padding: 4px 8px; border-radius: 4px;" title="Inventory mismatch - needs update">Nmap</span>';
+                        }
+                        return '';
+                    },
+                    sorter: function(a, b) {
+                        // Map comes first, then Nmap, then empty
+                        if (a === 'Map' && b !== 'Map') return -1;
+                        if (a !== 'Map' && b === 'Map') return 1;
+                        if (a === 'Nmap' && b !== 'Nmap') return -1;
+                        if (a !== 'Nmap' && b === 'Nmap') return 1;
+                        return 0;
+                    }
+                },
+                {
+                    title: "RL/NRL",
+                    field: "rl_nrl",
+                    hozAlign: "center",
+                    width: 100,
+                    headerSort: false,
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const value = cell.getValue() || '';
+                        const sku = rowData.sku || '';
+                        
+                        if (!sku) return '';
+                        
+                        let bgColor = '#6c757d'; // Default gray
+                        let textColor = 'white';
+                        
+                        if (value === 'RL') {
+                            bgColor = '#28a745'; // Green
+                        } else if (value === 'NRL') {
+                            bgColor = '#dc3545'; // Red
+                        }
+                        
+                        return `<select class="rl-nrl-dropdown form-control form-control-sm" data-sku="${sku}" style="width: 90%; padding: 4px 8px; border-radius: 4px; font-weight: bold; text-align: center; color: ${textColor}; background-color: ${bgColor}; border: none; cursor: pointer;">
+                            <option value="">Select</option>
+                            <option value="RL" ${value === 'RL' ? 'selected' : ''} style="background-color: #28a745; color: white;">RL</option>
+                            <option value="NRL" ${value === 'NRL' ? 'selected' : ''} style="background-color: #dc3545; color: white;">NRL</option>
+                        </select>`;
+                    },
+                    cellClick: function(e, cell) {
+                        // Prevent default cell click behavior
+                        e.stopPropagation();
+                    }
                 },
                 {
                     title: "CVR %",
@@ -1787,6 +1988,7 @@
             const gpftFilter = $('#gpft-filter').val();
             const cvrFilter = $('#cvr-filter').val();
             const bbIssueFilter = $('#bb-issue-filter').val();
+            const missingFilter = $('#missing-filter').val();
             const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
             const skuSearch = $('#sku-search').val();
 
@@ -1852,6 +2054,71 @@
                 });
             }
 
+            // Badge-based filters (clickable badges)
+            if (zeroSoldFilterActive) {
+                table.addFilter(function(data) {
+                    const qty = parseInt(data['total_qty']) || 0;
+                    return qty === 0;
+                });
+            }
+            
+            if (moreThanZeroSoldFilterActive) {
+                table.addFilter(function(data) {
+                    const qty = parseInt(data['total_qty']) || 0;
+                    return qty > 0;
+                });
+            }
+            
+            if (missingFilterActive) {
+                table.addFilter(function(data) {
+                    return data.missing === 'M';
+                });
+            }
+            
+            if (mapFilterActive) {
+                table.addFilter(function(data) {
+                    return data.map_status === 'Map';
+                });
+            }
+            
+            if (nmapFilterActive) {
+                table.addFilter(function(data) {
+                    return data.map_status === 'Nmap';
+                });
+            }
+            
+            if (gtAmzFilterActive) {
+                table.addFilter(function(data) {
+                    const wPriceVal = parseFloat(data['w_price']) || 0;
+                    const aPriceVal = parseFloat(data['a_price']) || 0;
+                    return wPriceVal > 0 && aPriceVal > 0 && wPriceVal > aPriceVal;
+                });
+            }
+            
+            if (ltAmzFilterActive) {
+                table.addFilter(function(data) {
+                    const wPriceVal = parseFloat(data['w_price']) || 0;
+                    const aPriceVal = parseFloat(data['a_price']) || 0;
+                    return wPriceVal > 0 && aPriceVal > 0 && wPriceVal < aPriceVal;
+                });
+            }
+            
+            // RL/NRL dropdown filter
+            const rlNrlFilter = $('#rl-nrl-filter').val();
+            if (rlNrlFilter !== 'all') {
+                table.addFilter(function(data) {
+                    return data.rl_nrl === rlNrlFilter;
+                });
+            }
+            
+            if (bbIssueFilterActive) {
+                table.addFilter(function(data) {
+                    const wPriceVal = parseFloat(data.w_price) || 0;
+                    const aPriceVal = parseFloat(data.a_price) || 0;
+                    return wPriceVal > 0 && aPriceVal > 0 && wPriceVal < aPriceVal;
+                });
+            }
+
             if (dilFilter !== 'all') {
                 table.addFilter(function(data) {
                     const inv = parseFloat(data['INV']) || 0;
@@ -1871,9 +2138,137 @@
             updateSelectAllCheckbox();
         }
 
-        $('#inventory-filter, #gpft-filter, #cvr-filter, #bb-issue-filter').on('change', function() {
+        $('#inventory-filter, #gpft-filter, #cvr-filter, #bb-issue-filter, #rl-nrl-filter').on('change', function() {
             applyFilters();
         });
+        
+        // Badge filter click handlers - All filters can work together
+        $('#zero-sold-count-badge').on('click', function() {
+            zeroSoldFilterActive = !zeroSoldFilterActive;
+            // Only deactivate opposite filter (0 Sold and >0 Sold are mutually exclusive)
+            if (zeroSoldFilterActive) {
+                moreThanZeroSoldFilterActive = false;
+            }
+            applyFilters();
+            updateBadgeStyles();
+        });
+        
+        $('#more-than-zero-sold-badge').on('click', function() {
+            moreThanZeroSoldFilterActive = !moreThanZeroSoldFilterActive;
+            // Only deactivate opposite filter
+            if (moreThanZeroSoldFilterActive) {
+                zeroSoldFilterActive = false;
+            }
+            applyFilters();
+            updateBadgeStyles();
+        });
+        
+        $('#missing-count-badge').on('click', function() {
+            missingFilterActive = !missingFilterActive;
+            // Can work together with other filters now
+            applyFilters();
+            updateBadgeStyles();
+        });
+        
+        $('#map-count-badge').on('click', function() {
+            mapFilterActive = !mapFilterActive;
+            // Can work together with other filters now
+            applyFilters();
+            updateBadgeStyles();
+        });
+        
+        $('#nmap-count-badge').on('click', function() {
+            nmapFilterActive = !nmapFilterActive;
+            // Can work together with other filters now
+            applyFilters();
+            updateBadgeStyles();
+        });
+        
+        $('#gt-amz-badge').on('click', function() {
+            gtAmzFilterActive = !gtAmzFilterActive;
+            // Only deactivate opposite filter (> AMZ and < AMZ are mutually exclusive)
+            if (gtAmzFilterActive) {
+                ltAmzFilterActive = false;
+            }
+            applyFilters();
+            updateBadgeStyles();
+        });
+        
+        $('#lt-amz-badge').on('click', function() {
+            ltAmzFilterActive = !ltAmzFilterActive;
+            // Only deactivate opposite filter
+            if (ltAmzFilterActive) {
+                gtAmzFilterActive = false;
+            }
+            applyFilters();
+            updateBadgeStyles();
+        });
+        
+        $('#bb-issue-count-badge').on('click', function() {
+            bbIssueFilterActive = !bbIssueFilterActive;
+            // Can work together with other filters
+            applyFilters();
+            updateBadgeStyles();
+        });
+        
+        // Function to update badge visual states (without outline)
+        function updateBadgeStyles() {
+            // 0 Sold badge
+            if (zeroSoldFilterActive) {
+                $('#zero-sold-count-badge').css('opacity', '1');
+            } else {
+                $('#zero-sold-count-badge').css('opacity', '0.8');
+            }
+            
+            // >0 Sold badge
+            if (moreThanZeroSoldFilterActive) {
+                $('#more-than-zero-sold-badge').css('opacity', '1');
+            } else {
+                $('#more-than-zero-sold-badge').css('opacity', '0.8');
+            }
+            
+            // Missing badge
+            if (missingFilterActive) {
+                $('#missing-count-badge').css('opacity', '1');
+            } else {
+                $('#missing-count-badge').css('opacity', '0.8');
+            }
+            
+            // Map badge
+            if (mapFilterActive) {
+                $('#map-count-badge').css('opacity', '1');
+            } else {
+                $('#map-count-badge').css('opacity', '0.8');
+            }
+            
+            // Nmap badge
+            if (nmapFilterActive) {
+                $('#nmap-count-badge').css('opacity', '1');
+            } else {
+                $('#nmap-count-badge').css('opacity', '0.8');
+            }
+            
+            // > AMZ badge
+            if (gtAmzFilterActive) {
+                $('#gt-amz-badge').css('opacity', '1');
+            } else {
+                $('#gt-amz-badge').css('opacity', '0.8');
+            }
+            
+            // < AMZ badge
+            if (ltAmzFilterActive) {
+                $('#lt-amz-badge').css('opacity', '1');
+            } else {
+                $('#lt-amz-badge').css('opacity', '0.8');
+            }
+            
+            // BB Issue badge
+            if (bbIssueFilterActive) {
+                $('#bb-issue-count-badge').css('opacity', '1');
+            } else {
+                $('#bb-issue-count-badge').css('opacity', '0.8');
+            }
+        }
 
         // Initialize dropdown functionality (Amazon-style)
         $(document).on('click', '.manual-dropdown-container .btn', function(e) {
@@ -1916,6 +2311,80 @@
         // Close dropdowns when clicking outside
         $(document).on('click', function() {
             $('.manual-dropdown-container').removeClass('show');
+        });
+
+        // RL/NRL dropdown change handler
+        $(document).on('change', '.rl-nrl-dropdown', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const sku = $(this).data('sku');
+            const value = $(this).val();
+            const $dropdown = $(this);
+            
+            console.log('RL/NRL Dropdown Changed:', { sku, value });
+            
+            if (!sku) {
+                showToast('SKU not found', 'error');
+                console.error('No SKU found for dropdown');
+                return;
+            }
+            
+            if (!value) {
+                showToast('Please select RL or NRL', 'error');
+                return;
+            }
+            
+            // Update dropdown color immediately
+            if (value === 'RL') {
+                $dropdown.css('background-color', '#28a745').css('color', 'white');
+            } else if (value === 'NRL') {
+                $dropdown.css('background-color', '#dc3545').css('color', 'white');
+            } else {
+                $dropdown.css('background-color', '#6c757d').css('color', 'white');
+            }
+            
+            console.log('Sending request to save RL/NRL...');
+            
+            // Save to database
+            fetch('/walmart-sheet-update-cell', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                },
+                body: JSON.stringify({
+                    sku: sku,
+                    field: 'rl_nrl',
+                    value: value
+                })
+            })
+            .then(response => {
+                console.log('Response status:', response.status);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(result => {
+                console.log('Save result:', result);
+                if (result.success) {
+                    showToast('RL/NRL updated successfully', 'success');
+                    
+                    // Update the table data
+                    const rows = table.searchRows("sku", "=", sku);
+                    if (rows.length > 0) {
+                        rows[0].update({ rl_nrl: value });
+                    }
+                } else {
+                    showToast('Error updating RL/NRL: ' + (result.error || 'Unknown error'), 'error');
+                    console.error('Save failed:', result);
+                }
+            })
+            .catch(error => {
+                console.error('Error updating RL/NRL:', error);
+                showToast('Error updating RL/NRL: ' + error.message, 'error');
+            });
         });
 
         table.on('cellEdited', function(cell) {
@@ -2003,6 +2472,7 @@
         table.on('dataLoaded', function() {
             applyFilters();
             updateSummary();
+            updateBadgeStyles(); // Apply default badge styles
         });
 
         table.on('renderComplete', function() {
