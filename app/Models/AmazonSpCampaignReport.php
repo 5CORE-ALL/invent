@@ -28,5 +28,6 @@ class AmazonSpCampaignReport extends Model
         'campaignBudgetAmount', 'campaignBudgetCurrencyCode',
         'royaltyQualifiedBorrows', 'purchasesSameSku1d', 'purchasesSameSku7d', 'purchasesSameSku14d', 
         'purchasesSameSku30d', 'kindleEditionNormalizedPagesRead14d', 'kindleEditionNormalizedPagesRoyalties14d', 'campaignBiddingStrategy', 'campaignStatus',
+        'sbid', 'yes_sbid', 'note', 'last_sbid',
     ];
 }

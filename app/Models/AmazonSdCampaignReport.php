@@ -26,5 +26,6 @@ class AmazonSdCampaignReport extends Model
         'startDate', 'unitsSold', 'unitsSoldClicks',
         'videoCompleteViews', 'videoFirstQuartileViews', 'videoMidpointViews',
         'videoThirdQuartileViews', 'videoUnmutes', 'viewabilityRate', 'viewClickThroughRate','campaignStatus',
+        'sbid', 'yes_sbid', 'note', 'last_sbid',
     ];
 }

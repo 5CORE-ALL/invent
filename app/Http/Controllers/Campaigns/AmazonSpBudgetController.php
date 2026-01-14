@@ -745,6 +745,44 @@ class AmazonSpBudgetController extends Controller
             $amazonSpCampaignReportsL1 = $amazonSpCampaignReportsL1->get();
         }
 
+        // Fetch last_sbid from yesterday's date records
+        $yesterday = date('Y-m-d', strtotime('-1 day'));
+        $lastSbidMap = [];
+        if ($campaignType === 'HL') {
+            $lastSbidReports = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+                ->where('report_date_range', $yesterday)
+                ->where('campaignStatus', '!=', 'ARCHIVED')
+                ->get();
+            foreach ($lastSbidReports as $report) {
+                if (!empty($report->campaign_id) && !empty($report->last_sbid)) {
+                    $lastSbidMap[$report->campaign_id] = $report->last_sbid;
+                }
+            }
+        } else {
+            $lastSbidReports = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+                ->where('report_date_range', $yesterday)
+                ->where('campaignStatus', '!=', 'ARCHIVED');
+            
+            if ($campaignType === 'PT') {
+                $lastSbidReports->where(function($q) {
+                    $q->where('campaignName', 'LIKE', '% PT')
+                      ->orWhere('campaignName', 'LIKE', '% PT.')
+                      ->orWhere('campaignName', 'LIKE', '%PT')
+                      ->orWhere('campaignName', 'LIKE', '%PT.');
+                });
+            } else {
+                $lastSbidReports->where('campaignName', 'NOT LIKE', '%PT')
+                              ->where('campaignName', 'NOT LIKE', '%PT.');
+            }
+            
+            $lastSbidReports = $lastSbidReports->get();
+            foreach ($lastSbidReports as $report) {
+                if (!empty($report->campaign_id) && !empty($report->last_sbid)) {
+                    $lastSbidMap[$report->campaign_id] = $report->last_sbid;
+                }
+            }
+        }
+
         // Counts for 7UB only condition
         $overUtilizedCount7ub = 0;
         $underUtilizedCount7ub = 0;
@@ -1887,6 +1925,48 @@ class AmazonSpBudgetController extends Controller
         $campaignMap = [];
         $processedSkus = []; // For PT campaigns to ensure unique SKUs
 
+        // Fetch last_sbid from day-before-yesterday's date records
+        // This ensures last_sbid shows the PREVIOUS day's calculated SBID, not the current day's
+        // Example: On 15-01-2026, we fetch from 13-01-2026 records (which has SBID calculated on 14-01-2026)
+        // So last_sbid = previous day's calculated SBID, SBID = current day's calculated SBID
+        // This prevents both columns from showing the same value after page refresh
+        $dayBeforeYesterday = date('Y-m-d', strtotime('-2 days'));
+        $lastSbidMap = [];
+        if ($campaignType === 'HL') {
+            $lastSbidReports = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+                ->where('report_date_range', $dayBeforeYesterday)
+                ->where('campaignStatus', '!=', 'ARCHIVED')
+                ->get();
+            foreach ($lastSbidReports as $report) {
+                if (!empty($report->campaign_id) && !empty($report->last_sbid)) {
+                    $lastSbidMap[$report->campaign_id] = $report->last_sbid;
+                }
+            }
+        } else {
+            $lastSbidReports = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+                ->where('report_date_range', $dayBeforeYesterday)
+                ->where('campaignStatus', '!=', 'ARCHIVED');
+            
+            if ($campaignType === 'PT') {
+                $lastSbidReports->where(function($q) {
+                    $q->where('campaignName', 'LIKE', '% PT')
+                      ->orWhere('campaignName', 'LIKE', '% PT.')
+                      ->orWhere('campaignName', 'LIKE', '%PT')
+                      ->orWhere('campaignName', 'LIKE', '%PT.');
+                });
+            } else {
+                $lastSbidReports->where('campaignName', 'NOT LIKE', '%PT')
+                              ->where('campaignName', 'NOT LIKE', '%PT.');
+            }
+            
+            $lastSbidReports = $lastSbidReports->get();
+            foreach ($lastSbidReports as $report) {
+                if (!empty($report->campaign_id) && !empty($report->last_sbid)) {
+                    $lastSbidMap[$report->campaign_id] = $report->last_sbid;
+                }
+            }
+        }
+
         foreach ($productMasters as $pm) {
             // Normalize SKU first - normalize spaces (including non-breaking spaces) and convert to uppercase
             // Replace non-breaking spaces (UTF-8 c2a0) and other unicode spaces with regular spaces
@@ -2222,6 +2302,7 @@ class AmazonSpBudgetController extends Controller
                     'SROI' => $calculatedSroi,
                     'has_custom_sprice' => $hasCustomSprice,
                     'SPRICE_STATUS' => $spriceStatus,
+                    'last_sbid' => isset($lastSbidMap[$campaignId]) ? $lastSbidMap[$campaignId] : '',
                 ];
             }
 
@@ -3604,6 +3685,16 @@ class AmazonSpBudgetController extends Controller
             $result = collect($result)->unique('sku')->values()->all();
         }
 
+        // Calculate and save SBID for yesterday's actual date records (not L1)
+        // This is saved for tracking: to compare calculated SBID with what was actually updated on Amazon
+        // When cron runs and new data comes, page will refresh, so we need to save SBID to database
+        try {
+            $this->calculateAndSaveSBID($result, $campaignType);
+        } catch (\Exception $e) {
+            // Log error but don't fail the request
+            FacadesLog::error('Error saving SBID: ' . $e->getMessage());
+        }
+
         return response()->json([
             'message' => 'fetched successfully',
             'data' => $result,
@@ -3613,6 +3704,185 @@ class AmazonSpBudgetController extends Controller
             'total_sku_count' => $totalSkuCount,
             'status' => 200,
         ]);
+    }
+
+    /**
+     * Calculate SBID based on utilization type and save to database for yesterday's actual date records
+     * This is saved for tracking: to compare calculated SBID with what was actually updated on Amazon
+     * When cron runs and new data comes, page will refresh, so we need to save SBID to database
+     * We save to yesterday's report date because that's the date for which SBID is being calculated
+     * Optimized to use batch updates to avoid timeout
+     */
+    private function calculateAndSaveSBID($result, $campaignType)
+    {
+        // Save to yesterday's date because we're calculating SBID for yesterday's report data
+        // Example: If today is Jan 15, cron downloaded Jan 14 report, we save SBID to Jan 14 records
+        // Tomorrow (Jan 16) when checking, last_sbid will be in Jan 14 records
+        $yesterday = date('Y-m-d', strtotime('-1 day'));
+        
+        // Prepare batch updates
+        $spUpdates = []; // For KW and PT
+        $sbUpdates = []; // For HL
+        
+        foreach ($result as $row) {
+            // Skip if no campaign_id
+            if (empty($row->campaign_id)) {
+                continue;
+            }
+
+            $l1Cpc = floatval($row->l1_cpc ?? 0);
+            $l7Cpc = floatval($row->l7_cpc ?? 0);
+            $avgCpc = floatval($row->avg_cpc ?? 0);
+            $budget = floatval($row->campaignBudgetAmount ?? 0);
+            $l7Spend = floatval($row->l7_spend ?? 0);
+            $l1Spend = floatval($row->l1_spend ?? 0);
+            $price = floatval($row->price ?? 0);
+
+            // Calculate UB7 and UB1
+            $ub7 = 0;
+            $ub1 = 0;
+            if ($budget > 0) {
+                $ub7 = ($l7Spend / ($budget * 7)) * 100;
+                $ub1 = ($l1Spend / $budget) * 100;
+            }
+
+            // Determine utilization type
+            $utilizationType = 'all';
+            if ($ub7 > 99 && $ub1 > 99) {
+                $utilizationType = 'over';
+            } elseif ($ub7 < 66 && $ub1 < 66) {
+                $utilizationType = 'under';
+            } elseif ($ub7 >= 66 && $ub7 <= 99 && $ub1 >= 66 && $ub1 <= 99) {
+                $utilizationType = 'correctly';
+            }
+
+            // Calculate SBID
+            $sbid = 0;
+            
+            // Special case: If UB7 and UB1 = 0%, use price-based default
+            if ($ub7 == 0 && $ub1 == 0) {
+                if ($price < 50) {
+                    $sbid = 0.50;
+                } elseif ($price >= 50 && $price < 100) {
+                    $sbid = 1.00;
+                } elseif ($price >= 100 && $price < 200) {
+                    $sbid = 1.50;
+                } else {
+                    $sbid = 2.00;
+                }
+            } elseif ($utilizationType === 'over') {
+                // Over-utilized: Priority L1 CPC → L7 CPC → AVG CPC → 1.00, then decrease by 10%
+                if ($l1Cpc > 0) {
+                    $sbid = floor($l1Cpc * 0.90 * 100) / 100;
+                } elseif ($l7Cpc > 0) {
+                    $sbid = floor($l7Cpc * 0.90 * 100) / 100;
+                } elseif ($avgCpc > 0) {
+                    $sbid = floor($avgCpc * 0.90 * 100) / 100;
+                } else {
+                    $sbid = 1.00;
+                }
+            } elseif ($utilizationType === 'under') {
+                // Under-utilized: Priority L1 CPC → L7 CPC → AVG CPC → 1.00, then increase by 10%
+                if ($l1Cpc > 0) {
+                    $sbid = floor($l1Cpc * 1.10 * 100) / 100;
+                } elseif ($l7Cpc > 0) {
+                    $sbid = floor($l7Cpc * 1.10 * 100) / 100;
+                } elseif ($avgCpc > 0) {
+                    $sbid = floor($avgCpc * 1.10 * 100) / 100;
+                } else {
+                    $sbid = 1.00;
+                }
+            } else {
+                // Correctly-utilized or all: no SBID change needed
+                $sbid = 0;
+            }
+
+            // Apply price-based caps
+            if ($price < 10 && $sbid > 0.10) {
+                $sbid = 0.10;
+            } elseif ($price >= 10 && $price < 20 && $sbid > 0.20) {
+                $sbid = 0.20;
+            }
+
+            // Only save if SBID > 0
+            if ($sbid > 0) {
+                $sbidValue = (string)$sbid;
+                
+                if ($campaignType === 'HL') {
+                    // Store for batch update
+                    $sbUpdates[$row->campaign_id] = $sbidValue;
+                } else {
+                    // Store for batch update
+                    $spUpdates[$row->campaign_id] = $sbidValue;
+                }
+            }
+        }
+
+        // Perform efficient bulk updates using WHERE IN
+        // Update only yesterday's actual date records (not L1) for tracking purposes
+        if (!empty($spUpdates) && ($campaignType === 'KW' || $campaignType === 'PT')) {
+            // Update in batches of 50 to avoid query size limits
+            $chunks = array_chunk($spUpdates, 50, true);
+            foreach ($chunks as $chunk) {
+                $campaignIds = array_keys($chunk);
+                
+                // Build CASE statement for bulk update
+                $cases = [];
+                $bindings = [];
+                foreach ($chunk as $campaignId => $sbidValue) {
+                    $cases[] = "WHEN ? THEN ?";
+                    $bindings[] = $campaignId;
+                    $bindings[] = $sbidValue;
+                }
+                
+                $caseSql = implode(' ', $cases);
+                $placeholders = str_repeat('?,', count($campaignIds) - 1) . '?';
+                
+                // Single query to update all records - only for yesterday's date (Y-m-d format)
+                // Save to last_sbid column for tracking purposes
+                // Only update if last_sbid is NULL (not already saved) to avoid duplicate saves
+                DB::statement("
+                    UPDATE amazon_sp_campaign_reports 
+                    SET last_sbid = CASE campaign_id {$caseSql} END
+                    WHERE campaign_id IN ({$placeholders})
+                    AND report_date_range = ?
+                    AND ad_type = 'SPONSORED_PRODUCTS'
+                    AND (last_sbid IS NULL OR last_sbid = '')
+                ", array_merge($bindings, $campaignIds, [$yesterday]));
+            }
+        }
+
+        if (!empty($sbUpdates) && $campaignType === 'HL') {
+            // Update in batches of 50 to avoid query size limits
+            $chunks = array_chunk($sbUpdates, 50, true);
+            foreach ($chunks as $chunk) {
+                $campaignIds = array_keys($chunk);
+                
+                // Build CASE statement for bulk update
+                $cases = [];
+                $bindings = [];
+                foreach ($chunk as $campaignId => $sbidValue) {
+                    $cases[] = "WHEN ? THEN ?";
+                    $bindings[] = $campaignId;
+                    $bindings[] = $sbidValue;
+                }
+                
+                $caseSql = implode(' ', $cases);
+                $placeholders = str_repeat('?,', count($campaignIds) - 1) . '?';
+                
+                // Single query to update all records - only for yesterday's date (Y-m-d format)
+                // Save to last_sbid column for tracking purposes
+                // Only update if last_sbid is NULL (not already saved) to avoid duplicate saves
+                DB::statement("
+                    UPDATE amazon_sb_campaign_reports 
+                    SET last_sbid = CASE campaign_id {$caseSql} END
+                    WHERE campaign_id IN ({$placeholders})
+                    AND report_date_range = ?
+                    AND ad_type = 'SPONSORED_BRANDS'
+                    AND (last_sbid IS NULL OR last_sbid = '')
+                ", array_merge($bindings, $campaignIds, [$yesterday]));
+            }
+        }
     }
 
 

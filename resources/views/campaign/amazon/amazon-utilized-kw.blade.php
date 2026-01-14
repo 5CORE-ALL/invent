@@ -297,8 +297,8 @@
                                 </div>
 
                                 <!-- Search and Filter Controls Row -->
-                                <div class="row align-items-end">
-                                    <div class="col-md-4">
+                                <div class="row align-items-end g-2">
+                                    <div class="col-md-3">
                                         <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-search me-1" style="color: #64748b;"></i>Search Campaign
                                         </label>
@@ -311,7 +311,7 @@
                                                    style="border-color: #e2e8f0;">
                                         </div>
                                     </div>
-                                    <div class="col-md-2">
+                                    <div class="col-md-1">
                                         <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-toggle-on me-1" style="color: #64748b;"></i>Status
                                         </label>
@@ -322,7 +322,7 @@
                                             <option value="ENDED">Ended</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-2">
+                                    <div class="col-md-1">
                                         <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-boxes me-1" style="color: #64748b;"></i>Inventory
                                         </label>
@@ -333,7 +333,7 @@
                                             <option value="OTHERS" selected>OTHERS</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-2">
+                                    <div class="col-md-1">
                                         <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-tags me-1" style="color: #64748b;"></i>NRA
                                         </label>
@@ -342,6 +342,32 @@
                                             <option value="NRA">NRA</option>
                                             <option value="RA">RA</option>
                                             <option value="LATER">LATER</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
+                                            <i class="fa-solid fa-dollar-sign me-1" style="color: #64748b;"></i>Price
+                                        </label>
+                                        <select id="price-slab-filter" class="form-select form-select-md">
+                                            <option value="">All Prices</option>
+                                            <option value="lt10">&lt; $10</option>
+                                            <option value="10-20">$10 - $20</option>
+                                            <option value="20-30">$20 - $30</option>
+                                            <option value="30-50">$30 - $50</option>
+                                            <option value="50-100">$50 - $100</option>
+                                            <option value="gt100">&gt; $100</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-1">
+                                        <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
+                                            <i class="fa-solid fa-star me-1" style="color: #64748b;"></i>Rating
+                                        </label>
+                                        <select id="rating-filter" class="form-select form-select-md">
+                                            <option value="">All Ratings</option>
+                                            <option value="lt3">&lt; 3</option>
+                                            <option value="3-3.5">3 - 3.5</option>
+                                            <option value="4-4.5">4 - 4.5</option>
+                                            <option value="gte4.5">≥ 4.5</option>
                                         </select>
                                     </div>
                                     <div class="col-md-2">
@@ -361,7 +387,7 @@
                                             <option value="acos35spend10">ACOS>35% and SPEND >10</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-4 d-flex gap-2">
+                                    <div class="col-md-1 d-flex gap-2">
                                         <div class="w-50">
                                             <button id="apr-all-sbid-btn" class="btn btn-info btn-sm w-100 d-none">
                                                 <i class="fa-solid fa-check-double me-1"></i>
@@ -734,6 +760,135 @@
                     sbgtSelect.options[8].text = `ACOS ≥ 35% (${acosCount1})`;
                     sbgtSelect.options[9].text = `ACOS>35% and SPEND >10 (${acos35Spend10Count})`;
                 }
+                
+                // Count price slabs
+                let priceSlabLt10 = 0, priceSlab10_20 = 0, priceSlab20_30 = 0;
+                let priceSlab30_50 = 0, priceSlab50_100 = 0, priceSlabGt100 = 0;
+                
+                allData.forEach(function(row) {
+                    const sku = row.sku || '';
+                    const isValidSku = sku && !sku.toUpperCase().includes('PARENT');
+                    if (!isValidSku) return;
+                    
+                    let price = parseFloat(row.price || 0);
+                    if (isNaN(price) || price <= 0) return;
+                    
+                    // Apply same filters as above (except price slab filter)
+                    let inv = parseFloat(row.INV || 0);
+                    let searchVal = $("#global-search").val()?.toLowerCase() || "";
+                    if (searchVal && !(row.campaignName?.toLowerCase().includes(searchVal)) && !(row.sku?.toLowerCase().includes(searchVal))) return;
+                    
+                    let statusVal = $("#status-filter").val();
+                    if (statusVal && row.campaignStatus !== statusVal) return;
+                    
+                    let invFilterVal = $("#inv-filter").val();
+                    if (!invFilterVal || invFilterVal === '') {
+                        if (inv <= 0) return;
+                    } else if (invFilterVal === "INV_0") {
+                        if (inv !== 0) return;
+                    } else if (invFilterVal === "OTHERS") {
+                        if (inv <= 0) return;
+                    }
+                    
+                    let nraFilterVal = $("#nra-filter").val();
+                    if (nraFilterVal) {
+                        let rowNra = row.NRA ? row.NRA.trim() : "";
+                        if (nraFilterVal === 'RA') {
+                            if (rowNra === 'NRA') return;
+                        } else {
+                            if (rowNra !== nraFilterVal) return;
+                        }
+                    }
+                    
+                    // Count by price slab
+                    if (price < 10) {
+                        priceSlabLt10++;
+                    } else if (price >= 10 && price < 20) {
+                        priceSlab10_20++;
+                    } else if (price >= 20 && price < 30) {
+                        priceSlab20_30++;
+                    } else if (price >= 30 && price < 50) {
+                        priceSlab30_50++;
+                    } else if (price >= 50 && price < 100) {
+                        priceSlab50_100++;
+                    } else if (price >= 100) {
+                        priceSlabGt100++;
+                    }
+                });
+                
+                // Update price slab filter dropdown with counts
+                const priceSlabSelect = document.getElementById('price-slab-filter');
+                if (priceSlabSelect) {
+                    const totalPrice = priceSlabLt10 + priceSlab10_20 + priceSlab20_30 + priceSlab30_50 + priceSlab50_100 + priceSlabGt100;
+                    priceSlabSelect.options[0].text = `All Prices (${totalPrice})`;
+                    priceSlabSelect.options[1].text = `< $10 (${priceSlabLt10})`;
+                    priceSlabSelect.options[2].text = `$10 - $20 (${priceSlab10_20})`;
+                    priceSlabSelect.options[3].text = `$20 - $30 (${priceSlab20_30})`;
+                    priceSlabSelect.options[4].text = `$30 - $50 (${priceSlab30_50})`;
+                    priceSlabSelect.options[5].text = `$50 - $100 (${priceSlab50_100})`;
+                    priceSlabSelect.options[6].text = `> $100 (${priceSlabGt100})`;
+                }
+                
+                // Count ratings
+                let ratingLt3 = 0, rating3_35 = 0, rating4_45 = 0, ratingGte45 = 0;
+                
+                allData.forEach(function(row) {
+                    const sku = row.sku || '';
+                    const isValidSku = sku && !sku.toUpperCase().includes('PARENT');
+                    if (!isValidSku) return;
+                    
+                    let rating = parseFloat(row.ratings || 0);
+                    if (isNaN(rating) || rating <= 0) return;
+                    
+                    // Apply same filters as above (except rating filter)
+                    let inv = parseFloat(row.INV || 0);
+                    let searchVal = $("#global-search").val()?.toLowerCase() || "";
+                    if (searchVal && !(row.campaignName?.toLowerCase().includes(searchVal)) && !(row.sku?.toLowerCase().includes(searchVal))) return;
+                    
+                    let statusVal = $("#status-filter").val();
+                    if (statusVal && row.campaignStatus !== statusVal) return;
+                    
+                    let invFilterVal = $("#inv-filter").val();
+                    if (!invFilterVal || invFilterVal === '') {
+                        if (inv <= 0) return;
+                    } else if (invFilterVal === "INV_0") {
+                        if (inv !== 0) return;
+                    } else if (invFilterVal === "OTHERS") {
+                        if (inv <= 0) return;
+                    }
+                    
+                    let nraFilterVal = $("#nra-filter").val();
+                    if (nraFilterVal) {
+                        let rowNra = row.NRA ? row.NRA.trim() : "";
+                        if (nraFilterVal === 'RA') {
+                            if (rowNra === 'NRA') return;
+                        } else {
+                            if (rowNra !== nraFilterVal) return;
+                        }
+                    }
+                    
+                    // Count by rating range
+                    if (rating < 3) {
+                        ratingLt3++;
+                    } else if (rating >= 3 && rating < 4) {
+                        rating3_35++;
+                    } else if (rating >= 4 && rating < 4.5) {
+                        rating4_45++;
+                    } else if (rating >= 4.5) {
+                        ratingGte45++;
+                    }
+                });
+                
+                // Update rating filter dropdown with counts
+                const ratingSelect = document.getElementById('rating-filter');
+                if (ratingSelect) {
+                    const totalRating = ratingLt3 + rating3_35 + rating4_45 + ratingGte45;
+                    ratingSelect.options[0].text = `All Ratings (${totalRating})`;
+                    ratingSelect.options[1].text = `< 3 (${ratingLt3})`;
+                    ratingSelect.options[2].text = `3 - 3.5 (${rating3_35})`;
+                    ratingSelect.options[3].text = `4 - 4.5 (${rating4_45})`;
+                    ratingSelect.options[4].text = `≥ 4.5 (${ratingGte45})`;
+                }
             }
 
             // Total campaign card click handler
@@ -1063,21 +1218,35 @@
                         hozAlign: "center",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var rating = row.ratings;
+                            var rating = parseFloat(row.ratings) || 0;
                             var reviews = row.reviews;
                             
-                            if (rating && reviews) {
+                            // Determine color based on rating
+                            var ratingColor = '';
+                            if (rating > 0 && rating < 3) {
+                                ratingColor = '#dc3545'; // red
+                            } else if (rating >= 3 && rating < 4) {
+                                ratingColor = '#ffc107'; // yellow
+                            } else if (rating >= 4 && rating < 4.5) {
+                                ratingColor = '#28a745'; // green
+                            } else if (rating >= 4.5) {
+                                ratingColor = '#e83e8c'; // magenta
+                            } else {
+                                ratingColor = '#6c757d'; // gray for no rating
+                            }
+                            
+                            if (rating > 0 && reviews) {
                                 return '<div style="display: flex; flex-direction: column; align-items: center;">' +
-                                       '<div style="color: #ffc107; display: flex; align-items: center; gap: 4px;">' +
-                                       '<span style="color: #ffc107;">★</span>' +
-                                       '<span style="color: #ffc107;">' + rating + '</span>' +
+                                       '<div style="color: ' + ratingColor + '; display: flex; align-items: center; gap: 4px;">' +
+                                       '<span style="color: ' + ratingColor + ';">★</span>' +
+                                       '<span style="color: ' + ratingColor + ';">' + rating + '</span>' +
                                        '</div>' +
                                        '<div style="font-size: 0.85em; color: #666; margin-top: 2px;">' + reviews + ' reviews</div>' +
                                        '</div>';
-                            } else if (rating) {
-                                return '<div style="color: #ffc107; display: flex; align-items: center; gap: 4px; justify-content: center;">' +
-                                       '<span style="color: #ffc107;">★</span>' +
-                                       '<span style="color: #ffc107;">' + rating + '</span>' +
+                            } else if (rating > 0) {
+                                return '<div style="color: ' + ratingColor + '; display: flex; align-items: center; gap: 4px; justify-content: center;">' +
+                                       '<span style="color: ' + ratingColor + ';">★</span>' +
+                                       '<span style="color: ' + ratingColor + ';">' + rating + '</span>' +
                                        '</div>';
                             } else if (reviews) {
                                 return '<div style="display: flex; flex-direction: column; align-items: center;">' +
@@ -1247,6 +1416,29 @@
                         width: 90
                     },
                     {
+                        title: "GPFT",
+                        field: "GPFT",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '';
+                            const percent = parseFloat(value);
+                            if (isNaN(percent)) return '';
+                            
+                            let color = '';
+                            if (percent < 10) color = '#a00211'; // red
+                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
+                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        sorter: "number",
+                        width: 80
+                    },
+                    {
                         title: "PFT%",
                         field: "PFT",
                         hozAlign: "center",
@@ -1294,30 +1486,7 @@
                         width: 80
                     },
                     {
-                        title: "GPFT",
-                        field: "GPFT",
-                        hozAlign: "center",
-                        visible: false,
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (value === null || value === undefined) return '';
-                            const percent = parseFloat(value);
-                            if (isNaN(percent)) return '';
-                            
-                            let color = '';
-                            if (percent < 10) color = '#a00211'; // red
-                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
-                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
-                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                        },
-                        sorter: "number",
-                        width: 80
-                    },
-                    {
-                        title: "S PRC",
+                        title: "SPRICE",
                         field: "SPRICE",
                         hozAlign: "center",
                         editor: "input",
@@ -1812,6 +1981,18 @@
                         }
                     },
                     {
+                        title: "Last SBID",
+                        field: "last_sbid",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            if (!value || value === '' || value === '0' || value === 0) {
+                                return '-';
+                            }
+                            return parseFloat(value).toFixed(2);
+                        }
+                    },
+                    {
                         title: "SBID",
                         field: "sbid",
                         hozAlign: "center",
@@ -2204,6 +2385,15 @@
                     // When utilization type is selected (over/under/correctly), exclude missing items (red and yellow)
                     if (!hasCampaign) return false;
                     
+                    // Exclude yellow dots (NRL='NRL' OR NRA='NRA') when utilization type is selected
+                    const nrlValueForUtil = data.NRL ? data.NRL.trim() : "";
+                    const nraValueForUtil = data.NRA ? data.NRA.trim() : "";
+                    if (nrlValueForUtil === 'NRL' || nraValueForUtil === 'NRA') return false;
+                    
+                    // Exclude paused campaigns when utilization type is selected
+                    const campaignStatus = data.campaignStatus || 'PAUSED';
+                    if (campaignStatus !== 'ENABLED') return false;
+                    
                     if (currentUtilizationType === 'over') {
                         // Over-utilized: ub7 > 99 && ub1 > 99
                         if (!(ub7 > 99 && ub1 > 99)) return false;
@@ -2224,8 +2414,14 @@
 
                 // Status filter
                 let statusVal = $("#status-filter").val();
-                if (statusVal && data.campaignStatus !== statusVal) {
-                    return false;
+                if (statusVal) {
+                    if (statusVal === 'ENABLED') {
+                        // When ENABLED is selected, exclude missing items (rows without campaigns)
+                        if (!hasCampaign) return false;
+                    }
+                    if (data.campaignStatus !== statusVal) {
+                        return false;
+                    }
                 }
 
                 // SBGT filter (computed from ACOS using same mapping as display)
@@ -2311,6 +2507,44 @@
                             // For "NRA" or "LATER", exact match
                             if (rowNra !== nraFilterVal) return false;
                         }
+                    }
+                }
+
+                // Apply price slab filter
+                let priceSlabFilterVal = $("#price-slab-filter").val();
+                if (priceSlabFilterVal) {
+                    let price = parseFloat(data.price || 0);
+                    if (isNaN(price)) return false;
+                    
+                    if (priceSlabFilterVal === 'lt10') {
+                        if (price >= 10) return false;
+                    } else if (priceSlabFilterVal === '10-20') {
+                        if (price < 10 || price >= 20) return false;
+                    } else if (priceSlabFilterVal === '20-30') {
+                        if (price < 20 || price >= 30) return false;
+                    } else if (priceSlabFilterVal === '30-50') {
+                        if (price < 30 || price >= 50) return false;
+                    } else if (priceSlabFilterVal === '50-100') {
+                        if (price < 50 || price >= 100) return false;
+                    } else if (priceSlabFilterVal === 'gt100') {
+                        if (price < 100) return false;
+                    }
+                }
+
+                // Apply rating filter
+                let ratingFilterVal = $("#rating-filter").val();
+                if (ratingFilterVal) {
+                    let rating = parseFloat(data.ratings || 0);
+                    if (isNaN(rating) || rating <= 0) return false;
+                    
+                    if (ratingFilterVal === 'lt3') {
+                        if (rating >= 3) return false;
+                    } else if (ratingFilterVal === '3-3.5') {
+                        if (rating < 3 || rating >= 4) return false;
+                    } else if (ratingFilterVal === '4-4.5') {
+                        if (rating < 4 || rating >= 4.5) return false;
+                    } else if (ratingFilterVal === 'gte4.5') {
+                        if (rating < 4.5) return false;
                     }
                 }
 
@@ -2530,7 +2764,7 @@
                     }, 300);
                 });
 
-                $("#status-filter, #inv-filter, #nra-filter, #sbgt-filter").on("change", function() {
+                $("#status-filter, #inv-filter, #nra-filter, #sbgt-filter, #price-slab-filter, #rating-filter").on("change", function() {
                     table.setFilter(combinedFilter);
                     // Update counts when filter changes - use longer timeout to ensure filter is applied
                     setTimeout(function() {
