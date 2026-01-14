@@ -375,7 +375,8 @@ class TikTokShopService
     }
 
     /**
-     * Get all product inventory in batches
+     * Get all product inventory - extract from product data (skus array)
+     * TikTok product data includes SKU-level inventory information
      */
     public function getAllProductInventory(array $products): array
     {
@@ -386,55 +387,59 @@ class TikTokShopService
             return $allInventory;
         }
         
-        // Extract product IDs from products
-        $productIds = [];
+        $this->output('info', 'getAllProductInventory: Extracting inventory from ' . count($products) . ' products');
+        
+        // Extract inventory from product data (skus array contains inventory info)
         foreach ($products as $product) {
             $productId = $product['id'] ?? $product['product_id'] ?? null;
-            if ($productId) {
-                $productIds[] = (string)$productId;
+            if (!$productId) {
+                continue;
             }
-        }
-        
-        if (empty($productIds)) {
-            $this->output('warn', 'getAllProductInventory: No product IDs found');
-            return $allInventory;
-        }
-        
-        $this->output('info', 'getAllProductInventory: Fetching inventory for ' . count($productIds) . ' products');
-        
-        // Process in batches of 50 (API limit)
-        $batches = array_chunk($productIds, 50);
-        $batchNum = 1;
-        
-        foreach ($batches as $batch) {
-            $this->output('info', "getAllProductInventory: Processing batch {$batchNum}/" . count($batches) . " (" . count($batch) . " products)");
             
-            $response = $this->getProductInventory($batch);
+            // Check if product has skus array with inventory data
+            $skus = $product['skus'] ?? [];
             
-            if ($response && isset($response['code']) && $response['code'] == 0) {
-                // Extract inventory data from response
-                $inventoryList = $response['data']['inventory_list'] ?? $response['inventory_list'] ?? $response['data'] ?? [];
+            if (!empty($skus) && is_array($skus)) {
+                // Sum up inventory from all SKUs for this product
+                $totalStock = 0;
+                foreach ($skus as $sku) {
+                    // Try different fields for stock quantity
+                    $stock = $sku['available_stock'] 
+                        ?? $sku['stock'] 
+                        ?? $sku['inventory_quantity'] 
+                        ?? $sku['quantity'] 
+                        ?? $sku['inventory']['available_stock'] 
+                        ?? 0;
+                    $totalStock += (int)$stock;
+                }
                 
-                if (is_array($inventoryList)) {
-                    foreach ($inventoryList as $item) {
-                        $productId = $item['product_id'] ?? null;
-                        if ($productId) {
-                            $allInventory[] = $item;
-                        }
-                    }
+                // Create inventory record for this product
+                if ($totalStock > 0 || isset($skus[0])) {
+                    $allInventory[] = [
+                        'product_id' => (string)$productId,
+                        'available_stock' => $totalStock,
+                        'stock' => $totalStock,
+                    ];
                 }
             } else {
-                $this->output('warn', "getAllProductInventory: Batch {$batchNum} failed or returned no data");
-            }
-            
-            $batchNum++;
-            // Small delay between batches to avoid rate limiting
-            if ($batchNum <= count($batches)) {
-                usleep(200000); // 200ms delay
+                // Try to get inventory from product-level fields
+                $stock = $product['available_stock'] 
+                    ?? $product['stock'] 
+                    ?? $product['inventory_quantity'] 
+                    ?? $product['inventory']['available_stock'] 
+                    ?? 0;
+                
+                if ($stock > 0) {
+                    $allInventory[] = [
+                        'product_id' => (string)$productId,
+                        'available_stock' => (int)$stock,
+                        'stock' => (int)$stock,
+                    ];
+                }
             }
         }
         
-        $this->output('info', 'getAllProductInventory: Retrieved inventory for ' . count($allInventory) . ' products');
+        $this->output('info', 'getAllProductInventory: Extracted inventory for ' . count($allInventory) . ' products');
         return $allInventory;
     }
 
