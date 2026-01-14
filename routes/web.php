@@ -2419,6 +2419,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/amazon-sp/get-amz-utilized-bgt-pt', 'getAmzUtilizedBgtPt');
         Route::put('/update-amazon-sp-targets-bid-price', 'updateCampaignTargetsBid');
         Route::post('/update-amazon-nr-nrl-fba', 'updateNrNRLFba');
+        
+        // SBID M and Approve routes
+        Route::post('/save-amazon-sbid-m', 'saveAmazonSbidM');
+        Route::post('/approve-amazon-sbid', 'approveAmazonSbid');
     });
 
     Route::controller(AmazonSbBudgetController::class)->group(function () {

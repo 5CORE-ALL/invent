@@ -1788,22 +1788,37 @@
                             var row = cell.getRow().getData();
                             var acos = parseFloat(row.acos || 0);
                             var price = parseFloat(row.price || 0);
+                            var spend = parseFloat(row.l30_spend || 0);
                             var sbgtAcos, sbgtPrice;
 
+                            // Special condition: if spend = 0 and acos = 0%, keep budget at $3 (SBGT = 3)
+                            if (spend === 0 && acos === 0) {
+                                var sbgt = 3;
+                                return `<div class="text-center"><span class="fw-bold sbgt-value">${sbgt}</span></div>`;
+                            }
+
+                            // Special condition: price 10-20 → $1 budget (SBGT = 1)
+                            if (price >= 10 && price <= 20) {
+                                var sbgt = 1;
+                                return `<div class="text-center"><span class="fw-bold sbgt-value">${sbgt}</span></div>`;
+                            }
+
                             // Calculate ACOS-based SBGT
+                            // ACOS 0-5%: sbgt = 6
+                            // ACOS 5-10%: sbgt = 5
+                            // ACOS 10-15%: sbgt = 4
+                            // ACOS 15-20%: sbgt = 3
+                            // ACOS 20-25%: sbgt = 2
+                            // ACOS > 25%: sbgt = 1
                             if (acos < 5) {
-                                sbgtAcos = 8;
-                            } else if (acos < 10) {
-                                sbgtAcos = 7;
-                            } else if (acos < 15) {
                                 sbgtAcos = 6;
-                            } else if (acos < 20) {
+                            } else if (acos < 10) {
                                 sbgtAcos = 5;
-                            } else if (acos < 25) {
+                            } else if (acos < 15) {
                                 sbgtAcos = 4;
-                            } else if (acos < 30) {
+                            } else if (acos < 20) {
                                 sbgtAcos = 3;
-                            } else if (acos < 35) {
+                            } else if (acos < 25) {
                                 sbgtAcos = 2;
                             } else {
                                 sbgtAcos = 1;
@@ -2225,6 +2240,84 @@
                         }
                     },
                     {
+                        title: "SBID M",
+                        field: "sbid_m",
+                        hozAlign: "center",
+                        editor: "input",
+                        editorParams: {
+                            elementAttributes: {
+                                maxlength: "10"
+                            }
+                        },
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            if (!value || value === '' || value === '0' || value === 0) {
+                                return '-';
+                            }
+                            return parseFloat(value).toFixed(2);
+                        }
+                    },
+                    {
+                        title: "APR BID",
+                        field: "apr_bid",
+                        hozAlign: "center",
+                        width: 100,
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var sbidM = parseFloat(row.sbid_m) || 0;
+                            var isApproved = row.sbid_approved || false;
+                            
+                            if (isApproved) {
+                                return '<i class="fas fa-check-circle text-success apr-bid-icon" style="cursor: pointer; font-size: 18px;" title="SBID Approved"></i>';
+                            } else {
+                                return '<i class="fas fa-check text-primary apr-bid-icon" style="cursor: pointer; font-size: 18px;" title="Click to approve SBID"></i>';
+                            }
+                        },
+                        cellClick: function(e, cell) {
+                            var row = cell.getRow();
+                            var rowData = row.getData();
+                            var campaignId = rowData.campaign_id;
+                            var sbidM = parseFloat(rowData.sbid_m) || 0;
+                            
+                            if (!campaignId || sbidM <= 0) {
+                                alert('Please enter a valid SBID M value first');
+                                return;
+                            }
+                            
+                            // Show loading
+                            cell.getElement().innerHTML = '<i class="fas fa-spinner fa-spin text-primary"></i>';
+                            
+                            $.ajax({
+                                url: '/approve-amazon-sbid',
+                                method: 'POST',
+                                data: {
+                                    campaign_id: campaignId,
+                                    sbid_m: sbidM,
+                                    campaign_type: 'KW',
+                                    _token: '{{ csrf_token() }}'
+                                },
+                                success: function(response) {
+                                    if (response.status === 200) {
+                                        // Update row data
+                                        rowData.sbid_approved = true;
+                                        rowData.sbid = sbidM;
+                                        row.update(rowData);
+                                        
+                                        // Update icon to checkmark
+                                        cell.getElement().innerHTML = '<i class="fas fa-check-circle text-success apr-bid-icon" style="cursor: pointer; font-size: 18px;" title="SBID Approved"></i>';
+                                    } else {
+                                        alert('Error: ' + (response.message || 'Failed to approve SBID'));
+                                        cell.getElement().innerHTML = '<i class="fas fa-check text-primary apr-bid-icon" style="cursor: pointer; font-size: 18px;" title="Click to approve SBID"></i>';
+                                    }
+                                },
+                                error: function(xhr) {
+                                    alert('Error: ' + (xhr.responseJSON?.message || 'Failed to approve SBID'));
+                                    cell.getElement().innerHTML = '<i class="fas fa-check text-primary apr-bid-icon" style="cursor: pointer; font-size: 18px;" title="Click to approve SBID"></i>';
+                                }
+                            });
+                        }
+                    },
+                    {
                         title: "TPFT%",
                         field: "TPFT",
                         hozAlign: "center",
@@ -2442,19 +2535,21 @@
                             return false;
                         }
                         let rowSbgt;
+                        // ACOS 0-5%: sbgt = 6
+                        // ACOS 5-10%: sbgt = 5
+                        // ACOS 10-15%: sbgt = 4
+                        // ACOS 15-20%: sbgt = 3
+                        // ACOS 20-25%: sbgt = 2
+                        // ACOS > 25%: sbgt = 1
                         if (acosVal < 5) {
-                            rowSbgt = '8';
-                        } else if (acosVal < 10) {
-                            rowSbgt = '7';
-                        } else if (acosVal < 15) {
                             rowSbgt = '6';
-                        } else if (acosVal < 20) {
+                        } else if (acosVal < 10) {
                             rowSbgt = '5';
-                        } else if (acosVal < 25) {
+                        } else if (acosVal < 15) {
                             rowSbgt = '4';
-                        } else if (acosVal < 30) {
+                        } else if (acosVal < 20) {
                             rowSbgt = '3';
-                        } else if (acosVal < 35) {
+                        } else if (acosVal < 25) {
                             rowSbgt = '2';
                         } else {
                             rowSbgt = '1';
@@ -2602,6 +2697,72 @@
                         },
                         error: function(xhr) {
                             showToast('error', 'Failed to update SPRICE');
+                        }
+                    });
+                }
+            });
+
+            // Handle SBID M cell edit
+            table.on("cellEdited", function(cell) {
+                const field = cell.getField();
+                if (field === "sbid_m") {
+                    const data = cell.getRow().getData();
+                    const campaignId = data.campaign_id;
+                    let value = cell.getValue();
+                    
+                    if (!campaignId) {
+                        showToast('error', 'Campaign ID not found');
+                        return;
+                    }
+                    
+                    // Clean the value
+                    let cleanValue = String(value).replace(/[$\s]/g, '');
+                    cleanValue = parseFloat(cleanValue) || 0;
+                    
+                    if (cleanValue <= 0) {
+                        showToast('error', 'SBID M must be greater than 0');
+                        cell.setValue('');
+                        return;
+                    }
+                    
+                    $.ajax({
+                        url: '/save-amazon-sbid-m',
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                        },
+                        data: {
+                            campaign_id: campaignId,
+                            sbid_m: cleanValue,
+                            campaign_type: 'KW'
+                        },
+                        success: function(response) {
+                            if (response.status === 200) {
+                                showToast('success', 'SBID M saved successfully');
+                                // Reset approval status when SBID M changes
+                                data.sbid_approved = false;
+                                data.sbid_m = cleanValue;
+                                cell.getRow().update(data);
+                                // Explicitly reformat the APR BID cell to show unapproved icon
+                                var aprBidCell = cell.getRow().getCell('apr_bid');
+                                if (aprBidCell) {
+                                    aprBidCell.reformat();
+                                }
+                            } else {
+                                showToast('error', response.message || 'Failed to save SBID M');
+                            }
+                        },
+                        error: function(xhr) {
+                            var errorMsg = 'Failed to save SBID M';
+                            if (xhr.responseJSON && xhr.responseJSON.message) {
+                                errorMsg = xhr.responseJSON.message;
+                            } else if (xhr.status === 404) {
+                                errorMsg = 'Campaign not found. Please ensure the campaign exists.';
+                            } else if (xhr.status === 500) {
+                                errorMsg = 'Server error. Please try again.';
+                            }
+                            showToast('error', errorMsg);
+                            console.error('SBID M save error:', xhr);
                         }
                     });
                 }

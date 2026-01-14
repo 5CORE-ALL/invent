@@ -230,20 +230,30 @@ class AutoUpdateAmazonBgtPt extends Command
 
                 $price = (float) ($row['price'] ?? 0);
 
+                // If spend = 0 and ACOS = 0%, keep budget at $3
+                if ($spend == 0 && $acos == 0) {
+                    $row['sbgt'] = 3;
+                    $result[] = (object) $row;
+                    continue;
+                }
+
+                // If price is between 10-20, set budget to $1
+                if ($price >= 10 && $price <= 20) {
+                    $row['sbgt'] = 1;
+                    $result[] = (object) $row;
+                    continue;
+                }
+
                 // ACOS-based sbgt rule
                 if ($acos < 5) {
-                    $acos_sbgt = 8;
-                } elseif ($acos < 10) {
-                    $acos_sbgt = 7;
-                } elseif ($acos < 15) {
                     $acos_sbgt = 6;
-                } elseif ($acos < 20) {
+                } elseif ($acos < 10) {
                     $acos_sbgt = 5;
-                } elseif ($acos < 25) {
+                } elseif ($acos < 15) {
                     $acos_sbgt = 4;
-                } elseif ($acos < 30) {
+                } elseif ($acos < 20) {
                     $acos_sbgt = 3;
-                } elseif ($acos < 35) {
+                } elseif ($acos < 25) {
                     $acos_sbgt = 2;
                 } else {
                     $acos_sbgt = 1;
