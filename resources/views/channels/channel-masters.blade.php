@@ -250,6 +250,98 @@
             background-color: #eee;
         }
 
+        /* Column visibility dropdown styles */
+        .dropdown-menu.show {
+            display: block;
+        }
+
+        /* Ensure column visibility dropdown appears above everything */
+        #columnVisibilityDropdown + .dropdown-menu {
+            z-index: 99999 !important;
+            position: absolute !important;
+            background-color: #ffffff !important;
+            border: 2px solid #4361ee !important;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2) !important;
+            display: none;
+        }
+
+        #columnVisibilityDropdown + .dropdown-menu.show {
+            display: block !important;
+        }
+
+        #columnVisibilityDropdown {
+            position: relative;
+            z-index: 1;
+        }
+
+        .dropdown {
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Ensure dropdown container is properly positioned */
+        .col-auto:has(#columnVisibilityDropdown) {
+            position: relative;
+            z-index: 100;
+        }
+
+        #columnVisibilityDropdown + .dropdown-menu .form-check {
+            margin-bottom: 8px;
+            padding: 6px 8px;
+            padding-left: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+        }
+
+        #columnVisibilityDropdown + .dropdown-menu .form-check:hover {
+            background-color: #f0f7ff;
+        }
+
+        #columnVisibilityDropdown + .dropdown-menu .form-check-input {
+            cursor: pointer;
+            margin: 0;
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+            border: 2px solid #4361ee;
+        }
+
+        #columnVisibilityDropdown + .dropdown-menu .form-check-input:checked {
+            background-color: #4361ee;
+            border-color: #4361ee;
+        }
+
+        #columnVisibilityDropdown + .dropdown-menu .form-check-label {
+            font-size: 0.9rem;
+            cursor: pointer;
+            user-select: none;
+            margin: 0;
+            color: #333;
+            font-weight: 500;
+            flex: 1;
+        }
+
+        #columnVisibilityDropdown + .dropdown-menu hr {
+            margin: 12px 0;
+            opacity: 0.3;
+        }
+
+        #columnVisibilityDropdown + .dropdown-menu .dropdown-header {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid #4361ee;
+            padding-bottom: 8px;
+        }
+
+        /* Prevent dropdown from closing when clicking inside */
+        .dropdown-menu {
+            padding: 10px 15px;
+        }
+
         /* ========== PLAY/PAUSE NAVIGATION BUTTONS ========== */
         .time-navigation-group {
             margin-left: 10px;
@@ -575,6 +667,95 @@
                     </div>
                 </div>
 
+                <div class="col-auto">
+                    <div class="dropdown">
+                        <button class="btn btn-outline-primary btn-sm dropdown-toggle" type="button" id="columnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                            <i class="fas fa-columns me-1"></i> Columns
+                        </button>
+                        <div class="dropdown-menu dropdown-menu-end p-3" aria-labelledby="columnVisibilityDropdown" style="min-width: 220px; max-height: 450px; overflow-y: auto;">
+                            <h6 class="dropdown-header px-0 mb-2" style="font-weight: 600; color: #333; font-size: 0.75rem;">
+                                <i class="fas fa-eye me-2"></i>Show/Hide Columns
+                            </h6>
+                            <div class="form-check">
+                                <input class="form-check-input column-toggle" type="checkbox" value="0" id="col_channel" checked>
+                                <label class="form-check-label" for="col_channel">Channel</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input column-toggle" type="checkbox" value="1" id="col_ra" checked>
+                                <label class="form-check-label" for="col_ra">R&A</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input column-toggle" type="checkbox" value="2" id="col_sheet" checked>
+                                <label class="form-check-label" for="col_sheet">Sheet</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input column-toggle" type="checkbox" value="3" id="col_sheet_link" checked>
+                                <label class="form-check-label" for="col_sheet_link">Sheet Link</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input column-toggle" type="checkbox" value="4" id="col_l30_sales" checked>
+                                <label class="form-check-label" for="col_l30_sales">L30 Sales</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input column-toggle" type="checkbox" value="5" id="col_l30_orders" checked>
+                                <label class="form-check-label" for="col_l30_orders">L30 Orders</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input column-toggle" type="checkbox" value="6" id="col_gprofit" checked>
+                                <label class="form-check-label" for="col_gprofit">Gprofit%</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input column-toggle" type="checkbox" value="7" id="col_groi" checked>
+                                <label class="form-check-label" for="col_groi">G Roi%</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input column-toggle" type="checkbox" value="8" id="col_ads" checked>
+                                <label class="form-check-label" for="col_ads">Ads%</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input column-toggle" type="checkbox" value="9" id="col_npft" checked>
+                                <label class="form-check-label" for="col_npft">N PFT%</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input column-toggle" type="checkbox" value="10" id="col_nroi" checked>
+                                <label class="form-check-label" for="col_nroi">N ROI%</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input column-toggle" type="checkbox" value="11" id="col_total_ad_spend" checked>
+                                <label class="form-check-label" for="col_total_ad_spend">Total Ad Spend</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input column-toggle" type="checkbox" value="12" id="col_achieved" checked>
+                                <label class="form-check-label" for="col_achieved">Achieved</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input column-toggle" type="checkbox" value="13" id="col_shortfall" checked>
+                                <label class="form-check-label" for="col_shortfall">Shortfall</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input column-toggle" type="checkbox" value="14" id="col_missing_listing" checked>
+                                <label class="form-check-label" for="col_missing_listing">Missing Listing</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input column-toggle" type="checkbox" value="15" id="col_stock_mapping" checked>
+                                <label class="form-check-label" for="col_stock_mapping">Stock Mapping</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input column-toggle" type="checkbox" value="16" id="col_health_data" checked>
+                                <label class="form-check-label" for="col_health_data">Health Data</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input column-toggle" type="checkbox" value="17" id="col_action" checked>
+                                <label class="form-check-label" for="col_action">Action</label>
+                            </div>
+                            <hr>
+                            <button type="button" class="btn btn-sm btn-primary w-100" id="showAllColumns">
+                                <i class="fas fa-eye me-1"></i> Show All
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
 
@@ -697,7 +878,7 @@
                 </div>
 
                 <div class="mb-3">
-                    <label for="editBase" class="form-label">Base</label>
+                    <label for="editBase" class="form-label">Achieved</label>
                     <input type="number" class="form-control" id="editBase" name="base" step="0.01">
                 </div>
 
@@ -1926,12 +2107,12 @@
                             // For Walmart, show single option
                             if (channel === 'walmart') {
                                 return `
-                                    <select class="form-select form-select-sm ad-spend-select" 
-                                            style="min-width: 120px; 
-                                                   font-size: 11px; 
-                                                   padding: 4px 8px; 
-                                                   background-color: #91e1ff; 
-                                                   color: black; 
+                                    <select class="form-select form-select-sm ad-spend-select"
+                                            style="min-width: 90px;
+                                                   font-size: 10px;
+                                                   padding: 3px 6px;
+                                                   background-color: #91e1ff;
+                                                   color: black;
                                                    border: 1px solid #91e1ff;
                                                    font-weight: bold;">
                                         <option value="total" selected style="background-color: #91e1ff; color: black; font-weight: bold;">$${Math.round(totalSpent).toLocaleString('en-US')}</option>
@@ -1939,15 +2120,15 @@
                                     </select>
                                 `;
                             }
-                            
+
                             // For other channels, show KW/PMT/HL breakdown
                             return `
-                                <select class="form-select form-select-sm ad-spend-select" 
-                                        style="min-width: 120px; 
-                                               font-size: 11px; 
-                                               padding: 4px 8px; 
-                                               background-color: #91e1ff; 
-                                               color: black; 
+                                <select class="form-select form-select-sm ad-spend-select"
+                                        style="min-width: 90px;
+                                               font-size: 10px;
+                                               padding: 3px 6px;
+                                               background-color: #91e1ff;
+                                               color: black;
                                                border: 1px solid #91e1ff;
                                                font-weight: bold;">
                                     <option value="total" selected style="background-color: #91e1ff; color: black; font-weight: bold;">$${Math.round(totalSpent).toLocaleString('en-US')}</option>
@@ -2752,6 +2933,29 @@
                                 }
                             }
                         });
+
+                        // Column visibility toggle functionality
+                        // Column toggle functionality
+                        document.querySelectorAll('.column-toggle').forEach(function(checkbox) {
+                            checkbox.addEventListener('change', function() {
+                                const columnIdx = parseInt(this.value);
+                                const column = table.column(columnIdx);
+                                column.visible(this.checked);
+                            });
+                        });
+
+                        // Show all columns button
+                        const showAllBtn = document.getElementById('showAllColumns');
+                        if (showAllBtn) {
+                            showAllBtn.addEventListener('click', function() {
+                                document.querySelectorAll('.column-toggle').forEach(function(checkbox) {
+                                    checkbox.checked = true;
+                                    const columnIdx = parseInt(checkbox.value);
+                                    const column = table.column(columnIdx);
+                                    column.visible(true);
+                                });
+                            });
+                        }
 
                         // Update totals when table is filtered/searched
                         table.on('draw', function() {
