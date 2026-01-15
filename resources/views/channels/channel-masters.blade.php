@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Channel Master', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Channel Master', 'sidenav' => 'condensed'])
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
 
@@ -262,7 +262,6 @@
             background-color: #ffffff !important;
             border: 2px solid #4361ee !important;
             box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2) !important;
-            display: none;
         }
 
         #columnVisibilityDropdown + .dropdown-menu.show {
@@ -534,76 +533,29 @@
             text-transform: none !important;
         }
 
-        /* Channel Type Group Header Styles */
-        .channel-type-header,
-        .channel-type-header td,
-        table.dataTable tbody .channel-type-header,
-        table.dataTable tbody .channel-type-header td {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-            color: white !important;
-            font-weight: bold !important;
-            font-size: 14px !important;
-            text-align: left !important;
-            padding: 12px 15px !important;
-            border: none !important;
-        }
-
-        .channel-type-header .type-label {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .channel-type-header .type-icon {
-            font-size: 18px;
-        }
-
-        .channel-type-header .type-name {
-            font-size: 15px;
-            font-weight: 700;
-            letter-spacing: 0.5px;
-        }
-
-        .channel-type-header .type-count {
-            background: rgba(255,255,255,0.2);
-            padding: 2px 10px;
+        /* Channel Type Badge Styles (shown below channel names) */
+        .channel-type-badge {
+            padding: 2px 8px;
             border-radius: 12px;
-            font-size: 12px;
-            font-weight: 500;
+            font-size: 10px;
+            font-weight: 600;
+            display: inline-block;
+            margin-top: 4px;
         }
-
-        /* B2C Type - Green */
-        .channel-type-header.type-b2c,
-        .channel-type-header.type-b2c td,
-        table.dataTable tbody .channel-type-header.type-b2c,
-        table.dataTable tbody .channel-type-header.type-b2c td {
-            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%) !important;
+        
+        .channel-type-badge.type-b2c {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
         }
-
-        /* B2B Type - Blue/Purple */
-        .channel-type-header.type-b2b,
-        .channel-type-header.type-b2b td,
-        table.dataTable tbody .channel-type-header.type-b2b,
-        table.dataTable tbody .channel-type-header.type-b2b td {
-            background: linear-gradient(135deg, #4568dc 0%, #b06ab3 100%) !important;
+        
+        .channel-type-badge.type-b2b {
+            background: linear-gradient(135deg, #4568dc 0%, #b06ab3 100%);
+            color: white;
         }
-
-        /* Dropship Type - Pink/Red */
-        .channel-type-header.type-dropship,
-        .channel-type-header.type-dropship td,
-        table.dataTable tbody .channel-type-header.type-dropship,
-        table.dataTable tbody .channel-type-header.type-dropship td {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%) !important;
-        }
-
-        /* Force background color on group headers */
-        .channel-group-header,
-        .channel-group-header td,
-        #channelTable tbody .channel-group-header,
-        #channelTable tbody .channel-group-header td,
-        table.dataTable tbody tr.channel-group-header,
-        table.dataTable tbody tr.channel-group-header td {
-            background-color: inherit !important;
+        
+        .channel-type-badge.type-dropship {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
         }
     </style>
 @endsection
@@ -658,6 +610,15 @@
                 </div>
 
                 <div class="col-auto">
+                    <select id="channelTypeFilter" class="form-select form-select-sm" style="min-width: 150px;">
+                        <option value="all">All Types</option>
+                        <option value="B2C">🛒 B2C</option>
+                        <option value="B2B">🏢 B2B</option>
+                        <option value="Dropship">📦 Dropship</option>
+                    </select>
+                </div>
+
+                <div class="col-auto">
                     <div class="dropdown-search-container" style="position: relative;">
                         <input type="text" class="form-control form-control-sm channel-search"
                             placeholder="Search Channel" id="channelSearchInput">
@@ -668,11 +629,11 @@
                 </div>
 
                 <div class="col-auto">
-                    <div class="dropdown">
-                        <button class="btn btn-outline-primary btn-sm dropdown-toggle" type="button" id="columnVisibilityDropdown" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
-                            <i class="fas fa-columns me-1"></i> Columns
+                    <div class="custom-dropdown" style="position: relative; display: inline-block;">
+                        <button class="btn btn-outline-primary btn-sm" type="button" id="columnVisibilityBtn" onclick="toggleColumnDropdown()">
+                            <i class="fas fa-columns me-1"></i> Columns <i class="fas fa-chevron-down ms-1"></i>
                         </button>
-                        <div class="dropdown-menu dropdown-menu-end p-3" aria-labelledby="columnVisibilityDropdown" style="min-width: 220px; max-height: 450px; overflow-y: auto;">
+                        <div class="custom-dropdown-menu p-3" id="columnDropdownMenu" style="display: none; position: absolute; top: 100%; right: 0; min-width: 220px; max-height: 450px; overflow-y: auto; background: white; border: 2px solid #4361ee; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); z-index: 99999;">
                             <h6 class="dropdown-header px-0 mb-2" style="font-weight: 600; color: #333; font-size: 0.75rem;">
                                 <i class="fas fa-eye me-2"></i>Show/Hide Columns
                             </h6>
@@ -733,19 +694,19 @@
                                 <label class="form-check-label" for="col_shortfall">Shortfall</label>
                             </div>
                             <div class="form-check">
-                                <input class="form-check-input column-toggle" type="checkbox" value="14" id="col_missing_listing" checked>
-                                <label class="form-check-label" for="col_missing_listing">Missing Listing</label>
+                                <input class="form-check-input column-toggle" type="checkbox" value="14" id="col_map" checked>
+                                <label class="form-check-label" for="col_map">Map</label>
                             </div>
                             <div class="form-check">
-                                <input class="form-check-input column-toggle" type="checkbox" value="15" id="col_stock_mapping" checked>
-                                <label class="form-check-label" for="col_stock_mapping">Stock Mapping</label>
+                                <input class="form-check-input column-toggle" type="checkbox" value="15" id="col_miss" checked>
+                                <label class="form-check-label" for="col_miss">Miss</label>
                             </div>
                             <div class="form-check">
-                                <input class="form-check-input column-toggle" type="checkbox" value="16" id="col_health_data" checked>
+                                <input class="form-check-input column-toggle" type="checkbox" value="16" id="col_health_data">
                                 <label class="form-check-label" for="col_health_data">Health Data</label>
                             </div>
                             <div class="form-check">
-                                <input class="form-check-input column-toggle" type="checkbox" value="17" id="col_action" checked>
+                                <input class="form-check-input column-toggle" type="checkbox" value="17" id="col_action">
                                 <label class="form-check-label" for="col_action">Action</label>
                             </div>
                             <hr>
@@ -896,6 +857,43 @@
         </div>
         </div>
 
+        <!-- Channel History Modal -->
+        <div class="modal fade" id="channelHistoryModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header" style="background: linear-gradient(135deg, #4361ee, #3f37c9);">
+                        <h5 class="modal-title text-white">
+                            <i class="fas fa-history me-2"></i> 
+                            <span id="modalChannelName">Channel</span> - Historical Data (Last 30 Days)
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead style="background: #f5f7fa;">
+                                    <tr>
+                                        <th>Date</th>
+                                        <th class="text-end">L30 Sales</th>
+                                        <th class="text-end">L30 Orders</th>
+                                        <th class="text-end">Gprofit%</th>
+                                        <th class="text-end">NPFT%</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="historyTableBody">
+                                    <tr>
+                                        <td colspan="5" class="text-center">Loading...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <div id="customLoader" style="display: flex; justify-content: center; align-items: center; height: 300px;">
             <div class="spinner-border text-info" role="status">
@@ -1030,20 +1028,6 @@
                                 </small><br>
                                 Growth
                             </th>
-                            {{-- <th class="text-center align-middle">
-                                <small id="missingTotalBadge" class="badge bg-dark text-white mb-1"
-                                    style="font-size: 13px;">
-                                    0
-                                </small><br>
-                                Missing
-                            </th> --}}
-                            {{-- <th class="text-center align-middle">
-                                <small id="mappingTotalBadge" class="badge bg-dark text-white mb-1"
-                                    style="font-size: 13px;">
-                                    0
-                                </small><br>
-                                Mapping
-                            </th> --}}
                             {{-- Growth column hidden --}}
                             {{-- <th class="text-center align-middle">
                                 <small id="growthPercentageBadge" class="badge bg-dark text-white mb-1"
@@ -1053,18 +1037,18 @@
                                 Growth
                             </th> --}}
                             <th class="text-center align-middle">
-                                <small id="missingListingBadge" class="badge bg-dark text-white mb-1"
+                                <small id="mapBadge" class="badge bg-dark text-white mb-1"
                                     style="font-size: 13px;">
                                     0
                                 </small><br>
-                                Missing Listing
+                                Map
                             </th>
                             <th class="text-center align-middle">
-                                <small id="stockMappingBadge" class="badge bg-dark text-white mb-1"
+                                <small id="missBadge" class="badge bg-dark text-white mb-1"
                                     style="font-size: 13px;">
                                     0
                                 </small><br>
-                                Stock Mapping
+                                Miss
                             </th>
                             <th>Health Data</th>
                             {{-- <th>0 Sold SKU Count</th>
@@ -1333,6 +1317,13 @@
     <script src="https://www.gstatic.com/charts/loader.js"></script>
 
     <script>
+        // Force sidebar to condensed mode
+        document.addEventListener('DOMContentLoaded', function() {
+            document.body.classList.add('sidebar-enable', 'left-side-menu-condensed');
+            const wrapper = document.querySelector('.wrapper');
+            if (wrapper) wrapper.classList.add('left-side-menu-condensed');
+        });
+
         // Use jQuery.noConflict() if needed
         var jq = jQuery.noConflict(true);
 
@@ -1346,6 +1337,26 @@
         let uniqueChannelRows = [];
         let selectedChannel = '';
         let tableData = []; 
+
+        // Custom dropdown toggle function
+        function toggleColumnDropdown() {
+            const menu = document.getElementById('columnDropdownMenu');
+            if (menu.style.display === 'none' || menu.style.display === '') {
+                menu.style.display = 'block';
+            } else {
+                menu.style.display = 'none';
+            }
+        }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(event) {
+            const dropdown = document.getElementById('columnDropdownMenu');
+            const button = document.getElementById('columnVisibilityBtn');
+            
+            if (dropdown && button && !dropdown.contains(event.target) && !button.contains(event.target)) {
+                dropdown.style.display = 'none';
+            }
+        });
 
         // Enhanced number parsing function
         function parseNumber(value) {
@@ -1363,8 +1374,8 @@
             let l60OrdersTotal = 0;
             let l30OrdersTotal = 0;
             let achievedTotalSum = 0;
-            let totalMissing = 0;
-            let totalMapping = 0;
+            let totalMap = 0;
+            let totalMiss = 0;
             let growthValues = [];
             let gprofitValues = [];
             let groiValues = [];
@@ -1392,8 +1403,8 @@
                     const gprofit = parseNumber(row['Gprofit%'] || row['Growth%'] || 0);
                     const groi = parseNumber(row['G Roi%'] || row['G.Rents'] || 0);
                     const achievedVal = parseNumber(row['Achieved'] || 0);
-                    const missingVal = parseNumber(row['Missing Listing'] || 0);
-                    const mappingVal = parseNumber(row['Stock Mapping'] || 0);
+                    const mapVal = parseNumber(row['Map'] || 0);
+                    const missVal = parseNumber(row['Miss'] || 0);
 
                     // Add to totals
                     l60SalesTotal += l60Sales;
@@ -1401,8 +1412,8 @@
                     l60OrdersTotal += l60Orders;
                     l30OrdersTotal += l30Orders;
                     achievedTotalSum += achievedVal;
-                    totalMissing += missingVal;
-                    totalMapping += mappingVal;
+                    totalMap += mapVal;
+                    totalMiss += missVal;
 
                     // Collect for averages
                     if (!isNaN(growth)) growthValues.push(growth);
@@ -1429,8 +1440,8 @@
             const groiBadge = document.getElementById('groiPercentageBadge');
             const nPftBadge = document.getElementById('nPftPercentageBadge');
             const achievedTotalBadge = document.getElementById('achievedTotalBadge');
-            const missingTotalBadge = document.getElementById('missingListingBadge');
-            const mappingTotalBadge = document.getElementById('stockMappingBadge');
+            const mapBadge = document.getElementById('mapBadge');
+            const missBadge = document.getElementById('missBadge');
 
             if (l60Badge) l60Badge.textContent = Math.round(l60SalesTotal).toLocaleString('en-US');
             if (l30Badge) l30Badge.textContent = Math.round(l30SalesTotal).toLocaleString('en-US');
@@ -1438,8 +1449,8 @@
             if (l30OrdersBadge) l30OrdersBadge.textContent = Math.round(l30OrdersTotal).toLocaleString('en-US');
             if (growthBadge) growthBadge.textContent = growthTotal.toFixed(0) + '%';
             if (achievedTotalBadge) achievedTotalBadge.textContent = Math.round(achievedTotalSum).toLocaleString('en-US');
-            if (missingTotalBadge) missingTotalBadge.textContent = Math.round(totalMissing).toLocaleString('en-US');
-            if (mappingTotalBadge) mappingTotalBadge.textContent = Math.round(totalMapping).toLocaleString('en-US');
+            if (mapBadge) mapBadge.textContent = Math.round(totalMap).toLocaleString('en-US');
+            if (missBadge) missBadge.textContent = Math.round(totalMiss).toLocaleString('en-US');
             
             // Calculate and update growth badge (L30 Sales - Achieved)
             const shortfallBadge = document.getElementById('shortfallBadge');
@@ -1888,6 +1899,73 @@
         // }
 
         
+        // Show channel history modal with table
+        function showChannelHistory(channelName) {
+            // Update modal content with channel name
+            jq('#modalChannelName').text(channelName);
+            jq('#historyTableBody').html('<tr><td colspan="5" class="text-center">Loading...</td></tr>');
+            
+            // Show modal using Bootstrap 5 syntax
+            const modalElement = document.getElementById('channelHistoryModal');
+            const modal = new bootstrap.Modal(modalElement);
+            modal.show();
+            
+            // Fetch historical data
+            const channelKey = channelName.toLowerCase().replace(/\s+/g, '');
+            
+            jq.ajax({
+                url: '/channel-master-history/' + channelKey,
+                method: 'GET',
+                success: function(response) {
+                    if (response.status === 200 && response.data) {
+                        renderHistoryTable(response.data);
+                    } else {
+                        jq('#historyTableBody').html('<tr><td colspan="5" class="text-center">No historical data found</td></tr>');
+                    }
+                },
+                error: function() {
+                    jq('#historyTableBody').html('<tr><td colspan="5" class="text-center text-danger">Error loading data</td></tr>');
+                }
+            });
+        }
+        
+        // Render history table
+        function renderHistoryTable(data) {
+            const toNum = (v, def = 0) => {
+                const n = parseFloat(String(v).replace(/,/g, ''));
+                return Number.isFinite(n) ? n : def;
+            };
+            
+            // Format date nicely
+            const formatDate = (dateStr) => {
+                if (!dateStr) return '';
+                // Extract just the date part (YYYY-MM-DD)
+                const datePart = dateStr.split('T')[0];
+                return datePart;
+            };
+            
+            let html = '';
+            data.forEach(row => {
+                const summaryData = row.summary_data || {};
+                const npft = toNum(summaryData.gprofit_percent || 0) - toNum(summaryData.tcos_percent || 0);
+                html += `
+                    <tr>
+                        <td>${formatDate(row.snapshot_date)}</td>
+                        <td class="text-end">$${toNum(summaryData.l30_sales).toLocaleString()}</td>
+                        <td class="text-end">${toNum(summaryData.l30_orders).toLocaleString()}</td>
+                        <td class="text-end">${toNum(summaryData.gprofit_percent).toFixed(1)}%</td>
+                        <td class="text-end">${npft.toFixed(1)}%</td>
+                    </tr>
+                `;
+            });
+            
+            if (html === '') {
+                html = '<tr><td colspan="5" class="text-center">No data available</td></tr>';
+            }
+            
+            jq('#historyTableBody').html(html);
+        }
+
         function initializeDataTable() {
             try {
                 if (!jq('#channelTable').length) {
@@ -1945,10 +2023,14 @@
                                 'tiktok shop': '/tiktokAnalysis',
                                 'aliexpress': '/aliexpressAnalysis',
                             };
+                            
+                            // Add history icon
+                            const historyIcon = `<i class="fas fa-chart-line history-icon" style="cursor:pointer;color:#4361ee;font-size:14px;margin-left:8px;" title="View Historical Data" data-channel="${data}"></i>`;
+                            
                             const routeUrl = routeMap[channelName];
                             return routeUrl
-                                ? `<a href="${routeUrl}" target="_blank" style="color: #007bff; text-decoration: underline;">${data}</a>`
-                                : `<div class="d-flex align-items-center"><span>${data}</span></div>`;
+                                ? `<div><a href="${routeUrl}" target="_blank" style="color: #007bff; text-decoration: underline;">${data}</a>${historyIcon}</div>`
+                                : `<div><span>${data}</span>${historyIcon}</div>`;
                         }
                     },
                     {
@@ -2180,9 +2262,23 @@
                     //         return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${Math.round(n)}%</span>`;
                     //     }
                     // },
-                    // Missing Listing column
+                    // Map column
                     {
-                        data: 'Missing Listing',
+                        data: 'Map',
+                        render: function (v, type) {
+                            const n = toNum(v);
+                            if (type === 'sort' || type === 'type') return n;
+                            let bg = '', color = 'white';
+                            if (n === 0) { bg = '#00ff00'; color = 'black'; } // Green: no mapping issues
+                            else if (n <= 20) { bg = '#ffff00'; color = 'black'; } // Yellow: 1-20
+                            else if (n <= 50) { bg = '#ffa500'; color = 'white'; } // Orange: 21-50
+                            else { bg = '#ff0000'; } // Red: above 50
+                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;font-weight:bold;">${n}</span>`;
+                        }
+                    },
+                    // Miss column
+                    {
+                        data: 'Miss',
                         render: function (v, type) {
                             const n = toNum(v);
                             if (type === 'sort' || type === 'type') return n;
@@ -2192,20 +2288,6 @@
                             else if (n <= 50) { bg = '#ffa500'; } // Orange: 21-50
                             else { bg = '#ff0000'; } // Red: above 50
                             return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${n}</span>`;
-                        }
-                    },
-                    // Stock Mapping column
-                    {
-                        data: 'Stock Mapping',
-                        render: function (v, type) {
-                            const n = toNum(v);
-                            if (type === 'sort' || type === 'type') return n;
-                            let bg = '', color = 'white';
-                            if (n === 0) { bg = '#00ff00'; color = 'black'; } // Green: no issues
-                            else if (n <= 20) { bg = '#ffff00'; color = 'black'; } // Yellow: 1-20
-                            else if (n <= 50) { bg = '#ffa500'; color = 'white'; } // Orange: 21-50
-                            else { bg = '#ff0000'; color = '#ff0000'; } // Red: above 50 (red text on red bg)
-                            return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;font-weight:bold;">${n}</span>`;
                         }
                     },
                     {
@@ -2295,7 +2377,7 @@
                                 let channelName = pick(item, ['channel', 'Channel', 'Channel '], '').toLowerCase().trim();
                                 let sheetChannels = ['temu', 'aliexpress', 'shein', 'mercari with ship', 'mercari without ship'];
                                 let nConnChannels = ['instagram shop', 'fb marketplace', 'pls', 'business 5core', 'wholesale central', 'depop.com', 'amazon fba', 'faire', 'topdawg'];
-                                let sheetValue = sheetChannels.includes(channelName) ? 'Sheet' : nConnChannels.includes(channelName) ? 'N Conn' : 'API';
+                                let sheetValue = sheetChannels.includes(channelName) ? 'S' : nConnChannels.includes(channelName) ? 'NC' : 'A';
 
                                 return {
                                     'Channel': pick(item, ['channel', 'Channel', 'Channel '], ''),
@@ -2333,38 +2415,15 @@
                                     'Channel Percentage': pctFix(pick(item, ['channel_percentage'], 0), 0),
                                     'cogs': cogs,
                                     'Achieved': toNum(pick(item, ['base', 'Base'], 0), 0),
-                                    'Missing Listing': toNum(pick(item, ['Missing Listing', 'missing_listing', 'missingListing'], 0), 0),
-                                    'Stock Mapping': toNum(pick(item, ['Stock Mapping', 'stock_mapping', 'stockMapping'], 0), 0),
+                                    'Map': toNum(pick(item, ['Map', 'map', 'map_count'], 0), 0),
+                                    'Miss': toNum(pick(item, ['Miss', 'miss', 'missing_count'], 0), 0),
                                 };
                             });
 
-                            // Group by type and sort within each group by L30 Sales descending
-                            const typeOrder = ['B2C', 'B2B', 'Dropship'];
-                            const grouped = { 'B2C': [], 'B2B': [], 'Dropship': [] };
-                            
-                            mappedData.forEach(item => {
-                                const type = item.type || 'B2C';
-                                if (grouped[type]) {
-                                    grouped[type].push(item);
-                                } else {
-                                    grouped['B2C'].push(item); // Fallback to B2C
-                                }
-                            });
+                            // Sort by L30 Sales descending (no grouping by type)
+                            mappedData.sort((a, b) => toNum(b['L30 Sales']) - toNum(a['L30 Sales']));
 
-                            // Sort each group by L30 Sales descending
-                            Object.keys(grouped).forEach(type => {
-                                grouped[type].sort((a, b) => toNum(b['L30 Sales']) - toNum(a['L30 Sales']));
-                            });
-
-                            // Flatten with proper type ordering
-                            const sortedData = [];
-                            typeOrder.forEach(type => {
-                                if (grouped[type] && grouped[type].length > 0) {
-                                    sortedData.push(...grouped[type]);
-                                }
-                            });
-
-                            return sortedData;
+                            return mappedData;
                         },
                         error: function (xhr, error, thrown) {
                             console.log("AJAX error:", error, thrown);
@@ -2375,75 +2434,7 @@
 
                     // No initial sorting - preserve type grouping
                     initComplete: function () {
-                        // Type grouping is preserved from dataSrc
-                    },
-
-                    // Insert group header rows after each draw
-                    drawCallback: function(settings) {
-                        const api = this.api();
-                        const rows = api.rows({ page: 'current' }).nodes();
-                        const data = api.rows({ page: 'current' }).data();
-                        let lastType = null;
-                        const colCount = api.columns().count();
-
-                        // Type icons and solid background colors
-                        const typeConfig = {
-                            'B2C': { 
-                                icon: '🛒', 
-                                displayName: 'B2C',
-                                bgColor: '#11998e'
-                            },
-                            'B2B': { 
-                                icon: '🏢', 
-                                displayName: 'B2B',
-                                bgColor: '#4568dc'
-                            },
-                            'Dropship': { 
-                                icon: '📦', 
-                                displayName: 'Dropship',
-                                bgColor: '#f5576c'
-                            }
-                        };
-
-                        // Count channels per type
-                        const typeCounts = {};
-                        data.each(function(row) {
-                            const type = row.type || 'B2C';
-                            typeCounts[type] = (typeCounts[type] || 0) + 1;
-                        });
-
-                        // Insert group headers with inline styles
-                        data.each(function(row, i) {
-                            const currentType = row.type || 'B2C';
-                            
-                            if (lastType !== currentType) {
-                                const config = typeConfig[currentType] || typeConfig['B2C'];
-                                const count = typeCounts[currentType] || 0;
-                                
-                                // Use div wrapper inside td for guaranteed background color
-                                jq(rows).eq(i).before(`
-                                    <tr>
-                                        <td colspan="${colCount}" style="padding: 0 !important; border: none !important;">
-                                            <div style="background-color: ${config.bgColor}; padding: 12px 15px; color: #fff; font-weight: bold; font-size: 14px; text-align: left;">
-                                                <span style="font-size: 18px; margin-right: 10px;">${config.icon}</span>
-                                                <span style="font-size: 15px; font-weight: 700; letter-spacing: 0.5px; margin-right: 10px;">${config.displayName}</span>
-                                                <span style="background: rgba(255,255,255,0.3); padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 500;">${count} Channel${count !== 1 ? 's' : ''}</span>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                `);
-                                
-                                lastType = currentType;
-                            }
-                        });
-
-                        // Add event listener to reset select to total after viewing breakdown
-                        jq('.ad-spend-select').on('change', function() {
-                            const self = this;
-                            setTimeout(function() {
-                                jq(self).val('total');
-                            }, 2000); // Reset to total after 2 seconds
-                        });
+                        // Initialization complete
                     },
 
                     language: {
@@ -2452,6 +2443,16 @@
                         zeroRecords: "",
                     }
                 });
+
+                // Add click handler for history icon - show modal
+                jq('#channelTable tbody').on('click', '.history-icon', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    const channelName = jq(this).data('channel');
+                    showChannelHistory(channelName);
+                });
+
 
                 return table;
             } catch (e) {
@@ -2954,6 +2955,30 @@
                                     const column = table.column(columnIdx);
                                     column.visible(true);
                                 });
+                            });
+                        }
+
+                        // Column dropdown should work automatically with Bootstrap 5
+                        // data-bs-toggle="dropdown" handles initialization
+
+                        // Channel Type Filter
+                        jq.fn.dataTable.ext.search.push(
+                            function(settings, data, dataIndex) {
+                                const selectedType = jq('#channelTypeFilter').val();
+                                if (selectedType === 'all') {
+                                    return true;
+                                }
+                                
+                                const rowData = table.row(dataIndex).data();
+                                const rowType = rowData.type || 'B2C';
+                                return rowType === selectedType;
+                            }
+                        );
+
+                        const typeFilter = document.getElementById('channelTypeFilter');
+                        if (typeFilter) {
+                            typeFilter.addEventListener('change', function() {
+                                table.draw();
                             });
                         }
 

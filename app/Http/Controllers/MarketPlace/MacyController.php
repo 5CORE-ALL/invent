@@ -1307,14 +1307,21 @@ class MacyController extends Controller
                 $totalGpft += floatval($row['GPFT%'] ?? 0);
                 
                 $price = floatval($row['MC Price'] ?? 0);
+                $inv = floatval($row['INV'] ?? 0);
+                $nrReq = $row['nr_req'] ?? 'REQ';
+                $isMissing = ($price == 0);
+                
                 if ($price > 0) {
                     $totalPrice += $price;
                     $priceCount++;
                 } else {
-                    $missingCount++; // Count missing prices
+                    // Only count missing prices for REQ items with INV > 0
+                    if ($nrReq === 'REQ' && $inv > 0) {
+                        $missingCount++;
+                    }
                 }
                 
-                $totalInv += floatval($row['INV'] ?? 0);
+                $totalInv += $inv;
                 $totalL30 += floatval($row['MC L30'] ?? 0);
                 
                 // Count zero sold
@@ -1339,12 +1346,13 @@ class MacyController extends Controller
                     $roiCount++;
                 }
                 
-                // Count mapping issues (inventory difference > 3)
-                $ourInv = floatval($row['INV'] ?? 0);
-                $mcInv = floatval($row['MC INV'] ?? 0);
-                $diff = abs($mcInv - $ourInv);
-                if ($diff > 3) {
-                    $mappingCount++;
+                // Count mapping issues (any inventory mismatch, only for REQ items with INV > 0 and NOT Missing)
+                if ($nrReq === 'REQ' && $inv > 0 && !$isMissing) {
+                    $ourInv = $inv;
+                    $mcInv = floatval($row['MC INV'] ?? 0);
+                    if ($ourInv != $mcInv) {
+                        $mappingCount++;
+                    }
                 }
             }
             

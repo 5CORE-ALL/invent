@@ -371,55 +371,19 @@
             applyFilters();
         });
 
-        // MISSING badge click handler - filter and show only specific columns
+        // MISSING badge click handler - filter only (no column hiding)
         let missingFilterActive = false;
         $('#missing-badge').on('click', function() {
             missingFilterActive = !missingFilterActive;
             mappingFilterActive = false; // Deactivate mapping filter
-            
-            if (missingFilterActive) {
-                // Hide all columns except: SKU, INV, Sold (L30), DIL, Missing, MAP
-                table.getColumns().forEach(col => {
-                    const field = col.getField();
-                    if (field === '(Child) sku' || field === 'INV' || field === 'MC L30' || 
-                        field === 'MC Dil%' || field === 'Missing' || field === 'Mapping') {
-                        col.show();
-                    } else {
-                        col.hide();
-                    }
-                });
-            } else {
-                // Show all columns
-                table.getColumns().forEach(col => {
-                    col.show();
-                });
-            }
             applyFilters();
         });
 
-        // MAPPING badge click handler - filter and show only specific columns
+        // MAPPING badge click handler - filter only (no column hiding)
         let mappingFilterActive = false;
         $('#mapping-badge').on('click', function() {
             mappingFilterActive = !mappingFilterActive;
             missingFilterActive = false; // Deactivate missing filter
-            
-            if (mappingFilterActive) {
-                // Hide all columns except: SKU, INV, Sold (L30), DIL, Missing, MAP
-                table.getColumns().forEach(col => {
-                    const field = col.getField();
-                    if (field === '(Child) sku' || field === 'INV' || field === 'MC L30' || 
-                        field === 'MC Dil%' || field === 'Missing' || field === 'Mapping') {
-                        col.show();
-                    } else {
-                        col.hide();
-                    }
-                });
-            } else {
-                // Show all columns
-                table.getColumns().forEach(col => {
-                    col.show();
-                });
-            }
             applyFilters();
         });
 

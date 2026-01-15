@@ -16,6 +16,7 @@ use App\Models\AmazonDatasheet;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use App\Models\AmazonChannelSummary;
 
 class BestBuyPricingController extends Controller
 {
@@ -39,7 +40,10 @@ class BestBuyPricingController extends Controller
         try {
             $response = $this->getViewBestBuyData($request);
             $data = json_decode($response->getContent(), true);
-            
+
+            // Auto-save daily summary in background (non-blocking)
+            $this->saveDailySummaryIfNeeded($data['data'] ?? []);
+
             return response()->json($data['data'] ?? []);
         } catch (\Exception $e) {
             Log::error('Error fetching Best Buy data for Tabulator: ' . $e->getMessage());
@@ -756,6 +760,167 @@ class BestBuyPricingController extends Controller
             DB::rollBack();
             Log::error('Error saving SPRICE updates: ' . $e->getMessage());
             return response()->json(['error' => 'Error saving updates: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Auto-save daily BestBuy summary snapshot (channel-wise)
+     * Matches JavaScript updateSummary() logic exactly
+     */
+    private function saveDailySummaryIfNeeded($products)
+    {
+        try {
+            $today = now()->toDateString();
+            
+            // No cache - always update when page loads
+            
+            // Filter: INV > 0 && nr_req === 'REQ' && not parent (EXACT JavaScript logic)
+            $filteredData = collect($products)->filter(function($p) {
+                $invCheck = floatval($p['INV'] ?? 0) > 0;
+                $reqCheck = ($p['nr_req'] ?? '') === 'REQ';
+                $notParent = !(isset($p['Parent']) && str_starts_with($p['Parent'], 'PARENT'));
+                
+                return $invCheck && $reqCheck && $notParent;
+            });
+            
+            if ($filteredData->isEmpty()) {
+                return; // No valid products
+            }
+            
+            // Initialize counters (EXACT JavaScript variable names)
+            $totalSkuCount = $filteredData->count();
+            $totalPft = 0;
+            $totalSales = 0;
+            $totalGpft = 0;
+            $totalPrice = 0;
+            $priceCount = 0;
+            $totalInv = 0;
+            $totalL30 = 0;
+            $zeroSoldCount = 0;
+            $totalDil = 0;
+            $dilCount = 0;
+            $totalCogs = 0;
+            $totalRoi = 0;
+            $roiCount = 0;
+            $missingCount = 0;
+            $mappingCount = 0;
+            
+            // Loop through each row (EXACT JavaScript forEach logic)
+            foreach ($filteredData as $row) {
+                $totalPft += floatval($row['Profit'] ?? 0);
+                $totalSales += floatval($row['Sales L30'] ?? 0);
+                $totalGpft += floatval($row['GPFT%'] ?? 0);
+                
+                $price = floatval($row['BB Price'] ?? 0);
+                $inv = floatval($row['INV'] ?? 0);
+                $nrReq = $row['nr_req'] ?? 'REQ';
+                $isMissing = ($price == 0);
+                
+                if ($price > 0) {
+                    $totalPrice += $price;
+                    $priceCount++;
+                } else {
+                    // Only count missing prices for REQ items with INV > 0
+                    if ($nrReq === 'REQ' && $inv > 0) {
+                        $missingCount++;
+                    }
+                }
+                
+                $totalInv += $inv;
+                $totalL30 += floatval($row['BB L30'] ?? 0);
+                
+                // Count zero sold
+                if (floatval($row['BB L30'] ?? 0) == 0) {
+                    $zeroSoldCount++;
+                }
+                
+                $dil = floatval($row['BB Dil%'] ?? 0);
+                if ($dil > 0) {
+                    $totalDil += $dil;
+                    $dilCount++;
+                }
+                
+                // COGS = LP × BB L30
+                $lp = floatval($row['LP_productmaster'] ?? 0);
+                $l30 = floatval($row['BB L30'] ?? 0);
+                $totalCogs += $lp * $l30;
+                
+                $roi = floatval($row['ROI%'] ?? 0);
+                if ($roi != 0) {
+                    $totalRoi += $roi;
+                    $roiCount++;
+                }
+                
+                // Count mapping issues (any inventory mismatch, only for REQ items with INV > 0 and NOT Missing)
+                if ($nrReq === 'REQ' && $inv > 0 && !$isMissing) {
+                    $ourInv = $inv;
+                    $bbInv = floatval($row['BB INV'] ?? 0);
+                    if ($ourInv != $bbInv) {
+                        $mappingCount++;
+                    }
+                }
+            }
+            
+            // Calculate averages (EXACT JavaScript logic)
+            $avgGpft = $totalSkuCount > 0 ? $totalGpft / $totalSkuCount : 0;
+            $avgPrice = $priceCount > 0 ? $totalPrice / $priceCount : 0;
+            $avgDil = $dilCount > 0 ? $totalDil / $dilCount : 0;
+            $avgRoi = $roiCount > 0 ? $totalRoi / $roiCount : 0;
+            
+            // Store ALL metrics in JSON (flexible!)
+            $summaryData = [
+                // Counts
+                'total_sku_count' => $totalSkuCount,
+                'zero_sold_count' => $zeroSoldCount,
+                'missing_count' => $missingCount,
+                'mapping_count' => $mappingCount,
+                
+                // Financial Totals
+                'total_pft' => round($totalPft, 2),
+                'total_sales' => round($totalSales, 2),
+                'total_cogs' => round($totalCogs, 2),
+                
+                // Inventory
+                'total_inv' => round($totalInv, 2),
+                'total_l30' => round($totalL30, 2),
+                
+                // Calculated Percentages & Averages
+                'avg_gpft' => round($avgGpft, 2),
+                'avg_dil' => round($avgDil, 2),
+                'avg_roi' => round($avgRoi, 2),
+                'avg_price' => round($avgPrice, 2),
+                
+                // Metadata
+                'total_products_count' => count($products),
+                'calculated_at' => now()->toDateTimeString(),
+                
+                // Active Filters
+                'filters_applied' => [
+                    'inventory' => 'more',  // INV > 0
+                    'nrl' => 'REQ',        // REQ only
+                ],
+            ];
+            
+            // Save or update as JSON (channel-wise)
+            AmazonChannelSummary::updateOrCreate(
+                [
+                    'channel' => 'bestbuy',
+                    'snapshot_date' => $today
+                ],
+                [
+                    'summary_data' => $summaryData,
+                    'notes' => 'Auto-saved daily snapshot (INV > 0, REQ only)',
+                ]
+            );
+            
+            Log::info("Daily BestBuy summary snapshot saved for {$today}", [
+                'sku_count' => $totalSkuCount,
+                'zero_sold_count' => $zeroSoldCount,
+            ]);
+            
+        } catch (\Exception $e) {
+            // Don't break the main response if summary save fails
+            Log::error('Error saving daily BestBuy summary: ' . $e->getMessage());
         }
     }
 }

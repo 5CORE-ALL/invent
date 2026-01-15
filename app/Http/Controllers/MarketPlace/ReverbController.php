@@ -1179,19 +1179,24 @@ class ReverbController extends Controller
                     }
                 }
                 
-                // Count Missing
-                if (($row['Missing'] ?? '') === 'M') {
+                // Get variables for filtering (EXACT JavaScript updated logic)
+                $inv = floatval($row['INV'] ?? 0);
+                $nrReq = $row['nr_req'] ?? 'REQ';
+                $isMissing = ($row['Missing'] ?? '') === 'M';
+                
+                // Count Missing (only REQ items with INV > 0)
+                if ($isMissing && $nrReq === 'REQ' && $inv > 0) {
                     $missingCount++;
                 }
                 
-                // Count Map
+                // Count Map (only REQ items with INV > 0 and NOT Missing)
                 $mapValue = $row['MAP'] ?? '';
-                if ($mapValue === 'Map') {
+                if ($mapValue === 'Map' && $nrReq === 'REQ' && $inv > 0 && !$isMissing) {
                     $mapCount++;
                 }
-
-                // Count N Map (not mapped - any stock mismatch)
-                if ($mapValue && str_starts_with($mapValue, 'N Map|')) {
+                
+                // Count N Map (only REQ items with INV > 0 and NOT Missing)
+                if ($mapValue && str_contains($mapValue, 'N Map|') && $nrReq === 'REQ' && $inv > 0 && !$isMissing) {
                     $invRStockCount++;
                 }
             }
