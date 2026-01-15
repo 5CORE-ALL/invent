@@ -250,6 +250,27 @@
             border-color: #1e7e34 !important;
             box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.5) !important;
         }
+        
+        /* Ensure unverified filter button is red */
+        #filter-verified-yellow,
+        #filter-verified-yellow.btn-danger {
+            background-color: #dc3545 !important;
+            border-color: #dc3545 !important;
+            color: #fff !important;
+        }
+        
+        #filter-verified-yellow:hover,
+        #filter-verified-yellow.btn-danger:hover {
+            background-color: #c82333 !important;
+            border-color: #bd2130 !important;
+        }
+        
+        #filter-verified-yellow.active,
+        #filter-verified-yellow.btn-danger.active {
+            background-color: #c82333 !important;
+            border-color: #bd2130 !important;
+            box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.5) !important;
+        }
 
         /* ========== HIDE LAST APPROVED COLUMN ========== */
         /* Hide Last Approved column header and data cells while maintaining column alignment */
@@ -274,20 +295,6 @@
             table-layout: auto;
         }
 
-        /* ========== DOUBTFUL STATUS BUTTONS ========== */
-        .doubtful-status-btn {
-            min-width: 100px;
-            font-size: 12px;
-            padding: 4px 8px;
-        }
-
-        .doubtful-filter-btn {
-            margin-right: 5px;
-        }
-
-        .doubtful-filter-btn.active {
-            box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.5);
-        }
 
         /* ========== SORTING ========== */
         .sortable {
@@ -1507,13 +1514,9 @@
                                 <i class="fas fa-check-circle"></i> Verified 
                                 <span class="badge badge-light ml-1" id="green-count">0</span>
                             </button>
-                            <button id="filter-verified-yellow" class="btn btn-warning btn-sm verified-filter-btn mr-2" data-status="yellow">
-                                <i class="fas fa-exclamation-circle"></i> Unverified 
+                            <button id="filter-verified-yellow" class="btn btn-danger btn-sm verified-filter-btn mr-2" data-status="yellow">
+                                <i class="fas fa-circle"></i> Unverified 
                                 <span class="badge badge-light ml-1" id="yellow-count">0</span>
-                            </button>
-                            <button id="filter-doubtful" class="btn btn-danger btn-sm doubtful-filter-btn mr-2" data-status="doubtful">
-                                <i class="fas fa-flag"></i> Doubtful 
-                                <span class="badge badge-light ml-1" id="doubtful-count">0</span>
                             </button>
                             <button id="filter-show-all" class="btn btn-secondary btn-sm filter-show-all-btn active" data-status="all">
                                 <i class="fas fa-list"></i> Show All
@@ -1594,7 +1597,6 @@
                                         <div class="metric-total" id="avltosell-total" style="font-weight: bold; color: #007bff;">0</div>
                                     </th> 
                                     <th colspan="10"></th> <!-- Skipping columns: VERIFIED STOCK, TO ADJUST, REASON, APPR-WM, ADJ HISTORY, ADJ QTY, LOSS/GAIN, APPR-AT, VERIFIED, USER -->
-                                    <th></th> <!-- DOUBTFUL -->
                                     <th></th> <!-- REMARK -->
                                     <th class="last-approved-header"></th> <!-- LAST APPR-AT (hidden) -->
                                 </tr>
@@ -1749,13 +1751,6 @@
                                         <div class="d-flex flex-column align-items-center">
                                             <div class="d-flex align-items-center">
                                                 USER<span class="sort-arrow"></span>
-                                            </div>
-                                        </div>
-                                    </th>
-                                    <th data-field="doubtful" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center">
-                                                DOUBTFUL<span class="sort-arrow"></span>
                                             </div>
                                         </div>
                                     </th>
@@ -2482,7 +2477,6 @@
                                     APPROVED: item.APPROVED === true, // Checkbox state
                                     APPROVED_BY:  item.approved_by || '',
                                     IS_VERIFIED: (item.is_verified === true || item.is_verified === 1 || item.is_verified === '1' || item.IS_VERIFIED === 1 || item.IS_VERIFIED === true) ? 1 : 0, // Verified status from DB
-                                    IS_DOUBTFUL: (item.is_doubtful === true || item.is_doubtful === 1 || item.is_doubtful === '1' || item.IS_DOUBTFUL === 1 || item.IS_DOUBTFUL === true) ? 1 : 0, // Doubtful status from DB
                                     VERIFIED_BY_FIRST_NAME: item.VERIFIED_BY_FIRST_NAME || item.verified_by_first_name || null, // First name of user who verified
                                     // LOSS_GAIN: item.LOSS_GAIN && !isNaN(item.LOSS_GAIN) ? parseFloat(item.LOSS_GAIN) : '',
                                     LOSS_GAIN: (item.APPROVED === true && !item.approved_at) ? item.LOSS_GAIN : '',
@@ -2540,7 +2534,7 @@
 
 
                 if (filteredData.length === 0) {
-                    $tbody.append('<tr><td colspan="24" class="text-center">No matching records found</td></tr>');
+                    $tbody.append('<tr><td colspan="23" class="text-center">No matching records found</td></tr>');
                     return;
                 }
 
@@ -2812,23 +2806,14 @@
                     }
                     $row.append($('<td>').addClass('approved-at').html(approvedAtHTML));
 
-                    // Verified column - Green dot if verified, Yellow button if unverified - read from DB
+                    // Verified column - Green dot if verified, Red dot if unverified - read from DB
                     const isVerified = item.IS_VERIFIED === 1 || item.IS_VERIFIED === true || item.is_verified === true || item.is_verified === 1 || item.is_verified === '1';
-                    let verifiedHTML;
-                    if (isVerified) {
-                        // Show only green dot when verified
-                        verifiedHTML = `<button type="button" class="btn btn-sm verified-status-btn" 
-                            data-sku="${item.SKU || ''}" data-index="${rowIndex}" data-verified="1"
-                            style="background: none; border: none; padding: 0; cursor: pointer;">
-                            <i class="fas fa-circle" style="color: #28a745; font-size: 12px;"></i>
-                        </button>`;
-                    } else {
-                        // Show yellow button with text when unverified
-                        verifiedHTML = `<button type="button" class="btn btn-sm btn-warning verified-status-btn" 
-                            data-sku="${item.SKU || ''}" data-index="${rowIndex}" data-verified="0">
-                            <i class="fas fa-exclamation-circle"></i> Unverified
-                        </button>`;
-                    }
+                    const dotColor = isVerified ? '#28a745' : '#dc3545'; // Green for verified, Red for unverified
+                    const verifiedHTML = `<button type="button" class="btn btn-sm verified-status-btn" 
+                        data-sku="${item.SKU || ''}" data-index="${rowIndex}" data-verified="${isVerified ? '1' : '0'}"
+                        style="background: none; border: none; padding: 0; cursor: pointer;">
+                        <i class="fas fa-circle" style="color: ${dotColor}; font-size: 12px;"></i>
+                    </button>`;
                     const $verifiedCell = $('<td>').addClass('verified-column').css('text-align', 'center').html(verifiedHTML);
                     $row.append($verifiedCell);
 
@@ -2839,19 +2824,6 @@
                         'vertical-align': 'middle'
                     }).html(verifiedByFirstName || '—');
                     $row.append($userCell);
-
-                    // Doubtful column - Red flag icon only (no text, no bg) - read from DB
-                    const isDoubtful = item.IS_DOUBTFUL === 1 || item.IS_DOUBTFUL === true || item.is_doubtful === true || item.is_doubtful === 1 || item.is_doubtful === '1';
-                    const doubtfulIcon = isDoubtful ? 'fa-check' : 'fa-flag';
-                    const doubtfulColorClass = isDoubtful ? 'text-success' : 'text-danger';
-                    const $doubtfulCell = $('<td>').addClass('doubtful-column').css('text-align', 'center').html(
-                        `<button type="button" class="btn btn-sm doubtful-status-btn" 
-                            data-sku="${item.SKU || ''}" data-index="${rowIndex}" data-doubtful="${isDoubtful ? '1' : '0'}"
-                            style="background: none; border: none; padding: 0; cursor: pointer;">
-                            <i class="fas ${doubtfulIcon} ${doubtfulColorClass}" style="font-size: 14px;"></i>
-                        </button>`
-                    );
-                    $row.append($doubtfulCell);
 
                     // REMARK column - contains both hide checkbox and remarks input
                     $row.append(`<td>
@@ -2894,8 +2866,6 @@
                 
                 // Update Verified status counts
                 updateVerifiedCounts();
-                // Update Doubtful status counts
-                updateDoubtfulCounts();
             }
             
             // Update Verified status counts
@@ -2910,19 +2880,6 @@
                 }).length;
                 $('#green-count').text(greenCount);
                 $('#yellow-count').text(yellowCount);
-            }
-            
-            // Update Doubtful status counts
-            // Note: Red flag (doubtful) = is_doubtful = false, Green check (OK) = is_doubtful = true
-            // So we count items with is_doubtful = false (red flag/doubtful)
-            function updateDoubtfulCounts() {
-                const doubtfulCount = tableData.filter(item => {
-                    const doubtful = item.IS_DOUBTFUL === 1 || item.IS_DOUBTFUL === true || item.is_doubtful === true || item.is_doubtful === 1 || item.is_doubtful === '1';
-                    // Doubtful items have red flag, which means is_doubtful = false (not true)
-                    // So we count items that are NOT doubtful (false)
-                    return !doubtful;
-                }).length;
-                $('#doubtful-count').text(doubtfulCount);
             }
 
             // Select All checkbox functionality
@@ -3038,19 +2995,22 @@
                 
                 const $btn = $(this);
                 const sku = $btn.data('sku');
-                const currentVerified = $btn.data('verified') === '1';
-                const newVerified = !currentVerified;
+                // Read current verified state from attribute directly (more reliable than .data())
+                // Get the current value from the data attribute to avoid jQuery caching issues
+                const currentVerifiedAttr = $btn.attr('data-verified');
+                const currentVerified = currentVerifiedAttr === '1' || currentVerifiedAttr === 1 || currentVerifiedAttr === true;
+                const newVerified = !currentVerified; // Toggle the value (true becomes false, false becomes true)
                 
                 // Disable button during save
                 $btn.prop('disabled', true);
                 
-                // Save to server
+                // Save to server - send the new (toggled) value
                 $.ajax({
                     url: '/update-verified-status',
                     method: 'POST',
                     data: {
                         sku: sku,
-                        is_verified: newVerified ? 1 : 0, // Send as 1 or 0 for better compatibility
+                        is_verified: newVerified ? 1 : 0, // Send as 1 or 0 - this is the toggled value
                         _token: $('meta[name="csrf-token"]').attr('content')
                     },
                     success: function(response) {
@@ -3071,7 +3031,7 @@
                             
                             // Update button appearance
                             if (newVerified) {
-                                // Show only green dot when verified
+                                // Show green dot when verified
                                 $btn.removeClass('btn-warning btn-success').css({
                                     'background': 'none',
                                     'border': 'none',
@@ -3080,13 +3040,13 @@
                                 $btn.html('<i class="fas fa-circle" style="color: #28a745; font-size: 12px;"></i>');
                                 $btn.data('verified', '1');
                             } else {
-                                // Show yellow button with text when unverified
-                                $btn.removeClass('btn-success').addClass('btn-warning').css({
-                                    'background': '',
-                                    'border': '',
-                                    'padding': ''
+                                // Show red dot when unverified
+                                $btn.removeClass('btn-warning btn-success').css({
+                                    'background': 'none',
+                                    'border': 'none',
+                                    'padding': '0'
                                 });
-                                $btn.html('<i class="fas fa-exclamation-circle"></i> Unverified');
+                                $btn.html('<i class="fas fa-circle" style="color: #dc3545; font-size: 12px;"></i>');
                                 $btn.data('verified', '0');
                             }
                             
@@ -3156,18 +3116,7 @@
                     }
                 }
                 
-                // 5. Doubtful filter (can work alongside verified filter)
-                const doubtfulFilter = $('.doubtful-filter-btn.active').data('status');
-                if (doubtfulFilter && doubtfulFilter !== 'all') {
-                    if (doubtfulFilter === 'doubtful') {
-                        tempData = tempData.filter(item => {
-                            const doubtful = item.IS_DOUBTFUL === 1 || item.IS_DOUBTFUL === true || item.is_doubtful === true || item.is_doubtful === 1 || item.is_doubtful === '1';
-                            return !doubtful; // Doubtful items have red flag, which means is_doubtful = false
-                        });
-                    }
-                }
-                
-                // 6. Search all columns filter
+                // 5. Search all columns filter
                 const searchTerm = $('#search-input').val()?.trim();
                 if (searchTerm) {
                     const normalizedSearch = searchTerm.replace(/\s+/g, '').toLowerCase();
@@ -3221,75 +3170,6 @@
                 applyAllFilters();
             }
 
-            // Doubtful status button click handler - Default red flag, turns to green check
-            $(document).on('click', '.doubtful-status-btn', function(e) {
-                e.preventDefault();
-                e.stopPropagation();
-                
-                const $btn = $(this);
-                const sku = $btn.data('sku');
-                const currentDoubtful = $btn.data('doubtful') === '1';
-                const newDoubtful = !currentDoubtful;
-                
-                // Disable button during save
-                $btn.prop('disabled', true);
-                
-                // Save to server
-                $.ajax({
-                    url: '/update-doubtful-status',
-                    method: 'POST',
-                    data: {
-                        sku: sku,
-                        is_doubtful: newDoubtful ? 1 : 0, // Send as 1 or 0 for better compatibility
-                        _token: $('meta[name="csrf-token"]').attr('content')
-                    },
-                    success: function(response) {
-                        if (response.success) {
-                            // Find item in tableData by SKU and update both versions
-                            const itemIndex = tableData.findIndex(item => item.SKU === sku);
-                            if (itemIndex !== -1) {
-                                tableData[itemIndex].IS_DOUBTFUL = newDoubtful ? 1 : 0;
-                                tableData[itemIndex].is_doubtful = newDoubtful;
-                            }
-                            
-                            // Update button appearance - Red flag to Green check (icon only, no bg)
-                            if (newDoubtful) {
-                                // Clicked: Change from red flag to green check
-                                $btn.removeClass('btn-danger btn-success').css({
-                                    'background': 'none',
-                                    'border': 'none',
-                                    'padding': '0'
-                                });
-                                $btn.html('<i class="fas fa-check text-success" style="font-size: 14px;"></i>');
-                                $btn.data('doubtful', '1');
-                            } else {
-                                // Unclicked: Change back to red flag
-                                $btn.removeClass('btn-success btn-danger').css({
-                                    'background': 'none',
-                                    'border': 'none',
-                                    'padding': '0'
-                                });
-                                $btn.html('<i class="fas fa-flag text-danger" style="font-size: 14px;"></i>');
-                                $btn.data('doubtful', '0');
-                            }
-                            
-                            // Update counts
-                            updateDoubtfulCounts();
-                            
-                            // Apply all filters (unified)
-                            applyAllFilters();
-                        }
-                    },
-                    error: function(xhr, status, error) {
-                        console.error('Error updating doubtful status:', error);
-                        alert('Failed to update doubtful status. Please try again.');
-                    },
-                    complete: function() {
-                        // Re-enable button
-                        $btn.prop('disabled', false);
-                    }
-                });
-            });
 
             // Legacy function - now calls unified filter
             function applyDoubtfulFilter(status) {

@@ -353,7 +353,7 @@
 
                                 <!-- Search and Filter Controls Row -->
                                 <div class="row align-items-end">
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                         <label class="form-label fw-semibold mb-2"
                                             style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-search me-1" style="color: #64748b;"></i>Search Campaign
@@ -416,6 +416,17 @@
                                     <option value="REQ">REQ</option>
                                 </select>
                             </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label fw-semibold mb-2"
+                                            style="color: #475569; font-size: 0.8125rem;">
+                                            <i class="fa-solid fa-filter me-1" style="color: #64748b;"></i>SBID M
+                                        </label>
+                                        <select id="sbid-m-filter" class="form-select form-select-md">
+                                            <option value="">All</option>
+                                            <option value="blank">Blank</option>
+                                            <option value="data">Data</option>
+                                        </select>
+                                    </div>
                                 </div>
                                 
                                 <!-- Multi Range Filter Section -->
@@ -787,6 +798,41 @@
                         } else {
                             // For "NRL", exact match
                             if (rowNrl !== nrlFilterVal) return;
+                        }
+                    }
+
+                    // SBID M filter
+                    let sbidMFilterVal = $("#sbid-m-filter").val();
+                    if (sbidMFilterVal && sbidMFilterVal !== '') {
+                        let rowSbidM = row.sbid_m;
+                        
+                        // Check if sbid_m is blank/null/empty/0
+                        let isBlank = false;
+                        
+                        // Check for null, undefined, or empty string
+                        if (rowSbidM === null || rowSbidM === undefined || rowSbidM === '') {
+                            isBlank = true;
+                        } else {
+                            // Convert to string and trim
+                            let strValue = String(rowSbidM).trim();
+                            
+                            // Check for string representations of zero/empty
+                            if (strValue === '' || strValue === '0' || strValue === '0.0' || strValue === '0.00' || strValue === '0.000' || strValue === '-') {
+                                isBlank = true;
+                            } else {
+                                // Try parsing as number
+                                let numValue = parseFloat(strValue);
+                                if (isNaN(numValue) || numValue === 0 || numValue <= 0) {
+                                    isBlank = true;
+                                }
+                            }
+                        }
+                        
+                        // Apply filter
+                        if (sbidMFilterVal === 'blank' && !isBlank) {
+                            return; // Filter out non-blank values
+                        } else if (sbidMFilterVal === 'data' && isBlank) {
+                            return; // Filter out blank values
                         }
                     }
 
@@ -1983,6 +2029,14 @@
                         title: "SBID",
                         field: "sbid",
                         hozAlign: "center",
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            // Check if value is null, 0, or 0.0
+                            if (value === null || value === undefined || value === '' || value === 0 || value === 0.0 || parseFloat(value) === 0) {
+                                return '-';
+                            }
+                            return parseFloat(value).toFixed(2);
+                        },
                         sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
                             var aData = aRow.getData();
                             var bData = bRow.getData();
@@ -2276,7 +2330,7 @@
                             var ub1Color = getUbColor(ub1);
                             
                             if (ub7Color !== ub1Color) {
-                                return '0.00'; // No SBID suggestion if colors don't match
+                                return '-'; // No SBID suggestion if colors don't match
                             }
                             
                             var sbid = 0;
@@ -2775,6 +2829,41 @@
                     }
                 }
 
+                // SBID M filter
+                let sbidMFilterVal = $("#sbid-m-filter").val();
+                if (sbidMFilterVal && sbidMFilterVal !== '') {
+                    let rowSbidM = data.sbid_m;
+                    
+                    // Check if sbid_m is blank/null/empty/0
+                    let isBlank = false;
+                    
+                    // Check for null, undefined, or empty string
+                    if (rowSbidM === null || rowSbidM === undefined || rowSbidM === '') {
+                        isBlank = true;
+                    } else {
+                        // Convert to string and trim
+                        let strValue = String(rowSbidM).trim();
+                        
+                        // Check for string representations of zero/empty
+                        if (strValue === '' || strValue === '0' || strValue === '0.0' || strValue === '0.00' || strValue === '0.000' || strValue === '-') {
+                            isBlank = true;
+                        } else {
+                            // Try parsing as number
+                            let numValue = parseFloat(strValue);
+                            if (isNaN(numValue) || numValue === 0 || numValue <= 0) {
+                                isBlank = true;
+                            }
+                        }
+                    }
+                    
+                    // Apply filter
+                    if (sbidMFilterVal === 'blank' && !isBlank) {
+                        return false; // Filter out non-blank values
+                    } else if (sbidMFilterVal === 'data' && isBlank) {
+                        return false; // Filter out blank values
+                    }
+                }
+
                 // Exclude missing rows (rows without campaigns) when utilization type is over, under, or correctly
                 // This includes both red dots (missing) and yellow dots (NRA/NRL missing)
                 if (currentUtilizationType === 'over' || currentUtilizationType === 'under' || currentUtilizationType === 'correctly') {
@@ -2973,7 +3062,7 @@
                     }, 300);
                 });
 
-                $("#status-filter, #inv-filter, #nra-filter, #nrl-filter").on("change", function() {
+                $("#status-filter, #inv-filter, #nra-filter, #nrl-filter, #sbid-m-filter").on("change", function() {
                     table.setFilter(combinedFilter);
                     // Update counts when filter changes - use longer timeout to ensure filter is applied
                     setTimeout(function() {
