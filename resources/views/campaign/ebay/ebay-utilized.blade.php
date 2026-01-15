@@ -144,7 +144,7 @@
             font-size: 1rem;
             color: #4b5563;
             padding: 5px;
-            height: 100px;
+            height: 90px;
         }
 
         .tabulator .tabulator-footer:hover {
@@ -316,33 +316,36 @@
                                 </div>
                                             <div class="badge-count-item"
                                                 style="background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">L30 CLICKS</span>
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">L30
+                                                    CLICKS</span>
                                                 <span class="fw-bold" id="l30-total-clicks"
                                                     style="font-size: 1.1rem;">0</span>
                                 </div>
                                             <div class="badge-count-item"
                                                 style="background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">L30 SPEND</span>
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">L30
+                                                    SPEND</span>
                                                 <span class="fw-bold" id="l30-total-spend"
                                                     style="font-size: 1.1rem;">0</span>
                                 </div>
                                             <div class="badge-count-item"
                                                 style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">L30 AD SOLD</span>
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">L30
+                                                    AD SOLD</span>
                                                 <span class="fw-bold" id="l30-total-ad-sold"
                                                     style="font-size: 1.1rem;">0</span>
                                 </div>
                                             <div class="badge-count-item"
                                                 style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">AVG ACOS</span>
-                                                <span class="fw-bold" id="avg-acos"
-                                                    style="font-size: 1.1rem;">0</span>
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">AVG
+                                                    ACOS</span>
+                                                <span class="fw-bold" id="avg-acos" style="font-size: 1.1rem;">0</span>
                                 </div>
                                             <div class="badge-count-item"
                                                 style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">AVG CVR</span>
-                                                <span class="fw-bold" id="avg-cvr"
-                                                    style="font-size: 1.1rem;">0</span>
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">AVG
+                                                    CVR</span>
+                                                <span class="fw-bold" id="avg-cvr" style="font-size: 1.1rem;">0</span>
                                 </div>
                             </div>
                             </div>
@@ -413,13 +416,15 @@
                                     <option value="REQ">REQ</option>
                                 </select>
                             </div>
-                                    <div class="col-md-2 d-flex gap-2">
-                                        <div class="w-100">
-                                            <button id="apr-all-sbid-btn" class="btn btn-info btn-sm w-100 d-none">
+                                    <div class="col-md-4 d-flex gap-2 align-items-end mt-2">
+                                        <button id="apr-all-sbid-btn" class="btn btn-info btn-sm flex-fill d-none">
                                                 <i class="fa-solid fa-check-double me-1"></i>
                                                 APR ALL SBID
                                             </button>
-                        </div>
+                                        <button id="save-all-sbid-m-btn" class="btn btn-success btn-sm flex-fill d-none">
+                                            <i class="fa-solid fa-save me-1"></i>
+                                            SAVE ALL SBID M
+                                        </button>
                     </div>
                                 </div>
                             </div>
@@ -432,7 +437,8 @@
                     <!-- Pagination Count Display -->
                     <div class="mt-2 d-flex justify-content-between align-items-center">
                         <div>
-                            <span id="pagination-count" class="badge badge-light" style="color: #475569; font-size: 0.875rem;">
+                            <span id="pagination-count" class="badge badge-light"
+                                style="color: #475569; font-size: 0.875rem;">
                                 Showing 0 of 0 rows
                             </span>
                         </div>
@@ -525,6 +531,7 @@
 
                 // Get filtered data (respects all filters except utilization type)
                 // We need to get all data and apply filters manually since utilization type filter is separate
+                // Use 'all' to get all data, then apply filters manually to match what's actually shown
                 const allData = table.getData('all');
                     let overCount = 0;
                     let underCount = 0;
@@ -676,16 +683,19 @@
                                     missingCount++;
                                 } else {
                                     // Count NRL missing (yellow dots) separately
-                                    if (rowNrlForMissing === 'NRL' && !processedSkusForNrlMissing.has(sku)) {
+                                    if (rowNrlForMissing === 'NRL' && !processedSkusForNrlMissing.has(
+                                        sku)) {
                                         processedSkusForNrlMissing.add(sku);
                                         nrlMissingCount++;
                                     }
                                     // Count NRA missing (yellow dots) separately
                                     // If NRL='NRL', NRA should be 'NRA', so count it as NRA missing too
-                                    if (rowNraForMissing === 'NRA' && !processedSkusForNraMissing.has(sku)) {
+                                    if (rowNraForMissing === 'NRA' && !processedSkusForNraMissing.has(
+                                        sku)) {
                                         processedSkusForNraMissing.add(sku);
                                         nraMissingCount++;
-                                    } else if (rowNrlForMissing === 'NRL' && !processedSkusForNraMissing.has(sku)) {
+                                    } else if (rowNrlForMissing === 'NRL' && !processedSkusForNraMissing
+                                        .has(sku)) {
                                         // If NRL='NRL' but NRA is not 'NRA', still count as NRA missing
                                         // because NRA should be 'NRA' when NRL is 'NRL'
                                         processedSkusForNraMissing.add(sku);
@@ -699,7 +709,9 @@
                         validSkuCount++;
                     }
 
-                    // Now calculate utilization and count
+                    // Now calculate utilization and count - only for rows with campaigns
+                    const hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                    if (hasCampaign) {
                         let budget = parseFloat(row.campaignBudgetAmount) || 0;
                         let l7_spend = parseFloat(row.l7_spend || 0);
                         let l1_spend = parseFloat(row.l1_spend || 0);
@@ -707,23 +719,28 @@
                         let ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
                         let ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
 
-                    // 7UB + 1UB condition categorization (matches command)
+                        // 7UB + 1UB condition categorization (matches command and filter logic)
                     if (ub7 > 99 && ub1 > 99) {
                         overCount++;
                     } else if (ub7 < 66 && ub1 < 66) {
+                            // For under utilized, also check INV > 0 (matches filter logic)
+                            let inv = parseFloat(row.INV || 0);
+                            if (inv > 0) {
                         underCount++;
+                            }
                     } else if (ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99) {
                         correctlyCount++;
                     }
 
-                    // Count 7UB (ub7 >= 66 && ub7 <= 99)
+                        // Count 7UB (ub7 >= 66 && ub7 <= 99) - only for rows with campaigns
                     if (ub7 >= 66 && ub7 <= 99) {
                         ub7Count++;
                     }
 
-                    // Count 7UB + 1UB (both ub7 and ub1 >= 66 && <= 99)
+                        // Count 7UB + 1UB (both ub7 and ub1 >= 66 && <= 99) - only for rows with campaigns
                     if (ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99) {
                         ub7Ub1Count++;
+                        }
                     }
                 });
 
@@ -795,12 +812,35 @@
 
                 // Update dropdown option texts with counts
                 // Use totalSkuCountFromBackend to match backend count exactly
+                // Utilization counts already exclude missing rows (only count rows with campaigns)
+                // Calculate actual filtered count to match pagination
+                let actualOverCount = overCount;
+                let actualUnderCount = underCount;
+                let actualCorrectlyCount = correctlyCount;
+                
+                // If utilization type is selected, get count from filtered data to match pagination
+                if (currentUtilizationType !== 'all' && typeof table !== 'undefined' && table) {
+                    try {
+                        const filteredData = table.getData('active');
+                        if (currentUtilizationType === 'over') {
+                            actualOverCount = filteredData.length;
+                        } else if (currentUtilizationType === 'under') {
+                            actualUnderCount = filteredData.length;
+                        } else if (currentUtilizationType === 'correctly') {
+                            actualCorrectlyCount = filteredData.length;
+                        }
+                    } catch (e) {
+                        console.error('Error getting filtered count:', e);
+                    }
+                }
+                
                 const utilizationSelect = document.getElementById('utilization-type-select');
                 if (utilizationSelect) {
                     utilizationSelect.options[0].text = `All (${totalSkuCountFromBackend || validSkuCount})`;
-                    utilizationSelect.options[1].text = `Over Utilized (${overCount})`;
-                    utilizationSelect.options[2].text = `Under Utilized (${underCount})`;
-                    utilizationSelect.options[3].text = `Correctly Utilized (${correctlyCount})`;
+                    // Show utilization counts - use actual filtered count if utilization type is selected
+                    utilizationSelect.options[1].text = `Over Utilized (${currentUtilizationType === 'over' ? actualOverCount : overCount})`;
+                    utilizationSelect.options[2].text = `Under Utilized (${currentUtilizationType === 'under' ? actualUnderCount : underCount})`;
+                    utilizationSelect.options[3].text = `Correctly Utilized (${currentUtilizationType === 'correctly' ? actualCorrectlyCount : correctlyCount})`;
                 }
             }
 
@@ -809,6 +849,9 @@
             let totalL30ClicksFromBackend = 0;
             let totalL30SpendFromBackend = 0;
             let totalL30AdSoldFromBackend = 0;
+            
+            // Track manually selected rows (exclude header checkbox selections)
+            let manuallySelectedRows = new Set();
 
             function updateL30Totals() {
                 // Update L30 CLICKS total from backend
@@ -844,9 +887,12 @@
                         }
                         table.setFilter(combinedFilter);
                         table.redraw(true);
+                        // Update counts after filter is applied to get accurate counts
+                        setTimeout(function() {
                         updateButtonCounts();
                         updateL30Totals();
-                        setTimeout(updatePaginationCount, 100);
+                            updatePaginationCount();
+                        }, 300);
                     }
                 });
             }
@@ -1246,6 +1292,24 @@
                 }
             });
 
+            // Function to update header checkbox state (defined before table initialization)
+            function updateHeaderCheckboxState() {
+                var headerCheckbox = document.querySelector('.tabulator-select-all-checkbox');
+                if (headerCheckbox && typeof table !== 'undefined') {
+                    var activeRows = table.getRows('active');
+                    var currentPage = table.getPage();
+                    var pageSize = table.getPageSize();
+                    var startIndex = (currentPage - 1) * pageSize;
+                    var endIndex = startIndex + pageSize;
+                    var currentPageRows = activeRows.slice(startIndex, endIndex);
+                    
+                    var selectedCurrentPageRows = currentPageRows.filter(function(row) {
+                        return row.isSelected();
+                    });
+                    headerCheckbox.checked = currentPageRows.length > 0 && currentPageRows.length === selectedCurrentPageRows.length;
+                }
+            }
+
             var table = new Tabulator("#budget-under-table", {
                 index: "sku",
                 ajaxURL: "/ebay/utilized/ads/data",
@@ -1270,7 +1334,52 @@
                 },
                 columns: [{
                         formatter: "rowSelection",
-                        titleFormatter: "rowSelection",
+                        titleFormatter: function(column) {
+                            var checkbox = document.createElement("input");
+                            checkbox.type = "checkbox";
+                            checkbox.className = "tabulator-select-all-checkbox";
+                            
+                            // Function to get current page rows
+                            function getCurrentPageRows() {
+                                var activeRows = table.getRows('active'); // All rows that pass filters
+                                var currentPage = table.getPage();
+                                var pageSize = table.getPageSize();
+                                var startIndex = (currentPage - 1) * pageSize;
+                                var endIndex = startIndex + pageSize;
+                                return activeRows.slice(startIndex, endIndex);
+                            }
+                            
+                            // Function to update checkbox state
+                            function updateCheckboxState() {
+                                var currentPageRows = getCurrentPageRows();
+                                var selectedCurrentPageRows = currentPageRows.filter(function(row) {
+                                    return row.isSelected();
+                                });
+                                checkbox.checked = currentPageRows.length > 0 && currentPageRows.length === selectedCurrentPageRows.length;
+                            }
+                            
+                            // Initial state - will be updated by external handlers
+                            
+                            checkbox.addEventListener("change", function(e) {
+                                e.stopPropagation();
+                                
+                                var currentPageRows = getCurrentPageRows();
+                                
+                                if (checkbox.checked) {
+                                    // Select all rows on current page
+                                    currentPageRows.forEach(function(row) {
+                                        row.select();
+                                    });
+                                } else {
+                                    // Deselect all rows on current page
+                                    currentPageRows.forEach(function(row) {
+                                        row.deselect();
+                                    });
+                                }
+                            });
+                            
+                            return checkbox;
+                        },
                         hozAlign: "center",
                         headerSort: false,
                         width: 50
@@ -1324,12 +1433,24 @@
                         title: "INV",
                         field: "INV",
                         visible: true,
-                        width: 60
+                        width: 60,
+                        titleFormatter: function(column) {
+                            return `
+                                <div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
+                                    <span>INV</span>
+                                    <button class="btn btn-sm btn-link p-0 toggle-inv-cols-btn" 
+                                            style="font-size: 15px; color: #cf2408; text-decoration: none; padding: 0; line-height: 1;" 
+                                            title="Toggle L30, DIL%, NRL, NRA columns">
+                                        <i class="fa-solid fa-circle-info"></i>
+                                    </button>
+                                </div>
+                            `;
+                        }
                     },
                     {
                         title: "OV L30",
                         field: "L30",
-                        visible: true,
+                        visible: false,
                         width: 60
                     },
                     {
@@ -1358,7 +1479,7 @@
                             }
                             return `<div class="text-center"><span style="color: #dc3545; font-weight: bold;">0%</span></div>`;
                         },
-                        visible: true,
+                        visible: false,
                         width: 60
                     },
                     {
@@ -1380,7 +1501,7 @@
                                 `;
                         },
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         width: 70
                     },
                     {
@@ -1407,7 +1528,7 @@
                                 `;
                         },
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         width: 70
                     },
                     {
@@ -1507,6 +1628,18 @@
                         sorter: "number",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
+                            // Check if spend (adFees) is 0
+                            var adFees = parseFloat(row.adFees || 0);
+                            
+                            // If spend is 0, show "-"
+                            if (adFees === 0) {
+                                var td = cell.getElement();
+                                td.classList.remove('green-bg', 'pink-bg', 'red-bg');
+                                return '<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">' +
+                                    '-' +
+                                    '<i class="fa-solid fa-info-circle toggle-metrics-btn" style="cursor: pointer; font-size: 12px; margin-left: 5px;" title="Toggle Clicks, Spend, Ad Sold"></i></div>';
+                            }
+                            
                             var acosRaw = row.acos; 
                             var acos = parseFloat(acosRaw);
                             if (isNaN(acos)) {
@@ -1529,10 +1662,13 @@
                                 acosValue = acos.toFixed(0) + "%";
                             }
                             
-                            return '<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">' + acosValue + '<i class="fa-solid fa-info-circle toggle-metrics-btn" style="cursor: pointer; font-size: 12px; margin-left: 5px;" title="Toggle Clicks, Spend, Ad Sold"></i></div>';
+                            return '<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">' +
+                                acosValue +
+                                '<i class="fa-solid fa-info-circle toggle-metrics-btn" style="cursor: pointer; font-size: 12px; margin-left: 5px;" title="Toggle Clicks, Spend, Ad Sold"></i></div>';
                         },
                         cellClick: function(e, cell) {
-                            if (e.target.classList.contains('toggle-metrics-btn') || e.target.closest('.toggle-metrics-btn')) {
+                            if (e.target.classList.contains('toggle-metrics-btn') || e.target
+                                .closest('.toggle-metrics-btn')) {
                                 e.stopPropagation();
                                 var clicksVisible = table.getColumn('clicks').isVisible();
                                 var spendVisible = table.getColumn('adFees').isVisible();
@@ -1692,6 +1828,19 @@
                         width: 70
                     },
                     {
+                        title: "L BID",
+                        field: "last_sbid",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            if (!value || value === '' || value === '0' || value === 0) {
+                                return '-';
+                            }
+                            return parseFloat(value).toFixed(2);
+                        },
+                        width: 70
+                    },
+                    {
                         title: "SBID",
                         field: "sbid",
                         hozAlign: "center",
@@ -1731,8 +1880,10 @@
                                 if (ub7 === 0 && ub1 === 0) {
                                     var price = parseFloat(rowData.price || 0);
                                     // Remove dollar sign if present
-                                    if (typeof rowData.price === 'string' && rowData.price.includes('$')) {
-                                        price = parseFloat(rowData.price.replace(/[^0-9.]/g, '')) || 0;
+                                    if (typeof rowData.price === 'string' && rowData.price.includes(
+                                            '$')) {
+                                        price = parseFloat(rowData.price.replace(/[^0-9.]/g, '')) ||
+                                            0;
                                     }
                                     if (price < 20) {
                                         return 0.20;
@@ -1794,8 +1945,10 @@
                                         
                                         // Price cap: If price < $20, cap SBID at 0.20
                                         var price = parseFloat(rowData.price || 0);
-                                        if (typeof rowData.price === 'string' && rowData.price.includes('$')) {
-                                            price = parseFloat(rowData.price.replace(/[^0-9.]/g, '')) || 0;
+                                        if (typeof rowData.price === 'string' && rowData.price
+                                            .includes('$')) {
+                                            price = parseFloat(rowData.price.replace(/[^0-9.]/g,
+                                                '')) || 0;
                                         }
                                         if (price < 20) {
                                             sbid = Math.min(sbid, 0.20);
@@ -1805,8 +1958,10 @@
                                         if (ub7 === 0 && ub1 === 0) {
                                             var price = parseFloat(rowData.price || 0);
                                             // Remove dollar sign if present
-                                            if (typeof rowData.price === 'string' && rowData.price.includes('$')) {
-                                                price = parseFloat(rowData.price.replace(/[^0-9.]/g, '')) || 0;
+                                            if (typeof rowData.price === 'string' && rowData.price
+                                                .includes('$')) {
+                                                price = parseFloat(rowData.price.replace(/[^0-9.]/g,
+                                                    '')) || 0;
                                             }
                                             if (price < 20) {
                                                 sbid = 0.20;
@@ -1821,7 +1976,9 @@
                                             }
                                         } else {
                                             // Use L1CPC if available (not 0, not NaN), otherwise use L7CPC
-                                            var cpcToUse = (l1Cpc && !isNaN(l1Cpc) && l1Cpc > 0) ? l1Cpc : ((l7Cpc && !isNaN(l7Cpc) && l7Cpc > 0) ? l7Cpc : 0);
+                                            var cpcToUse = (l1Cpc && !isNaN(l1Cpc) && l1Cpc > 0) ?
+                                                l1Cpc : ((l7Cpc && !isNaN(l7Cpc) && l7Cpc > 0) ?
+                                                    l7Cpc : 0);
                                             if (cpcToUse > 0) {
                                                 // Ensure numeric comparison
                                                 cpcToUse = parseFloat(cpcToUse);
@@ -1837,8 +1994,10 @@
                                                 
                                                 // Price cap: If price < $20, cap SBID at 0.20
                                                 var price = parseFloat(rowData.price || 0);
-                                                if (typeof rowData.price === 'string' && rowData.price.includes('$')) {
-                                                    price = parseFloat(rowData.price.replace(/[^0-9.]/g, '')) || 0;
+                                                if (typeof rowData.price === 'string' && rowData
+                                                    .price.includes('$')) {
+                                                    price = parseFloat(rowData.price.replace(
+                                                        /[^0-9.]/g, '')) || 0;
                                                 }
                                                 if (price < 20) {
                                                     sbid = Math.min(sbid, 0.20);
@@ -1871,8 +2030,10 @@
                                     
                                     // Price cap: If price < $20, cap SBID at 0.20
                                     var price = parseFloat(rowData.price || 0);
-                                    if (typeof rowData.price === 'string' && rowData.price.includes('$')) {
-                                        price = parseFloat(rowData.price.replace(/[^0-9.]/g, '')) || 0;
+                                    if (typeof rowData.price === 'string' && rowData.price.includes(
+                                            '$')) {
+                                        price = parseFloat(rowData.price.replace(/[^0-9.]/g, '')) ||
+                                            0;
                                     }
                                     if (price < 20) {
                                         sbid = Math.min(sbid, 0.20);
@@ -1882,8 +2043,10 @@
                                     if (ub7 === 0 && ub1 === 0) {
                                         var price = parseFloat(rowData.price || 0);
                                         // Remove dollar sign if present
-                                        if (typeof rowData.price === 'string' && rowData.price.includes('$')) {
-                                            price = parseFloat(rowData.price.replace(/[^0-9.]/g, '')) || 0;
+                                        if (typeof rowData.price === 'string' && rowData.price
+                                            .includes('$')) {
+                                            price = parseFloat(rowData.price.replace(/[^0-9.]/g,
+                                                '')) || 0;
                                         }
                                         if (price < 20) {
                                             sbid = 0.20;
@@ -1898,7 +2061,9 @@
                                         }
                                     } else {
                                         // Use L1CPC if available (not 0, not NaN), otherwise use L7CPC
-                                        var cpcToUse = (l1Cpc && !isNaN(l1Cpc) && l1Cpc > 0) ? l1Cpc : ((l7Cpc && !isNaN(l7Cpc) && l7Cpc > 0) ? l7Cpc : 0);
+                                        var cpcToUse = (l1Cpc && !isNaN(l1Cpc) && l1Cpc > 0) ?
+                                            l1Cpc : ((l7Cpc && !isNaN(l7Cpc) && l7Cpc > 0) ? l7Cpc :
+                                                0);
                                         if (cpcToUse > 0) {
                                             if (cpcToUse < 0.10) {
                                                 sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
@@ -1912,8 +2077,10 @@
                                             
                                             // Price cap: If price < $20, cap SBID at 0.20
                                             var price = parseFloat(rowData.price || 0);
-                                            if (typeof rowData.price === 'string' && rowData.price.includes('$')) {
-                                                price = parseFloat(rowData.price.replace(/[^0-9.]/g, '')) || 0;
+                                            if (typeof rowData.price === 'string' && rowData.price
+                                                .includes('$')) {
+                                                price = parseFloat(rowData.price.replace(/[^0-9.]/g,
+                                                    '')) || 0;
                                             }
                                             if (price < 20) {
                                                 sbid = Math.min(sbid, 0.20);
@@ -2059,8 +2226,10 @@
                                     if (ub7 === 0 && ub1 === 0) {
                                         var price = parseFloat(row.price || 0);
                                         // Remove dollar sign if present
-                                        if (typeof row.price === 'string' && row.price.includes('$')) {
-                                            price = parseFloat(row.price.replace(/[^0-9.]/g, '')) || 0;
+                                        if (typeof row.price === 'string' && row.price.includes(
+                                            '$')) {
+                                            price = parseFloat(row.price.replace(/[^0-9.]/g, '')) ||
+                                                0;
                                         }
                                         if (price < 20) {
                                             sbid = 0.20;
@@ -2075,7 +2244,9 @@
                                         }
                                     } else {
                                         // Use L1CPC if available (not 0, not NaN), otherwise use L7CPC
-                                        var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
+                                        var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ?
+                                            l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ?
+                                                l7_cpc : 0);
                                         
                                         if (cpcToUse > 0) {
                                             if (cpcToUse < 0.10) {
@@ -2090,8 +2261,10 @@
                                             
                                             // Price cap: If price < $20, cap SBID at 0.20
                                             var price = parseFloat(row.price || 0);
-                                            if (typeof row.price === 'string' && row.price.includes('$')) {
-                                                price = parseFloat(row.price.replace(/[^0-9.]/g, '')) || 0;
+                                            if (typeof row.price === 'string' && row.price.includes(
+                                                    '$')) {
+                                                price = parseFloat(row.price.replace(/[^0-9.]/g,
+                                                    '')) || 0;
                                             }
                                             if (price < 20) {
                                                 sbid = Math.min(sbid, 0.20);
@@ -2149,7 +2322,9 @@
                                     }
                                 } else {
                                     // Use L1CPC if available, otherwise use L7CPC
-                                    var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
+                                    var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ?
+                                        l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ?
+                                            l7_cpc : 0);
                                     
                                     if (cpcToUse > 0) {
                                         if (cpcToUse < 0.10) {
@@ -2164,8 +2339,10 @@
                                         
                                         // Price cap: If price < $20, cap SBID at 0.20
                                         var price = parseFloat(row.price || 0);
-                                        if (typeof row.price === 'string' && row.price.includes('$')) {
-                                            price = parseFloat(row.price.replace(/[^0-9.]/g, '')) || 0;
+                                        if (typeof row.price === 'string' && row.price.includes(
+                                            '$')) {
+                                            price = parseFloat(row.price.replace(/[^0-9.]/g, '')) ||
+                                                0;
                                         }
                                         if (price < 20) {
                                             sbid = Math.min(sbid, 0.20);
@@ -2196,228 +2373,81 @@
                         width: 70
                     },
                     {
+                        title: "SBID M",
+                        field: "sbid_m",
+                        hozAlign: "center",
+                        editor: "input",
+                        editorParams: {
+                            elementAttributes: {
+                                maxlength: "10"
+                            }
+                        },
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            if (!value || value === '' || value === '0' || value === 0) {
+                                return '-';
+                            }
+                            return parseFloat(value).toFixed(2);
+                        },
+                        width: 70
+                    },
+                    {
                         title: "APR BID",
                         field: "apr_bid",
                         hozAlign: "center",
-                        visible: false,
-                        width: 100,
+                        visible: true,
                         formatter: function(cell) {
+                            var rowData = cell.getRow().getData();
+                            var apprSbid = rowData.apprSbid || '';
+                            
+                            if (apprSbid && apprSbid !== '' && parseFloat(apprSbid) > 0) {
+                                // Green checkmark circle icon when bid is pushed
                             return `
-                                <div style="align-items:center; gap:5px;">
-                                    <button class="btn btn-primary update-row-btn">APR BID</button>
+                                    <div style="display: flex; justify-content: center; align-items: center;">
+                                        <i class="fa-solid fa-circle-check update-bid-icon" style="color: #28a745; font-size: 20px; cursor: default;" title="Bid pushed: ${apprSbid}"></i>
                                 </div>
                             `;
+                            } else {
+                                // Check icon (clickable) when bid is not pushed
+                                return `
+                                    <div style="display: flex; justify-content: center; align-items: center;">
+                                        <i class="fa-solid fa-check update-bid-icon" style="color: #6c757d; font-size: 18px; cursor: pointer;" title="Click to push bid"></i>
+                                    </div>
+                                `;
+                            }
                         },
                         cellClick: function(e, cell) {
-                            if (e.target.classList.contains("update-row-btn")) {
+                            if (e.target.classList.contains("update-bid-icon") || e.target.closest(".update-bid-icon")) {
                                 var rowData = cell.getRow().getData();
+                                
+                                // Check if bid is already pushed
+                                var apprSbid = rowData.apprSbid || '';
+                                if (apprSbid && apprSbid !== '' && parseFloat(apprSbid) > 0) {
+                                    return; // Don't allow re-push
+                                }
                                 
                                 // Check if NRA (🔴) is selected
                                 var nraValue = rowData.NR ? rowData.NR.trim() : "";
                                 if (nraValue === 'NRA') {
+                                    showToast('error', 'Cannot update bid for NRA campaigns');
                                     return; // Skip update if NRA is selected
                                 }
                                 
-                                var l1_cpc = parseFloat(rowData.l1_cpc) || 0;
-                                var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
-                                var budget = parseFloat(rowData.campaignBudgetAmount) || 0;
-                                var ub7 = 0;
-                                var ub1 = 0;
-                                if (budget > 0) {
-                                    ub7 = (parseFloat(rowData.l7_spend) || 0) / (budget * 7) * 100;
-                                    ub1 = (parseFloat(rowData.l1_spend) || 0) / budget * 100;
-                                }
+                                // Get sbid_m value (saved value)
+                                var sbidM = parseFloat(rowData.sbid_m) || 0;
                                 
-                                // Helper function to get UB color
-                                function getUbColor(ub) {
-                                    if (ub >= 66 && ub <= 99) return 'green';
-                                    if (ub > 99) return 'pink';
-                                    return 'red';
-                                }
-                                
-                                // Check if UB7 and UB1 colors match
-                                var ub7Color = getUbColor(ub7);
-                                var ub1Color = getUbColor(ub1);
-                                
-                                if (ub7Color !== ub1Color) {
-                                    return; // No SBID update if colors don't match
-                                }
-                                
-                                var sbid = 0;
-                                
-                                if (ub7 > 99 && ub1 > 99) {
-                                    // Rule: If both UB7 and UB1 are above 99%, set SBID as L1_CPC * 0.90
-                                    if (l1_cpc > 0) {
-                                        sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
-                                    } else if (l7_cpc > 0) {
-                                        sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
-                                    } else {
-                                        sbid = 0;
-                                    }
-                                } else if (currentUtilizationType === 'all') {
-                                    // For total campaigns, determine individual campaign's utilization status
-                                    var rowAcos = parseFloat(rowData.acos) || 0;
-                                    if (isNaN(rowAcos) || rowAcos === 0) {
-                                        rowAcos = 100;
-                                    }
-                                    
-                                    var inv = parseFloat(rowData.INV || 0);
-                                    // Determine utilization status
-                                    var isOverUtilized = false;
-                                    var isUnderUtilized = false;
-                                    
-                                    // Check over-utilized first
-                                    if (ub7 > 99 && ub1 > 99) {
-                                        isOverUtilized = true;
-                                    }
-                                    
-                                    // Check under-utilized
-                                    // Remove price >= 20 check to match backend command logic
-                                    if (!isOverUtilized && ub7 < 66 && ub1 < 66 && inv > 0) {
-                                        isUnderUtilized = true;
-                                    }
-                                    
-                                    // Apply SBID logic based on determined status
-                                    if (isOverUtilized) {
-                                        // If L1 CPC > 1.25, then L1CPC * 0.80, else L1CPC * 0.90
-                                        if (l1_cpc > 1.25) {
-                                            sbid = Math.floor(l1_cpc * 0.80 * 100) / 100;
-                                        } else if (l1_cpc > 0) {
-                                            sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
-                                        } else {
-                                            sbid = 0;
-                                        }
-                                        
-                                        // Price cap: If price < $20, cap SBID at 0.20
-                                        var price = parseFloat(rowData.price || 0);
-                                        if (typeof rowData.price === 'string' && rowData.price.includes('$')) {
-                                            price = parseFloat(rowData.price.replace(/[^0-9.]/g, '')) || 0;
-                                        }
-                                        if (price < 20) {
-                                            sbid = Math.min(sbid, 0.20);
-                                        }
-                                    } else if (isUnderUtilized) {
-                                        // Check if UB7 and UB1 are both 0%
-                                        if (ub7 === 0 && ub1 === 0) {
-                                            var price = parseFloat(rowData.price || 0);
-                                            // Remove dollar sign if present
-                                            if (typeof rowData.price === 'string' && rowData.price.includes('$')) {
-                                                price = parseFloat(rowData.price.replace(/[^0-9.]/g, '')) || 0;
-                                            }
-                                            if (price < 20) {
-                                                sbid = 0.20;
-                                            } else if (price >= 20 && price < 50) {
-                                                sbid = 0.75;
-                                            } else if (price >= 50 && price < 100) {
-                                                sbid = 1.00;
-                                            } else if (price >= 100 && price < 200) {
-                                                sbid = 1.50;
-                                            } else {
-                                                sbid = 2.00;
-                                            }
-                                        } else {
-                                            // Use L1CPC if available, otherwise use L7CPC
-                                            var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
-                                            if (cpcToUse > 0) {
-                                                // Ensure numeric comparison
-                                                cpcToUse = parseFloat(cpcToUse);
-                                                if (cpcToUse < 0.10) {
-                                                    sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
-                                                } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
-                                                    sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
-                                                } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
-                                                    sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
-                                                } else {
-                                                    sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
+                                if (sbidM <= 0) {
+                                    showToast('error', 'SBID M value is required. Please save SBID M first.');
+                                    return;
                                                 }
-                                                
-                                                // Price cap: If price < $20, cap SBID at 0.20
-                                                var price = parseFloat(rowData.price || 0);
-                                                if (typeof rowData.price === 'string' && rowData.price.includes('$')) {
-                                                    price = parseFloat(rowData.price.replace(/[^0-9.]/g, '')) || 0;
-                                                }
-                                                if (price < 20) {
-                                                    sbid = Math.min(sbid, 0.20);
-                                                }
-                                            } else {
-                                                sbid = 0;
-                                            }
+                                
+                                if (!rowData.campaign_id) {
+                                    showToast('error', 'Campaign ID not found');
+                                    return;
                                         }
-                                    } else {
-                                        // Correctly-utilized: use L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
-                                        if (l1_cpc > 0) {
-                                            sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
-                                        } else if (l7_cpc > 0) {
-                                            sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
-                                        } else {
-                                            sbid = 0;
-                                        }
-                                    }
-                                } else if (currentUtilizationType === 'over') {
-                                    // Over-utilized: If L1 CPC > 1.25, then L1CPC * 0.80, else l1_cpc * 0.90, fallback to l7_cpc * 0.90, then 0.50
-                                    if (l1_cpc > 1.25) {
-                                        sbid = Math.floor(l1_cpc * 0.80 * 100) / 100;
-                                    } else if (l1_cpc > 0) {
-                                        sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
-                                    } else {
-                                        sbid = 0.50;
-                                    }
-                                    
-                                    // Price cap: If price < $20, cap SBID at 0.20
-                                    var price = parseFloat(rowData.price || 0);
-                                    if (typeof rowData.price === 'string' && rowData.price.includes('$')) {
-                                        price = parseFloat(rowData.price.replace(/[^0-9.]/g, '')) || 0;
-                                    }
-                                    if (price < 20) {
-                                        sbid = Math.min(sbid, 0.20);
-                                    }
-                                } else if (currentUtilizationType === 'under') {
-                                    // Check if UB7 and UB1 are both 0%
-                                    if (ub7 === 0 && ub1 === 0) {
-                                        var price = parseFloat(rowData.price || 0);
-                                        // Remove dollar sign if present
-                                        if (typeof rowData.price === 'string' && rowData.price.includes('$')) {
-                                            price = parseFloat(rowData.price.replace(/[^0-9.]/g, '')) || 0;
-                                        }
-                                        if (price < 20) {
-                                            sbid = 0.20;
-                                        } else if (price >= 20 && price < 50) {
-                                            sbid = 0.75;
-                                        } else if (price >= 50 && price < 100) {
-                                            sbid = 1.00;
-                                        } else if (price >= 100 && price < 200) {
-                                            sbid = 1.50;
-                                        } else {
-                                            sbid = 2.00;
-                                        }
-                                    } else {
-                                        // Use L1CPC if available, otherwise use L7CPC
-                                        var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
-                                        if (cpcToUse > 0) {
-                                            if (cpcToUse < 0.10) {
-                                                sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
-                                            } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
-                                                sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
-                                            } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
-                                                sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
-                                            } else {
-                                                sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
-                                            }
-                                        } else {
-                                            sbid = 0;
-                                        }
-                                    }
-                                } else {
-                                    // Correctly-utilized: use L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
-                                    if (l1_cpc > 0) {
-                                        sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
-                                    } else if (l7_cpc > 0) {
-                                        sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
-                                    } else {
-                                        sbid = 0;
-                                    }
-                                }
-                                updateBid(sbid, rowData.campaign_id);
+                                
+                                // Use sbid_m value to update eBay site
+                                updateBid(sbidM, rowData.campaign_id, cell);
                             }
                         }
                     },
@@ -2606,7 +2636,21 @@
                     }
                 }
 
+                // Exclude missing rows (rows without campaigns) when utilization type is over, under, or correctly
+                // This includes both red dots (missing) and yellow dots (NRA/NRL missing)
+                if (currentUtilizationType === 'over' || currentUtilizationType === 'under' || currentUtilizationType === 'correctly') {
+                    const hasCampaign = data.hasCampaign !== undefined ? data.hasCampaign : (data.campaign_id && data.campaignName);
+                    // Check for yellow dots (NRA/NRL missing) - these are also missing rows
+                    let rowNrl = data.NRL ? data.NRL.trim() : "";
+                    let rowNra = data.NR ? data.NR.trim() : "";
+                    // Exclude if no campaign OR if it's a yellow dot (NRL='NRL' or NRA='NRA')
+                    if (!hasCampaign || rowNrl === 'NRL' || rowNra === 'NRA') {
+                        return false; // Hide missing rows (both red and yellow dots)
+                    }
+                }
+
                 // Apply utilization type filter
+                // Only calculate utilization for rows with campaigns (already checked above)
                 let budget = parseFloat(data.campaignBudgetAmount) || 0;
                 let l7_spend = parseFloat(data.l7_spend || 0);
                 let l1_spend = parseFloat(data.l1_spend || 0);
@@ -2616,11 +2660,14 @@
                 if (currentUtilizationType === 'all') {
                     // All - no utilization filter
                 } else if (currentUtilizationType === 'over') {
+                    // Over utilized: ub7 > 99 && ub1 > 99
                     if (!(ub7 > 99 && ub1 > 99)) {
                         return false;
                     }
                 } else if (currentUtilizationType === 'under') {
-                    if (!(ub7 < 66 && ub1 < 66)) return false;
+                    // For under utilized, check ub7 < 66 && ub1 < 66 && INV > 0 (matches count logic)
+                    let inv = parseFloat(data.INV || 0);
+                    if (!(ub7 < 66 && ub1 < 66 && inv > 0)) return false;
                 } else if (currentUtilizationType === 'correctly') {
                     // Strict criteria: both UB7 and UB1 must be between 66% and 99% (both green)
                     if (!((ub7 >= 66 && ub7 <= 99) && (ub1 >= 66 && ub1 <= 99))) return false;
@@ -2639,12 +2686,44 @@
                 } else {
                     table.showColumn('sbid');
                 }
-                // Ensure APR BID remains hidden
-                table.hideColumn('apr_bid');
+                // Show APR BID column
+                table.showColumn('apr_bid');
+
+                // Add click handler for INV "i" button to toggle L30, DIL%, NRL, NRA columns
+                setTimeout(function() {
+                    var invToggleBtn = document.querySelector('.toggle-inv-cols-btn');
+                    if (invToggleBtn) {
+                        invToggleBtn.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            // Toggle visibility of L30, DIL%, NRL, NRA columns
+                            var l30Col = table.getColumn('L30');
+                            var dilCol = table.getColumn('DIL %');
+                            var nrlCol = table.getColumn('NRL');
+                            var nraCol = table.getColumn('NR');
+                            
+                            if (l30Col && dilCol && nrlCol && nraCol) {
+                                var isL30Visible = l30Col.isVisible();
+                                // Toggle all columns
+                                if (isL30Visible) {
+                                    l30Col.hide();
+                                    dilCol.hide();
+                                    nrlCol.hide();
+                                    nraCol.hide();
+                                } else {
+                                    l30Col.show();
+                                    dilCol.show();
+                                    nrlCol.show();
+                                    nraCol.show();
+                                }
+                            }
+                        });
+                    }
+                }, 100);
                 
                 // Add click handler for toggle metrics button
                 setTimeout(function() {
-                    var acosHeader = document.querySelector('.tabulator-col[data-field="acos"] .toggle-metrics-btn');
+                    var acosHeader = document.querySelector(
+                        '.tabulator-col[data-field="acos"] .toggle-metrics-btn');
                     if (acosHeader) {
                         acosHeader.addEventListener('click', function(e) {
                             e.stopPropagation();
@@ -2673,12 +2752,14 @@
                         updateButtonCounts();
                         updateL30Totals();
                         updatePaginationCount();
-                    }, 200);
+                    }, 300);
                 });
 
                 // Update pagination count on page changes
                 table.on("pageLoaded", function() {
                     updatePaginationCount();
+                    // Update header checkbox state when page changes
+                    setTimeout(updateHeaderCheckboxState, 50);
                 });
                 
                 table.on("dataProcessed", function() {
@@ -2744,11 +2825,28 @@
                 }
             }
 
+            // Track selection changes to maintain selection list (including bulk selections)
             table.on("rowSelectionChanged", function(data, rows) {
-                if (data.length > 0) {
+                // Sync the Set with all currently selected rows
+                var allSelectedRows = table.getRows('selected');
+                manuallySelectedRows.clear();
+                allSelectedRows.forEach(function(row) {
+                    var rowData = row.getData();
+                    var campaignId = rowData.campaign_id;
+                    if (campaignId) {
+                        manuallySelectedRows.add(campaignId);
+                    }
+                });
+                
+                // Update header checkbox state based on current page rows
+                setTimeout(updateHeaderCheckboxState, 50);
+                
+                if (manuallySelectedRows.size > 0) {
                     document.getElementById("apr-all-sbid-btn").classList.remove("d-none");
+                    document.getElementById("save-all-sbid-m-btn").classList.remove("d-none");
                 } else {
                     document.getElementById("apr-all-sbid-btn").classList.add("d-none");
+                    document.getElementById("save-all-sbid-m-btn").classList.add("d-none");
                 }
             });
 
@@ -2797,13 +2895,15 @@
                                             backendNra = String(data.updated_json.NR).trim();
                                         }
                                         
-                                        console.log('Current NRA:', currentNra, 'Backend NRA:', backendNra); // Debug log
+                                        console.log('Current NRA:', currentNra, 'Backend NRA:',
+                                            backendNra); // Debug log
                                         
                                         // Always update both NRL and NR when NRL is set to "NRL"
                                         // Backend always sets NR to "NRA" when NRL is "NRL"
                                         let updateData = {
                                             NRL: value,
-                                            NR: backendNra || 'NRA' // Use backend value (should be 'NRA') or default to 'NRA'
+                                            NR: backendNra ||
+                                                'NRA' // Use backend value (should be 'NRA') or default to 'NRA'
                                         };
                                         
                                         console.log('Updating row with:', updateData); // Debug log
@@ -2828,7 +2928,8 @@
                                     } else {
                                         // Update the field from backend response
                                         let updatedData = {};
-                                        if (data.updated_json && data.updated_json[field] !== undefined) {
+                                        if (data.updated_json && data.updated_json[field] !==
+                                            undefined) {
                                             updatedData[field] = data.updated_json[field];
                                         } else {
                                             updatedData[field] = value;
@@ -2850,219 +2951,75 @@ document.getElementById("apr-all-sbid-btn").addEventListener("click", function()
                 const overlay = document.getElementById("progress-overlay");
                 overlay.style.display = "flex";
 
-                var filteredData = table.getSelectedRows();
+                // Get only actually selected rows - verify selection state
+                var allSelectedRows = table.getRows('selected');
+                var selectedCampaignIds = [];
+                var seenCampaignIds = new Set();
+                
+                allSelectedRows.forEach(function(row) {
+                    var rowData = row.getData();
+                    var campaignId = rowData.campaign_id;
+                    if (campaignId && !seenCampaignIds.has(campaignId)) {
+                        selectedCampaignIds.push(campaignId);
+                        seenCampaignIds.add(campaignId);
+                    }
+                });
+                
+                console.log('APR ALL: Total rows in table:', table.getRows('all').length);
+                console.log('APR ALL: Selected rows count:', allSelectedRows.length);
+                console.log('APR ALL: Unique selected campaign IDs:', selectedCampaignIds.length);
+
+                if (selectedCampaignIds.length === 0) {
+                    overlay.style.display = "none";
+                    showToast('error', 'Please select at least one campaign');
+                    return;
+                }
+                
+                // Get rows for selected campaign IDs
+                var selectedRows = allSelectedRows.filter(function(row) {
+                    var campaignId = row.getData().campaign_id;
+                    return campaignId && selectedCampaignIds.includes(campaignId);
+                });
+
                 var campaignIds = [];
                 var bids = [];
 
-                filteredData.forEach(function(row) {
-                    var rowEl = row.getElement();
-                    if (rowEl && rowEl.offsetParent !== null) {
-                        var rowData = row.getData();
-                        
-                        // Check if NRA (🔴) is selected
-                        var nraValue = rowData.NR ? rowData.NR.trim() : "";
-                        if (nraValue === 'NRA') {
-                            return; // Skip update if NRA is selected
-                        }
-                        
-                        var l1_cpc = parseFloat(rowData.l1_cpc) || 0;
-                        var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
-                        var budget = parseFloat(rowData.campaignBudgetAmount) || 0;
-                        var ub7 = 0;
-                        var ub1 = 0;
-                        if (budget > 0) {
-                            ub7 = (parseFloat(rowData.l7_spend) || 0) / (budget * 7) * 100;
-                            ub1 = (parseFloat(rowData.l1_spend) || 0) / budget * 100;
-                        }
-                        
-                        var sbid = 0;
-                        
-                        if (ub7 > 99 && ub1 > 99) {
-                            // Rule: If both UB7 and UB1 are above 99%, set SBID as L1_CPC * 0.90
-                            if (l1_cpc > 0) {
-                                sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
-                            } else if (l7_cpc > 0) {
-                                sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
-                            } else {
-                                sbid = 0;
-                            }
-                        } else if (currentUtilizationType === 'total') {
-                            // For total campaigns, determine individual campaign's utilization status
-                            var rowAcos = parseFloat(rowData.acos) || 0;
-                            if (isNaN(rowAcos) || rowAcos === 0) {
-                                rowAcos = 100;
-                            }
-                            
-                            // Determine utilization status
-                            var isOverUtilized = false;
-                            var isUnderUtilized = false;
-                            var ub1 = budget > 0 ? (parseFloat(rowData.l1_spend) || 0) / budget *
-                                100 : 0;
-                            var inv = parseFloat(rowData.INV || 0);
-                            
-                            // Check over-utilized first
-                            if (ub7 > 99 && ub1 > 99) {
-                                isOverUtilized = true;
-                            }
-                            
-                            // Check under-utilized
-                            // Remove price >= 20 check to match backend command logic
-                            if (!isOverUtilized && ub7 < 66 && ub1 < 66 && inv > 0) {
-                                isUnderUtilized = true;
-                            }
-                            
-                            // Apply SBID logic based on determined status
-                            if (isOverUtilized) {
-                                // If L1 CPC > 1.25, then L1CPC * 0.80, else L1CPC * 0.90
-                                if (l1_cpc > 1.25) {
-                                    sbid = Math.floor(l1_cpc * 0.80 * 100) / 100;
-                                } else if (l1_cpc > 0) {
-                                    sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
-                                } else {
-                                    sbid = 0;
-                                }
-                                
-                                // Price cap: If price < $20, cap SBID at 0.20
-                                var price = parseFloat(rowData.price || 0);
-                                if (typeof rowData.price === 'string' && rowData.price.includes('$')) {
-                                    price = parseFloat(rowData.price.replace(/[^0-9.]/g, '')) || 0;
-                                }
-                                if (price < 20) {
-                                    sbid = Math.min(sbid, 0.20);
-                                }
-                            } else if (isUnderUtilized) {
-                                // Check if UB7 and UB1 are both 0%
-                                if (ub7 === 0 && ub1 === 0) {
-                                    var price = parseFloat(rowData.price || 0);
-                                    // Remove dollar sign if present
-                                    if (typeof rowData.price === 'string' && rowData.price.includes('$')) {
-                                        price = parseFloat(rowData.price.replace(/[^0-9.]/g, '')) || 0;
-                                    }
-                                    if (price < 20) {
-                                        sbid = 0.20;
-                                    } else if (price >= 20 && price < 50) {
-                                        sbid = 0.75;
-                                    } else if (price >= 50 && price < 100) {
-                                        sbid = 1.00;
-                                    } else if (price >= 100 && price < 200) {
-                                        sbid = 1.50;
-                                    } else {
-                                        sbid = 2.00;
-                                    }
-                                } else {
-                                    // Use L1CPC if available, otherwise use L7CPC
-                                    var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
-                                    if (cpcToUse > 0) {
-                                        if (cpcToUse < 0.10) {
-                                            sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
-                                        } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
-                                            sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
-                                        } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
-                                            sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
-                                        } else {
-                                            sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
-                                        }
-                                        
-                                        // Price cap: If price < $20, cap SBID at 0.20
-                                        var price = parseFloat(rowData.price || 0);
-                                        if (typeof rowData.price === 'string' && rowData.price.includes('$')) {
-                                            price = parseFloat(rowData.price.replace(/[^0-9.]/g, '')) || 0;
-                                        }
-                                        if (price < 20) {
-                                            sbid = Math.min(sbid, 0.20);
-                                        }
-                                    } else {
-                                        sbid = 0;
-                                    }
-                                }
-                            } else {
-                                // Correctly-utilized: use L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
-                                if (l1_cpc > 0) {
-                                    sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
-                                } else if (l7_cpc > 0) {
-                                    sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
-                                } else {
-                                    sbid = 0;
-                                }
-                            }
-                        } else if (currentUtilizationType === 'over') {
-                            // Over-utilized: If L1 CPC > 1.25, then L1CPC * 0.80, else l1_cpc * 0.90, fallback to l7_cpc * 0.90, then 0.50
-                            if (l1_cpc > 1.25) {
-                                sbid = Math.floor(l1_cpc * 0.80 * 100) / 100;
-                            } else if (l1_cpc > 0) {
-                                sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
-                            } else {
-                                sbid = 0.50;
-                            }
-                            
-                            // Price cap: If price < $20, cap SBID at 0.20
-                            var price = parseFloat(rowData.price || 0);
-                            if (typeof rowData.price === 'string' && rowData.price.includes('$')) {
-                                price = parseFloat(rowData.price.replace(/[^0-9.]/g, '')) || 0;
-                            }
-                            if (price < 20) {
-                                sbid = Math.min(sbid, 0.20);
-                            }
-                        } else if (currentUtilizationType === 'under') {
-                            // Check if UB7 and UB1 are both 0%
-                            if (ub7 === 0 && ub1 === 0) {
-                                var price = parseFloat(rowData.price || 0);
-                                // Remove dollar sign if present
-                                if (typeof rowData.price === 'string' && rowData.price.includes('$')) {
-                                    price = parseFloat(rowData.price.replace(/[^0-9.]/g, '')) || 0;
-                                }
-                                if (price < 20) {
-                                    sbid = 0.20;
-                                } else if (price >= 20 && price < 50) {
-                                    sbid = 0.75;
-                                } else if (price >= 50 && price < 100) {
-                                    sbid = 1.00;
-                                } else if (price >= 100 && price < 200) {
-                                    sbid = 1.50;
-                                } else {
-                                    sbid = 2.00;
-                                }
-                            } else {
-                                // Use L1CPC if available, otherwise use L7CPC
-                                var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
-                                if (cpcToUse > 0) {
-                                    if (cpcToUse < 0.10) {
-                                        sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
-                                    } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
-                                        sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
-                                    } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
-                                        sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
-                                    } else {
-                                        sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
-                                    }
-                                    
-                                    // Price cap: If price < $20, cap SBID at 0.20
-                                    var price = parseFloat(rowData.price || 0);
-                                    if (typeof rowData.price === 'string' && rowData.price.includes('$')) {
-                                        price = parseFloat(rowData.price.replace(/[^0-9.]/g, '')) || 0;
-                                    }
-                                    if (price < 20) {
-                                        sbid = Math.min(sbid, 0.20);
-                                    }
-                                } else {
-                                    sbid = 0;
-                                }
-                            }
-                        } else {
-                            // Correctly-utilized: use L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
-                            if (l1_cpc > 0) {
-                                sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
-                            } else if (l7_cpc > 0) {
-                                sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
-                            } else {
-                                sbid = 0;
-                            }
-                        }
+                // Store row and bid mapping for updating apprSbid after success
+                var rowBidMap = [];
 
+                selectedRows.forEach(function(row) {
+                    var rowData = row.getData();
+                    
+                    // Check if NRA (🔴) is selected
+                    var nraValue = rowData.NR ? rowData.NR.trim() : "";
+                    if (nraValue === 'NRA') {
+                        return; // Skip update if NRA is selected
+                    }
+                    
+                    // Get sbid_m value (saved value)
+                    var sbidM = parseFloat(rowData.sbid_m) || 0;
+
+                    // Only add if sbid_m exists and is greater than 0
+                    if (sbidM > 0 && rowData.campaign_id) {
                         campaignIds.push(rowData.campaign_id);
-                        bids.push(sbid);
+                        bids.push(sbidM);
+                        // Store row and bid mapping for later update
+                        rowBidMap.push({
+                            row: row,
+                            campaignId: rowData.campaign_id,
+                            bid: sbidM
+                        });
                     }
                 });
+
+                if (campaignIds.length === 0) {
+                    overlay.style.display = "none";
+                    showToast('error', 'No valid campaigns with SBID M value found');
+                    return;
+                                    }
+
+                console.log("Campaign IDs:", campaignIds);
+                console.log("Bids:", bids);
 
                 fetch('/update-ebay-keywords-bid-price', {
                     method: 'PUT',
@@ -3079,26 +3036,177 @@ document.getElementById("apr-all-sbid-btn").addEventListener("click", function()
                 .then(res => res.json())
                 .then(data => {
                     if (data.status === 200) {
-                        alert("Keywords updated successfully!");
+                            showToast('success', 'Keywords updated successfully for ' + campaignIds
+                                .length + ' campaign(s)');
+                            
+                            // Update apprSbid for all successfully updated rows
+                            rowBidMap.forEach(function(item) {
+                                var row = item.row;
+                                var rowData = row.getData();
+                                
+                                // Update apprSbid with the bid value that was pushed
+                                rowData.apprSbid = item.bid;
+                                
+                                // Update the row
+                                row.update(rowData);
+                                
+                                // Reformat to update APR BID column icon
+                                setTimeout(function() {
+                                    row.reformat();
+                                }, 50);
+                            });
                     } else {
                         let errorMsg = data.message || "Something went wrong";
                         if (errorMsg.includes("Premium Ads")) {
-                            alert("Error: " + errorMsg);
+                                showToast('error', 'Error: ' + errorMsg);
                         } else {
-                            alert("Something went wrong: " + errorMsg);
+                                showToast('error', 'Something went wrong: ' + errorMsg);
                         }
                     }
                 })
                 .catch(err => {
                     console.error(err);
-                    alert("Error updating bids");
+                        showToast('error', 'Error updating bids');
                 })
                 .finally(() => {
                     overlay.style.display = "none";
                 });
             });
 
-            function updateBid(aprBid, campaignId) {
+            // Bulk save SBID M for selected campaigns
+            document.getElementById("save-all-sbid-m-btn").addEventListener("click", function() {
+                const overlay = document.getElementById("progress-overlay");
+                overlay.style.display = "flex";
+
+                // Get only actually selected rows - verify selection state
+                var allSelectedRows = table.getRows('selected');
+                var selectedCampaignIds = [];
+                var seenCampaignIds = new Set();
+                
+                allSelectedRows.forEach(function(row) {
+                    var rowData = row.getData();
+                    var campaignId = rowData.campaign_id;
+                    if (campaignId && !seenCampaignIds.has(campaignId)) {
+                        selectedCampaignIds.push(campaignId);
+                        seenCampaignIds.add(campaignId);
+                    }
+                });
+                
+                console.log('Total rows in table:', table.getRows('all').length);
+                console.log('Selected rows count:', allSelectedRows.length);
+                console.log('Unique selected campaign IDs:', selectedCampaignIds.length);
+                console.log('First 10 campaign IDs:', selectedCampaignIds.slice(0, 10));
+
+                if (selectedCampaignIds.length === 0) {
+                    overlay.style.display = "none";
+                    showToast('error', 'Please select at least one campaign');
+                    return;
+                }
+
+                // Safety check: if too many rows are selected, warn the user
+                if (selectedCampaignIds.length > 100) {
+                    var confirmUpdate = confirm('You have selected ' + selectedCampaignIds.length + ' campaigns. Are you sure you want to update all of them?');
+                    if (!confirmUpdate) {
+                        overlay.style.display = "none";
+                        return;
+                    }
+                }
+                
+                // Get rows for selected campaign IDs
+                var selectedRows = [];
+                selectedCampaignIds.forEach(function(campaignId) {
+                    var rows = table.getRows().filter(function(row) {
+                        return row.getData().campaign_id === campaignId;
+                    });
+                    selectedRows = selectedRows.concat(rows);
+                });
+
+                // Prompt for SBID M value
+                var sbidMValue = prompt('Enter SBID M value for all selected campaigns:');
+                if (!sbidMValue || sbidMValue.trim() === '') {
+                    overlay.style.display = "none";
+                    return;
+                }
+
+                var cleanValue = parseFloat(sbidMValue.replace(/[$\s]/g, '')) || 0;
+                if (cleanValue <= 0) {
+                    overlay.style.display = "none";
+                    showToast('error', 'SBID M must be greater than 0');
+                    return;
+                }
+
+                // Use the tracked campaign IDs directly
+                var campaignIds = selectedCampaignIds.map(function(id) {
+                    return String(id).trim();
+                }).filter(function(id) {
+                    return id !== '' && id !== null && id !== undefined;
+                });
+
+                if (campaignIds.length === 0) {
+                    overlay.style.display = "none";
+                    showToast('error', 'No valid campaigns selected. Please select campaigns with valid campaign IDs.');
+                    return;
+                }
+
+                // Debug: Log how many campaigns are being sent
+                console.log('Sending ' + campaignIds.length + ' campaign IDs for update:', campaignIds);
+
+                $.ajax({
+                    url: '/save-ebay-sbid-m-bulk',
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    data: {
+                        campaign_ids: campaignIds,
+                        sbid_m: cleanValue
+                    },
+                    success: function(response) {
+                        if (response.status === 200) {
+                            showToast('success', response.message ||
+                                'SBID M saved successfully for ' + response.updated_count +
+                                ' campaign(s)');
+                            // Update the selected rows with the new sbid_m value instead of refreshing entire table
+                            // Clear apprSbid when sbid_m is updated
+                            selectedRows.forEach(function(row) {
+                                var rowData = row.getData();
+                                if (rowData.campaign_id && campaignIds.includes(rowData
+                                        .campaign_id)) {
+                                    // Get current data and create a copy to avoid reference issues
+                                    var currentData = JSON.parse(JSON.stringify(rowData));
+                                    
+                                    // Update sbid_m and clear apprSbid so new bid can be pushed
+                                    currentData.sbid_m = cleanValue;
+                                    currentData.apprSbid = ''; // Clear apprSbid to allow new bid push
+                                    
+                                    // Update the row with complete data
+                                    row.update(currentData);
+                                    
+                                    // Force redraw of the row to refresh all formatters including APR BID
+                                    setTimeout(function() {
+                                        row.reformat();
+                                    }, 50);
+                                }
+                            });
+                        } else {
+                            showToast('error', response.message || 'Failed to save SBID M');
+                        }
+                    },
+                    error: function(xhr) {
+                        var errorMsg = 'Failed to save SBID M';
+                        if (xhr.responseJSON && xhr.responseJSON.message) {
+                            errorMsg = xhr.responseJSON.message;
+                        }
+                        showToast('error', errorMsg);
+                        console.error('SBID M bulk save error:', xhr);
+                    },
+                    complete: function() {
+                        overlay.style.display = "none";
+                    }
+                });
+            });
+
+            function updateBid(aprBid, campaignId, cell) {
                 const overlay = document.getElementById("progress-overlay");
                 overlay.style.display = "flex";
 
@@ -3117,24 +3225,108 @@ document.getElementById("apr-all-sbid-btn").addEventListener("click", function()
                 .then(res => res.json())
                 .then(data => {
                     if (data.status === 200) {
-                        alert("Keywords updated successfully!");
+                            showToast('success', 'Keywords updated successfully!');
+                            
+                            // Update row data with apprSbid value
+                            if (cell) {
+                                var rowData = cell.getRow().getData();
+                                rowData.apprSbid = aprBid;
+                                cell.getRow().update(rowData);
+                                
+                                // Reformat the cell to show green checkmark
+                                cell.getRow().reformat();
+                            }
                     } else {
                         let errorMsg = data.message || "Something went wrong";
                         if (errorMsg.includes("Premium Ads")) {
-                            alert("Error: " + errorMsg);
+                                showToast('error', 'Error: ' + errorMsg);
                         } else {
-                            alert("Something went wrong: " + errorMsg);
+                                showToast('error', 'Something went wrong: ' + errorMsg);
                         }
                     }
                 })
                 .catch(err => {
                     console.error(err);
-                    alert("Error updating bid");
+                        showToast('error', 'Error updating bid');
                 })
                 .finally(() => {
                     overlay.style.display = "none";
                 });
             }
+
+            // Handle SBID M cell edit
+            table.on("cellEdited", function(cell) {
+                const field = cell.getField();
+                if (field === "sbid_m") {
+                    const data = cell.getRow().getData();
+                    const campaignId = data.campaign_id;
+                    let value = cell.getValue();
+
+                    if (!campaignId) {
+                        showToast('error', 'Campaign ID not found');
+                        return;
+                    }
+
+                    // Clean the value
+                    let cleanValue = String(value).replace(/[$\s]/g, '');
+                    cleanValue = parseFloat(cleanValue) || 0;
+
+                    if (cleanValue <= 0) {
+                        showToast('error', 'SBID M must be greater than 0');
+                        cell.setValue('');
+                        return;
+                    }
+
+                    $.ajax({
+                        url: '/save-ebay-sbid-m',
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                        },
+                        data: {
+                            campaign_id: campaignId,
+                            sbid_m: cleanValue
+                        },
+                        success: function(response) {
+                            if (response.status === 200) {
+                                // Update row data - clear apprSbid when sbid_m is updated
+                                var row = cell.getRow();
+                                // Get current data and create a copy to avoid reference issues
+                                var currentData = JSON.parse(JSON.stringify(row.getData()));
+                                
+                                // Update sbid_m and clear apprSbid so new bid can be pushed
+                                currentData.sbid_m = cleanValue;
+                                currentData.apprSbid = ''; // Clear apprSbid to allow new bid push
+                                
+                                // Update the row with complete data
+                                row.update(currentData);
+                                
+                                // Force redraw of the row to refresh all formatters including APR BID
+                                setTimeout(function() {
+                                    row.reformat();
+                                }, 50);
+                                
+                                showToast('success', 'SBID M saved successfully');
+                            } else {
+                                showToast('error', response.message || 'Failed to save SBID M');
+                            }
+                        },
+                        error: function(xhr) {
+                            var errorMsg = 'Failed to save SBID M';
+                            if (xhr.responseJSON && xhr.responseJSON.message) {
+                                errorMsg = xhr.responseJSON.message;
+                            } else if (xhr.status === 404) {
+                                errorMsg =
+                                    'Campaign not found. Please ensure the campaign exists.';
+                            } else if (xhr.status === 500) {
+                                errorMsg = 'Server error. Please try again.';
+                            }
+                            showToast('error', errorMsg);
+                            console.error('SBID M save error:', xhr);
+                        }
+                    });
+                }
+            });
 
             // Add click handlers to utilization cards (if they exist)
             document.querySelectorAll('.utilization-card').forEach(card => {
@@ -3244,6 +3436,28 @@ document.getElementById("apr-all-sbid-btn").addEventListener("click", function()
                     }
                 })
                 .catch(err => console.error('Error loading chart:', err));
+        }
+
+        // Toast notification function
+        function showToast(type, message) {
+            // Create toast container if it doesn't exist
+            if (!$('.toast-container').length) {
+                $('body').append(
+                    '<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>');
+            }
+
+            const toast = $(`
+                <div class="toast align-items-center text-white bg-${type === 'success' ? 'success' : type === 'error' ? 'danger' : 'info'} border-0" role="alert">
+                    <div class="d-flex">
+                        <div class="toast-body">${message}</div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                    </div>
+                </div>
+            `);
+            $('.toast-container').append(toast);
+            const bsToast = new bootstrap.Toast(toast[0]);
+            bsToast.show();
+            setTimeout(() => toast.remove(), 3000);
         }
     </script>
 @endsection

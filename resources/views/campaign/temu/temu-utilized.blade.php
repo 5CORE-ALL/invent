@@ -124,8 +124,13 @@
         #budget-under-table .tabulator {
             border-radius: 18px;
             box-shadow: 0 6px 24px rgba(37, 99, 235, 0.13);
-            overflow: hidden;
+            overflow: visible;
             border: 1px solid #e5e7eb;
+        }
+        
+        #budget-under-table .tabulator .tabulator-tableHolder {
+            overflow-x: auto;
+            overflow-y: auto;
         }
 
         .tabulator .tabulator-row .tabulator-cell:last-child,
@@ -139,6 +144,19 @@
             font-size: 1rem;
             color: #4b5563;
             padding: 5px;
+            height: 70px;
+        }
+
+        .tabulator .tabulator-footer:hover {
+            background: #e0eaff;
+        }
+        
+        #budget-under-table {
+            overflow: visible;
+        }
+        
+        #budget-under-table .tabulator-tableHolder {
+            overflow-x: auto;
         }
 
         .tabulator .tabulator-footer .tabulator-paginator .tabulator-page {
@@ -773,7 +791,7 @@
 
                 // Save to backend
                             $.ajax({
-                    url: '/temu/ads/update',
+                    url: '{{ route("temu.ads.update") }}',
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1062,23 +1080,76 @@
                         title: "S ROAS",
                         field: "roas_l30",
                         hozAlign: "right",
+                        editor: "number",
+                        editorParams: {
+                            min: 0,
+                            step: 0.01
+                        },
+                        editable: function(cell) {
+                            // Check if icon was clicked
+                            return !window.iconClicked;
+                        },
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue() || 0);
+                            const cellElement = cell.getElement();
+                            
+                            // Set up event listeners on the icon
+                            if (cellElement) {
+                                setTimeout(function() {
+                                    const icon = cellElement.querySelector('.toggle-roas-l7-btn');
+                                    if (icon) {
+                                        // Remove old listeners
+                                        $(icon).off('mousedown click');
+                                        
+                                        // Prevent editor on mousedown
+                                        $(icon).on('mousedown', function(e) {
+                                            window.iconClicked = true;
+                                            e.stopPropagation();
+                                            e.preventDefault();
+                                            e.stopImmediatePropagation();
+                                            setTimeout(function() {
+                                                window.iconClicked = false;
+                    }, 100);
+                                            return false;
+                                        });
+                                        
+                                        // Toggle column on click
+                                        $(icon).on('click', function(e) {
+                                            e.stopPropagation();
+                        e.preventDefault();
+                                            e.stopImmediatePropagation();
+                                            const isVisible = table.getColumn('roas_l7').isVisible();
+                                            if (isVisible) {
+                                                table.hideColumn('roas_l7');
+                } else {
+                                                table.showColumn('roas_l7');
+                                            }
+                                            return false;
+                                        });
+                                    }
+                                }, 0);
+                            }
+                            
                             return `<div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
                                 <span>${value.toFixed(2)}</span>
-                                <i class="fa-solid fa-info-circle toggle-roas-l7-btn" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="Toggle L7 S ROAS"></i>
+                                <i class="fa-solid fa-info-circle toggle-roas-l7-btn" data-field="roas_l7" style="cursor: pointer; font-size: 12px; color: #3b82f6; pointer-events: auto; z-index: 10; position: relative;" title="Toggle L7 S ROAS"></i>
                             </div>`;
                         },
                         cellClick: function(e, cell) {
-                            if (e.target.classList.contains('toggle-roas-l7-btn') || e.target
-                                .closest('.toggle-roas-l7-btn')) {
-                                e.stopPropagation();
+                            // Check if the click is on the info icon
+                            if (e.target.classList.contains('toggle-roas-l7-btn') || 
+                                e.target.classList.contains('fa-info-circle') ||
+                                e.target.closest('.toggle-roas-l7-btn')) {
+                    e.stopPropagation();
+                                e.preventDefault();
+                                e.stopImmediatePropagation();
                                 const isVisible = table.getColumn('roas_l7').isVisible();
                                 if (isVisible) {
                                     table.hideColumn('roas_l7');
-                                } else {
+                    } else {
                                     table.showColumn('roas_l7');
                                 }
+                                return false;
                             }
                         },
                         visible: true,
@@ -1088,6 +1159,11 @@
                         title: "S ROAS L7",
                         field: "roas_l7",
                         hozAlign: "right",
+                        editor: "number",
+                        editorParams: {
+                            min: 0,
+                            step: 0.01
+                        },
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue() || 0);
                             return value.toFixed(2);
@@ -1118,6 +1194,48 @@
                 updateButtonCounts();
             });
 
+            // Initialize iconClicked flag
+            window.iconClicked = false;
+
+            // ROAS L30 and L7 update handler
+            table.on("cellEdited", function(cell) {
+                const field = cell.getField();
+                if (field === 'roas_l30' || field === 'roas_l7') {
+                    const row = cell.getRow();
+                    const rowData = row.getData();
+                    const sku = rowData.sku;
+                    const value = parseFloat(cell.getValue() || 0);
+
+                    // Save to backend
+                    $.ajax({
+                        url: '{{ route("temu.ads.update") }}',
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                        },
+                        data: JSON.stringify({
+                            sku: sku,
+                            field: field,
+                            value: value
+                        }),
+                        success: function(response) {
+                            if (response.success) {
+                                // Value already updated in cell, just refresh display
+                                cell.setValue(value);
+                            }
+                        },
+                        error: function(xhr, status, error) {
+                            console.error('Error updating ROAS:', error);
+                            // Revert the change on error
+                            const oldValue = parseFloat(rowData[field] || 0);
+                            cell.setValue(oldValue);
+                            alert('Error updating ROAS: ' + (xhr.responseJSON?.message || error));
+                        }
+                    });
+                }
+            });
+
             // L7 Upload handler
             document.getElementById('l7-upload-btn').addEventListener('click', function() {
                 const fileInput = document.getElementById('l7-upload-file');
@@ -1128,8 +1246,8 @@
                 if (!file) {
                     statusDiv.innerHTML = '<span style="color: red;">Please select a file</span>';
                     statusContainer.style.display = 'flex';
-                    return;
-                }
+                        return;
+                    }
 
                 const formData = new FormData();
                 formData.append('file', file);
@@ -1166,7 +1284,7 @@
                                     statusContainer.style.marginTop = '0';
                                 }
                             }, 5000);
-                        } else {
+                    } else {
                             statusDiv.innerHTML = '<span style="color: red;">' + (response
                                 .message || 'Upload failed') + '</span>';
                             statusContainer.style.display = 'flex';
@@ -1232,7 +1350,7 @@
                                     statusContainer.style.marginTop = '0';
                                 }
                             }, 5000);
-                    } else {
+                                                } else {
                             statusDiv.innerHTML = '<span style="color: red;">' + (response
                                 .message || 'Upload failed') + '</span>';
                             statusContainer.style.display = 'flex';
