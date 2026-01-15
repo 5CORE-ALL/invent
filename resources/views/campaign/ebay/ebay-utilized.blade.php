@@ -240,120 +240,120 @@
                                                     SKU</span>
                                                 <span class="fw-bold" id="total-sku-count"
                                                     style="font-size: 1.1rem;">0</span>
-                                            </div>
+                                    </div>
                                             <div class="badge-count-item ebay-sku-card" id="ebay-sku-card"
                                                 style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
                                                 <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Ebay
                                                     SKU</span>
                                                 <span class="fw-bold" id="ebay-sku-count"
                                                     style="font-size: 1.1rem;">0</span>
-                                            </div>
+                                    </div>
                                             <div class="badge-count-item total-campaign-card" id="total-campaign-card"
                                                 style="background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
                                                 <span
                                                     style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Campaign</span>
                                                 <span class="fw-bold" id="total-campaign-count"
                                                     style="font-size: 1.1rem;">0</span>
-                                            </div>
+                                    </div>
                                             <div class="badge-count-item missing-campaign-card" id="missing-campaign-card"
                                                 style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
                                                 <span
                                                     style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Missing</span>
                                                 <span class="fw-bold" id="missing-campaign-count"
                                                     style="font-size: 1.1rem;">0</span>
-                                            </div>
+                                    </div>
                                             <div class="badge-count-item nra-missing-card" id="nra-missing-card"
                                                 style="background: linear-gradient(135deg, #ffc107 0%, #ffb300 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
                                                 <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">NRA
                                                     MISSING</span>
                                                 <span class="fw-bold" id="nra-missing-count"
                                                     style="font-size: 1.1rem;">0</span>
-                                            </div>
+                                    </div>
                                             <div class="badge-count-item zero-inv-card" id="zero-inv-card"
                                                 style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
                                                 <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Zero
                                                     INV</span>
                                                 <span class="fw-bold" id="zero-inv-count"
                                                     style="font-size: 1.1rem;">0</span>
-                                            </div>
+                                    </div>
                                             <div class="badge-count-item nra-card" id="nra-card"
                                                 style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
                                                 <span
                                                     style="font-size: 0.75rem; display: block; margin-bottom: 2px;">NRA</span>
                                                 <span class="fw-bold" id="nra-count" style="font-size: 1.1rem;">0</span>
-                                            </div>
+                                    </div>
                                             <div class="badge-count-item nrl-missing-card" id="nrl-missing-card"
                                                 style="background: linear-gradient(135deg, #ffc107 0%, #ffb300 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
                                                 <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">NRL
                                                     MISSING</span>
                                                 <span class="fw-bold" id="nrl-missing-count"
                                                     style="font-size: 1.1rem;">0</span>
-                                            </div>
+                                    </div>
                                             <div class="badge-count-item nrl-card" id="nrl-card"
                                                 style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
                                                 <span
                                                     style="font-size: 0.75rem; display: block; margin-bottom: 2px;">NRL</span>
                                                 <span class="fw-bold" id="nrl-count" style="font-size: 1.1rem;">0</span>
-                                            </div>
+                                    </div>
                                             <div class="badge-count-item ra-card" id="ra-card"
                                                 style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
                                                 <span
                                                     style="font-size: 0.75rem; display: block; margin-bottom: 2px;">RA</span>
                                                 <span class="fw-bold" id="ra-count" style="font-size: 1.1rem;">0</span>
-                                            </div>
+                                    </div>
                                             <div class="badge-count-item utilization-card" data-type="7ub"
                                                 style="background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
                                                 <span
                                                     style="font-size: 0.75rem; display: block; margin-bottom: 2px;">7UB</span>
                                                 <span class="fw-bold" id="7ub-count" style="font-size: 1.1rem;">0</span>
-                                            </div>
+                                    </div>
                                             <div class="badge-count-item utilization-card" data-type="7ub-1ub"
                                                 style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
                                                 <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">7UB +
                                                     1UB</span>
                                                 <span class="fw-bold" id="7ub-1ub-count"
                                                     style="font-size: 1.1rem;">0</span>
-                                            </div>
+                                </div>
                                             <div class="badge-count-item"
                                                 style="background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                                                 <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">L30
                                                     CLICKS</span>
                                                 <span class="fw-bold" id="l30-total-clicks"
                                                     style="font-size: 1.1rem;">0</span>
-                                            </div>
+                                </div>
                                             <div class="badge-count-item"
                                                 style="background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                                                 <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">L30
                                                     SPEND</span>
                                                 <span class="fw-bold" id="l30-total-spend"
                                                     style="font-size: 1.1rem;">0</span>
-                                            </div>
+                                </div>
                                             <div class="badge-count-item"
                                                 style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                                                 <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">L30
                                                     AD SOLD</span>
                                                 <span class="fw-bold" id="l30-total-ad-sold"
                                                     style="font-size: 1.1rem;">0</span>
-                                            </div>
+                                </div>
                                             <div class="badge-count-item"
                                                 style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                                                 <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">AVG
                                                     ACOS</span>
                                                 <span class="fw-bold" id="avg-acos" style="font-size: 1.1rem;">0</span>
-                                            </div>
+                                </div>
                                             <div class="badge-count-item"
                                                 style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                                                 <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">AVG
                                                     CVR</span>
                                                 <span class="fw-bold" id="avg-cvr" style="font-size: 1.1rem;">0</span>
-                                            </div>
-                                        </div>
-                                    </div>
                                 </div>
+                            </div>
+                            </div>
+                        </div>
 
                                 <!-- Search and Filter Controls Row -->
                                 <div class="row align-items-end">
-                                    <div class="col-md-4">
+                            <div class="col-md-4">
                                         <label class="form-label fw-semibold mb-2"
                                             style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-search me-1" style="color: #64748b;"></i>Search Campaign
@@ -362,37 +362,37 @@
                                             <span class="input-group-text bg-white border-end-0"
                                                 style="border-color: #e2e8f0;">
                                                 <i class="fa-solid fa-search" style="color: #94a3b8;"></i>
-                                            </span>
+                                    </span>
                                             <input type="text" id="global-search"
                                                 class="form-control form-control-md border-start-0"
                                                 placeholder="Search by campaign name or SKU..."
                                                 style="border-color: #e2e8f0;">
-                                        </div>
-                                    </div>
-                                    <div class="col-md-2">
+                                </div>
+                            </div>
+                            <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2"
                                             style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-toggle-on me-1" style="color: #64748b;"></i>Status
                                         </label>
                                         <select id="status-filter" class="form-select form-select-md">
-                                            <option value="">All Status</option>
-                                            <option value="RUNNING">Running</option>
-                                            <option value="PAUSED">Paused</option>
-                                            <option value="ENDED">Ended</option>
-                                        </select>
-                                    </div>
+                                    <option value="">All Status</option>
+                                    <option value="RUNNING">Running</option>
+                                    <option value="PAUSED">Paused</option>
+                                    <option value="ENDED">Ended</option>
+                                </select>
+                            </div>
                                     <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2"
                                             style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-boxes me-1" style="color: #64748b;"></i>Inventory
                                         </label>
                                         <select id="inv-filter" class="form-select form-select-md">
-                                            <option value="">All Inventory</option>
+                                    <option value="">All Inventory</option>
                                             <option value="ALL">ALL</option>
                                             <option value="INV_0">0 INV</option>
                                             <option value="OTHERS" selected>OTHERS</option>
-                                        </select>
-                                    </div>
+                                </select>
+                            </div>
                                     <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2"
                                             style="color: #475569; font-size: 0.8125rem;">
@@ -400,11 +400,11 @@
                                         </label>
                                         <select id="nra-filter" class="form-select form-select-md">
                                             <option value="">All NRA</option>
-                                            <option value="NRA">NRA</option>
-                                            <option value="RA">RA</option>
+                                    <option value="NRA">NRA</option>
+                                    <option value="RA">RA</option>
                                             <option value="LATER">LATER</option>
-                                        </select>
-                                    </div>
+                                </select>
+                            </div>
                                     <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2"
                                             style="color: #475569; font-size: 0.8125rem;">
@@ -412,20 +412,20 @@
                                         </label>
                                         <select id="nrl-filter" class="form-select form-select-md">
                                             <option value="">All NRL</option>
-                                            <option value="NRL">NRL</option>
-                                            <option value="REQ">REQ</option>
-                                        </select>
-                                    </div>
+                                    <option value="NRL">NRL</option>
+                                    <option value="REQ">REQ</option>
+                                </select>
+                            </div>
                                     <div class="col-md-4 d-flex gap-2 align-items-end mt-2">
                                         <button id="apr-all-sbid-btn" class="btn btn-info btn-sm flex-fill d-none">
-                                            <i class="fa-solid fa-check-double me-1"></i>
-                                            APR ALL SBID
-                                        </button>
+                                                <i class="fa-solid fa-check-double me-1"></i>
+                                                APR ALL SBID
+                                            </button>
                                         <button id="save-all-sbid-m-btn" class="btn btn-success btn-sm flex-fill d-none">
                                             <i class="fa-solid fa-save me-1"></i>
                                             SAVE ALL SBID M
                                         </button>
-                                    </div>
+                    </div>
                                 </div>
                             </div>
                         </div>
@@ -433,7 +433,7 @@
 
                     <!-- Table Section -->
                     <div id="budget-under-table"></div>
-
+                    
                     <!-- Pagination Count Display -->
                     <div class="mt-2 d-flex justify-content-between align-items-center">
                         <div>
@@ -533,9 +533,9 @@
                 // We need to get all data and apply filters manually since utilization type filter is separate
                 // Use 'all' to get all data, then apply filters manually to match what's actually shown
                 const allData = table.getData('all');
-                let overCount = 0;
-                let underCount = 0;
-                let correctlyCount = 0;
+                    let overCount = 0;
+                    let underCount = 0;
+                    let correctlyCount = 0;
                 let missingCount = 0;
                 let nraMissingCount = 0; // Count NRA missing (yellow dots)
                 let nrlMissingCount = 0; // Count NRL missing (yellow dots)
@@ -557,7 +557,7 @@
                 const processedSkusForNrlMissing = new Set(); // Track SKUs for NRL missing counting
                 const processedSkusForZeroInv = new Set(); // Track SKUs for zero INV counting
 
-                allData.forEach(function(row) {
+                    allData.forEach(function(row) {
                     // Count valid SKUs (exclude parent SKUs and empty SKUs)
                     const sku = row.sku || '';
                     const isValidSku = sku && !sku.toUpperCase().includes('PARENT');
@@ -720,26 +720,26 @@
                         let ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
 
                         // 7UB + 1UB condition categorization (matches command and filter logic)
-                        if (ub7 > 99 && ub1 > 99) {
-                            overCount++;
-                        } else if (ub7 < 66 && ub1 < 66) {
+                    if (ub7 > 99 && ub1 > 99) {
+                        overCount++;
+                    } else if (ub7 < 66 && ub1 < 66) {
                             // For under utilized, also check INV > 0 (matches filter logic)
                             let inv = parseFloat(row.INV || 0);
                             if (inv > 0) {
-                                underCount++;
+                        underCount++;
                             }
-                        } else if (ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99) {
-                            correctlyCount++;
-                        }
+                    } else if (ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99) {
+                        correctlyCount++;
+                    }
 
                         // Count 7UB (ub7 >= 66 && ub7 <= 99) - only for rows with campaigns
-                        if (ub7 >= 66 && ub7 <= 99) {
-                            ub7Count++;
-                        }
+                    if (ub7 >= 66 && ub7 <= 99) {
+                        ub7Count++;
+                    }
 
                         // Count 7UB + 1UB (both ub7 and ub1 >= 66 && <= 99) - only for rows with campaigns
-                        if (ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99) {
-                            ub7Ub1Count++;
+                    if (ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99) {
+                        ub7Ub1Count++;
                         }
                     }
                 });
@@ -849,6 +849,9 @@
             let totalL30ClicksFromBackend = 0;
             let totalL30SpendFromBackend = 0;
             let totalL30AdSoldFromBackend = 0;
+            
+            // Track manually selected rows (exclude header checkbox selections)
+            let manuallySelectedRows = new Set();
 
             function updateL30Totals() {
                 // Update L30 CLICKS total from backend
@@ -886,8 +889,8 @@
                         table.redraw(true);
                         // Update counts after filter is applied to get accurate counts
                         setTimeout(function() {
-                            updateButtonCounts();
-                            updateL30Totals();
+                        updateButtonCounts();
+                        updateL30Totals();
                             updatePaginationCount();
                         }, 300);
                     }
@@ -1061,14 +1064,14 @@
                 } else {
                     this.style.boxShadow = '';
                 }
-
-                if (typeof table !== 'undefined' && table) {
-                    table.setFilter(combinedFilter);
-                    table.redraw(true);
-                    updateButtonCounts();
-                    updateL30Totals();
-                }
-            });
+                    
+                    if (typeof table !== 'undefined' && table) {
+                        table.setFilter(combinedFilter);
+                        table.redraw(true);
+                        updateButtonCounts();
+                        updateL30Totals();
+                    }
+                });
 
             // NRA card click handler
             document.getElementById('nra-card').addEventListener('click', function() {
@@ -1289,6 +1292,24 @@
                 }
             });
 
+            // Function to update header checkbox state (defined before table initialization)
+            function updateHeaderCheckboxState() {
+                var headerCheckbox = document.querySelector('.tabulator-select-all-checkbox');
+                if (headerCheckbox && typeof table !== 'undefined') {
+                    var activeRows = table.getRows('active');
+                    var currentPage = table.getPage();
+                    var pageSize = table.getPageSize();
+                    var startIndex = (currentPage - 1) * pageSize;
+                    var endIndex = startIndex + pageSize;
+                    var currentPageRows = activeRows.slice(startIndex, endIndex);
+                    
+                    var selectedCurrentPageRows = currentPageRows.filter(function(row) {
+                        return row.isSelected();
+                    });
+                    headerCheckbox.checked = currentPageRows.length > 0 && currentPageRows.length === selectedCurrentPageRows.length;
+                }
+            }
+
             var table = new Tabulator("#budget-under-table", {
                 index: "sku",
                 ajaxURL: "/ebay/utilized/ads/data",
@@ -1299,7 +1320,7 @@
                 layout: "fitData",
                 movableColumns: true,
                 resizableColumns: true,
-                height: "700px",
+                height: "700px",             
                 virtualDom: true,
                 pagination: "local",
                 paginationSize: 100,
@@ -1313,7 +1334,52 @@
                 },
                 columns: [{
                         formatter: "rowSelection",
-                        titleFormatter: "rowSelection",
+                        titleFormatter: function(column) {
+                            var checkbox = document.createElement("input");
+                            checkbox.type = "checkbox";
+                            checkbox.className = "tabulator-select-all-checkbox";
+                            
+                            // Function to get current page rows
+                            function getCurrentPageRows() {
+                                var activeRows = table.getRows('active'); // All rows that pass filters
+                                var currentPage = table.getPage();
+                                var pageSize = table.getPageSize();
+                                var startIndex = (currentPage - 1) * pageSize;
+                                var endIndex = startIndex + pageSize;
+                                return activeRows.slice(startIndex, endIndex);
+                            }
+                            
+                            // Function to update checkbox state
+                            function updateCheckboxState() {
+                                var currentPageRows = getCurrentPageRows();
+                                var selectedCurrentPageRows = currentPageRows.filter(function(row) {
+                                    return row.isSelected();
+                                });
+                                checkbox.checked = currentPageRows.length > 0 && currentPageRows.length === selectedCurrentPageRows.length;
+                            }
+                            
+                            // Initial state - will be updated by external handlers
+                            
+                            checkbox.addEventListener("change", function(e) {
+                                e.stopPropagation();
+                                
+                                var currentPageRows = getCurrentPageRows();
+                                
+                                if (checkbox.checked) {
+                                    // Select all rows on current page
+                                    currentPageRows.forEach(function(row) {
+                                        row.select();
+                                    });
+                                } else {
+                                    // Deselect all rows on current page
+                                    currentPageRows.forEach(function(row) {
+                                        row.deselect();
+                                    });
+                                }
+                            });
+                            
+                            return checkbox;
+                        },
                         hozAlign: "center",
                         headerSort: false,
                         width: 50
@@ -1398,7 +1464,7 @@
                                 const dilDecimal = (l30 / inv);
                                 const percent = dilDecimal * 100;
                                 let textColor = '#000000'; // default black
-
+                                
                                 if (percent < 16.66) {
                                     textColor = '#dc3545'; // red
                                 } else if (percent >= 16.66 && percent < 25) {
@@ -1408,7 +1474,7 @@
                                 } else {
                                     textColor = '#e83e8c'; // pink
                                 }
-
+                                
                                 return `<div class="text-center"><span style="color: ${textColor}; font-weight: bold;">${Math.round(percent)}%</span></div>`;
                             }
                             return `<div class="text-center"><span style="color: #dc3545; font-weight: bold;">0%</span></div>`;
@@ -1424,7 +1490,7 @@
                             const sku = row.getData().sku;
                             const value = cell.getValue() || "REQ"; // Default to REQ
 
-                            return `
+                                return `
                                     <select class="form-select form-select-sm editable-select" 
                                             data-sku="${sku}" 
                                         data-field="NRL"
@@ -1450,7 +1516,7 @@
                             const defaultValue = (nrlValue === 'NRL') ? "NRA" : "RA";
                             const value = (cell.getValue()?.trim()) || defaultValue;
 
-                            return `
+                                return `
                                     <select class="form-select form-select-sm editable-select" 
                                             data-sku="${sku}" 
                                             data-field="NR"
@@ -1530,13 +1596,13 @@
                             var row = cell.getRow().getData();
                             var acosRaw = row.acos;
                             var acos = parseFloat(acosRaw);
-
+                            
                             // If acos is 0 (no sales or no ad fees), set it to 100 for budget calculation
                             // This matches the frontend logic: if(acos === 0) { acos = 100; }
                             if (isNaN(acos) || acos === 0) {
                                 acos = 100;
                             }
-
+                            
                             // Calculate suggested budget based on ACOS rules:
                             // - If ACOS < 4% then budget = $9
                             // - If 4% ≤ ACOS < 8% then budget = $6
@@ -1549,7 +1615,7 @@
                             } else {
                                 suggestedBudget = 3;
                             }
-
+                            
                             return suggestedBudget.toFixed(0);
                         },
                         sorter: "number",
@@ -1562,7 +1628,19 @@
                         sorter: "number",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var acosRaw = row.acos;
+                            // Check if spend (adFees) is 0
+                            var adFees = parseFloat(row.adFees || 0);
+                            
+                            // If spend is 0, show "-"
+                            if (adFees === 0) {
+                                var td = cell.getElement();
+                                td.classList.remove('green-bg', 'pink-bg', 'red-bg');
+                                return '<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">' +
+                                    '-' +
+                                    '<i class="fa-solid fa-info-circle toggle-metrics-btn" style="cursor: pointer; font-size: 12px; margin-left: 5px;" title="Toggle Clicks, Spend, Ad Sold"></i></div>';
+                            }
+                            
+                            var acosRaw = row.acos; 
                             var acos = parseFloat(acosRaw);
                             if (isNaN(acos)) {
                                 acos = 0;
@@ -1572,7 +1650,7 @@
                             var acosValue = "";
                             if (acos === 0) {
                                 td.classList.add('red-bg');
-                                acosValue = "100%";
+                                acosValue = "100%"; 
                             } else if (acos < 7) {
                                 td.classList.add('pink-bg');
                                 acosValue = acos.toFixed(0) + "%";
@@ -1583,7 +1661,7 @@
                                 td.classList.add('red-bg');
                                 acosValue = acos.toFixed(0) + "%";
                             }
-
+                            
                             return '<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">' +
                                 acosValue +
                                 '<i class="fa-solid fa-info-circle toggle-metrics-btn" style="cursor: pointer; font-size: 12px; margin-left: 5px;" title="Toggle Clicks, Spend, Ad Sold"></i></div>';
@@ -1595,7 +1673,7 @@
                                 var clicksVisible = table.getColumn('clicks').isVisible();
                                 var spendVisible = table.getColumn('adFees').isVisible();
                                 var adSoldVisible = table.getColumn('ad_sold').isVisible();
-
+                                
                                 if (clicksVisible || spendVisible || adSoldVisible) {
                                     table.hideColumn('clicks');
                                     table.hideColumn('adFees');
@@ -1667,7 +1745,7 @@
                             var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-
+                            
                             // Different color logic based on utilization type
                             if (currentUtilizationType === 'over') {
                                 // Over-utilized: Check UB7 only
@@ -1769,7 +1847,7 @@
                         sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
                             var aData = aRow.getData();
                             var bData = bRow.getData();
-
+                            
                             // Helper function to calculate SBID for a row
                             function calculateSbid(rowData) {
                                 // Check if NRA (🔴) is selected
@@ -1777,7 +1855,7 @@
                                 if (nraValue === 'NRA') {
                                     return -1; // Special value for sorting (will show as '-')
                                 }
-
+                                
                                 var l1Cpc = parseFloat(rowData.l1_cpc) || 0;
                                 var l7Cpc = parseFloat(rowData.l7_cpc) || 0;
                                 var budget = parseFloat(rowData.campaignBudgetAmount) || 0;
@@ -1786,18 +1864,18 @@
                                 var ub1 = budget > 0 ? (parseFloat(rowData.l1_spend) || 0) /
                                     budget * 100 : 0;
                                 var sbid = 0;
-
+                                
                                 // Helper function to get UB color
                                 function getUbColor(ub) {
                                     if (ub >= 66 && ub <= 99) return 'green';
                                     if (ub > 99) return 'pink';
                                     return 'red';
                                 }
-
+                                
                                 // Check UB7 and UB1 colors (no exclusions)
                                 var ub7Color = getUbColor(ub7);
                                 var ub1Color = getUbColor(ub1);
-
+                                
                                 // Special rule: If UB7 = 0% and UB1 = 0%, use price-based SBID
                                 if (ub7 === 0 && ub1 === 0) {
                                     var price = parseFloat(rowData.price || 0);
@@ -1819,7 +1897,7 @@
                                         return 2.00;
                                     }
                                 }
-
+                                
                                 // Rule: If both UB7 and UB1 are above 99%, set SBID as L1_CPC * 0.90
                                 if (ub7 > 99 && ub1 > 99) {
                                     if (l1Cpc > 0) {
@@ -1830,30 +1908,30 @@
                                         return 0;
                                     }
                                 }
-
+                                
                                 if (currentUtilizationType === 'all') {
                                     // For total campaigns, determine individual campaign's utilization status
                                     var rowAcos = parseFloat(rowData.acos) || 0;
                                     if (isNaN(rowAcos) || rowAcos === 0) {
                                         rowAcos = 100;
                                     }
-
+                                    
                                     var inv = parseFloat(rowData.INV || 0);
                                     // Determine utilization status
                                     var isOverUtilized = false;
                                     var isUnderUtilized = false;
-
+                                    
                                     // Check over-utilized first
                                     if (ub7 > 99 && ub1 > 99) {
                                         isOverUtilized = true;
                                     }
-
+                                    
                                     // Check under-utilized
                                     // Remove price >= 20 check to match backend command logic
                                     if (!isOverUtilized && ub7 < 66 && ub1 < 66 && inv > 0) {
                                         isUnderUtilized = true;
                                     }
-
+                                    
                                     // Apply SBID logic based on determined status
                                     if (isOverUtilized) {
                                         // If L1 CPC > 1.25, then L1CPC * 0.80, else L1CPC * 0.90
@@ -1864,7 +1942,7 @@
                                         } else {
                                             sbid = 0;
                                         }
-
+                                        
                                         // Price cap: If price < $20, cap SBID at 0.20
                                         var price = parseFloat(rowData.price || 0);
                                         if (typeof rowData.price === 'string' && rowData.price
@@ -1913,7 +1991,7 @@
                                                 } else {
                                                     sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
                                                 }
-
+                                                
                                                 // Price cap: If price < $20, cap SBID at 0.20
                                                 var price = parseFloat(rowData.price || 0);
                                                 if (typeof rowData.price === 'string' && rowData
@@ -1949,7 +2027,7 @@
                                     } else {
                                         sbid = 0.50;
                                     }
-
+                                    
                                     // Price cap: If price < $20, cap SBID at 0.20
                                     var price = parseFloat(rowData.price || 0);
                                     if (typeof rowData.price === 'string' && rowData.price.includes(
@@ -1996,7 +2074,7 @@
                                             } else {
                                                 sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
                                             }
-
+                                            
                                             // Price cap: If price < $20, cap SBID at 0.20
                                             var price = parseFloat(rowData.price || 0);
                                             if (typeof rowData.price === 'string' && rowData.price
@@ -2014,29 +2092,29 @@
                                 } else {
                                     sbid = Math.floor(l1Cpc * 0.90 * 100) / 100;
                                 }
-
+                                
                                 // Check if SBID is 0
                                 if (sbid === 0) {
                                     return -1; // Special value for sorting (will show as '-')
                                 }
-
+                                
                                 return sbid;
                             }
-
+                            
                             var aSbid = calculateSbid(aData);
                             var bSbid = calculateSbid(bData);
-
+                            
                             return aSbid - bSbid;
                         },
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-
+                            
                             // Check if NRA (🔴) is selected
                             var nraValue = row.NR ? row.NR.trim() : "";
                             if (nraValue === 'NRA') {
                                 return '-';
                             }
-
+                            
                             var l1_cpc = parseFloat(row.l1_cpc) || 0;
                             var l7_cpc = parseFloat(row.l7_cpc) || 0;
                             var ub7 = 0;
@@ -2046,24 +2124,24 @@
                             }
                             var ub1 = budget > 0 ? (parseFloat(row.l1_spend) || 0) / budget * 100 :
                                 0;
-
+                            
                             // Helper function to get UB color
                             function getUbColor(ub) {
                                 if (ub >= 66 && ub <= 99) return 'green';
                                 if (ub > 99) return 'pink';
                                 return 'red';
                             }
-
+                            
                             // Check if UB7 and UB1 colors match
                             var ub7Color = getUbColor(ub7);
                             var ub1Color = getUbColor(ub1);
-
+                            
                             if (ub7Color !== ub1Color) {
                                 return '0.00'; // No SBID suggestion if colors don't match
                             }
-
+                            
                             var sbid = 0;
-
+                            
                             // Special rule: If UB7 = 0% and UB1 = 0%, use price-based SBID
                             if (ub7 === 0 && ub1 === 0) {
                                 var price = parseFloat(row.price || 0);
@@ -2084,7 +2162,7 @@
                                 }
                                 return sbid.toFixed(2);
                             }
-
+                            
                             // Rule: If both UB7 and UB1 are above 99%, set SBID as L1_CPC * 0.90
                             if (ub7 > 99 && ub1 > 99) {
                                 if (l1_cpc > 0) {
@@ -2100,30 +2178,30 @@
                                 }
                                 return sbid.toFixed(2);
                             }
-
+                            
                             if (currentUtilizationType === 'all') {
                                 // For total campaigns, determine individual campaign's utilization status
                                 var rowAcos = parseFloat(row.acos) || 0;
                                 if (isNaN(rowAcos) || rowAcos === 0) {
                                     rowAcos = 100;
                                 }
-
+                                
                                 // Determine utilization status (same logic as combinedFilter)
                                 var isOverUtilized = false;
                                 var isUnderUtilized = false;
-
+                                
                                 // Check over-utilized first (priority 1)
                                 if (ub7 > 99 && ub1 > 99) {
                                     isOverUtilized = true;
                                 }
-
+                                
                                 // Check under-utilized (priority 2: only if not over-utilized)
                                 var inv = parseFloat(row.INV || 0);
                                 // Remove price >= 20 check to match backend command logic
                                 if (!isOverUtilized && ub7 < 66 && ub1 < 66 && inv > 0) {
                                     isUnderUtilized = true;
                                 }
-
+                                
                                 // Apply SBID logic based on determined status
                                 if (isOverUtilized) {
                                     // If L1 CPC > 1.25, then L1CPC * 0.80, else L1CPC * 0.90
@@ -2134,7 +2212,7 @@
                                     } else {
                                         sbid = 0;
                                     }
-
+                                    
                                     // Price cap: If price < $20, cap SBID at 0.20
                                     var price = parseFloat(row.price || 0);
                                     if (typeof row.price === 'string' && row.price.includes('$')) {
@@ -2169,7 +2247,7 @@
                                         var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ?
                                             l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ?
                                                 l7_cpc : 0);
-
+                                        
                                         if (cpcToUse > 0) {
                                             if (cpcToUse < 0.10) {
                                                 sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
@@ -2180,7 +2258,7 @@
                                             } else {
                                                 sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
                                             }
-
+                                            
                                             // Price cap: If price < $20, cap SBID at 0.20
                                             var price = parseFloat(row.price || 0);
                                             if (typeof row.price === 'string' && row.price.includes(
@@ -2214,7 +2292,7 @@
                                 } else {
                                     sbid = 0.50;
                                 }
-
+                                
                                 // Price cap: If price < $20, cap SBID at 0.20
                                 var price = parseFloat(row.price || 0);
                                 if (typeof row.price === 'string' && row.price.includes('$')) {
@@ -2247,7 +2325,7 @@
                                     var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ?
                                         l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ?
                                             l7_cpc : 0);
-
+                                    
                                     if (cpcToUse > 0) {
                                         if (cpcToUse < 0.10) {
                                             sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
@@ -2258,7 +2336,7 @@
                                         } else {
                                             sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
                                         }
-
+                                        
                                         // Price cap: If price < $20, cap SBID at 0.20
                                         var price = parseFloat(row.price || 0);
                                         if (typeof row.price === 'string' && row.price.includes(
@@ -2283,12 +2361,12 @@
                                     sbid = 0;
                                 }
                             }
-
+                            
                             // Check if SBID is 0
                             if (sbid === 0) {
                                 return '-';
                             }
-
+                            
                             return sbid.toFixed(2);
                         },
                         visible: true,
@@ -2324,11 +2402,11 @@
                             
                             if (apprSbid && apprSbid !== '' && parseFloat(apprSbid) > 0) {
                                 // Green checkmark circle icon when bid is pushed
-                                return `
+                            return `
                                     <div style="display: flex; justify-content: center; align-items: center;">
                                         <i class="fa-solid fa-circle-check update-bid-icon" style="color: #28a745; font-size: 20px; cursor: default;" title="Bid pushed: ${apprSbid}"></i>
-                                    </div>
-                                `;
+                                </div>
+                            `;
                             } else {
                                 // Check icon (clickable) when bid is not pushed
                                 return `
@@ -2347,26 +2425,26 @@
                                 if (apprSbid && apprSbid !== '' && parseFloat(apprSbid) > 0) {
                                     return; // Don't allow re-push
                                 }
-
+                                
                                 // Check if NRA (🔴) is selected
                                 var nraValue = rowData.NR ? rowData.NR.trim() : "";
                                 if (nraValue === 'NRA') {
                                     showToast('error', 'Cannot update bid for NRA campaigns');
                                     return; // Skip update if NRA is selected
                                 }
-
+                                
                                 // Get sbid_m value (saved value)
                                 var sbidM = parseFloat(rowData.sbid_m) || 0;
                                 
                                 if (sbidM <= 0) {
                                     showToast('error', 'SBID M value is required. Please save SBID M first.');
                                     return;
-                                }
+                                                }
                                 
                                 if (!rowData.campaign_id) {
                                     showToast('error', 'Campaign ID not found');
                                     return;
-                                }
+                                        }
                                 
                                 // Use sbid_m value to update eBay site
                                 updateBid(sbidM, rowData.campaign_id, cell);
@@ -2408,7 +2486,7 @@
                     if (avgAcosEl) {
                         avgAcosEl.textContent = (parseFloat(response.avg_acos) || 0).toFixed(2) + '%';
                     }
-
+                    
                     const avgCvrEl = document.getElementById('avg-cvr');
                     if (avgCvrEl) {
                         avgCvrEl.textContent = (parseFloat(response.avg_cvr) || 0).toFixed(2) + '%';
@@ -2424,7 +2502,7 @@
                     if (ebaySkuCountEl) {
                         ebaySkuCountEl.textContent = ebaySkuCountFromBackend;
                     }
-
+                    
                     return response.data;
                 }
             });
@@ -2482,8 +2560,8 @@
                 // Global search filter
                 let searchVal = $("#global-search").val()?.toLowerCase() || "";
                 if (searchVal && !(data.campaignName?.toLowerCase().includes(searchVal)) && !(data.sku
-                        ?.toLowerCase().includes(searchVal))) {
-                    return false;
+                    ?.toLowerCase().includes(searchVal))) {
+                        return false;
                 }
 
                 // Status filter
@@ -2493,7 +2571,7 @@
                 }
 
                 // Apply zero INV filter first (if enabled)
-                let inv = parseFloat(data.INV || 0);
+                    let inv = parseFloat(data.INV || 0);
                 if (showZeroInvOnly) {
                     // Show only zero or negative inventory
                     if (inv > 0) return false;
@@ -2527,7 +2605,7 @@
                 } else {
                     // NRA filter from dropdown
                     let nraFilterVal = $("#nra-filter").val();
-                    if (nraFilterVal) {
+                if (nraFilterVal) {
                         if (nraFilterVal === 'RA') {
                             // For "RA" filter, include empty/null values too
                             if (rowNra === 'NRA') return false;
@@ -2547,7 +2625,7 @@
                 } else {
                     // NRL filter from dropdown
                     let nrlFilterVal = $("#nrl-filter").val();
-                    if (nrlFilterVal) {
+                if (nrlFilterVal) {
                         if (nrlFilterVal === 'REQ') {
                             // For "REQ" filter, include empty/null values too
                             if (rowNrl === 'NRL') return false;
@@ -2641,7 +2719,7 @@
                         });
                     }
                 }, 100);
-
+                
                 // Add click handler for toggle metrics button
                 setTimeout(function() {
                     var acosHeader = document.querySelector(
@@ -2652,7 +2730,7 @@
                             var clicksVisible = table.getColumn('clicks').isVisible();
                             var spendVisible = table.getColumn('adFees').isVisible();
                             var adSoldVisible = table.getColumn('ad_sold').isVisible();
-
+                            
                             if (clicksVisible || spendVisible || adSoldVisible) {
                                 table.hideColumn('clicks');
                                 table.hideColumn('adFees');
@@ -2680,14 +2758,16 @@
                 // Update pagination count on page changes
                 table.on("pageLoaded", function() {
                     updatePaginationCount();
+                    // Update header checkbox state when page changes
+                    setTimeout(updateHeaderCheckboxState, 50);
                 });
-
+                
                 table.on("dataProcessed", function() {
                     setTimeout(updatePaginationCount, 100);
                 });
 
-                // Debounced search
-                let searchTimeout = null;
+            // Debounced search
+            let searchTimeout = null;
                 $("#global-search").on("keyup", function() {
                     if (searchTimeout) clearTimeout(searchTimeout);
                     searchTimeout = setTimeout(function() {
@@ -2717,21 +2797,21 @@
                 if (typeof table === 'undefined' || !table) {
                     return;
                 }
-
+                
                 try {
                     const filteredData = table.getData('active');
                     const totalRows = filteredData.length;
                     const pageSize = table.getPageSize();
                     const currentPage = table.getPage();
-
+                    
                     let startRow = 0;
                     let endRow = 0;
-
+                    
                     if (totalRows > 0) {
                         startRow = ((currentPage - 1) * pageSize) + 1;
                         endRow = Math.min(currentPage * pageSize, totalRows);
                     }
-
+                    
                     const paginationCountEl = document.getElementById('pagination-count');
                     if (paginationCountEl) {
                         if (totalRows === 0) {
@@ -2745,8 +2825,23 @@
                 }
             }
 
+            // Track selection changes to maintain selection list (including bulk selections)
             table.on("rowSelectionChanged", function(data, rows) {
-                if (data.length > 0) {
+                // Sync the Set with all currently selected rows
+                var allSelectedRows = table.getRows('selected');
+                manuallySelectedRows.clear();
+                allSelectedRows.forEach(function(row) {
+                    var rowData = row.getData();
+                    var campaignId = rowData.campaign_id;
+                    if (campaignId) {
+                        manuallySelectedRows.add(campaignId);
+                    }
+                });
+                
+                // Update header checkbox state based on current page rows
+                setTimeout(updateHeaderCheckboxState, 50);
+                
+                if (manuallySelectedRows.size > 0) {
                     document.getElementById("apr-all-sbid-btn").classList.remove("d-none");
                     document.getElementById("save-all-sbid-m-btn").classList.remove("d-none");
                 } else {
@@ -2768,20 +2863,20 @@
                     }
 
                     fetch('/update-ebay-nr-data', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
                                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')
                                     .getAttribute('content')
-                            },
-                            body: JSON.stringify({
-                                sku: sku,
-                                field: field,
-                                value: value
-                            })
+                        },
+                        body: JSON.stringify({
+                            sku: sku,
+                            field: field,
+                            value: value
                         })
-                        .then(res => res.json())
-                        .then(data => {
+                    })
+                    .then(res => res.json())
+                    .then(data => {
                             console.log('Update response:', data); // Debug log
                             // Update table data with response
                             if (data.success && typeof table !== 'undefined' && table) {
@@ -2793,16 +2888,16 @@
                                         // Get current row data BEFORE update
                                         let rowData = row[0].getData();
                                         let currentNra = rowData.NR ? String(rowData.NR).trim() : '';
-
+                                        
                                         // Get NRA value from backend response (backend always sets it to 'NRA' when NRL is 'NRL')
                                         let backendNra = '';
                                         if (data.updated_json && data.updated_json.NR) {
                                             backendNra = String(data.updated_json.NR).trim();
                                         }
-
+                                        
                                         console.log('Current NRA:', currentNra, 'Backend NRA:',
                                             backendNra); // Debug log
-
+                                        
                                         // Always update both NRL and NR when NRL is set to "NRL"
                                         // Backend always sets NR to "NRA" when NRL is "NRL"
                                         let updateData = {
@@ -2810,18 +2905,18 @@
                                             NR: backendNra ||
                                                 'NRA' // Use backend value (should be 'NRA') or default to 'NRA'
                                         };
-
+                                        
                                         console.log('Updating row with:', updateData); // Debug log
-
+                                        
                                         // Update the row data immediately
                                         row[0].update(updateData);
-
+                                        
                                         // Force update NRA column display immediately
                                         setTimeout(function() {
                                             // Reformat the row to update all formatters (especially NRA column)
                                             row[0].reformat();
                                         }, 50);
-
+                                        
                                         // Second attempt to ensure UI updates
                                         setTimeout(function() {
                                             row[0].reformat();
@@ -2843,51 +2938,77 @@
                                     }
                                 }
                             }
-                        })
-                        .catch(err => {
-                            console.error('Error updating field:', err);
-                            // Show error message to user
-                            alert('Error updating field. Please try again.');
-                        });
+                    })
+                    .catch(err => {
+                        console.error('Error updating field:', err);
+                        // Show error message to user
+                        alert('Error updating field. Please try again.');
+                    });
                 }
             });
 
-            document.getElementById("apr-all-sbid-btn").addEventListener("click", function() {
+document.getElementById("apr-all-sbid-btn").addEventListener("click", function() {
                 const overlay = document.getElementById("progress-overlay");
                 overlay.style.display = "flex";
 
-                var filteredData = table.getSelectedRows();
+                // Get only actually selected rows - verify selection state
+                var allSelectedRows = table.getRows('selected');
+                var selectedCampaignIds = [];
+                var seenCampaignIds = new Set();
+                
+                allSelectedRows.forEach(function(row) {
+                    var rowData = row.getData();
+                    var campaignId = rowData.campaign_id;
+                    if (campaignId && !seenCampaignIds.has(campaignId)) {
+                        selectedCampaignIds.push(campaignId);
+                        seenCampaignIds.add(campaignId);
+                    }
+                });
+                
+                console.log('APR ALL: Total rows in table:', table.getRows('all').length);
+                console.log('APR ALL: Selected rows count:', allSelectedRows.length);
+                console.log('APR ALL: Unique selected campaign IDs:', selectedCampaignIds.length);
+
+                if (selectedCampaignIds.length === 0) {
+                    overlay.style.display = "none";
+                    showToast('error', 'Please select at least one campaign');
+                    return;
+                }
+                
+                // Get rows for selected campaign IDs
+                var selectedRows = allSelectedRows.filter(function(row) {
+                    var campaignId = row.getData().campaign_id;
+                    return campaignId && selectedCampaignIds.includes(campaignId);
+                });
+
                 var campaignIds = [];
                 var bids = [];
 
                 // Store row and bid mapping for updating apprSbid after success
                 var rowBidMap = [];
-                
-                filteredData.forEach(function(row) {
-                    var rowEl = row.getElement();
-                    if (rowEl && rowEl.offsetParent !== null) {
-                        var rowData = row.getData();
 
-                        // Check if NRA (🔴) is selected
-                        var nraValue = rowData.NR ? rowData.NR.trim() : "";
-                        if (nraValue === 'NRA') {
-                            return; // Skip update if NRA is selected
-                        }
+                selectedRows.forEach(function(row) {
+                    var rowData = row.getData();
+                    
+                    // Check if NRA (🔴) is selected
+                    var nraValue = rowData.NR ? rowData.NR.trim() : "";
+                    if (nraValue === 'NRA') {
+                        return; // Skip update if NRA is selected
+                    }
+                    
+                    // Get sbid_m value (saved value)
+                    var sbidM = parseFloat(rowData.sbid_m) || 0;
 
-                        // Get sbid_m value (saved value)
-                        var sbidM = parseFloat(rowData.sbid_m) || 0;
-
-                        // Only add if sbid_m exists and is greater than 0
-                        if (sbidM > 0 && rowData.campaign_id) {
-                            campaignIds.push(rowData.campaign_id);
-                            bids.push(sbidM);
-                            // Store row and bid mapping for later update
-                            rowBidMap.push({
-                                row: row,
-                                campaignId: rowData.campaign_id,
-                                bid: sbidM
-                            });
-                        }
+                    // Only add if sbid_m exists and is greater than 0
+                    if (sbidM > 0 && rowData.campaign_id) {
+                        campaignIds.push(rowData.campaign_id);
+                        bids.push(sbidM);
+                        // Store row and bid mapping for later update
+                        rowBidMap.push({
+                            row: row,
+                            campaignId: rowData.campaign_id,
+                            bid: sbidM
+                        });
                     }
                 });
 
@@ -2895,26 +3016,26 @@
                     overlay.style.display = "none";
                     showToast('error', 'No valid campaigns with SBID M value found');
                     return;
-                }
+                                    }
 
                 console.log("Campaign IDs:", campaignIds);
                 console.log("Bids:", bids);
 
                 fetch('/update-ebay-keywords-bid-price', {
-                        method: 'PUT',
-                        headers: {
-                            'Content-Type': 'application/json',
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
                             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')
                                 .getAttribute('content')
-                        },
-                        body: JSON.stringify({
-                            campaign_ids: campaignIds,
-                            bids: bids
-                        })
+                    },
+                    body: JSON.stringify({
+                        campaign_ids: campaignIds,
+                        bids: bids
                     })
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.status === 200) {
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 200) {
                             showToast('success', 'Keywords updated successfully for ' + campaignIds
                                 .length + ' campaign(s)');
                             
@@ -2934,22 +3055,22 @@
                                     row.reformat();
                                 }, 50);
                             });
-                        } else {
-                            let errorMsg = data.message || "Something went wrong";
-                            if (errorMsg.includes("Premium Ads")) {
+                    } else {
+                        let errorMsg = data.message || "Something went wrong";
+                        if (errorMsg.includes("Premium Ads")) {
                                 showToast('error', 'Error: ' + errorMsg);
-                            } else {
+                        } else {
                                 showToast('error', 'Something went wrong: ' + errorMsg);
-                            }
                         }
-                    })
-                    .catch(err => {
-                        console.error(err);
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
                         showToast('error', 'Error updating bids');
-                    })
-                    .finally(() => {
-                        overlay.style.display = "none";
-                    });
+                })
+                .finally(() => {
+                    overlay.style.display = "none";
+                });
             });
 
             // Bulk save SBID M for selected campaigns
@@ -2957,12 +3078,48 @@
                 const overlay = document.getElementById("progress-overlay");
                 overlay.style.display = "flex";
 
-                var selectedRows = table.getSelectedRows();
-                if (selectedRows.length === 0) {
+                // Get only actually selected rows - verify selection state
+                var allSelectedRows = table.getRows('selected');
+                var selectedCampaignIds = [];
+                var seenCampaignIds = new Set();
+                
+                allSelectedRows.forEach(function(row) {
+                    var rowData = row.getData();
+                    var campaignId = rowData.campaign_id;
+                    if (campaignId && !seenCampaignIds.has(campaignId)) {
+                        selectedCampaignIds.push(campaignId);
+                        seenCampaignIds.add(campaignId);
+                    }
+                });
+                
+                console.log('Total rows in table:', table.getRows('all').length);
+                console.log('Selected rows count:', allSelectedRows.length);
+                console.log('Unique selected campaign IDs:', selectedCampaignIds.length);
+                console.log('First 10 campaign IDs:', selectedCampaignIds.slice(0, 10));
+
+                if (selectedCampaignIds.length === 0) {
                     overlay.style.display = "none";
                     showToast('error', 'Please select at least one campaign');
                     return;
                 }
+
+                // Safety check: if too many rows are selected, warn the user
+                if (selectedCampaignIds.length > 100) {
+                    var confirmUpdate = confirm('You have selected ' + selectedCampaignIds.length + ' campaigns. Are you sure you want to update all of them?');
+                    if (!confirmUpdate) {
+                        overlay.style.display = "none";
+                        return;
+                    }
+                }
+                
+                // Get rows for selected campaign IDs
+                var selectedRows = [];
+                selectedCampaignIds.forEach(function(campaignId) {
+                    var rows = table.getRows().filter(function(row) {
+                        return row.getData().campaign_id === campaignId;
+                    });
+                    selectedRows = selectedRows.concat(rows);
+                });
 
                 // Prompt for SBID M value
                 var sbidMValue = prompt('Enter SBID M value for all selected campaigns:');
@@ -2978,22 +3135,21 @@
                     return;
                 }
 
-                var campaignIds = [];
-                selectedRows.forEach(function(row) {
-                    var rowEl = row.getElement();
-                    if (rowEl && rowEl.offsetParent !== null) {
-                        var rowData = row.getData();
-                        if (rowData.campaign_id) {
-                            campaignIds.push(rowData.campaign_id);
-                        }
-                    }
+                // Use the tracked campaign IDs directly
+                var campaignIds = selectedCampaignIds.map(function(id) {
+                    return String(id).trim();
+                }).filter(function(id) {
+                    return id !== '' && id !== null && id !== undefined;
                 });
 
                 if (campaignIds.length === 0) {
                     overlay.style.display = "none";
-                    showToast('error', 'No valid campaigns selected');
+                    showToast('error', 'No valid campaigns selected. Please select campaigns with valid campaign IDs.');
                     return;
                 }
+
+                // Debug: Log how many campaigns are being sent
+                console.log('Sending ' + campaignIds.length + ' campaign IDs for update:', campaignIds);
 
                 $.ajax({
                     url: '/save-ebay-sbid-m-bulk',
@@ -3055,20 +3211,20 @@
                 overlay.style.display = "flex";
 
                 fetch('/update-ebay-keywords-bid-price', {
-                        method: 'PUT',
-                        headers: {
-                            'Content-Type': 'application/json',
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
                             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute(
                                 'content')
-                        },
-                        body: JSON.stringify({
-                            campaign_ids: [campaignId],
-                            bids: [aprBid]
-                        })
+                    },
+                    body: JSON.stringify({
+                        campaign_ids: [campaignId],
+                        bids: [aprBid]
                     })
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.status === 200) {
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 200) {
                             showToast('success', 'Keywords updated successfully!');
                             
                             // Update row data with apprSbid value
@@ -3080,22 +3236,22 @@
                                 // Reformat the cell to show green checkmark
                                 cell.getRow().reformat();
                             }
-                        } else {
-                            let errorMsg = data.message || "Something went wrong";
-                            if (errorMsg.includes("Premium Ads")) {
+                    } else {
+                        let errorMsg = data.message || "Something went wrong";
+                        if (errorMsg.includes("Premium Ads")) {
                                 showToast('error', 'Error: ' + errorMsg);
-                            } else {
+                        } else {
                                 showToast('error', 'Something went wrong: ' + errorMsg);
-                            }
                         }
-                    })
-                    .catch(err => {
-                        console.error(err);
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
                         showToast('error', 'Error updating bid');
-                    })
-                    .finally(() => {
-                        overlay.style.display = "none";
-                    });
+                })
+                .finally(() => {
+                    overlay.style.display = "none";
+                });
             }
 
             // Handle SBID M cell edit
@@ -3186,7 +3342,7 @@
         function showUtilizationChart(type) {
             const chartTitle = document.getElementById('chart-title');
             const modal = new bootstrap.Modal(document.getElementById('utilizationChartModal'));
-
+            
             const titles = {
                 'over': 'Over Utilized Trend (Last 30 Days)',
                 'under': 'Under Utilized Trend (Last 30 Days)',
@@ -3202,7 +3358,7 @@
                     if (data.status === 200 && data.data && data.data.length > 0) {
                         const chartData = data.data;
                         const dates = chartData.map(d => d.date);
-
+                        
                         let dataset = [];
                         let label = '';
                         let color = '';
@@ -3226,7 +3382,7 @@
                         }
 
                         const ctx = document.getElementById('utilizationChart').getContext('2d');
-
+                        
                         if (utilizationChartInstance) {
                             utilizationChartInstance.destroy();
                         }

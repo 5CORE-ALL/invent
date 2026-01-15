@@ -121,6 +121,7 @@ class BestBuyPricingController extends Controller
             // Best Buy Metrics - Get price from BestbuyPriceData if available, otherwise from BestbuyUsaProduct
             $row["BB L30"] = $bestbuyMetric->m_l30 ?? 0;
             $row["BB Price"] = $priceData ? ($priceData->price ?? 0) : ($bestbuyMetric->price ?? 0);
+            $row["BB INV"] = $bestbuyMetric->stock ?? 0; // Marketplace inventory/stock for mapping
             
             // Amazon Price
             $row["A Price"] = $amazon ? floatval($amazon->price ?? 0) : 0;

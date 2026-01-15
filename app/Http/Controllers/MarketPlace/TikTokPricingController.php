@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use App\Models\AmazonChannelSummary;
 
 class TikTokPricingController extends Controller
 {
@@ -43,7 +44,10 @@ class TikTokPricingController extends Controller
         try {
             $response = $this->getViewTikTokTabularData($request);
             $data = json_decode($response->getContent(), true);
-            
+
+            // Auto-save daily summary in background (non-blocking)
+            $this->saveDailySummaryIfNeeded($data['data'] ?? []);
+
             return response()->json($data['data'] ?? []);
         } catch (\Exception $e) {
             Log::error('Error fetching TikTok data for Tabulator: ' . $e->getMessage());
@@ -496,6 +500,168 @@ class TikTokPricingController extends Controller
         Cache::put($key, $visibility, now()->addDays(365));
         
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * Auto-save daily TikTok summary snapshot (channel-wise)
+     * Matches JavaScript updateSummary() logic exactly
+     */
+    private function saveDailySummaryIfNeeded($products)
+    {
+        try {
+            $today = now()->toDateString();
+            
+            // No cache - always update when page loads
+            
+            // Filter: INV > 0 && not parent (TikTok doesn't have REQ filter)
+            $filteredData = collect($products)->filter(function($p) {
+                $invCheck = floatval($p['INV'] ?? 0) > 0;
+                $notParent = !(isset($p['Parent']) && str_starts_with($p['Parent'], 'PARENT'));
+                
+                return $invCheck && $notParent;
+            });
+            
+            if ($filteredData->isEmpty()) {
+                return; // No valid products
+            }
+            
+            // Initialize counters (EXACT JavaScript variable names)
+            $totalSkuCount = $filteredData->count();
+            $totalPft = 0;
+            $totalSales = 0;
+            $totalGpft = 0;
+            $totalPrice = 0;
+            $priceCount = 0;
+            $totalInv = 0;
+            $totalL30 = 0;
+            $zeroSoldCount = 0;
+            $moreSoldCount = 0;
+            $totalDil = 0;
+            $dilCount = 0;
+            $totalCogs = 0;
+            $totalRoi = 0;
+            $roiCount = 0;
+            $missingCount = 0;
+            $mapCount = 0;
+            $invTTStockCount = 0;
+            
+            // Loop through each row (EXACT JavaScript forEach logic)
+            foreach ($filteredData as $row) {
+                $totalPft += floatval($row['Profit'] ?? 0);
+                $totalSales += floatval($row['Sales L30'] ?? 0);
+                $totalGpft += floatval($row['GPFT%'] ?? 0);
+                
+                $price = floatval($row['TT Price'] ?? 0);
+                if ($price > 0) {
+                    $totalPrice += $price;
+                    $priceCount++;
+                }
+                
+                $totalInv += floatval($row['INV'] ?? 0);
+                $totalL30 += floatval($row['TT L30'] ?? 0);
+                
+                $l30 = floatval($row['TT L30'] ?? 0);
+                if ($l30 == 0) {
+                    $zeroSoldCount++;
+                } else {
+                    $moreSoldCount++;
+                }
+                
+                $dil = floatval($row['TT Dil%'] ?? 0);
+                if ($dil > 0) {
+                    $totalDil += $dil;
+                    $dilCount++;
+                }
+                
+                // COGS = LP × TT L30
+                $lp = floatval($row['LP_productmaster'] ?? 0);
+                $totalCogs += $lp * $l30;
+                
+                $roi = floatval($row['ROI%'] ?? 0);
+                if ($roi != 0) {
+                    $totalRoi += $roi;
+                    $roiCount++;
+                }
+                
+                // Count Missing
+                if (($row['Missing'] ?? '') === 'M') {
+                    $missingCount++;
+                }
+                
+                // Count Map
+                $mapValue = $row['MAP'] ?? '';
+                if ($mapValue === 'Map') {
+                    $mapCount++;
+                }
+                
+                // Count INV > TT Stock (check if MAP starts with 'Diff|')
+                if ($mapValue && str_starts_with($mapValue, 'Diff|')) {
+                    $invTTStockCount++;
+                }
+            }
+            
+            // Calculate averages (EXACT JavaScript logic)
+            $avgGpft = $totalSkuCount > 0 ? $totalGpft / $totalSkuCount : 0;
+            $avgPrice = $priceCount > 0 ? $totalPrice / $priceCount : 0;
+            $avgDil = $dilCount > 0 ? $totalDil / $dilCount : 0;
+            $avgRoi = $roiCount > 0 ? $totalRoi / $roiCount : 0;
+            
+            // Store ALL metrics in JSON (flexible!)
+            $summaryData = [
+                // Counts
+                'total_sku_count' => $totalSkuCount,
+                'sold_count' => $moreSoldCount,
+                'zero_sold_count' => $zeroSoldCount,
+                'missing_count' => $missingCount,
+                'map_count' => $mapCount,
+                'inv_tt_stock_count' => $invTTStockCount,
+                
+                // Financial Totals
+                'total_pft' => round($totalPft, 2),
+                'total_sales' => round($totalSales, 2),
+                'total_cogs' => round($totalCogs, 2),
+                
+                // Inventory
+                'total_inv' => round($totalInv, 2),
+                'total_l30' => round($totalL30, 2),
+                
+                // Calculated Percentages & Averages
+                'avg_gpft' => round($avgGpft, 2),
+                'avg_dil' => round($avgDil, 2),
+                'avg_roi' => round($avgRoi, 2),
+                'avg_price' => round($avgPrice, 2),
+                
+                // Metadata
+                'total_products_count' => count($products),
+                'calculated_at' => now()->toDateTimeString(),
+                
+                // Active Filters
+                'filters_applied' => [
+                    'inventory' => 'more',  // INV > 0
+                ],
+            ];
+            
+            // Save or update as JSON (channel-wise)
+            AmazonChannelSummary::updateOrCreate(
+                [
+                    'channel' => 'tiktok',
+                    'snapshot_date' => $today
+                ],
+                [
+                    'summary_data' => $summaryData,
+                    'notes' => 'Auto-saved daily snapshot (INV > 0)',
+                ]
+            );
+            
+            Log::info("Daily TikTok summary snapshot saved for {$today}", [
+                'sku_count' => $totalSkuCount,
+                'sold_count' => $moreSoldCount,
+            ]);
+            
+        } catch (\Exception $e) {
+            // Don't break the main response if summary save fails
+            Log::error('Error saving daily TikTok summary: ' . $e->getMessage());
+        }
     }
 }
 

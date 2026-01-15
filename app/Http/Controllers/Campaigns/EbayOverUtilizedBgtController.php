@@ -2268,6 +2268,26 @@ class EbayOverUtilizedBgtController extends Controller
                 ], 400);
             }
 
+            // Filter out invalid campaign IDs and ensure they are unique
+            $campaignIds = array_filter($campaignIds, function($id) {
+                return !empty($id) && $id !== null && $id !== '';
+            });
+            $campaignIds = array_values(array_unique($campaignIds)); // Re-index array and remove duplicates
+
+            if (empty($campaignIds)) {
+                return response()->json([
+                    'status' => 400,
+                    'message' => 'No valid campaign IDs provided'
+                ], 400);
+            }
+
+            // Log for debugging - ensure we're only updating selected campaigns
+            Log::info('Bulk SBID M update', [
+                'campaign_count' => count($campaignIds),
+                'campaign_ids' => $campaignIds,
+                'sbid_m' => $sbidM
+            ]);
+
             if (!$sbidM) {
                 return response()->json([
                     'status' => 400,
@@ -2284,58 +2304,84 @@ class EbayOverUtilizedBgtController extends Controller
             }
 
             $yesterday = date('Y-m-d', strtotime('-1 day'));
-            $updatedCount = 0;
+            $sbidMString = (string)$sbidM;
 
-            // Update eBay campaigns - try yesterday first, then L1 as fallback
-            // Clear apprSbid when sbid_m is updated so new bid can be pushed
-            foreach ($campaignIds as $campaignId) {
-                // First try yesterday's date
-                $updated = DB::table('ebay_priority_reports')
-                    ->where('campaign_id', $campaignId)
-                    ->where('report_range', $yesterday)
+            // Batch update for yesterday's date (most common case)
+            $updatedYesterday = DB::table('ebay_priority_reports')
+                ->whereIn('campaign_id', $campaignIds)
+                ->where('report_range', $yesterday)
+                ->where('campaignStatus', 'RUNNING')
+                ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+                ->where('campaign_name', 'NOT LIKE', 'General - %')
+                ->where('campaign_name', 'NOT LIKE', 'Default%')
+                ->update([
+                    'sbid_m' => $sbidMString,
+                    'apprSbid' => '' // Clear apprSbid to allow new bid push
+                ]);
+
+            // Get campaign IDs that were updated for yesterday
+            $updatedCampaignIds = DB::table('ebay_priority_reports')
+                ->whereIn('campaign_id', $campaignIds)
+                ->where('report_range', $yesterday)
+                ->where('campaignStatus', 'RUNNING')
+                ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+                ->where('campaign_name', 'NOT LIKE', 'General - %')
+                ->where('campaign_name', 'NOT LIKE', 'Default%')
+                ->where('sbid_m', $sbidMString)
+                ->pluck('campaign_id')
+                ->toArray();
+
+            $remainingCampaignIds = array_diff($campaignIds, $updatedCampaignIds);
+
+            // Batch update for L1 (fallback for campaigns not found in yesterday)
+            if (!empty($remainingCampaignIds)) {
+                DB::table('ebay_priority_reports')
+                    ->whereIn('campaign_id', $remainingCampaignIds)
+                    ->where('report_range', 'L1')
                     ->where('campaignStatus', 'RUNNING')
                     ->where('campaign_name', 'NOT LIKE', 'Campaign %')
                     ->where('campaign_name', 'NOT LIKE', 'General - %')
                     ->where('campaign_name', 'NOT LIKE', 'Default%')
                     ->update([
-                        'sbid_m' => (string)$sbidM,
+                        'sbid_m' => $sbidMString,
                         'apprSbid' => '' // Clear apprSbid to allow new bid push
                     ]);
-                
-                // If no record found for yesterday, try L1
-                if ($updated === 0) {
-                    $updated = DB::table('ebay_priority_reports')
-                        ->where('campaign_id', $campaignId)
-                        ->where('report_range', 'L1')
-                        ->where('campaignStatus', 'RUNNING')
-                        ->where('campaign_name', 'NOT LIKE', 'Campaign %')
-                        ->where('campaign_name', 'NOT LIKE', 'General - %')
-                        ->where('campaign_name', 'NOT LIKE', 'Default%')
-                        ->update([
-                            'sbid_m' => (string)$sbidM,
-                            'apprSbid' => '' // Clear apprSbid to allow new bid push
-                        ]);
-                }
-
-                // Also update L7 and L30 records for consistency
-                if ($updated > 0) {
-                    DB::table('ebay_priority_reports')
-                        ->where('campaign_id', $campaignId)
-                        ->whereIn('report_range', ['L7', 'L30'])
-                        ->where('campaignStatus', 'RUNNING')
-                        ->where('campaign_name', 'NOT LIKE', 'Campaign %')
-                        ->where('campaign_name', 'NOT LIKE', 'General - %')
-                        ->where('campaign_name', 'NOT LIKE', 'Default%')
-                        ->update([
-                            'sbid_m' => (string)$sbidM,
-                            'apprSbid' => '' // Clear apprSbid to allow new bid push
-                        ]);
-                }
-
-                if ($updated > 0) {
-                    $updatedCount++;
-                }
             }
+
+            // Batch update L7 and L30 records for all campaigns (for consistency)
+            DB::table('ebay_priority_reports')
+                ->whereIn('campaign_id', $campaignIds)
+                ->whereIn('report_range', ['L7', 'L30'])
+                ->where('campaignStatus', 'RUNNING')
+                ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+                ->where('campaign_name', 'NOT LIKE', 'General - %')
+                ->where('campaign_name', 'NOT LIKE', 'Default%')
+                ->update([
+                    'sbid_m' => $sbidMString,
+                    'apprSbid' => '' // Clear apprSbid to allow new bid push
+                ]);
+
+            // Count total updated campaigns (yesterday + L1) - only count campaigns from our selected list
+            $totalUpdated = DB::table('ebay_priority_reports')
+                ->whereIn('campaign_id', $campaignIds) // Strictly limit to selected campaigns
+                ->whereIn('report_range', [$yesterday, 'L1'])
+                ->where('campaignStatus', 'RUNNING')
+                ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+                ->where('campaign_name', 'NOT LIKE', 'General - %')
+                ->where('campaign_name', 'NOT LIKE', 'Default%')
+                ->where('sbid_m', $sbidMString)
+                ->distinct()
+                ->count('campaign_id');
+
+            // Ensure we don't count more than we selected
+            $updatedCount = min($totalUpdated, count($campaignIds));
+            
+            // Log the results for debugging
+            Log::info('Bulk SBID M update completed', [
+                'requested_count' => count($campaignIds),
+                'updated_count' => $updatedCount,
+                'total_updated_query' => $totalUpdated
+            ]);
 
             return response()->json([
                 'status' => 200,

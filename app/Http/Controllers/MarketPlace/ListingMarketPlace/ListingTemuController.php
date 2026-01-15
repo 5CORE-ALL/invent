@@ -38,19 +38,23 @@ class ListingTemuController extends Controller
 
         $processedData = $productMasters->map(function ($item) use ($shopifyData, $statusData) {
             $childSku = $item->sku;
-            $item->INV = $shopifyData[$childSku]->inv ?? 0;
+            $inventory = $shopifyData[$childSku]->inv ?? 0;
+            $item->INV = $inventory;
             $item->L30 = $shopifyData[$childSku]->quantity ?? 0;
-            $item->nr_req = null;
-            $item->listed = null;
-            $item->buyer_link = null;
-            $item->seller_link = null;
+            
+            // Get status data
+            $statusValue = null;
             if (isset($statusData[$childSku])) {
                 $status = $statusData[$childSku]->value;
-                $item->nr_req = $status['nr_req'] ?? null;
-                $item->listed = $status['listed'] ?? null;
-                $item->buyer_link = $status['buyer_link'] ?? null;
-                $item->seller_link = $status['seller_link'] ?? null;
+                $statusValue = is_array($status) ? $status : (is_string($status) ? json_decode($status, true) : []);
             }
+            
+            // Set default values based on inventory (same as decrease page)
+            $item->nr_req = $statusValue['nr_req'] ?? ($inventory > 0 ? 'REQ' : 'NRL');
+            $item->listed = $statusValue['listed'] ?? ($inventory > 0 ? 'Pending' : 'Listed');
+            $item->buyer_link = $statusValue['buyer_link'] ?? null;
+            $item->seller_link = $statusValue['seller_link'] ?? null;
+            
             return $item;
         })->values();
 

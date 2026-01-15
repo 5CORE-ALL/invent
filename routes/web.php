@@ -1321,6 +1321,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu-pricing/save-sprice', [TemuController::class, 'saveTemuSprice']);
     Route::post('/temu-decrease-column-visibility', [TemuController::class, 'saveTemuDecreaseColumnVisibility']);
     Route::get('/temu-decrease-column-visibility', [TemuController::class, 'getTemuDecreaseColumnVisibility']);
+    Route::post('/temu-decrease/save-listing-status', [TemuController::class, 'saveListingStatus']);
     
     // Temu Metrics and Cell Update
     Route::get('/temu-metrics-history', [TemuController::class, 'getTemuMetricsHistory'])->name('temu.metrics.history');

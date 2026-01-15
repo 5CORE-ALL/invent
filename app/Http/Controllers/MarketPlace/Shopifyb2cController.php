@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use App\Models\AmazonChannelSummary;
 
 class Shopifyb2cController extends Controller
 {
@@ -746,6 +747,10 @@ class Shopifyb2cController extends Controller
     public function shopifyB2cDataJson()
     {
         $data = $this->getViewShopifyB2cTabularData();
+        
+        // Auto-save daily summary in background (non-blocking)
+        $this->saveDailySummaryIfNeeded($data ?? []);
+        
         return response()->json($data);
     }
 
@@ -1003,5 +1008,172 @@ class Shopifyb2cController extends Controller
         Cache::put($cacheKey, $visibility, now()->addDays(30));
         
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * Auto-save daily Shopify B2C summary snapshot (channel-wise)
+     * Matches JavaScript updateSummary() logic exactly
+     */
+    private function saveDailySummaryIfNeeded($products)
+    {
+        try {
+            $today = now()->toDateString();
+            
+            // No cache - always update when page loads
+            
+            // Filter: INV > 0 && nr_req === 'REQ' && not parent (EXACT JavaScript logic)
+            $filteredData = collect($products)->filter(function($p) {
+                $invCheck = floatval($p['INV'] ?? 0) > 0;
+                $reqCheck = ($p['nr_req'] ?? '') === 'REQ';
+                $notParent = !(isset($p['Parent']) && str_starts_with($p['Parent'], 'PARENT'));
+                
+                return $invCheck && $reqCheck && $notParent;
+            });
+            
+            if ($filteredData->isEmpty()) {
+                return; // No valid products
+            }
+            
+            // Initialize counters (EXACT JavaScript variable names)
+            $totalSkuCount = $filteredData->count();
+            $totalPft = 0;
+            $totalSales = 0;
+            $totalGpft = 0;
+            $totalPrice = 0;
+            $priceCount = 0;
+            $totalInv = 0;
+            $totalL30 = 0;
+            $totalB2BL30 = 0;
+            $zeroSoldCount = 0;
+            $moreSoldCount = 0;
+            $totalDil = 0;
+            $dilCount = 0;
+            $totalCogs = 0;
+            $totalRoi = 0;
+            $roiCount = 0;
+            $lessAmzCount = 0;
+            $moreAmzCount = 0;
+            $missingCount = 0;
+            
+            // Loop through each row (EXACT JavaScript forEach logic)
+            foreach ($filteredData as $row) {
+                $totalPft += floatval($row['Profit'] ?? 0);
+                $totalSales += floatval($row['Sales L30'] ?? 0);
+                // Don't sum GPFT% - we'll calculate it from totals
+                
+                $price = floatval($row['Price'] ?? 0);
+                if ($price > 0) {
+                    $totalPrice += $price;
+                    $priceCount++;
+                }
+                
+                $totalInv += floatval($row['INV'] ?? 0);
+                $totalL30 += floatval($row['L30'] ?? 0);
+                $totalB2BL30 += floatval($row['B2B L30'] ?? 0);
+                
+                // Count based on B2B L30 (not OV L30)
+                $b2bL30 = floatval($row['B2B L30'] ?? 0);
+                if ($b2bL30 == 0) {
+                    $zeroSoldCount++;
+                } else {
+                    $moreSoldCount++;
+                }
+                
+                $dil = floatval($row['DIL%'] ?? 0);
+                if ($dil > 0) {
+                    $totalDil += $dil;
+                    $dilCount++;
+                }
+                
+                // COGS = LP × B2B L30
+                $lp = floatval($row['LP_productmaster'] ?? 0);
+                $totalCogs += $lp * $b2bL30;
+                
+                $roi = floatval($row['ROI%'] ?? 0);
+                if ($roi != 0) {
+                    $totalRoi += $roi;
+                    $roiCount++;
+                }
+                
+                // Compare Price with Amazon Price
+                $amzPrice = floatval($row['A Price'] ?? 0);
+                if ($amzPrice > 0 && $price > 0) {
+                    if ($price < $amzPrice) {
+                        $lessAmzCount++;
+                    } elseif ($price > $amzPrice) {
+                        $moreAmzCount++;
+                    }
+                }
+                
+                // Count Missing (check 'Missing' field === 'M')
+                if (($row['Missing'] ?? '') === 'M') {
+                    $missingCount++;
+                }
+            }
+            
+            // Calculate averages and percentages (EXACT JavaScript logic)
+            $avgPrice = $priceCount > 0 ? $totalPrice / $priceCount : 0;
+            $avgGpft = $totalSales > 0 ? ($totalPft / $totalSales) * 100 : 0; // Calculate from totals, not average
+            $avgDil = $dilCount > 0 ? $totalDil / $dilCount : 0; // This will be multiplied by 100 in display
+            $avgRoi = $roiCount > 0 ? $totalRoi / $roiCount : 0;
+            
+            // Store ALL metrics in JSON (flexible!)
+            $summaryData = [
+                // Counts
+                'total_sku_count' => $totalSkuCount,
+                'sold_count' => $moreSoldCount,
+                'zero_sold_count' => $zeroSoldCount,
+                'missing_count' => $missingCount,
+                'less_amz_count' => $lessAmzCount,
+                'more_amz_count' => $moreAmzCount,
+                
+                // Financial Totals
+                'total_pft' => round($totalPft, 2),
+                'total_sales' => round($totalSales, 2),
+                'total_cogs' => round($totalCogs, 2),
+                
+                // Inventory
+                'total_inv' => round($totalInv, 2),
+                'total_l30' => round($totalL30, 2),
+                'total_b2b_l30' => round($totalB2BL30, 2),
+                
+                // Calculated Percentages & Averages
+                'avg_gpft' => round($avgGpft, 2),
+                'avg_dil' => round($avgDil, 2),
+                'avg_roi' => round($avgRoi, 2),
+                'avg_price' => round($avgPrice, 2),
+                
+                // Metadata
+                'total_products_count' => count($products),
+                'calculated_at' => now()->toDateTimeString(),
+                
+                // Active Filters
+                'filters_applied' => [
+                    'inventory' => 'more',  // INV > 0
+                    'nrl' => 'REQ',        // REQ only
+                ],
+            ];
+            
+            // Save or update as JSON (channel-wise)
+            AmazonChannelSummary::updateOrCreate(
+                [
+                    'channel' => 'shopify_b2c',
+                    'snapshot_date' => $today
+                ],
+                [
+                    'summary_data' => $summaryData,
+                    'notes' => 'Auto-saved daily snapshot (INV > 0, REQ only)',
+                ]
+            );
+            
+            Log::info("Daily Shopify B2C summary snapshot saved for {$today}", [
+                'sku_count' => $totalSkuCount,
+                'sold_count' => $moreSoldCount,
+            ]);
+            
+        } catch (\Exception $e) {
+            // Don't break the main response if summary save fails
+            Log::error('Error saving daily Shopify B2C summary: ' . $e->getMessage());
+        }
     }
 }
