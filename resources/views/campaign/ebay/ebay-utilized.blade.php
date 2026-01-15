@@ -1367,12 +1367,24 @@
                         title: "INV",
                         field: "INV",
                         visible: true,
-                        width: 60
+                        width: 60,
+                        titleFormatter: function(column) {
+                            return `
+                                <div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
+                                    <span>INV</span>
+                                    <button class="btn btn-sm btn-link p-0 toggle-inv-cols-btn" 
+                                            style="font-size: 15px; color: #cf2408; text-decoration: none; padding: 0; line-height: 1;" 
+                                            title="Toggle L30, DIL%, NRL, NRA columns">
+                                        <i class="fa-solid fa-circle-info"></i>
+                                    </button>
+                                </div>
+                            `;
+                        }
                     },
                     {
                         title: "OV L30",
                         field: "L30",
-                        visible: true,
+                        visible: false,
                         width: 60
                     },
                     {
@@ -1401,7 +1413,7 @@
                             }
                             return `<div class="text-center"><span style="color: #dc3545; font-weight: bold;">0%</span></div>`;
                         },
-                        visible: true,
+                        visible: false,
                         width: 60
                     },
                     {
@@ -1423,7 +1435,7 @@
                                 `;
                         },
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         width: 70
                     },
                     {
@@ -1450,7 +1462,7 @@
                                 `;
                         },
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         width: 70
                     },
                     {
@@ -2598,6 +2610,37 @@
                 }
                 // Show APR BID column
                 table.showColumn('apr_bid');
+
+                // Add click handler for INV "i" button to toggle L30, DIL%, NRL, NRA columns
+                setTimeout(function() {
+                    var invToggleBtn = document.querySelector('.toggle-inv-cols-btn');
+                    if (invToggleBtn) {
+                        invToggleBtn.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            // Toggle visibility of L30, DIL%, NRL, NRA columns
+                            var l30Col = table.getColumn('L30');
+                            var dilCol = table.getColumn('DIL %');
+                            var nrlCol = table.getColumn('NRL');
+                            var nraCol = table.getColumn('NR');
+                            
+                            if (l30Col && dilCol && nrlCol && nraCol) {
+                                var isL30Visible = l30Col.isVisible();
+                                // Toggle all columns
+                                if (isL30Visible) {
+                                    l30Col.hide();
+                                    dilCol.hide();
+                                    nrlCol.hide();
+                                    nraCol.hide();
+                                } else {
+                                    l30Col.show();
+                                    dilCol.show();
+                                    nrlCol.show();
+                                    nraCol.show();
+                                }
+                            }
+                        });
+                    }
+                }, 100);
 
                 // Add click handler for toggle metrics button
                 setTimeout(function() {
