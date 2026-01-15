@@ -227,19 +227,28 @@ class VerificationAdjustmentController extends Controller
         // Fetch product master
         $productMasterData = ProductMaster::all();
 
-        // Get SKUs and remove hidden ones
-        $skus = $productMasterData->pluck('sku')
+        // Get SKUs from product master
+        $originalSkus = $productMasterData->pluck('sku')
             ->filter()
             ->unique()
-            ->map(fn($sku) => $normalizeSku($sku))
             ->toArray();
+        
+        // Normalized SKUs for matching
+        $normalizedSkus = array_map(fn($sku) => $normalizeSku($sku), $originalSkus);
 
         // Fetch Shopify data from local DB (shopify_skus)
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->sku));
+        $shopifyData = ShopifySku::whereIn('sku', $originalSkus)
+            ->get()
+            ->keyBy(fn($item) => $normalizeSku($item->sku));
 
-        // Fetch verified inventory from local table (already latest)
-        $verifiedInventory = Inventory::whereIn('sku', $skus)
-            ->where('is_hide', 0)
+        // Fetch verified inventory - get latest record per SKU for ALL SKUs in product master
+        // This ensures all SKUs from product master are included, even if they have hidden inventory records
+        $latestInventoryIds = Inventory::whereIn('sku', $originalSkus)
+            ->select(DB::raw('MAX(id) as latest_id'))
+            ->groupBy('sku')
+            ->pluck('latest_id');
+
+        $verifiedInventory = Inventory::whereIn('id', $latestInventoryIds)
             ->get()
             ->keyBy(fn($inv) => $normalizeSku($inv->sku));
 
