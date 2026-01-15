@@ -2995,19 +2995,22 @@
                 
                 const $btn = $(this);
                 const sku = $btn.data('sku');
-                const currentVerified = $btn.data('verified') === '1';
-                const newVerified = !currentVerified;
+                // Read current verified state from attribute directly (more reliable than .data())
+                // Get the current value from the data attribute to avoid jQuery caching issues
+                const currentVerifiedAttr = $btn.attr('data-verified');
+                const currentVerified = currentVerifiedAttr === '1' || currentVerifiedAttr === 1 || currentVerifiedAttr === true;
+                const newVerified = !currentVerified; // Toggle the value (true becomes false, false becomes true)
                 
                 // Disable button during save
                 $btn.prop('disabled', true);
                 
-                // Save to server
+                // Save to server - send the new (toggled) value
                 $.ajax({
                     url: '/update-verified-status',
                     method: 'POST',
                     data: {
                         sku: sku,
-                        is_verified: newVerified ? 1 : 0, // Send as 1 or 0 for better compatibility
+                        is_verified: newVerified ? 1 : 0, // Send as 1 or 0 - this is the toggled value
                         _token: $('meta[name="csrf-token"]').attr('content')
                     },
                     success: function(response) {
@@ -3028,7 +3031,7 @@
                             
                             // Update button appearance
                             if (newVerified) {
-                                // Show only green dot when verified
+                                // Show green dot when verified
                                 $btn.removeClass('btn-warning btn-success').css({
                                     'background': 'none',
                                     'border': 'none',
@@ -3037,13 +3040,13 @@
                                 $btn.html('<i class="fas fa-circle" style="color: #28a745; font-size: 12px;"></i>');
                                 $btn.data('verified', '1');
                             } else {
-                                // Show yellow button with text when unverified
-                                $btn.removeClass('btn-success').addClass('btn-warning').css({
-                                    'background': '',
-                                    'border': '',
-                                    'padding': ''
+                                // Show red dot when unverified
+                                $btn.removeClass('btn-warning btn-success').css({
+                                    'background': 'none',
+                                    'border': 'none',
+                                    'padding': '0'
                                 });
-                                $btn.html('<i class="fas fa-exclamation-circle"></i> Unverified');
+                                $btn.html('<i class="fas fa-circle" style="color: #dc3545; font-size: 12px;"></i>');
                                 $btn.data('verified', '0');
                             }
                             
