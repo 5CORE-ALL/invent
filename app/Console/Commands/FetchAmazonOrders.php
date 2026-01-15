@@ -23,7 +23,7 @@ class FetchAmazonOrders extends Command
         {--fix-zero-prices : Fix items with $0 price by looking up from product_master or re-fetching}
         {--daily : Fetch orders for today only}
         {--yesterday : Fetch orders for yesterday only}
-        {--last-days=7 : Fetch orders for last N days (default: 7)}
+        {--last-days=30 : Fetch orders for last N days (default: 30)}
         {--new-only : Only fetch orders newer than the latest order in database}
         {--from= : Fetch orders from this date (Y-m-d format)}
         {--to= : Fetch orders to this date (Y-m-d format)}
@@ -35,7 +35,7 @@ class FetchAmazonOrders extends Command
      *
      * @var string
      */
-    protected $description = 'Fetch Amazon orders daily and insert into database with date-based storage';
+    protected $description = 'Fetch Amazon orders daily and insert into database (uses California/Pacific Time)';
 
     /**
      * Execute the console command.
@@ -74,19 +74,19 @@ class FetchAmazonOrders extends Command
             return;
         }
 
-        // Daily-based fetching options
+        // Daily-based fetching options (using California/Pacific Time)
         if ($this->option('daily')) {
-            $this->fetchDailyOrders($accessToken, Carbon::today());
+            $this->fetchDailyOrders($accessToken, Carbon::today('America/Los_Angeles'));
             return;
         }
 
         if ($this->option('yesterday')) {
-            $this->fetchDailyOrders($accessToken, Carbon::yesterday());
+            $this->fetchDailyOrders($accessToken, Carbon::yesterday('America/Los_Angeles'));
             return;
         }
 
         // Default: fetch orders for last N days
-        $lastDays = (int) ($this->option('last-days') ?: 7);
+        $lastDays = (int) ($this->option('last-days') ?: 30);
         $this->fetchLastDaysOrders($accessToken, $lastDays);
 
         // After inserting new orders, fetch items for any orders missing items
@@ -297,14 +297,15 @@ class FetchAmazonOrders extends Command
         $startDate = $date->copy()->startOfDay();
         
         // Amazon requires 2-minute delay - can't fetch orders newer than 2 minutes ago
-        $now = Carbon::now();
+        // Use California time for consistency
+        $now = Carbon::now('America/Los_Angeles');
         $twoMinutesAgo = $now->copy()->subMinutes(2);
         
         // For today: use current time minus 2 minutes as end time
         // For past dates: use end of day
-        if ($date->isToday()) {
+        if ($date->isToday('America/Los_Angeles')) {
             $endDate = $twoMinutesAgo;
-            $this->info("Fetching orders for {$date->toDateString()} (up to " . $endDate->format('H:i:s') . ")...");
+            $this->info("Fetching orders for {$date->toDateString()} (up to " . $endDate->format('H:i:s') . " PT)...");
         } else {
             $endDate = $date->copy()->endOfDay();
             // But still respect the 2-minute rule if date is recent
@@ -325,17 +326,17 @@ class FetchAmazonOrders extends Command
     }
 
     /**
-     * Fetch orders for the last N days
+     * Fetch orders for the last N days (based on California/Pacific Time)
      */
     private function fetchLastDaysOrders($accessToken, $days)
     {
-        $this->info("Fetching orders for last {$days} days (respecting Amazon's 2-minute delay)...");
+        $this->info("Fetching orders for last {$days} days (California Time, respecting Amazon's 2-minute delay)...");
         
         for ($i = 0; $i < $days; $i++) {
-            $date = Carbon::today()->subDays($i);
+            $date = Carbon::today('America/Los_Angeles')->subDays($i);
             
             // Skip if this would be too recent (less than 2 minutes ago)
-            $twoMinutesAgo = Carbon::now()->subMinutes(2);
+            $twoMinutesAgo = Carbon::now('America/Los_Angeles')->subMinutes(2);
             if ($i == 0 && $date->startOfDay()->greaterThan($twoMinutesAgo)) {
                 $this->info("Skipping {$date->toDateString()} - too recent (Amazon 2-minute rule)");
                 continue;
@@ -356,8 +357,8 @@ class FetchAmazonOrders extends Command
     private function fetchDateRange($accessToken)
     {
         $limit = $this->option('limit') ? (int) $this->option('limit') : null;
-        $startDate = Carbon::parse($this->option('from'));
-        $endDate = Carbon::parse($this->option('to'));
+        $startDate = Carbon::parse($this->option('from'))->startOfDay();
+        $endDate = Carbon::parse($this->option('to'))->endOfDay();
 
         $this->info("Fetching orders from {$startDate->toDateString()} to {$endDate->toDateString()}...");
         $this->info("Limit: " . ($limit ? "{$limit} orders" : "No limit (fetching all)"));
@@ -373,7 +374,7 @@ class FetchAmazonOrders extends Command
     }
 
     /**
-     * Fetch only new orders (from last order date to yesterday)
+     * Fetch only new orders (from last order date to yesterday, based on California Time)
      */
     private function fetchNewOrdersOnly($accessToken)
     {
@@ -381,17 +382,17 @@ class FetchAmazonOrders extends Command
         $limit = $this->option('limit') ? (int) $this->option('limit') : null;
         
         if (!$lastOrderDate) {
-            $this->info('No existing orders found. Fetching last 30 days...');
-            $startDate = Carbon::today()->subDays(30);
-            $endDate = Carbon::yesterday();
+            $this->info('No existing orders found. Fetching last 30 days (California Time)...');
+            $startDate = Carbon::today('America/Los_Angeles')->subDays(29)->startOfDay();
+            $endDate = Carbon::today('America/Los_Angeles')->endOfDay();
             $orders = $this->fetchOrders($accessToken, $startDate, $endDate, $limit);
             $this->info("Fetched " . count($orders) . " orders for last 30 days");
             $this->insertOrders($orders, null, $accessToken);
             return;
         }
 
-        $startDate = Carbon::parse($lastOrderDate)->addDay();
-        $endDate = Carbon::yesterday();
+        $startDate = Carbon::parse($lastOrderDate)->addDay()->startOfDay();
+        $endDate = Carbon::today('America/Los_Angeles')->endOfDay();
 
         if ($startDate->greaterThan($endDate)) {
             $this->info('Database is already up to date! Last order: ' . $lastOrderDate);
@@ -433,7 +434,7 @@ class FetchAmazonOrders extends Command
         $maxRetries = 5;
 
         $createdAfter = $startDate->toIso8601ZuluString();
-        $createdBefore = $endDate->endOfDay()->toIso8601ZuluString();
+        $createdBefore = $endDate->toIso8601ZuluString();
 
         do {
             // Check limit before fetching more

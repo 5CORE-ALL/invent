@@ -368,8 +368,8 @@ class ChannelMasterController extends Controller
         // Get metrics from marketplace_daily_metrics table (pre-calculated from ShipHub)
         $metrics = MarketplaceDailyMetric::where('channel', 'Amazon')->latest('date')->first();
         
-        // Get L60 data from ShipHub (33-66 days ago range)
-        // L30 is latest-32 days (33 days), so L60 is 33-65 days before latest (next 33 days)
+        // Get L60 data from ShipHub (30-59 days ago range)
+        // L30 is latest-29 days (30 days), so L60 is 30-59 days before latest (next 30 days)
         $latestDate = DB::connection('shiphub')
             ->table('orders')
             ->where('marketplace', '=', 'amazon')
@@ -377,8 +377,8 @@ class ChannelMasterController extends Controller
 
         if ($latestDate) {
             $latestDateCarbon = \Carbon\Carbon::parse($latestDate);
-            $l60StartDate = $latestDateCarbon->copy()->subDays(65); // 66 days ago
-            $l60EndDate = $latestDateCarbon->copy()->subDays(33); // 34 days ago
+            $l60StartDate = $latestDateCarbon->copy()->subDays(59)->startOfDay(); // 60 days ago
+            $l60EndDate = $latestDateCarbon->copy()->subDays(30)->endOfDay(); // 31 days ago
             
             // Get L60 order items from ShipHub
             $l60OrderItems = DB::connection('shiphub')
@@ -1526,10 +1526,10 @@ class ChannelMasterController extends Controller
         }
 
         $latestDateCarbon = \Carbon\Carbon::parse($latestDate);
-        $l30StartDate = $latestDateCarbon->copy()->subDays(32); // 33 days total
+        $l30StartDate = $latestDateCarbon->copy()->subDays(29)->startOfDay(); // 30 days total
         $l30EndDate = $latestDateCarbon->endOfDay();
-        $l60StartDate = $latestDateCarbon->copy()->subDays(65); // 66 days total
-        $l60EndDate = $latestDateCarbon->endOfDay();
+        $l60StartDate = $latestDateCarbon->copy()->subDays(59)->startOfDay(); // 60 days total
+        $l60EndDate = $latestDateCarbon->copy()->subDays(30)->endOfDay(); // End at 31 days ago
 
         // Get Walmart marketing percentage (default 80%)
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Walmart')->first();

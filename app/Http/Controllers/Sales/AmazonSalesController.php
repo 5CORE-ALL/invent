@@ -65,7 +65,7 @@ class AmazonSalesController extends Controller
         // DATA SOURCE: ShipHub Database (Amazon Marketplace Only)
         // ============================================================
         // This fetches last 30 days data from ShipHub centralized database
-        // Example: If latest date is Jan 5, 2026, it will fetch Dec 6, 2025 to Jan 5, 2026 (31 days)
+        // Example: If latest date is Jan 15, 2026, it will fetch Dec 17, 2025 to Jan 15, 2026 (30 days)
         // Filter: marketplace = 'amazon' AND order_status != 'Canceled'
         // ============================================================
         
@@ -79,9 +79,9 @@ class AmazonSalesController extends Controller
             return response()->json([]);
         }
         
-        // Calculate date range: Latest date minus 30 days = 31 days total
+        // Calculate date range: Latest date minus 29 days = 30 days total
         $latestDateCarbon = \Carbon\Carbon::parse($latestDate);
-        $startDate = $latestDateCarbon->copy()->subDays(32); // 33 days total (Dec 3 to Jan 4) - Best accuracy: 97.83%
+        $startDate = $latestDateCarbon->copy()->subDays(29)->startOfDay(); // 30 days total
         $startDateStr = $startDate->format('Y-m-d');
         $endDateStr = $latestDateCarbon->format('Y-m-d');
 
@@ -287,7 +287,7 @@ class AmazonSalesController extends Controller
     public function debugData(Request $request)
     {
         $yesterday = \Carbon\Carbon::yesterday();
-        $startDate = $yesterday->copy()->subDays(31); // 32 days total
+        $startDate = $yesterday->copy()->subDays(30); // 30 days total
         
         // Match Amazon's date range exactly (Dec 3 to Jan 2)
         $amazonStartDate = \Carbon\Carbon::parse('2025-12-03');
