@@ -247,6 +247,65 @@ class TemuAdsController extends Controller
             ]);
         }
 
+        // Save ROAS L30 or L7 to TemuCampaignReport
+        if ($field === 'roas_l30' || $field === 'roas_l7') {
+            // Get goods_id from TemuPricing
+            $temuPricing = TemuPricing::where('sku', $sku)
+                ->whereNotNull('goods_id')
+                ->first();
+
+            if (!$temuPricing || !$temuPricing->goods_id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'SKU does not have a goods_id mapping'
+                ], 400);
+            }
+
+            $goodsId = $temuPricing->goods_id;
+            $roasValue = (float) $value;
+            $reportRange = ($field === 'roas_l30') ? 'L30' : 'L7';
+
+            // Check if any records exist for this goods_id and report_range
+            $existingRecords = TemuCampaignReport::where('goods_id', $goodsId)
+                ->where('report_range', $reportRange)
+                ->get();
+
+            if ($existingRecords->count() > 0) {
+                // Update all existing records
+                $updated = TemuCampaignReport::where('goods_id', $goodsId)
+                    ->where('report_range', $reportRange)
+                    ->update(['roas' => $roasValue]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'ROAS ' . $reportRange . ' updated successfully',
+                    'updated_count' => $updated
+                ]);
+            } else {
+                // No records exist, create a new one
+                // Try to get goods_name from the other report_range record or use a default
+                $otherRecord = TemuCampaignReport::where('goods_id', $goodsId)
+                    ->where('report_range', $reportRange === 'L30' ? 'L7' : 'L30')
+                    ->first();
+                
+                $goodsName = $otherRecord ? $otherRecord->goods_name : null;
+
+                // Create a new record with minimal required fields
+                TemuCampaignReport::create([
+                    'goods_id' => $goodsId,
+                    'goods_name' => $goodsName,
+                    'report_range' => $reportRange,
+                    'roas' => $roasValue,
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'ROAS ' . $reportRange . ' created and saved successfully',
+                    'created' => true
+                ]);
+            }
+        }
+
         return response()->json([
             'success' => false,
             'message' => 'Invalid field'

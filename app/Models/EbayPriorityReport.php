@@ -26,6 +26,9 @@ class EbayPriorityReport extends Model
         'cpc_conversion_rate',
         'cpc_sale_amount_payout_currency',
         'cost_per_click',
+        'last_sbid',
+        'sbid_m',
+        'apprSbid',
         'cpc_ad_fees_payout_currency',
         'channels',
     ];

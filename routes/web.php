@@ -2713,6 +2713,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay/get-utilization-chart-data', 'getEbayUtilizationChartData');
         Route::post('/update-ebay-nr-data', 'updateNrData');
         Route::put('/update-ebay-keywords-bid-price', 'updateKeywordsBidDynamic');
+        Route::post('/save-ebay-sbid-m', 'saveEbaySbidM');
+        Route::post('/save-ebay-sbid-m-bulk', 'saveEbaySbidMBulk');
     });
     Route::controller(EbayACOSController::class)->group(function () {
         Route::get('/ebay-over-uti-acos-pink', 'ebayOverUtiAcosPink')->name('ebay-over-uti-acos-pink');
