@@ -1303,7 +1303,7 @@
                                 </button>
                             </div>
 
-                            <button id="activity-log-btn" class="btn btn-primary ml-2 me-2" data-toggle="modal" data-target="#activityLogModal">
+                            <button id="activity-log-btn" class="btn btn-dark ml-2 me-2" data-toggle="modal" data-target="#activityLogModal">
                                 <i class="fas fa-history"></i> Activity Log
                             </button>
 
@@ -2948,7 +2948,7 @@
             }
 
             // Verified status button click handler
-            // Copy SKU to clipboard functionality
+            // Copy SKU to clipboard functionality (for main table)
             $(document).on('click', '.copy-sku-icon', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -2958,11 +2958,29 @@
                     return;
                 }
                 
+                copyToClipboard(sku, e.target);
+            });
+            
+            // Copy SKU to clipboard functionality (for activity log table)
+            $(document).on('click', '.copy-sku-icon-activity', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const sku = $(this).data('sku') || '';
+                if (!sku) {
+                    return;
+                }
+                
+                copyToClipboard(sku, e.target);
+            });
+            
+            // Shared copy to clipboard function
+            function copyToClipboard(text, iconElement) {
                 // Use modern Clipboard API if available
                 if (navigator.clipboard && window.isSecureContext) {
-                    navigator.clipboard.writeText(sku).then(function() {
+                    navigator.clipboard.writeText(text).then(function() {
                         // Show success feedback
-                        const $icon = $(e.target);
+                        const $icon = $(iconElement);
                         const originalClass = $icon.attr('class');
                         $icon.removeClass('fa-copy').addClass('fa-check text-success');
                         $icon.attr('title', 'Copied!');
@@ -2974,13 +2992,13 @@
                     }).catch(function(err) {
                         console.error('Failed to copy: ', err);
                         // Fallback to old method
-                        fallbackCopyToClipboard(sku, e.target);
+                        fallbackCopyToClipboard(text, iconElement);
                     });
                 } else {
                     // Fallback for older browsers
-                    fallbackCopyToClipboard(sku, e.target);
+                    fallbackCopyToClipboard(text, iconElement);
                 }
-            });
+            }
             
             // Fallback copy function for older browsers
             function fallbackCopyToClipboard(text, iconElement) {
@@ -3790,13 +3808,20 @@
 
                         const formattedLossGain = lossGainValue !== 0 ? `${lossGainValue.toFixed(2)}` : '-';
 
+                        const copyButton = `<i class="fas fa-copy text-secondary copy-sku-icon-activity" 
+                            data-sku="${item.sku || ''}" 
+                            title="Copy SKU to clipboard" 
+                            style="cursor: pointer; margin-left: 5px; font-size: 12px; opacity: 0.7;" 
+                            onmouseover="this.style.opacity='1'" 
+                            onmouseout="this.style.opacity='0.7'"></i>`;
+                        
                         tableBody.append(`
                             <tr data-parent="${(parentTitle || '').toLowerCase()}" 
                                 data-sku="${(item.sku || '').toLowerCase()}" 
                                 data-person="${(item.approved_by || '').toLowerCase()}" 
                                 data-reason="${(item.reason || '').toLowerCase()}">
                                 <td>${parentTitle}</td>
-                                <td>${item.sku}</td>
+                                <td>${item.sku} ${copyButton}</td>
                                 <td>${item.verified_stock ?? '-'}</td>
                                 <td>${item.to_adjust ?? '-'}</td>
                                 <td>${formattedLossGain}</td>
