@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'verification-adjustment', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Verification Adjustment', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 <meta name="csrf-token" content="{{ csrf_token() }}">
 
 @section('css')
@@ -1283,7 +1283,7 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-body">
-                    <h4 class="header-title">verification & Adjustment</h4>
+                    <h4 class="header-title">Verification & Adjustment</h4>
 
                     <div class="d-flex justify-content-between align-items-center mb-3 w-100">
                         <!-- Left Side: Play Controls + Activity Log -->
