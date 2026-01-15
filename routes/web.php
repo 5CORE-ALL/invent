@@ -2719,6 +2719,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::put('/update-ebay-keywords-bid-price', 'updateKeywordsBidDynamic');
         Route::post('/save-ebay-sbid-m', 'saveEbaySbidM');
         Route::post('/save-ebay-sbid-m-bulk', 'saveEbaySbidMBulk');
+        Route::post('/clear-ebay-sbid-m-bulk', 'clearEbaySbidMBulk');
     });
     Route::controller(EbayACOSController::class)->group(function () {
         Route::get('/ebay-over-uti-acos-pink', 'ebayOverUtiAcosPink')->name('ebay-over-uti-acos-pink');

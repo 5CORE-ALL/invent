@@ -566,6 +566,103 @@ class Ebay2UtilizedAdsController extends Controller
             }
         }
 
+        // Fetch last_sbid from day-before-yesterday's date records
+        // This ensures last_sbid shows the PREVIOUS day's calculated SBID, not the current day's
+        $dayBeforeYesterday = date('Y-m-d', strtotime('-2 days'));
+        $yesterday = date('Y-m-d', strtotime('-1 day'));
+        $lastSbidMap = [];
+        $sbidMMap = [];
+        $apprSbidMap = [];
+        
+        $lastSbidReports = Ebay2PriorityReport::where('report_range', $dayBeforeYesterday)
+            ->where('campaignStatus', 'RUNNING')
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->get();
+        
+        foreach ($lastSbidReports as $report) {
+            if (!empty($report->campaign_id) && !empty($report->last_sbid)) {
+                $lastSbidMap[$report->campaign_id] = $report->last_sbid;
+            }
+        }
+
+        // Fetch sbid_m from yesterday's records first, then L1 as fallback
+        $sbidMReports = Ebay2PriorityReport::where(function($q) use ($yesterday) {
+                $q->where('report_range', $yesterday)
+                  ->orWhere('report_range', 'L1');
+            })
+            ->where('campaignStatus', 'RUNNING')
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->get()
+            ->sortBy(function($report) use ($yesterday) {
+                // Prioritize yesterday's records over L1
+                return $report->report_range === $yesterday ? 0 : 1;
+            })
+            ->groupBy('campaign_id');
+        
+        foreach ($sbidMReports as $campaignId => $reports) {
+            // Get the first report (prioritized by yesterday)
+            $report = $reports->first();
+            if (!empty($report->campaign_id) && !empty($report->sbid_m)) {
+                $sbidMMap[$report->campaign_id] = $report->sbid_m;
+            }
+        }
+
+        // Fetch apprSbid from yesterday's records first, then L1 as fallback
+        $apprSbidReports = Ebay2PriorityReport::where(function($q) use ($yesterday) {
+                $q->where('report_range', $yesterday)
+                  ->orWhere('report_range', 'L1');
+            })
+            ->where('campaignStatus', 'RUNNING')
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->get()
+            ->sortBy(function($report) use ($yesterday) {
+                // Prioritize yesterday's records over L1
+                return $report->report_range === $yesterday ? 0 : 1;
+            })
+            ->groupBy('campaign_id');
+        
+        foreach ($apprSbidReports as $campaignId => $reports) {
+            // Get the first report (prioritized by yesterday)
+            $report = $reports->first();
+            if (!empty($report->campaign_id) && !empty($report->apprSbid)) {
+                $apprSbidMap[$report->campaign_id] = $report->apprSbid;
+            }
+        }
+
+        // Add last_sbid, sbid_m, and apprSbid to campaignMap
+        foreach ($campaignMap as $key => $row) {
+            $campaignId = $row['campaign_id'] ?? '';
+            if (!empty($campaignId)) {
+                if (isset($lastSbidMap[$campaignId])) {
+                    $campaignMap[$key]['last_sbid'] = $lastSbidMap[$campaignId];
+                } else {
+                    $campaignMap[$key]['last_sbid'] = '';
+                }
+                
+                if (isset($sbidMMap[$campaignId])) {
+                    $campaignMap[$key]['sbid_m'] = $sbidMMap[$campaignId];
+                } else {
+                    $campaignMap[$key]['sbid_m'] = '';
+                }
+                
+                if (isset($apprSbidMap[$campaignId])) {
+                    $campaignMap[$key]['apprSbid'] = $apprSbidMap[$campaignId];
+                } else {
+                    $campaignMap[$key]['apprSbid'] = '';
+                }
+            } else {
+                $campaignMap[$key]['last_sbid'] = '';
+                $campaignMap[$key]['sbid_m'] = '';
+                $campaignMap[$key]['apprSbid'] = '';
+            }
+        }
+
         // Convert map to array
         foreach ($campaignMap as $campaignId => $row) {
             $result[] = (object) $row;
@@ -664,6 +761,16 @@ class Ebay2UtilizedAdsController extends Controller
             ->where('campaign_name', 'NOT LIKE', 'Default%')
             ->distinct()
             ->count('campaign_name');
+
+        // Save calculated SBID to last_sbid column (same as main eBay controller)
+        // This is saved for tracking: to compare calculated SBID with what was actually updated on eBay
+        // When cron runs and new data comes, page will refresh, so we need to save SBID to database
+        try {
+            $this->calculateAndSaveSBID($result);
+        } catch (\Exception $e) {
+            Log::error("Error calculating and saving SBID for eBay2: " . $e->getMessage());
+            // Don't fail the entire request if SBID calculation fails
+        }
 
         return response()->json([
             'message' => 'fetched successfully',
@@ -773,60 +880,221 @@ class Ebay2UtilizedAdsController extends Controller
 
     public function updateEbay2SbidM(Request $request)
     {
-        $campaignId = $request->input('campaign_id');
-        $sbidM = $request->input('sbid_m');
+        try {
+            $campaignId = $request->input('campaign_id');
+            $sbidM = $request->input('sbid_m');
 
-        if (empty($campaignId)) {
-            return response()->json([
-                'status' => 400,
-                'message' => "Campaign ID is required"
+            if (!$campaignId || !$sbidM) {
+                return response()->json([
+                    'status' => 400,
+                    'message' => 'Campaign ID and SBID M are required'
+                ], 400);
+            }
+
+            $sbidM = floatval($sbidM);
+            if ($sbidM <= 0) {
+                return response()->json([
+                    'status' => 400,
+                    'message' => 'SBID M must be greater than 0'
+                ], 400);
+            }
+
+            $yesterday = date('Y-m-d', strtotime('-1 day'));
+
+            // Update eBay2 campaigns - try yesterday first, then L1, L7, L30 as fallback
+            // Clear apprSbid when sbid_m is updated so new bid can be pushed
+            // First try yesterday's date
+            $updated = DB::table('ebay_2_priority_reports')
+                ->where('campaign_id', $campaignId)
+                ->where('report_range', $yesterday)
+                ->where('campaignStatus', 'RUNNING')
+                ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+                ->where('campaign_name', 'NOT LIKE', 'General - %')
+                ->where('campaign_name', 'NOT LIKE', 'Default%')
+                ->update([
+                    'sbid_m' => (string)$sbidM,
+                    'apprSbid' => '' // Clear apprSbid to allow new bid push
+                ]);
+            
+            // If no record found for yesterday, try L1
+            if ($updated === 0) {
+                $updated = DB::table('ebay_2_priority_reports')
+                    ->where('campaign_id', $campaignId)
+                    ->where('report_range', 'L1')
+                    ->where('campaignStatus', 'RUNNING')
+                    ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+                    ->where('campaign_name', 'NOT LIKE', 'General - %')
+                    ->where('campaign_name', 'NOT LIKE', 'Default%')
+                    ->update([
+                        'sbid_m' => (string)$sbidM,
+                        'apprSbid' => '' // Clear apprSbid to allow new bid push
+                    ]);
+            }
+
+            // Also update L7 and L30 records for consistency (don't fail if they don't exist)
+            if ($updated > 0) {
+                DB::table('ebay_2_priority_reports')
+                    ->where('campaign_id', $campaignId)
+                    ->whereIn('report_range', ['L7', 'L30'])
+                    ->where('campaignStatus', 'RUNNING')
+                    ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+                    ->where('campaign_name', 'NOT LIKE', 'General - %')
+                    ->where('campaign_name', 'NOT LIKE', 'Default%')
+                    ->update([
+                        'sbid_m' => (string)$sbidM,
+                        'apprSbid' => '' // Clear apprSbid to allow new bid push
+                    ]);
+                
+                return response()->json([
+                    'status' => 200,
+                    'message' => 'SBID M saved successfully',
+                    'sbid_m' => $sbidM
+                ]);
+            } else {
+                // Log for debugging
+                Log::error('SBID M save failed', [
+                    'campaign_id' => $campaignId,
+                    'yesterday' => $yesterday,
+                    'sbid_m' => $sbidM
+                ]);
+                
+                return response()->json([
+                    'status' => 404,
+                    'message' => 'Campaign not found. Please ensure the campaign exists for yesterday\'s date or L1.'
+                ], 404);
+            }
+        } catch (\Exception $e) {
+            Log::error('Error saving eBay2 SBID M: ' . $e->getMessage(), [
+                'campaign_id' => $request->input('campaign_id'),
+                'trace' => $e->getTraceAsString()
             ]);
+            
+            return response()->json([
+                'status' => 500,
+                'message' => 'Error saving SBID M: ' . $e->getMessage()
+            ], 500);
         }
-
-        // Update sbid_m for all reports with this campaign_id (L7, L1, L30)
-        $updated = Ebay2PriorityReport::where('campaign_id', $campaignId)
-            ->update(['sbid_m' => $sbidM !== null && $sbidM !== '' ? (float)$sbidM : null]);
-
-        return response()->json([
-            'status' => 200,
-            'message' => "SBID M updated successfully",
-            'updated_count' => $updated
-        ]);
     }
 
     public function bulkUpdateEbay2SbidM(Request $request)
     {
-        $campaignIds = $request->input('campaign_ids', []);
-        $sbidMValues = $request->input('sbid_m_values', []);
+        try {
+            $campaignIds = $request->input('campaign_ids', []);
+            $sbidM = $request->input('sbid_m');
 
-        if (empty($campaignIds) || empty($sbidMValues)) {
+            // Filter out invalid campaign IDs
+            $campaignIds = array_filter($campaignIds, function($id) {
+                return !empty($id) && $id !== null && $id !== '';
+            });
+            $campaignIds = array_values($campaignIds); // Re-index array
+
+            if (empty($campaignIds)) {
+                Log::warning('bulkUpdateEbay2SbidM: No valid campaign IDs provided after filtering.', ['input_campaign_ids' => $request->input('campaign_ids')]);
+                return response()->json([
+                    'status' => 400,
+                    'message' => 'No valid campaign IDs provided'
+                ], 400);
+            }
+
+            if (!$sbidM) {
+                return response()->json([
+                    'status' => 400,
+                    'message' => 'SBID M is required'
+                ], 400);
+            }
+
+            $sbidM = floatval($sbidM);
+            if ($sbidM <= 0) {
+                return response()->json([
+                    'status' => 400,
+                    'message' => 'SBID M must be greater than 0'
+                ], 400);
+            }
+
+            $yesterday = date('Y-m-d', strtotime('-1 day'));
+            $sbidMString = (string)$sbidM;
+
+            Log::info('bulkUpdateEbay2SbidM: Attempting to update ' . count($campaignIds) . ' campaigns.', ['campaign_ids' => $campaignIds, 'sbid_m' => $sbidM]);
+
+            // Define common conditions for the queries
+            $commonConditions = function ($query) {
+                $query->where('campaignStatus', 'RUNNING')
+                    ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+                    ->where('campaign_name', 'NOT LIKE', 'General - %')
+                    ->where('campaign_name', 'NOT LIKE', 'Default%');
+            };
+
+            // 1. Update for yesterday's date (most common case)
+            DB::table('ebay_2_priority_reports')
+                ->whereIn('campaign_id', $campaignIds)
+                ->where('report_range', $yesterday)
+                ->where($commonConditions)
+                ->update([
+                    'sbid_m' => $sbidMString,
+                    'apprSbid' => '' // Clear apprSbid to allow new bid push
+                ]);
+
+            // 2. Get campaign IDs that were successfully updated for yesterday
+            $updatedYesterdayCampaignIds = DB::table('ebay_2_priority_reports')
+                ->whereIn('campaign_id', $campaignIds)
+                ->where('report_range', $yesterday)
+                ->where($commonConditions)
+                ->where('sbid_m', $sbidMString) // Verify it was updated with the new value
+                ->pluck('campaign_id')
+                ->toArray();
+
+            $remainingCampaignIdsForL1 = array_diff($campaignIds, $updatedYesterdayCampaignIds);
+
+            // 3. Update for L1 (fallback for campaigns not found in yesterday)
+            if (!empty($remainingCampaignIdsForL1)) {
+                DB::table('ebay_2_priority_reports')
+                    ->whereIn('campaign_id', $remainingCampaignIdsForL1)
+                    ->where('report_range', 'L1')
+                    ->where($commonConditions)
+                    ->update([
+                        'sbid_m' => $sbidMString,
+                        'apprSbid' => '' // Clear apprSbid to allow new bid push
+                    ]);
+            }
+
+            // 4. Update L7 and L30 records for all original selected campaigns (for consistency)
+            DB::table('ebay_2_priority_reports')
+                ->whereIn('campaign_id', $campaignIds)
+                ->whereIn('report_range', ['L7', 'L30'])
+                ->where($commonConditions)
+                ->update([
+                    'sbid_m' => $sbidMString,
+                    'apprSbid' => '' // Clear apprSbid to allow new bid push
+                ]);
+
+            // Count total updated campaigns (yesterday + L1)
+            $totalUpdatedCount = DB::table('ebay_2_priority_reports')
+                ->whereIn('campaign_id', $campaignIds)
+                ->whereIn('report_range', [$yesterday, 'L1'])
+                ->where($commonConditions)
+                ->where('sbid_m', $sbidMString)
+                ->distinct('campaign_id')
+                ->count('campaign_id');
+
+            Log::info('bulkUpdateEbay2SbidM: Successfully updated ' . $totalUpdatedCount . ' out of ' . count($campaignIds) . ' requested campaigns.', ['campaign_ids' => $campaignIds, 'updated_count' => $totalUpdatedCount]);
+
             return response()->json([
-                'status' => 400,
-                'message' => "Campaign IDs and SBID M values are required"
+                'status' => 200,
+                'message' => "SBID M saved successfully for {$totalUpdatedCount} campaign(s)",
+                'updated_count' => $totalUpdatedCount,
+                'total_count' => count($campaignIds)
             ]);
-        }
+        } catch (\Exception $e) {
+            Log::error('Error saving eBay2 SBID M bulk: ' . $e->getMessage(), [
+                'campaign_ids' => $request->input('campaign_ids'),
+                'trace' => $e->getTraceAsString()
+            ]);
 
-        if (count($campaignIds) !== count($sbidMValues)) {
             return response()->json([
-                'status' => 400,
-                'message' => "Campaign IDs and SBID M values count mismatch"
-            ]);
+                'status' => 500,
+                'message' => 'Error saving SBID M: ' . $e->getMessage()
+            ], 500);
         }
-
-        $updatedCount = 0;
-        foreach ($campaignIds as $index => $campaignId) {
-            $sbidM = $sbidMValues[$index];
-            $updated = Ebay2PriorityReport::where('campaign_id', $campaignId)
-                ->update(['sbid_m' => $sbidM !== null && $sbidM !== '' ? (float)$sbidM : null]);
-            $updatedCount += $updated;
-        }
-
-        return response()->json([
-            'status' => 200,
-            'message' => "SBID M bulk updated successfully",
-            'updated_count' => $updatedCount,
-            'total_campaigns' => count($campaignIds)
-        ]);
     }
 
     public function getCampaignChartData(Request $request)
@@ -1504,6 +1772,56 @@ class Ebay2UtilizedAdsController extends Controller
                     }
                 }
             }
+            
+            // Track successful campaigns for apprSbid update
+            if ($campaignSuccess && $newBid > 0) {
+                $successfulCampaigns[$campaignId] = $newBid;
+            }
+        }
+
+        // Save apprSbid for successfully updated campaigns
+        if (!empty($successfulCampaigns)) {
+            $yesterday = date('Y-m-d', strtotime('-1 day'));
+            
+            foreach ($successfulCampaigns as $campaignId => $bidValue) {
+                // Try to update yesterday's records first
+                $updated = DB::table('ebay_2_priority_reports')
+                    ->where('campaign_id', $campaignId)
+                    ->where('report_range', $yesterday)
+                    ->where('campaignStatus', 'RUNNING')
+                    ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+                    ->where('campaign_name', 'NOT LIKE', 'General - %')
+                    ->where('campaign_name', 'NOT LIKE', 'Default%')
+                    ->update([
+                        'apprSbid' => (string)$bidValue
+                    ]);
+                
+                // If no record found for yesterday, try L1
+                if ($updated === 0) {
+                    DB::table('ebay_2_priority_reports')
+                        ->where('campaign_id', $campaignId)
+                        ->where('report_range', 'L1')
+                        ->where('campaignStatus', 'RUNNING')
+                        ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+                        ->where('campaign_name', 'NOT LIKE', 'General - %')
+                        ->where('campaign_name', 'NOT LIKE', 'Default%')
+                        ->update([
+                            'apprSbid' => (string)$bidValue
+                        ]);
+                }
+                
+                // Also update L7 and L30 records for consistency
+                DB::table('ebay_2_priority_reports')
+                    ->where('campaign_id', $campaignId)
+                    ->whereIn('report_range', ['L7', 'L30'])
+                    ->where('campaignStatus', 'RUNNING')
+                    ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+                    ->where('campaign_name', 'NOT LIKE', 'General - %')
+                    ->where('campaign_name', 'NOT LIKE', 'Default%')
+                    ->update([
+                        'apprSbid' => (string)$bidValue
+                    ]);
+            }
         }
 
         return response()->json([
@@ -2010,6 +2328,184 @@ class Ebay2UtilizedAdsController extends Controller
                 'error' => $e->getMessage(),
                 'data' => []
             ]);
+        }
+    }
+
+    /**
+     * Calculate and save SBID to last_sbid column for eBay2 campaigns
+     * This matches the frontend SBID calculation logic from ebay2-utilized.blade.php
+     */
+    private function calculateAndSaveSBID($result)
+    {
+        // Save to yesterday's date because we're calculating SBID for yesterday's report data
+        $yesterday = date('Y-m-d', strtotime('-1 day'));
+        
+        // Prepare batch updates
+        $updates = [];
+        
+        foreach ($result as $row) {
+            // Skip if no campaign_id
+            if (empty($row->campaign_id)) {
+                continue;
+            }
+
+            // Check if NRA (🔴) is selected - skip if NRA
+            $nraValue = isset($row->NR) ? trim($row->NR) : '';
+            if ($nraValue === 'NRA') {
+                continue; // Skip update if NRA is selected
+            }
+
+            $l1Cpc = floatval($row->l1_cpc ?? 0);
+            $l7Cpc = floatval($row->l7_cpc ?? 0);
+            $budget = floatval($row->campaignBudgetAmount ?? 0);
+            $l7Spend = floatval($row->l7_spend ?? 0);
+            $l1Spend = floatval($row->l1_spend ?? 0);
+            $inv = floatval($row->INV ?? 0);
+
+            // Calculate UB7 and UB1
+            $ub7 = 0;
+            $ub1 = 0;
+            if ($budget > 0) {
+                $ub7 = ($l7Spend / ($budget * 7)) * 100;
+                $ub1 = ($l1Spend / $budget) * 100;
+            }
+
+            // Calculate SBID using the same logic as ebay2-utilized.blade.php (no price field)
+            $sbid = 0;
+            
+            // Special rule: If UB7 = 0% and UB1 = 0%, set SBID to 0.50
+            if ($ub7 == 0 && $ub1 == 0) {
+                $sbid = 0.50;
+            } 
+            // Rule: If both UB7 and UB1 are above 99%, set SBID as L1_CPC * 0.90
+            elseif ($ub7 > 99 && $ub1 > 99) {
+                if ($l1Cpc > 0) {
+                    $sbid = floor($l1Cpc * 0.90 * 100) / 100;
+                } elseif ($l7Cpc > 0) {
+                    $sbid = floor($l7Cpc * 0.90 * 100) / 100;
+                } else {
+                    $sbid = 0;
+                }
+            } 
+            // For 'all' utilization type, determine individual campaign's utilization status
+            else {
+                // Determine utilization status (same logic as combinedFilter in blade)
+                $isOverUtilized = false;
+                $isUnderUtilized = false;
+                
+                // Check over-utilized first (priority 1)
+                if ($ub7 > 99 && $ub1 > 99) {
+                    $isOverUtilized = true;
+                }
+                
+                // Check under-utilized (priority 2: only if not over-utilized)
+                if (!$isOverUtilized && $ub7 < 66 && $ub1 < 66 && $inv > 0) {
+                    $isUnderUtilized = true;
+                }
+                
+                // Apply SBID logic based on determined status
+                if ($isOverUtilized) {
+                    // If L1 CPC > 1.25, use L1 CPC * 0.80, otherwise use L1 CPC * 0.90
+                    $cpcToUse = ($l1Cpc && !is_nan($l1Cpc) && $l1Cpc > 0) ? $l1Cpc : (($l7Cpc && !is_nan($l7Cpc) && $l7Cpc > 0) ? $l7Cpc : 0);
+                    if ($cpcToUse > 1.25) {
+                        $sbid = floor($cpcToUse * 0.80 * 100) / 100;
+                    } elseif ($cpcToUse > 0) {
+                        $sbid = floor($cpcToUse * 0.90 * 100) / 100;
+                    } else {
+                        $sbid = 0.50; // Fallback when both CPCs are 0
+                    }
+                } elseif ($isUnderUtilized) {
+                    // Check if UB7 and UB1 are both 0% (already handled above, but keep for consistency)
+                    if ($ub7 == 0 && $ub1 == 0) {
+                        $sbid = 0.50;
+                    } else {
+                        // Use L1CPC if available (not 0, not NaN), otherwise use L7CPC
+                        $cpcToUse = ($l1Cpc && !is_nan($l1Cpc) && $l1Cpc > 0) ? $l1Cpc : (($l7Cpc && !is_nan($l7Cpc) && $l7Cpc > 0) ? $l7Cpc : 0);
+                        if ($cpcToUse > 0) {
+                            // Ensure numeric comparison
+                            $cpcToUse = floatval($cpcToUse);
+                            if ($cpcToUse < 0.10) {
+                                $sbid = floor($cpcToUse * 2.00 * 100) / 100;
+                            } elseif ($cpcToUse >= 0.10 && $cpcToUse <= 0.20) {
+                                $sbid = floor($cpcToUse * 1.50 * 100) / 100;
+                            } elseif ($cpcToUse >= 0.21 && $cpcToUse <= 0.30) {
+                                $sbid = floor($cpcToUse * 1.25 * 100) / 100;
+                            } else {
+                                $sbid = floor($cpcToUse * 1.10 * 100) / 100;
+                            }
+                        } else {
+                            $sbid = 0.50; // Fallback when both CPCs are 0
+                        }
+                    }
+                } else {
+                    // Correctly-utilized: use L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
+                    if ($l1Cpc > 0) {
+                        $sbid = floor($l1Cpc * 0.90 * 100) / 100;
+                    } elseif ($l7Cpc > 0) {
+                        $sbid = floor($l7Cpc * 0.90 * 100) / 100;
+                    } else {
+                        $sbid = 0.50; // Fallback when both CPCs are 0
+                    }
+                }
+            }
+            
+            // Only save if SBID > 0
+            if ($sbid > 0) {
+                $sbidValue = (string)$sbid;
+                $updates[$row->campaign_id] = $sbidValue;
+            }
+        }
+
+        // Perform efficient bulk updates using WHERE IN
+        // Update only yesterday's actual date records (not L1, L7, L30) for tracking purposes
+        if (!empty($updates)) {
+            // Check if last_sbid column exists in the table
+            $columnExists = false;
+            try {
+                $columns = DB::select("SHOW COLUMNS FROM ebay_2_priority_reports LIKE 'last_sbid'");
+                $columnExists = !empty($columns);
+            } catch (\Exception $e) {
+                Log::warning("Could not check for last_sbid column in ebay_2_priority_reports: " . $e->getMessage());
+            }
+            
+            if (!$columnExists) {
+                Log::warning("last_sbid column does not exist in ebay_2_priority_reports table. Skipping SBID save.");
+                return; // Skip update if column doesn't exist
+            }
+            
+            // Update in batches of 50 to avoid query size limits
+            $chunks = array_chunk($updates, 50, true);
+            foreach ($chunks as $chunk) {
+                $campaignIds = array_keys($chunk);
+                
+                // Build CASE statement for bulk update
+                $cases = [];
+                $bindings = [];
+                foreach ($chunk as $campaignId => $sbidValue) {
+                    $cases[] = "WHEN ? THEN ?";
+                    $bindings[] = $campaignId;
+                    $bindings[] = $sbidValue;
+                }
+                
+                $caseSql = implode(' ', $cases);
+                $placeholders = str_repeat('?,', count($campaignIds) - 1) . '?';
+                
+                // Single query to update all records - only for yesterday's date (Y-m-d format)
+                // Save to last_sbid column for tracking purposes
+                // report_range should be the date in Y-m-d format (not L1, L7, L30)
+                try {
+                    DB::statement("
+                        UPDATE ebay_2_priority_reports 
+                        SET last_sbid = CASE campaign_id {$caseSql} END
+                        WHERE campaign_id IN ({$placeholders})
+                        AND report_range = ?
+                        AND report_range NOT IN ('L7', 'L1', 'L30')
+                        AND campaignStatus = 'RUNNING'
+                    ", array_merge($bindings, $campaignIds, [$yesterday]));
+                } catch (\Exception $e) {
+                    Log::error("Error updating last_sbid in ebay_2_priority_reports: " . $e->getMessage());
+                }
+            }
         }
     }
 
