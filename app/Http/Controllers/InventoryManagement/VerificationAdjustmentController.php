@@ -224,7 +224,8 @@ class VerificationAdjustmentController extends Controller
             return $sku;
         };
 
-        // Fetch product master
+        // OVERRIDE: Fetch ALL product master data - NO FILTERING
+        // This ensures ALL SKUs from product_master are returned regardless of any other conditions
         $productMasterData = ProductMaster::all();
 
         // Get SKUs from product master
@@ -241,8 +242,8 @@ class VerificationAdjustmentController extends Controller
             ->get()
             ->keyBy(fn($item) => $normalizeSku($item->sku));
 
-        // Fetch verified inventory - get latest record per SKU for ALL SKUs in product master
-        // This ensures all SKUs from product master are included, even if they have hidden inventory records
+        // OVERRIDE: Fetch verified inventory for ALL SKUs - NO FILTERING BY is_hide
+        // Get latest record per SKU for ALL SKUs in product master, regardless of is_hide status
         $latestInventoryIds = Inventory::whereIn('sku', $originalSkus)
             ->select(DB::raw('MAX(id) as latest_id'))
             ->groupBy('sku')
@@ -252,7 +253,7 @@ class VerificationAdjustmentController extends Controller
             ->get()
             ->keyBy(fn($inv) => $normalizeSku($inv->sku));
 
-        // Merge everything
+        // OVERRIDE: Merge everything - return ALL SKUs from product_master without any filtering
         $data = $productMasterData->map(function ($item) use ($shopifyData, $verifiedInventory, $normalizeSku) {
             $sku = $normalizeSku($item->sku ?? '');
             $values = $item->values;
@@ -282,6 +283,10 @@ class VerificationAdjustmentController extends Controller
                 $adjustedQty = isset($item->TO_ADJUST) && is_numeric($item->TO_ADJUST) ? floatval($item->TO_ADJUST) : 0;
                 $item->LOSS_GAIN = round($adjustedQty * $lp, 2);
             }
+
+            // OVERRIDE: Explicitly set IS_HIDE to 0 for all items to override any filtering
+            $item->IS_HIDE = 0;
+            $item->is_hide = 0;
 
             return $item;
         });

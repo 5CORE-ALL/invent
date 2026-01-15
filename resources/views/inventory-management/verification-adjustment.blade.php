@@ -2150,6 +2150,10 @@
                                         return skuVal.startsWith('PARENT');
                                     })(),
 
+                                    // OVERRIDE: Set IS_HIDE to 0 for all items to ensure all SKUs are displayed
+                                    IS_HIDE: 0,
+                                    is_hide: 0,
+
                                     raw_data: item || {} // Full original row, in case needed later
                                 };
                             });
@@ -2182,9 +2186,9 @@
                     return;
                 }
 
-                // const visibleRows = filteredData.filter(item => !item.IS_HIDE);
-                // filteredData = filteredData.filter(item => item && item.IS_HIDE !== 1);
-                const visibleRows = filteredData.filter(item => item && item.IS_HIDE !== 1);
+                // OVERRIDE: Display ALL SKUs from product_master - NO FILTERING
+                // All filtering logic based on IS_HIDE or is_hide has been removed
+                // All SKUs from product_master will be displayed regardless of any other conditions
 
 
                 if (filteredData.length === 0) {
@@ -2244,12 +2248,12 @@
 
                 // Now render rows from orderedRows
                 orderedRows.forEach((item, rowIndex) => {
-                    // Hide row if SKU contains parent as string
+                    // OVERRIDE: Display ALL SKUs - removed filtering logic that hides rows
+                    // Previously: Hide row if SKU contains parent as string - THIS HAS BEEN REMOVED
+                    // All SKUs from product_master will be displayed
+                    
+                    // Define sku variable for use in rendering (no filtering applied)
                     const sku = item.SKU || '';
-                    const parent = item.Parent || '';
-                    if (parent && sku && sku.toUpperCase().includes(parent.toUpperCase())) {
-                        return; // Skip this row
-                    }
 
                     const $row = $('<tr>');
 
@@ -2744,12 +2748,9 @@
                     return;
                 }
 
-                const visibleData = filteredData.filter(item => item.is_hide != 1);
-
-                if (visibleData.length === 0) {
-                    alert("No visible data to export!");
-                    return;
-                }
+                // OVERRIDE: Export ALL SKUs - NO FILTERING
+                // All filtering logic based on is_hide has been removed
+                // All SKUs from product_master will be exported
 
                 // Convert filteredData to flat JSON
                 const rows = filteredData.map(item => ({
