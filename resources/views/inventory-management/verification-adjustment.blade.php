@@ -139,6 +139,36 @@
             border-top: 1px solid #ddd;
         }
 
+        /* ========== VERIFIED STATUS BUTTONS ========== */
+        .verified-status-btn {
+            min-width: 120px;
+            font-size: 12px;
+            padding: 4px 8px;
+        }
+
+        .verified-filter-btn {
+            margin-right: 5px;
+        }
+
+        .verified-filter-btn.active {
+            box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.5);
+        }
+
+        /* ========== DOUBTFUL STATUS BUTTONS ========== */
+        .doubtful-status-btn {
+            min-width: 100px;
+            font-size: 12px;
+            padding: 4px 8px;
+        }
+
+        .doubtful-filter-btn {
+            margin-right: 5px;
+        }
+
+        .doubtful-filter-btn.active {
+            box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.5);
+        }
+
         /* ========== SORTING ========== */
         .sortable {
             cursor: pointer;
@@ -202,6 +232,102 @@
 
         .sku-link a:hover {
             text-decoration: underline;
+        }
+
+        /* ========== SKU HISTORY EYE ICON ========== */
+        .view-sku-history-icon {
+            transition: all 0.2s ease;
+        }
+
+        .view-sku-history-icon:hover {
+            transform: scale(1.2);
+            color: #0056b3 !important;
+        }
+
+        .view-parent-history-icon {
+            transition: all 0.2s ease;
+        }
+
+        .view-parent-history-icon:hover {
+            transform: scale(1.2);
+            color: #17a2b8 !important;
+        }
+
+        /* ========== HORIZONTAL HEADERS (2X SIZE) ========== */
+        .horizontal-header {
+            text-align: center;
+            white-space: normal;
+            vertical-align: middle;
+            font-size: 2em !important; /* 2x the normal size (24px -> 48px) */
+            font-weight: bold;
+            line-height: 1.2;
+            padding: 15px 10px !important;
+            width: auto;
+            min-width: 100px;
+        }
+
+        .horizontal-header .header-text {
+            display: block;
+            width: 100%;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        .horizontal-header .dropdown-search-container {
+            margin-top: 10px;
+            width: 100%;
+        }
+
+        .horizontal-header .search-input {
+            margin-top: 8px;
+            font-size: 0.5em !important; /* Half size for search inputs (24px -> 12px) */
+            width: 100%;
+            max-width: 150px;
+            margin: 8px auto 0;
+        }
+
+        .horizontal-header .sort-arrow {
+            font-size: 0.7em !important; /* Slightly smaller for sort arrow */
+            vertical-align: middle;
+        }
+
+        .horizontal-header .sortable-header {
+            display: inline-block;
+        }
+
+        /* ========== ACTIVITY LOG FILTER BAR ========== */
+        .activity-log-filter-bar {
+            border-radius: 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .activity-log-filter-bar .form-label {
+            font-size: 13px;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        }
+
+        .activity-log-filter-bar .form-control {
+            border: 1px solid rgba(255,255,255,0.3);
+            background-color: rgba(255,255,255,0.95);
+            transition: all 0.3s ease;
+        }
+
+        .activity-log-filter-bar .form-control:focus {
+            background-color: #fff;
+            border-color: rgba(255,255,255,0.8);
+            box-shadow: 0 0 0 0.2rem rgba(255,255,255,0.5);
+        }
+
+        .activity-log-filter-bar .btn-light {
+            background-color: rgba(255,255,255,0.9);
+            border: 1px solid rgba(255,255,255,0.5);
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .activity-log-filter-bar .btn-light:hover {
+            background-color: #fff;
+            color: #764ba2;
         }
 
         /* ========== DROPDOWNS ========== */
@@ -1063,11 +1189,45 @@
                                     <span aria-hidden="true">&times;</span>
                                 </button>
                             </div>
-                            <div class="modal-body">
-                                <div class="mb-3">
-                                    <input type="text" id="activityLogSearch" class="form-control" placeholder="Search all columns">
+                            <div class="modal-body" style="padding: 0;">
+                                <!-- Filter Bar with Colored Background -->
+                                <div class="activity-log-filter-bar" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; margin-bottom: 0;">
+                                    <div class="row g-3">
+                                        <div class="col-md-3">
+                                            <label for="activityLogFilterParent" class="form-label text-white" style="font-weight: 600; margin-bottom: 5px;">
+                                                <i class="fas fa-filter"></i> Filter by Parent
+                                            </label>
+                                            <input type="text" id="activityLogFilterParent" class="form-control form-control-sm" placeholder="Search Parent...">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label for="activityLogFilterSku" class="form-label text-white" style="font-weight: 600; margin-bottom: 5px;">
+                                                <i class="fas fa-filter"></i> Filter by SKU
+                                            </label>
+                                            <input type="text" id="activityLogFilterSku" class="form-control form-control-sm" placeholder="Search SKU...">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label for="activityLogFilterPerson" class="form-label text-white" style="font-weight: 600; margin-bottom: 5px;">
+                                                <i class="fas fa-user"></i> Filter by Person
+                                            </label>
+                                            <input type="text" id="activityLogFilterPerson" class="form-control form-control-sm" placeholder="Search Person...">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label for="activityLogFilterReason" class="form-label text-white" style="font-weight: 600; margin-bottom: 5px;">
+                                                <i class="fas fa-tag"></i> Filter by Reason
+                                            </label>
+                                            <input type="text" id="activityLogFilterReason" class="form-control form-control-sm" placeholder="Search Reason...">
+                                        </div>
+                                    </div>
+                                    <div class="row mt-2">
+                                        <div class="col-12 text-end">
+                                            <button id="activityLogClearFilters" class="btn btn-light btn-sm">
+                                                <i class="fas fa-times"></i> Clear All Filters
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
-                                <table class="table table-bordered" id="activityLogTable">
+                                <div style="padding: 15px;">
+                                    <table class="table table-bordered" id="activityLogTable">
                                 <thead>
                                     <tr>
                                     <th>Parent</th>
@@ -1087,7 +1247,8 @@
                                 <tbody>
                                     <!-- Will be populated via JS -->
                                 </tbody>
-                                </table>
+                                    </table>
+                                </div>
                             </div>
                             </div>
                         </div>
@@ -1173,6 +1334,32 @@
                                     <option value="parent">Parent</option>
                                 </select>
                             </div>
+                            
+                            <!-- Verified Status Filters -->
+                            <div class="form-group mr-2 ml-3">
+                                <button id="filter-verified-green" class="btn btn-success btn-sm verified-filter-btn" data-status="green">
+                                    <i class="fas fa-check-circle"></i> Verified (Green) 
+                                    <span class="badge badge-light ml-1" id="green-count">0</span>
+                                </button>
+                                <button id="filter-verified-yellow" class="btn btn-warning btn-sm verified-filter-btn active" data-status="yellow">
+                                    <i class="fas fa-exclamation-circle"></i> Unverified (Yellow) 
+                                    <span class="badge badge-light ml-1" id="yellow-count">0</span>
+                                </button>
+                                <button id="filter-verified-all" class="btn btn-secondary btn-sm verified-filter-btn" data-status="all">
+                                    <i class="fas fa-list"></i> Show All
+                                </button>
+                            </div>
+                            
+                            <!-- Doubtful Status Filter -->
+                            <div class="form-group mr-2 ml-3">
+                                <button id="filter-doubtful" class="btn btn-danger btn-sm doubtful-filter-btn" data-status="doubtful">
+                                    <i class="fas fa-flag"></i> Doubtful 
+                                    <span class="badge badge-light ml-1" id="doubtful-count">0</span>
+                                </button>
+                                <button id="filter-doubtful-all" class="btn btn-secondary btn-sm doubtful-filter-btn active" data-status="all">
+                                    <i class="fas fa-list"></i> Show All
+                                </button>
+                            </div>
                         </div>
 
                         <button id="viewHiddenRows" class="btn btn-primary ml-2 ms-2" data-toggle="modal">
@@ -1224,6 +1411,7 @@
                         <table class="custom-resizable-table" id="ebay-table">
                             <thead>
                                 <tr id="summaryRow">
+                                    <th></th> <!-- Checkbox column -->
                                     <th colspan="3"></th> <!-- Skip SL No., Parent, SKU, R&A -->
                                     <th>
                                         <div class="metric-total" id="inv-total" style="font-weight: bold; color: #007bff;">0</div>
@@ -1252,29 +1440,28 @@
                                     <th></th> 
                                 </tr>
                                 <tr>
+                                    <th data-field="bulk-select" style="width: 50px; text-align: center;">
+                                        <input type="checkbox" id="select-all-checkbox" title="Select All">
+                                    </th>
                                     <th data-field="sl_no">IMAGES <span class="sort-arrow">↓</span></th>
-                                    <th data-field="Parent" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center sortable-header">
-                                                PARENT <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div class="mt-1 dropdown-search-container">
-                                                <input type="text" class="form-control form-control-sm parent-search"
-                                                    placeholder="Search parent..." id="parentSearch">
-                                                <div class="dropdown-search-results" id="parentSearchResults"></div>
-                                            </div>
+                                    <th data-field="Parent" class="horizontal-header">
+                                        <div class="header-text">
+                                            <span class="sortable-header">PARENT <span class="sort-arrow">↓</span></span>
+                                        </div>
+                                        <div class="dropdown-search-container">
+                                            <input type="text" class="form-control form-control-sm parent-search search-input"
+                                                placeholder="Search parent..." id="parentSearch">
+                                            <div class="dropdown-search-results" id="parentSearchResults"></div>
                                         </div>
                                     </th>
-                                    <th data-field="SKU" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center sortable">
-                                            <div class="d-flex align-items-left">
-                                                SKU <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div class="mt-1 dropdown-search-container">
-                                                <input type="text" class="form-control form-control-sm sku-search"
-                                                    placeholder="Search SKU..." id="skuSearch">
-                                                <div class="dropdown-search-results" id="skuSearchResults"></div>
-                                            </div>
+                                    <th data-field="SKU" class="horizontal-header">
+                                        <div class="header-text sortable">
+                                            SKU <span class="sort-arrow">↓</span>
+                                        </div>
+                                        <div class="dropdown-search-container">
+                                            <input type="text" class="form-control form-control-sm sku-search search-input"
+                                                placeholder="Search SKU..." id="skuSearch">
+                                            <div class="dropdown-search-results" id="skuSearchResults"></div>
                                         </div>
                                     </th>
                                     <th data-field="r&a" class="hide-column"
@@ -1349,12 +1536,9 @@
                                             <!-- <div class="metric-total" id="pft-total">0%</div> -->
                                         </div>
                                     </th>
-                                    <th data-field="roi" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center">
-                                                REASON <span class="sort-arrow"></span>
-                                            </div>
-                                            <!-- <div class="metric-total" id="roi-total">0%</div> -->
+                                    <th data-field="roi" class="horizontal-header">
+                                        <div class="header-text">
+                                            REASON <span class="sort-arrow"></span>
                                         </div>
                                     </th>
                                     <th data-field="tacos" style="vertical-align: middle; white-space: nowrap;">
@@ -1412,11 +1596,16 @@
                                             </div>
                                         </div>
                                     </th>
-                                    <th data-field="remark" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center remarks-input">
+                                    <th data-field="doubtful" style="vertical-align: middle; white-space: nowrap;">
+                                        <div class="d-flex flex-column align-items-center">
                                             <div class="d-flex align-items-center">
-                                                REMARK<span class="sort-arrow"></span>
+                                                DOUBTFUL<span class="sort-arrow"></span>
                                             </div>
+                                        </div>
+                                    </th>
+                                    <th data-field="remark" class="horizontal-header">
+                                        <div class="header-text remarks-input">
+                                            REMARK<span class="sort-arrow"></span>
                                         </div>
                                     </th>
                                     <th data-field="ad cost/ pc" style="vertical-align: middle; white-space: nowrap;">
@@ -2136,6 +2325,8 @@
                                     REASON: item.reason || '', // Dropdown
                                     APPROVED: item.APPROVED === true, // Checkbox state
                                     APPROVED_BY:  item.approved_by || '',
+                                    IS_VERIFIED: item.is_verified === true || item.is_verified === 1 || item.is_verified === '1' ? 1 : 0, // Verified status (default: 0 = Yellow/Unverified)
+                                    IS_DOUBTFUL: item.is_doubtful === true || item.is_doubtful === 1 || item.is_doubtful === '1' ? 1 : 0, // Doubtful status (default: 0 = Green/OK)
                                     // LOSS_GAIN: item.LOSS_GAIN && !isNaN(item.LOSS_GAIN) ? parseFloat(item.LOSS_GAIN) : '',
                                     LOSS_GAIN: (item.APPROVED === true && !item.approved_at) ? item.LOSS_GAIN : '',
 
@@ -2159,8 +2350,8 @@
                             });
 
                             // Show all products from product_master, including those without Shopify data
-                            filteredData = [...tableData];
-                            // filteredData = tableData.filter(row => row.ON_HAND !== "N/A");
+                            // Default: Filter to show yellow (unverified) items
+                            filteredData = tableData.filter(item => !item.IS_VERIFIED || item.IS_VERIFIED === 0 || item.IS_VERIFIED === false);
 
                             renderTable(filteredData);
                            
@@ -2182,7 +2373,7 @@
                 $tbody.empty();
 
                 if (isLoading) {
-                    $tbody.append('<tr><td colspan="15" class="text-center">Loading data...</td></tr>');
+                    $tbody.append('<tr><td colspan="16" class="text-center">Loading data...</td></tr>');
                     return;
                 }
 
@@ -2192,7 +2383,7 @@
 
 
                 if (filteredData.length === 0) {
-                    $tbody.append('<tr><td colspan="15" class="text-center">No matching records found</td></tr>');
+                    $tbody.append('<tr><td colspan="16" class="text-center">No matching records found</td></tr>');
                     return;
                 }
 
@@ -2293,6 +2484,12 @@
                         return 'pink';
                     };
 
+                    // Add checkbox column as first column
+                    const $checkboxCell = $('<td>').css('text-align', 'center').html(
+                        `<input type="checkbox" class="row-checkbox" data-sku="${item.SKU || ''}" data-index="${rowIndex}">`
+                    );
+                    $row.append($checkboxCell);
+
                     const imgTd = $('<td>').html(
                         item.IMAGE_URL ? `<img src="${item.IMAGE_URL}" style="width:40px;height:auto;">` : ''
                     );
@@ -2303,24 +2500,41 @@
 
                     const $skuCell = $('<td>').addClass('skuColumn').css('position', 'static');
                     
+                    // Eye icon button for viewing history
+                    let eyeButton = '';
                     if (isParentRow) {
-                        $skuCell.html(`<strong>${sku}</strong><input type="hidden" class="sku-hidden" value="${item.SKU || ''}" />`);
+                        // Parent row - show history for all SKUs in this parent
+                        eyeButton = `<i class="fas fa-eye text-info view-parent-history-icon" 
+                            data-parent="${item.Parent || ''}" 
+                            title="View All SKUs History for Parent: ${item.Parent || ''}" 
+                            style="cursor: pointer; margin-left: 8px; font-size: 14px;"></i>`;
+                    } else {
+                        // Regular SKU - show history for this SKU only
+                        eyeButton = `<i class="fas fa-eye text-primary view-sku-history-icon" 
+                            data-sku="${item.SKU || ''}" 
+                            title="View SKU History" 
+                            style="cursor: pointer; margin-left: 8px; font-size: 14px;"></i>`;
+                    }
+                    
+                    if (isParentRow) {
+                        $skuCell.html(`<strong>${sku}</strong> ${eyeButton}<input type="hidden" class="sku-hidden" value="${item.SKU || ''}" />`);
                     } else {
                         const buyerLink = item.raw_data?.['B Link'] || '';
                         const sellerLink = item.raw_data?.['AMZ LINK SL'] || '';
                         if (buyerLink || sellerLink) {
                             $skuCell.html(`
-                                <div class="sku-tooltip-container">
+                                <div class="sku-tooltip-container d-inline-block">
                                     <span class="sku-text">${sku}</span>
                                     <div class="sku-tooltip">
                                         ${buyerLink ? `<div class="sku-link"><a href="${buyerLink}" target="_blank" rel="noopener noreferrer">Buyer link</a></div>` : ''}
                                         ${sellerLink ? `<div class="sku-link"><a href="${sellerLink}" target="_blank" rel="noopener noreferrer">Seller link</a></div>` : ''}
                                     </div>
                                 </div>
+                                ${eyeButton}
                                 <input type="hidden" class="sku-hidden" value="${item.SKU || ''}" />
                             `);
                         } else {
-                            $skuCell.html(`${sku}<input type="hidden" class="sku-hidden" value="${item.SKU || ''}" />`);
+                            $skuCell.html(`${sku} ${eyeButton}<input type="hidden" class="sku-hidden" value="${item.SKU || ''}" />`);
                         }
                     }
                     $row.append($skuCell);
@@ -2427,6 +2641,32 @@
                     }
                     $row.append($('<td>').addClass('approved-at').html(approvedAtHTML));
 
+                    // Verified column with Green/Yellow button
+                    const isVerified = item.IS_VERIFIED === true || item.IS_VERIFIED === 1 || item.IS_VERIFIED === '1';
+                    const verifiedButtonClass = isVerified ? 'btn-success' : 'btn-warning';
+                    const verifiedButtonText = isVerified ? 'Verified' : 'Unverified';
+                    const verifiedButtonIcon = isVerified ? 'fa-check-circle' : 'fa-exclamation-circle';
+                    const $verifiedCell = $('<td>').addClass('verified-column').css('text-align', 'center').html(
+                        `<button type="button" class="btn btn-sm ${verifiedButtonClass} verified-status-btn" 
+                            data-sku="${item.SKU || ''}" data-index="${rowIndex}" data-verified="${isVerified ? '1' : '0'}">
+                            <i class="fas ${verifiedButtonIcon}"></i> ${verifiedButtonText}
+                        </button>`
+                    );
+                    $row.append($verifiedCell);
+
+                    // Doubtful column with Red/Green flag button
+                    const isDoubtful = item.IS_DOUBTFUL === true || item.IS_DOUBTFUL === 1 || item.IS_DOUBTFUL === '1';
+                    const doubtfulFlagClass = isDoubtful ? 'text-danger' : 'text-success';
+                    const doubtfulFlagIcon = isDoubtful ? 'fa-flag' : 'fa-flag';
+                    const doubtfulButtonText = isDoubtful ? 'Doubtful' : 'OK';
+                    const $doubtfulCell = $('<td>').addClass('doubtful-column').css('text-align', 'center').html(
+                        `<button type="button" class="btn btn-sm ${isDoubtful ? 'btn-danger' : 'btn-success'} doubtful-status-btn" 
+                            data-sku="${item.SKU || ''}" data-index="${rowIndex}" data-doubtful="${isDoubtful ? '1' : '0'}">
+                            <i class="fas ${doubtfulFlagIcon} ${doubtfulFlagClass}"></i> ${doubtfulButtonText}
+                        </button>`
+                    );
+                    $row.append($doubtfulCell);
+
                     // $row.append(`<td><input type="checkbox" class="form-check-input hide-checkbox" data-index="${rowIndex}" />
                     // </td>`);
                     $row.append(`<td><input type="checkbox" class="form-check-input hide-row-checkbox" data-sku="${item.SKU}" ${item.IS_HIDE ? 'checked' : ''}></td>`);
@@ -2458,8 +2698,180 @@
                 updatePaginationInfo();
                 $('#visible-rows').text(`Showing all ${filteredData.length} rows`);
                 initTooltips();
+                
+                // Update Verified status counts
+                updateVerifiedCounts();
+                // Update Doubtful status counts
+                updateDoubtfulCounts();
+            }
+            
+            // Update Verified status counts
+            function updateVerifiedCounts() {
+                const greenCount = tableData.filter(item => item.IS_VERIFIED === 1 || item.IS_VERIFIED === true).length;
+                const yellowCount = tableData.filter(item => !item.IS_VERIFIED || item.IS_VERIFIED === 0 || item.IS_VERIFIED === false).length;
+                $('#green-count').text(greenCount);
+                $('#yellow-count').text(yellowCount);
+            }
+            
+            // Update Doubtful status counts
+            function updateDoubtfulCounts() {
+                const doubtfulCount = tableData.filter(item => item.IS_DOUBTFUL === 1 || item.IS_DOUBTFUL === true).length;
+                $('#doubtful-count').text(doubtfulCount);
             }
 
+            // Select All checkbox functionality
+            $(document).on('change', '#select-all-checkbox', function() {
+                const isChecked = $(this).is(':checked');
+                $('.row-checkbox').prop('checked', isChecked);
+            });
+
+            // Individual row checkbox - update select all state
+            $(document).on('change', '.row-checkbox', function() {
+                const totalCheckboxes = $('.row-checkbox').length;
+                const checkedCheckboxes = $('.row-checkbox:checked').length;
+                $('#select-all-checkbox').prop('checked', totalCheckboxes > 0 && totalCheckboxes === checkedCheckboxes);
+            });
+
+            // Get selected rows (for bulk operations)
+            function getSelectedRows() {
+                const selectedSkus = [];
+                $('.row-checkbox:checked').each(function() {
+                    selectedSkus.push($(this).data('sku'));
+                });
+                return selectedSkus;
+            }
+
+            // Verified status button click handler
+            $(document).on('click', '.verified-status-btn', function() {
+                const $btn = $(this);
+                const sku = $btn.data('sku');
+                const currentVerified = $btn.data('verified') === '1';
+                const newVerified = !currentVerified;
+                const rowIndex = parseInt($btn.data('index'));
+                
+                // Update button appearance
+                if (newVerified) {
+                    $btn.removeClass('btn-warning').addClass('btn-success');
+                    $btn.html('<i class="fas fa-check-circle"></i> Verified');
+                    $btn.data('verified', '1');
+                } else {
+                    $btn.removeClass('btn-success').addClass('btn-warning');
+                    $btn.html('<i class="fas fa-exclamation-circle"></i> Unverified');
+                    $btn.data('verified', '0');
+                }
+                
+                // Update in-memory data
+                if (tableData[rowIndex]) {
+                    tableData[rowIndex].IS_VERIFIED = newVerified ? 1 : 0;
+                }
+                
+                // Update counts
+                updateVerifiedCounts();
+                
+                // Apply current filter if active
+                const activeFilter = $('.verified-filter-btn.active').data('status');
+                if (activeFilter && activeFilter !== 'all') {
+                    applyVerifiedFilter(activeFilter);
+                }
+            });
+
+            // Verified filter button handlers
+            $(document).on('click', '.verified-filter-btn', function() {
+                $('.verified-filter-btn').removeClass('active');
+                $(this).addClass('active');
+                const status = $(this).data('status');
+                applyVerifiedFilter(status);
+            });
+
+            // Apply verified filter
+            function applyVerifiedFilter(status) {
+                let tempData = [...tableData];
+                
+                if (status === 'all') {
+                    // No verified filter
+                } else if (status === 'green') {
+                    tempData = tempData.filter(item => item.IS_VERIFIED === 1 || item.IS_VERIFIED === true);
+                } else if (status === 'yellow') {
+                    tempData = tempData.filter(item => !item.IS_VERIFIED || item.IS_VERIFIED === 0 || item.IS_VERIFIED === false);
+                }
+                
+                // Apply Doubtful filter if active
+                const doubtfulFilter = $('.doubtful-filter-btn.active').data('status');
+                if (doubtfulFilter && doubtfulFilter !== 'all') {
+                    if (doubtfulFilter === 'doubtful') {
+                        tempData = tempData.filter(item => item.IS_DOUBTFUL === 1 || item.IS_DOUBTFUL === true);
+                    }
+                }
+                
+                filteredData = tempData;
+                renderTable();
+            }
+
+            // Doubtful status button click handler
+            $(document).on('click', '.doubtful-status-btn', function() {
+                const $btn = $(this);
+                const sku = $btn.data('sku');
+                const currentDoubtful = $btn.data('doubtful') === '1';
+                const newDoubtful = !currentDoubtful;
+                const rowIndex = parseInt($btn.data('index'));
+                
+                // Update button appearance
+                if (newDoubtful) {
+                    $btn.removeClass('btn-success').addClass('btn-danger');
+                    $btn.html('<i class="fas fa-flag text-danger"></i> Doubtful');
+                    $btn.data('doubtful', '1');
+                } else {
+                    $btn.removeClass('btn-danger').addClass('btn-success');
+                    $btn.html('<i class="fas fa-flag text-success"></i> OK');
+                    $btn.data('doubtful', '0');
+                }
+                
+                // Update in-memory data
+                if (tableData[rowIndex]) {
+                    tableData[rowIndex].IS_DOUBTFUL = newDoubtful ? 1 : 0;
+                }
+                
+                // Update counts
+                updateDoubtfulCounts();
+                
+                // Apply current filter if active
+                const activeFilter = $('.doubtful-filter-btn.active').data('status');
+                if (activeFilter && activeFilter !== 'all') {
+                    applyDoubtfulFilter(activeFilter);
+                }
+            });
+
+            // Doubtful filter button handlers
+            $(document).on('click', '.doubtful-filter-btn', function() {
+                $('.doubtful-filter-btn').removeClass('active');
+                $(this).addClass('active');
+                const status = $(this).data('status');
+                applyDoubtfulFilter(status);
+            });
+
+            // Apply doubtful filter
+            function applyDoubtfulFilter(status) {
+                let tempData = [...tableData];
+                
+                if (status === 'all') {
+                    // No doubtful filter
+                } else if (status === 'doubtful') {
+                    tempData = tempData.filter(item => item.IS_DOUBTFUL === 1 || item.IS_DOUBTFUL === true);
+                }
+                
+                // Apply Verified filter if active
+                const verifiedFilter = $('.verified-filter-btn.active').data('status');
+                if (verifiedFilter && verifiedFilter !== 'all') {
+                    if (verifiedFilter === 'green') {
+                        tempData = tempData.filter(item => item.IS_VERIFIED === 1 || item.IS_VERIFIED === true);
+                    } else if (verifiedFilter === 'yellow') {
+                        tempData = tempData.filter(item => !item.IS_VERIFIED || item.IS_VERIFIED === 0 || item.IS_VERIFIED === false);
+                    }
+                }
+                
+                filteredData = tempData;
+                renderTable();
+            }
 
             //for update Adjusted qty
             $('#ebay-table').on('input', '.verified-stock-input', function () {
@@ -2600,9 +3012,8 @@
             });
 
             // call after click history icon 
-            $(document).on('click', '.view-history-icon', function () {
-                const sku = $(this).data('sku');
-
+            // Function to load and show SKU history
+            function showSkuHistory(sku) {
                 $.ajax({
                     url: '/inventory-history', // Adjust if your route is different
                     type: 'GET',
@@ -2610,7 +3021,7 @@
                     success: function (res) {
                     
                         let html = `<strong>History for SKU: ${sku}</strong><hr>`;
-                        if (!res.data.length) {
+                        if (!res.data || !res.data.length) {
                             html += `<p>No history found.</p>`;
                         } else {
                             html += `
@@ -2644,6 +3055,9 @@
 
                         $('#sku-history-content').html(html);
                         
+                        // Update modal title
+                        $('#skuHistoryModalLabel').text(`Adjustment History - SKU: ${sku}`);
+                        
                         // Update Shopify link
                         const shopifyDomain = '{{ env("SHOPIFY_STORE_URL") }}';
                         const shopifyInventoryUrl = `https://${shopifyDomain}/admin/products/inventory?query=${encodeURIComponent(sku)}`;
@@ -2653,11 +3067,143 @@
                     },
                     error: function () {
                         $('#sku-history-content').html('<p class="text-danger">Failed to load history.</p>');
+                        $('#skuHistoryModalLabel').text(`Adjustment History - SKU: ${sku}`);
                         $('#shopifyInventoryLink').hide();
                         $('#skuHistoryModal').modal('show');
                     }
                 });
+            }
+
+            // Handle click on ADJ HISTORY column icon
+            $(document).on('click', '.view-history-icon', function () {
+                const sku = $(this).data('sku');
+                showSkuHistory(sku);
             });
+
+            // Handle click on eye icon next to SKU
+            $(document).on('click', '.view-sku-history-icon', function () {
+                const sku = $(this).data('sku');
+                showSkuHistory(sku);
+            });
+
+            // Handle click on eye icon next to Parent row - show all SKUs history
+            $(document).on('click', '.view-parent-history-icon', function () {
+                const parent = $(this).data('parent');
+                showParentHistory(parent);
+            });
+
+            // Function to show history for all SKUs in a parent
+            function showParentHistory(parent) {
+                // Get all SKUs that belong to this parent from tableData
+                const parentSkus = tableData
+                    .filter(item => item.Parent === parent && !item.is_parent)
+                    .map(item => item.SKU)
+                    .filter(sku => sku && sku.trim() !== '');
+
+                if (parentSkus.length === 0) {
+                    $('#sku-history-content').html(`<p>No SKUs found for parent: ${parent}</p>`);
+                    $('#skuHistoryModalLabel').text(`Adjustment History - Parent: ${parent}`);
+                    $('#shopifyInventoryLink').hide();
+                    $('#skuHistoryModal').modal('show');
+                    return;
+                }
+
+                // Show loading message
+                $('#sku-history-content').html('<p>Loading history for all SKUs...</p>');
+                $('#skuHistoryModalLabel').text(`Adjustment History - Parent: ${parent} (${parentSkus.length} SKUs)`);
+                $('#skuHistoryModal').modal('show');
+
+                // Fetch history for all SKUs using Promise.all
+                const historyPromises = parentSkus.map(sku => {
+                    return $.ajax({
+                        url: '/inventory-history',
+                        type: 'GET',
+                        data: { sku },
+                        dataType: 'json'
+                    }).then(function(response) {
+                        return { sku: sku, response: response };
+                    }).catch(function(error) {
+                        return { sku: sku, response: null, error: error };
+                    });
+                });
+
+                // Wait for all requests to complete
+                Promise.all(historyPromises).then(function(results) {
+                    let html = `<strong>History for Parent: ${parent}</strong><br>`;
+                    html += `<small class="text-muted">Total SKUs: ${parentSkus.length}</small><hr>`;
+
+                    let allHistory = [];
+                    let hasHistory = false;
+
+                    // Process each response
+                    results.forEach(function(result) {
+                        const sku = result.sku;
+                        const response = result.response;
+                        if (response && response.data && response.data.length > 0) {
+                            hasHistory = true;
+                            response.data.forEach(function(entry) {
+                                allHistory.push({
+                                    sku: sku,
+                                    on_hand: entry.on_hand,
+                                    verified_stock: entry.verified_stock,
+                                    to_adjust: entry.to_adjust,
+                                    reason: entry.reason,
+                                    approved_by: entry.approved_by,
+                                    approved_at: entry.approved_at
+                                });
+                            });
+                        }
+                    });
+
+                    if (!hasHistory || allHistory.length === 0) {
+                        html += `<p>No history found for any SKUs in this parent.</p>`;
+                    } else {
+                        // Sort by approved_at descending (most recent first)
+                        allHistory.sort(function(a, b) {
+                            const dateA = new Date(a.approved_at || 0);
+                            const dateB = new Date(b.approved_at || 0);
+                            return dateB - dateA;
+                        });
+
+                        html += `
+                            <div class="table-responsive">
+                                <table class="table table-bordered table-sm table-striped">
+                                    <thead class="thead-light">
+                                        <tr>
+                                            <th>SKU</th>
+                                            <th>On Hand</th>
+                                            <th>Verified Stock</th>
+                                            <th>To Adjust</th>
+                                            <th>Reason</th>
+                                            <th>Approved By</th>
+                                            <th>Approved At (Ohio)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>`;
+                        allHistory.forEach(function(entry) {
+                            html += `
+                                <tr>
+                                    <td><strong>${entry.sku || '-'}</strong></td>
+                                    <td>${entry.on_hand || '-'}</td>
+                                    <td>${entry.verified_stock || '-'}</td>
+                                    <td>${entry.to_adjust || '-'}</td>
+                                    <td>${entry.reason || '-'}</td>
+                                    <td>${entry.approved_by || '-'}</td>
+                                    <td>${entry.approved_at || '-'}</td>
+                                </tr>`;
+                        });
+                        html += `</tbody></table>
+                            </div>`;
+                        html += `<p class="mt-2"><small class="text-muted">Total history entries: ${allHistory.length}</small></p>`;
+                    }
+
+                    $('#sku-history-content').html(html);
+                    $('#shopifyInventoryLink').hide(); // Hide Shopify link for parent view
+                }).catch(function(error) {
+                    $('#sku-history-content').html('<p class="text-danger">Failed to load history for some SKUs.</p>');
+                    console.error('Error loading parent history:', error);
+                });
+            }
 
             //  call after click hide checkbox
             $(document).on('change', '.hide-row-checkbox', function () {
@@ -2794,55 +3340,16 @@
             }
 
              // load data on Activity modal
+            // Store activity log data globally for filtering
+            let activityLogData = [];
+
             $('#activity-log-btn').on('click', function () {
                 $.ajax({
                     url: '/verified-stock-activity-log',
                     method: 'GET',
                     success: function (res) {
-                        const tableBody = $('#activityLogTable tbody');
-                        tableBody.empty();
-
-                        let totalLossGain = 0;
-
-                        if (!res.data || res.data.length === 0) {
-                            tableBody.append('<tr><td colspan="8" class="text-center">No activity found.</td></tr>');
-                        } else {
-                            res.data.forEach(item => {
-                                const parentTitle = getParentBySku(item.sku);
-                                const toAdjust = parseFloat(item.to_adjust) || 0;
-                                const lp = getLPBySku(item.sku);
-
-                                let lossGainValue;
-
-                                if (item.loss_gain !== null && item.loss_gain !== undefined) {
-                                    lossGainValue = parseFloat(item.loss_gain);
-                                } else {
-                                    lossGainValue = lp ? toAdjust * lp : 0;
-                                }
-
-                                totalLossGain += lossGainValue;
-
-                                const formattedLossGain = lossGainValue !== 0 ? `${lossGainValue.toFixed(2)}` : '-';
-
-                                tableBody.append(`
-                                    <tr>
-                                        <td>${parentTitle}</td>
-                                        <td>${item.sku}</td>
-                                        <td>${item.verified_stock ?? '-'}</td>
-                                        <td>${item.to_adjust ?? '-'}</td>
-                                        <td>${formattedLossGain}</td>
-                                        <td>${item.reason ?? '-'}</td>
-                                        <td>${item.approved_by ?? '-'}</td>
-                                        <td>${item.approved_at ?? '-'}</td>
-                                        <td>${item.remarks ?? '-'}</td>
-                                    </tr>
-                                `);
-                            });
-                        }
-
-                        // Set total Loss/Gain in header badge
-                        $('#activityLossGainTotal').text(`${Math.trunc(totalLossGain)}`);
-
+                        activityLogData = res.data || [];
+                        renderActivityLogTable(activityLogData);
                         $('#activityLogModal').modal('show');
                     },
                     error: function () {
@@ -2851,26 +3358,94 @@
                 });
             });
 
+            // Function to render activity log table
+            function renderActivityLogTable(data) {
+                const tableBody = $('#activityLogTable tbody');
+                tableBody.empty();
 
+                let totalLossGain = 0;
 
-                //close modal
-            $('.close').on('click', function () {
-                $('#activityLogModal').modal('hide');
-            });
+                if (!data || data.length === 0) {
+                    tableBody.append('<tr><td colspan="9" class="text-center">No activity found.</td></tr>');
+                } else {
+                    data.forEach(item => {
+                        const parentTitle = getParentBySku(item.sku);
+                        const toAdjust = parseFloat(item.to_adjust) || 0;
+                        const lp = getLPBySku(item.sku);
 
-                //search by sku
-            $('#activityLogSearch').on('keyup', function () {
-                const value = $(this).val().toLowerCase();
+                        let lossGainValue;
+
+                        if (item.loss_gain !== null && item.loss_gain !== undefined) {
+                            lossGainValue = parseFloat(item.loss_gain);
+                        } else {
+                            lossGainValue = lp ? toAdjust * lp : 0;
+                        }
+
+                        totalLossGain += lossGainValue;
+
+                        const formattedLossGain = lossGainValue !== 0 ? `${lossGainValue.toFixed(2)}` : '-';
+
+                        tableBody.append(`
+                            <tr data-parent="${(parentTitle || '').toLowerCase()}" 
+                                data-sku="${(item.sku || '').toLowerCase()}" 
+                                data-person="${(item.approved_by || '').toLowerCase()}" 
+                                data-reason="${(item.reason || '').toLowerCase()}">
+                                <td>${parentTitle}</td>
+                                <td>${item.sku}</td>
+                                <td>${item.verified_stock ?? '-'}</td>
+                                <td>${item.to_adjust ?? '-'}</td>
+                                <td>${formattedLossGain}</td>
+                                <td>${item.reason ?? '-'}</td>
+                                <td>${item.approved_by ?? '-'}</td>
+                                <td>${item.approved_at ?? '-'}</td>
+                                <td>${item.remarks ?? '-'}</td>
+                            </tr>
+                        `);
+                    });
+                }
+
+                // Set total Loss/Gain in header badge
+                $('#activityLossGainTotal').text(`${Math.trunc(totalLossGain)}`);
+            }
+
+            // Function to filter activity log table
+            function filterActivityLogTable() {
+                const parentFilter = $('#activityLogFilterParent').val().toLowerCase().trim();
+                const skuFilter = $('#activityLogFilterSku').val().toLowerCase().trim();
+                const personFilter = $('#activityLogFilterPerson').val().toLowerCase().trim();
+                const reasonFilter = $('#activityLogFilterReason').val().toLowerCase().trim();
+
                 let visibleLossGainTotal = 0;
+                let visibleCount = 0;
 
-                $('#activityLogTable tbody tr').filter(function () {
-                    const rowText = $(this).text().toLowerCase();
-                    const isVisible = rowText.indexOf(value) > -1;
-                    $(this).toggle(isVisible);
+                // Remove any existing "no results" message
+                $('#activityLogTable tbody tr').filter(function() {
+                    return $(this).find('td').length === 1 && $(this).text().includes('No matching records');
+                }).remove();
+
+                $('#activityLogTable tbody tr').each(function() {
+                    const $row = $(this);
+                    // Skip "no results" message rows
+                    if ($row.find('td').length === 1 && $row.text().includes('No activity found')) {
+                        return;
+                    }
                     
-                    // Calculate total for visible rows only
+                    const parent = $row.data('parent') || '';
+                    const sku = $row.data('sku') || '';
+                    const person = $row.data('person') || '';
+                    const reason = $row.data('reason') || '';
+
+                    const matchesParent = !parentFilter || parent.indexOf(parentFilter) > -1;
+                    const matchesSku = !skuFilter || sku.indexOf(skuFilter) > -1;
+                    const matchesPerson = !personFilter || person.indexOf(personFilter) > -1;
+                    const matchesReason = !reasonFilter || reason.indexOf(reasonFilter) > -1;
+
+                    const isVisible = matchesParent && matchesSku && matchesPerson && matchesReason;
+                    $row.toggle(isVisible);
+
                     if (isVisible) {
-                        const lossGainText = $(this).find('td:eq(4)').text().trim(); // Loss/Gain column (5th column, index 4)
+                        visibleCount++;
+                        const lossGainText = $row.find('td:eq(4)').text().trim();
                         const lossGainValue = parseFloat(lossGainText);
                         if (!isNaN(lossGainValue)) {
                             visibleLossGainTotal += lossGainValue;
@@ -2878,8 +3453,34 @@
                     }
                 });
 
-                // Update the total badge with filtered total
+                // Update total for visible rows
                 $('#activityLossGainTotal').text(`${Math.trunc(visibleLossGainTotal)}`);
+
+                // Show message if no results
+                if (visibleCount === 0 && (parentFilter || skuFilter || personFilter || reasonFilter)) {
+                    $('#activityLogTable tbody').append('<tr><td colspan="9" class="text-center text-muted">No matching records found.</td></tr>');
+                }
+            }
+
+            // Filter event handlers
+            $('#activityLogFilterParent, #activityLogFilterSku, #activityLogFilterPerson, #activityLogFilterReason').on('keyup', function() {
+                filterActivityLogTable();
+            });
+
+            // Clear all filters
+            $('#activityLogClearFilters').on('click', function() {
+                $('#activityLogFilterParent').val('');
+                $('#activityLogFilterSku').val('');
+                $('#activityLogFilterPerson').val('');
+                $('#activityLogFilterReason').val('');
+                filterActivityLogTable();
+            });
+
+
+
+            // Close modal
+            $('.close').on('click', function () {
+                $('#activityLogModal').modal('hide');
             });
 
 
