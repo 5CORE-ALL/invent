@@ -30,6 +30,7 @@ class Inventory extends Model
         'to_warehouse',
         'adjustment',
         'is_verified',
+        'verified_by',
         'is_doubtful',
     ];
 
@@ -41,6 +42,11 @@ class Inventory extends Model
     public function warehouseTo()
     {
         return $this->belongsTo(Warehouse::class, 'to_warehouse');
+    }
+
+    public function verifiedByUser()
+    {
+        return $this->belongsTo(\App\Models\User::class, 'verified_by');
     }
     
 }
