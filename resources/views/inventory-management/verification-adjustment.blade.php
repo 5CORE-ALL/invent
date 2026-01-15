@@ -189,6 +189,31 @@
             padding: 10px 0;
             border-top: 1px solid #ddd;
         }
+        
+        /* ========== PAGINATION CONTROLS ========== */
+        .pagination-controls {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 15px 0;
+            margin-top: 15px;
+            border-top: 1px solid #ddd;
+        }
+        
+        .pagination-controls .form-group {
+            margin: 0;
+            margin-right: 15px;
+        }
+        
+        .pagination-controls button {
+            min-width: 80px;
+        }
+        
+        .pagination-controls button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
 
         /* ========== VERIFIED STATUS BUTTONS ========== */
         .verified-status-btn {
@@ -1270,11 +1295,6 @@
                             </button> -->
                         </div>
 
-                        <!-- Right Side: Search Bar -->
-                        <div class="d-flex align-items-center">
-                            <label for="search-input" class="mr-2 mb-0">Search:</label>
-                            <input type="text" id="search-input" class="form-control form-control-sm" placeholder="Search all columns">
-                        </div>
                     </div>
 
 
@@ -1452,6 +1472,12 @@
                                     placeholder="Search SKU..." id="skuSearch" style="width: 150px;">
                                 <div class="dropdown-search-results" id="skuSearchResults"></div>
                             </div>
+                        </div>
+                        
+                        <!-- Search All Columns -->
+                        <div class="d-flex align-items-center">
+                            <label for="search-input" class="mr-2 mb-0">Search:</label>
+                            <input type="text" id="search-input" class="form-control form-control-sm" placeholder="Search all columns" style="width: 180px;">
                         </div>
                         
                         <!-- All Filters -->
@@ -1856,7 +1882,7 @@
 
             // Current state
             let currentPage = 1;
-            let rowsPerPage = Infinity;
+            let rowsPerPage = 25;
             let currentSort = {
                 field: null,
                 direction: 1
@@ -2497,12 +2523,17 @@
                     return;
                 }
 
+                // Apply pagination
+                const startIndex = (currentPage - 1) * rowsPerPage;
+                const endIndex = startIndex + rowsPerPage;
+                const paginatedData = filteredData.slice(startIndex, endIndex);
+                
                 // Group rows by Parent so that child SKUs render first and parent row is appended last
                 const parentTotalsMap = {};
                 const groups = {}; // parentName -> { children: [], parentRow: null }
                 const parentOrder = [];
 
-                filteredData.forEach(item => {
+                paginatedData.forEach(item => {
                     const parentName = item.Parent || '(No Parent)';
                     const isParentRow = !!item.is_parent || (item.SKU && String(item.SKU).toUpperCase().startsWith('PARENT'));
 
@@ -2672,7 +2703,7 @@
                         $row.append($raCell);
                     }
 
-                    $row.append($('<td>').text(item.AVAILABLE_TO_SELL));
+                    $row.append($('<td>').text(item.INV || 0));
                     $row.append($('<td>').text(item.L30));
 
                     const dilValue = parseFloat(item.DIL) || 0;
@@ -2792,11 +2823,13 @@
                     );
                     $row.append($doubtfulCell);
 
-                    // $row.append(`<td><input type="checkbox" class="form-check-input hide-checkbox" data-index="${rowIndex}" />
-                    // </td>`);
-                    $row.append(`<td><input type="checkbox" class="form-check-input hide-row-checkbox" data-sku="${item.SKU}" ${item.IS_HIDE ? 'checked' : ''}></td>`);
-
-                    $row.append(`<td><input type="text" class="form-control remarks-input" data-sku="${item.SKU}" value="${item.REMARK || ''}" /></td>`);
+                    // REMARK column - contains both hide checkbox and remarks input
+                    $row.append(`<td>
+                        <div class="d-flex align-items-center gap-2">
+                            <input type="checkbox" class="form-check-input hide-row-checkbox" data-sku="${item.SKU}" ${item.IS_HIDE ? 'checked' : ''} style="margin-right: 5px;">
+                            <input type="text" class="form-control remarks-input" data-sku="${item.SKU}" value="${item.REMARK || ''}" style="flex: 1;">
+                        </div>
+                    </td>`);
 
                     // $row.append($('<td>').addClass('last-approved-at').text(item.LAST_APPROVED_AT || '-'));
                     $row.append($('<td>').addClass('last-approved-at').css({
@@ -2827,7 +2860,6 @@
 
                 $('#lossGainTotalText').text(`$ ${Math.trunc(totalLossGain)}`);
                 updatePaginationInfo();
-                $('#visible-rows').text(`Showing all ${filteredData.length} rows`);
                 initTooltips();
                 
                 // Update Verified status counts
@@ -2965,6 +2997,7 @@
 
             // Unified filter function that applies all filters together (AND logic)
             function applyAllFilters() {
+                currentPage = 1; // Reset to first page when filters change
                 let tempData = [...tableData];
                 
                 // 1. Data Type filter
@@ -3018,6 +3051,19 @@
                             return !doubtful; // Doubtful items have red flag, which means is_doubtful = false
                         });
                     }
+                }
+                
+                // 6. Search all columns filter
+                const searchTerm = $('#search-input').val()?.trim();
+                if (searchTerm) {
+                    const normalizedSearch = searchTerm.replace(/\s+/g, '').toLowerCase();
+                    tempData = tempData.filter(item => {
+                        return Object.values(item).some(val => {
+                            if (typeof val === 'boolean' || val === null) return false;
+                            const normalizedVal = val.toString().replace(/\s+/g, '').toLowerCase();
+                            return normalizedVal.includes(normalizedSearch);
+                        });
+                    });
                 }
                 
                 // Note: All filters above are applied with AND logic - items must match ALL active filters
@@ -4675,51 +4721,55 @@
 
             // Initialize pagination
             function initPagination() {
-                // Remove rows-per-page related code
-
-                // Keep these but modify to work with all rows
                 $('#first-page').on('click', function() {
                     currentPage = 1;
                     renderTable();
                 });
 
-                // Similar modifications for other pagination buttons...
-                // But since we're showing all rows, you might want to disable pagination completely
+                $('#prev-page').on('click', function() {
+                    if (currentPage > 1) {
+                        currentPage--;
+                        renderTable();
+                    }
+                });
+
+                $('#next-page').on('click', function() {
+                    const totalPages = Math.ceil(filteredData.length / rowsPerPage);
+                    if (currentPage < totalPages) {
+                        currentPage++;
+                        renderTable();
+                    }
+                });
+
+                $('#last-page').on('click', function() {
+                    const totalPages = Math.ceil(filteredData.length / rowsPerPage);
+                    currentPage = totalPages || 1;
+                    renderTable();
+                });
             }
 
             function updatePaginationInfo() {
-                // Since we're showing all rows, you can either:
-                // Option 1: Hide pagination completely
-                $('.pagination-controls').hide();
-
-                // Option 2: Show "Showing all rows" message
-                $('#page-info').text('Showing all rows');
-                $('#first-page, #prev-page, #next-page, #last-page').prop('disabled', true);
+                // Show pagination with proper info
+                $('.pagination-controls').show();
+                
+                const totalRows = filteredData.length;
+                const totalPages = Math.ceil(totalRows / rowsPerPage);
+                const startRow = totalRows === 0 ? 0 : (currentPage - 1) * rowsPerPage + 1;
+                const endRow = Math.min(currentPage * rowsPerPage, totalRows);
+                
+                $('#visible-rows').text(`Showing ${startRow}-${endRow} of ${totalRows}`);
+                $('#page-info').text(`Page ${currentPage} of ${totalPages || 1}`);
+                
+                // Enable/disable pagination buttons
+                $('#first-page, #prev-page').prop('disabled', currentPage === 1 || totalPages === 0);
+                $('#next-page, #last-page').prop('disabled', currentPage >= totalPages || totalPages === 0);
             }
 
             // Initialize search functionality
             function initSearch() {
                 $('#search-input').on('keyup', function() {
-                    // const searchTerm = $(this).val().toLowerCase();
-                    const rawSearch = $(this).val();
-                    const searchTerm = rawSearch.replace(/\s+/g, '').toLowerCase();
-
-                    if (searchTerm) {
-                        filteredData = tableData.filter(item => {
-                            return Object.values(item).some(val => {
-                                if (typeof val === 'boolean' || val === null) return false;
-                                // return val.toString().toLowerCase().includes(searchTerm);
-                                const normalizedVal = val.toString().replace(/\s+/g, '').toLowerCase();
-                                return normalizedVal.includes(searchTerm);
-                            });
-                        });
-                    } else {
-                        filteredData = [...tableData];
-                    }
-
-                    currentPage = 1;
-                    renderTable();
-                    calculateTotals();
+                    currentPage = 1; // Reset to first page when search changes
+                    applyAllFilters(); // Apply all filters including search
                 });
             }
 
