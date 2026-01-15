@@ -36,6 +36,51 @@
             position: sticky;
             top: 0;
             z-index: 10;
+            text-align: center;
+            vertical-align: middle;
+        }
+
+        /* Allow text selection and interaction in search inputs */
+        .custom-resizable-table th input,
+        .custom-resizable-table th select,
+        .custom-resizable-table th button {
+            user-select: auto;
+            pointer-events: auto;
+        }
+
+        /* Center header content but exclude search containers */
+        .custom-resizable-table th > div:not(.dropdown-search-container):not(.header-text) {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+        }
+
+        /* Ensure search containers are clickable and properly positioned */
+        .custom-resizable-table th .dropdown-search-container {
+            position: relative;
+            z-index: 100 !important;
+            pointer-events: auto !important;
+            margin-top: 8px;
+            width: 100%;
+            display: block;
+        }
+
+        .custom-resizable-table th .dropdown-search-container input {
+            pointer-events: auto !important;
+            z-index: 101 !important;
+            position: relative;
+            cursor: text !important;
+            user-select: auto !important;
+            -webkit-user-select: auto !important;
+            -moz-user-select: auto !important;
+            -ms-user-select: auto !important;
+        }
+
+        .custom-resizable-table th .dropdown-search-results {
+            pointer-events: auto !important;
+            z-index: 102 !important;
         }
 
         /* ========== RESIZABLE COLUMNS ========== */
@@ -276,6 +321,9 @@
         .horizontal-header .dropdown-search-container {
             margin-top: 10px;
             width: 100%;
+            position: relative;
+            z-index: 100;
+            pointer-events: auto;
         }
 
         .horizontal-header .search-input {
@@ -284,6 +332,16 @@
             width: 100%;
             max-width: 150px;
             margin: 8px auto 0;
+            pointer-events: auto;
+            cursor: text;
+            user-select: auto;
+            position: relative;
+            z-index: 101;
+        }
+
+        .horizontal-header .dropdown-search-results {
+            pointer-events: auto;
+            z-index: 102;
         }
 
         .horizontal-header .sort-arrow {
@@ -1081,12 +1139,25 @@
         transform: none;
         margin-top: 8px;
         width: 100%;
+        pointer-events: auto;
+        z-index: 100;
+        position: relative;
     }
     
     #ebay-table thead th > div > div.dropdown-search-container input {
         transform: none;
         width: 100%;
         height: 24px;
+        pointer-events: auto;
+        cursor: text;
+        user-select: auto;
+        position: relative;
+        z-index: 101;
+    }
+
+    #ebay-table thead th > div > div.dropdown-search-results {
+        pointer-events: auto;
+        z-index: 102;
     }
 
     #ebay-table {
@@ -1335,28 +1406,21 @@
                                 </select>
                             </div>
                             
-                            <!-- Verified Status Filters -->
-                            <div class="form-group mr-2 ml-3">
-                                <button id="filter-verified-green" class="btn btn-success btn-sm verified-filter-btn" data-status="green">
-                                    <i class="fas fa-check-circle"></i> Verified (Green) 
+                            <!-- All Filters in One Line -->
+                            <div class="form-group mr-2 ml-3 d-flex align-items-center">
+                                <button id="filter-verified-green" class="btn btn-success btn-sm verified-filter-btn mr-2" data-status="green">
+                                    <i class="fas fa-check-circle"></i> Verified 
                                     <span class="badge badge-light ml-1" id="green-count">0</span>
                                 </button>
-                                <button id="filter-verified-yellow" class="btn btn-warning btn-sm verified-filter-btn active" data-status="yellow">
-                                    <i class="fas fa-exclamation-circle"></i> Unverified (Yellow) 
+                                <button id="filter-verified-yellow" class="btn btn-warning btn-sm verified-filter-btn mr-2" data-status="yellow">
+                                    <i class="fas fa-exclamation-circle"></i> Unverified 
                                     <span class="badge badge-light ml-1" id="yellow-count">0</span>
                                 </button>
-                                <button id="filter-verified-all" class="btn btn-secondary btn-sm verified-filter-btn" data-status="all">
-                                    <i class="fas fa-list"></i> Show All
-                                </button>
-                            </div>
-                            
-                            <!-- Doubtful Status Filter -->
-                            <div class="form-group mr-2 ml-3">
-                                <button id="filter-doubtful" class="btn btn-danger btn-sm doubtful-filter-btn" data-status="doubtful">
+                                <button id="filter-doubtful" class="btn btn-danger btn-sm doubtful-filter-btn mr-2" data-status="doubtful">
                                     <i class="fas fa-flag"></i> Doubtful 
                                     <span class="badge badge-light ml-1" id="doubtful-count">0</span>
                                 </button>
-                                <button id="filter-doubtful-all" class="btn btn-secondary btn-sm doubtful-filter-btn active" data-status="all">
+                                <button id="filter-show-all" class="btn btn-secondary btn-sm filter-show-all-btn active" data-status="all">
                                     <i class="fas fa-list"></i> Show All
                                 </button>
                             </div>
@@ -1365,6 +1429,27 @@
                         <button id="viewHiddenRows" class="btn btn-primary ml-2 ms-2" data-toggle="modal">
                                 <i class="fa-regular fa-eye-slash"></i> Verified Rows
                         </button>
+                    </div>
+
+                    <!-- Search Bars Outside Table -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="parentSearch" class="form-label"><strong>Search by Parent:</strong></label>
+                            <div class="dropdown-search-container">
+                                <input type="text" class="form-control parent-search" 
+                                    placeholder="Search parent..." id="parentSearch">
+                                <div class="dropdown-search-results" id="parentSearchResults"></div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="skuSearch" class="form-label"><strong>Search by SKU:</strong></label>
+                            <div class="dropdown-search-container">
+                                <input type="text" class="form-control sku-search" 
+                                    placeholder="Search SKU..." id="skuSearch">
+                                <div class="dropdown-search-results" id="skuSearchResults"></div>
+                            </div>
+                        </div>
+                    </div>
 
                         <!-- <div id="zeroInvLabel" style="background-color: #d0e7ff; color: #004080; font-size: 14px; font-weight: 600; padding: 6px 12px; border-radius: 6px; display: inline-block; margin-bottom: 10px;"> -->
                             <!-- Will be filled by JS -->
@@ -1448,20 +1533,10 @@
                                         <div class="header-text">
                                             <span class="sortable-header">PARENT <span class="sort-arrow">↓</span></span>
                                         </div>
-                                        <div class="dropdown-search-container">
-                                            <input type="text" class="form-control form-control-sm parent-search search-input"
-                                                placeholder="Search parent..." id="parentSearch">
-                                            <div class="dropdown-search-results" id="parentSearchResults"></div>
-                                        </div>
                                     </th>
                                     <th data-field="SKU" class="horizontal-header">
                                         <div class="header-text sortable">
                                             SKU <span class="sort-arrow">↓</span>
-                                        </div>
-                                        <div class="dropdown-search-container">
-                                            <input type="text" class="form-control form-control-sm sku-search search-input"
-                                                placeholder="Search SKU..." id="skuSearch">
-                                            <div class="dropdown-search-results" id="skuSearchResults"></div>
                                         </div>
                                     </th>
                                     <th data-field="r&a" class="hide-column"
@@ -2325,8 +2400,8 @@
                                     REASON: item.reason || '', // Dropdown
                                     APPROVED: item.APPROVED === true, // Checkbox state
                                     APPROVED_BY:  item.approved_by || '',
-                                    IS_VERIFIED: item.is_verified === true || item.is_verified === 1 || item.is_verified === '1' ? 1 : 0, // Verified status (default: 0 = Yellow/Unverified)
-                                    IS_DOUBTFUL: item.is_doubtful === true || item.is_doubtful === 1 || item.is_doubtful === '1' ? 1 : 0, // Doubtful status (default: 0 = Green/OK)
+                                    IS_VERIFIED: (item.is_verified === true || item.is_verified === 1 || item.is_verified === '1' || item.IS_VERIFIED === 1 || item.IS_VERIFIED === true) ? 1 : 0, // Verified status from DB
+                                    IS_DOUBTFUL: (item.is_doubtful === true || item.is_doubtful === 1 || item.is_doubtful === '1' || item.IS_DOUBTFUL === 1 || item.IS_DOUBTFUL === true) ? 1 : 0, // Doubtful status from DB
                                     // LOSS_GAIN: item.LOSS_GAIN && !isNaN(item.LOSS_GAIN) ? parseFloat(item.LOSS_GAIN) : '',
                                     LOSS_GAIN: (item.APPROVED === true && !item.approved_at) ? item.LOSS_GAIN : '',
 
@@ -2350,8 +2425,8 @@
                             });
 
                             // Show all products from product_master, including those without Shopify data
-                            // Default: Filter to show yellow (unverified) items
-                            filteredData = tableData.filter(item => !item.IS_VERIFIED || item.IS_VERIFIED === 0 || item.IS_VERIFIED === false);
+                            // Default: Show all items
+                            filteredData = [...tableData];
 
                             renderTable(filteredData);
                            
@@ -2641,8 +2716,8 @@
                     }
                     $row.append($('<td>').addClass('approved-at').html(approvedAtHTML));
 
-                    // Verified column with Green/Yellow button
-                    const isVerified = item.IS_VERIFIED === true || item.IS_VERIFIED === 1 || item.IS_VERIFIED === '1';
+                    // Verified column with Green/Yellow button - read from DB
+                    const isVerified = item.IS_VERIFIED === 1 || item.IS_VERIFIED === true || item.is_verified === true || item.is_verified === 1 || item.is_verified === '1';
                     const verifiedButtonClass = isVerified ? 'btn-success' : 'btn-warning';
                     const verifiedButtonText = isVerified ? 'Verified' : 'Unverified';
                     const verifiedButtonIcon = isVerified ? 'fa-check-circle' : 'fa-exclamation-circle';
@@ -2654,15 +2729,16 @@
                     );
                     $row.append($verifiedCell);
 
-                    // Doubtful column with Red/Green flag button
-                    const isDoubtful = item.IS_DOUBTFUL === true || item.IS_DOUBTFUL === 1 || item.IS_DOUBTFUL === '1';
-                    const doubtfulFlagClass = isDoubtful ? 'text-danger' : 'text-success';
-                    const doubtfulFlagIcon = isDoubtful ? 'fa-flag' : 'fa-flag';
-                    const doubtfulButtonText = isDoubtful ? 'Doubtful' : 'OK';
+                    // Doubtful column - Default red flag, turns to green check when clicked - read from DB
+                    const isDoubtful = item.IS_DOUBTFUL === 1 || item.IS_DOUBTFUL === true || item.is_doubtful === true || item.is_doubtful === 1 || item.is_doubtful === '1';
+                    const doubtfulIcon = isDoubtful ? 'fa-check' : 'fa-flag';
+                    const doubtfulColorClass = isDoubtful ? 'text-success' : 'text-danger';
+                    const doubtfulButtonClass = isDoubtful ? 'btn-success' : 'btn-danger';
+                    const doubtfulButtonText = isDoubtful ? 'OK' : 'Doubtful';
                     const $doubtfulCell = $('<td>').addClass('doubtful-column').css('text-align', 'center').html(
-                        `<button type="button" class="btn btn-sm ${isDoubtful ? 'btn-danger' : 'btn-success'} doubtful-status-btn" 
+                        `<button type="button" class="btn btn-sm ${doubtfulButtonClass} doubtful-status-btn" 
                             data-sku="${item.SKU || ''}" data-index="${rowIndex}" data-doubtful="${isDoubtful ? '1' : '0'}">
-                            <i class="fas ${doubtfulFlagIcon} ${doubtfulFlagClass}"></i> ${doubtfulButtonText}
+                            <i class="fas ${doubtfulIcon} ${doubtfulColorClass}"></i> ${doubtfulButtonText}
                         </button>`
                     );
                     $row.append($doubtfulCell);
@@ -2707,15 +2783,28 @@
             
             // Update Verified status counts
             function updateVerifiedCounts() {
-                const greenCount = tableData.filter(item => item.IS_VERIFIED === 1 || item.IS_VERIFIED === true).length;
-                const yellowCount = tableData.filter(item => !item.IS_VERIFIED || item.IS_VERIFIED === 0 || item.IS_VERIFIED === false).length;
+                const greenCount = tableData.filter(item => {
+                    const verified = item.IS_VERIFIED === 1 || item.IS_VERIFIED === true || item.is_verified === true || item.is_verified === 1;
+                    return verified;
+                }).length;
+                const yellowCount = tableData.filter(item => {
+                    const verified = item.IS_VERIFIED === 1 || item.IS_VERIFIED === true || item.is_verified === true || item.is_verified === 1;
+                    return !verified;
+                }).length;
                 $('#green-count').text(greenCount);
                 $('#yellow-count').text(yellowCount);
             }
             
             // Update Doubtful status counts
+            // Note: Red flag (doubtful) = is_doubtful = false, Green check (OK) = is_doubtful = true
+            // So we count items with is_doubtful = false (red flag/doubtful)
             function updateDoubtfulCounts() {
-                const doubtfulCount = tableData.filter(item => item.IS_DOUBTFUL === 1 || item.IS_DOUBTFUL === true).length;
+                const doubtfulCount = tableData.filter(item => {
+                    const doubtful = item.IS_DOUBTFUL === 1 || item.IS_DOUBTFUL === true || item.is_doubtful === true || item.is_doubtful === 1 || item.is_doubtful === '1';
+                    // Doubtful items have red flag, which means is_doubtful = false (not true)
+                    // So we count items that are NOT doubtful (false)
+                    return !doubtful;
+                }).length;
                 $('#doubtful-count').text(doubtfulCount);
             }
 
@@ -2742,64 +2831,130 @@
             }
 
             // Verified status button click handler
-            $(document).on('click', '.verified-status-btn', function() {
+            $(document).on('click', '.verified-status-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
                 const $btn = $(this);
                 const sku = $btn.data('sku');
                 const currentVerified = $btn.data('verified') === '1';
                 const newVerified = !currentVerified;
-                const rowIndex = parseInt($btn.data('index'));
                 
-                // Update button appearance
-                if (newVerified) {
-                    $btn.removeClass('btn-warning').addClass('btn-success');
-                    $btn.html('<i class="fas fa-check-circle"></i> Verified');
-                    $btn.data('verified', '1');
-                } else {
-                    $btn.removeClass('btn-success').addClass('btn-warning');
-                    $btn.html('<i class="fas fa-exclamation-circle"></i> Unverified');
-                    $btn.data('verified', '0');
-                }
+                // Disable button during save
+                $btn.prop('disabled', true);
                 
-                // Update in-memory data
-                if (tableData[rowIndex]) {
-                    tableData[rowIndex].IS_VERIFIED = newVerified ? 1 : 0;
-                }
-                
-                // Update counts
-                updateVerifiedCounts();
-                
-                // Apply current filter if active
-                const activeFilter = $('.verified-filter-btn.active').data('status');
-                if (activeFilter && activeFilter !== 'all') {
-                    applyVerifiedFilter(activeFilter);
-                }
+                // Save to server
+                $.ajax({
+                    url: '/update-verified-status',
+                    method: 'POST',
+                    data: {
+                        sku: sku,
+                        is_verified: newVerified ? 1 : 0, // Send as 1 or 0 for better compatibility
+                        _token: $('meta[name="csrf-token"]').attr('content')
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            // Find item in tableData by SKU and update both versions
+                            const itemIndex = tableData.findIndex(item => item.SKU === sku);
+                            if (itemIndex !== -1) {
+                                tableData[itemIndex].IS_VERIFIED = newVerified ? 1 : 0;
+                                tableData[itemIndex].is_verified = newVerified;
+                            }
+                            
+                            // Update button appearance
+                            if (newVerified) {
+                                $btn.removeClass('btn-warning').addClass('btn-success');
+                                $btn.html('<i class="fas fa-check-circle"></i> Verified');
+                                $btn.data('verified', '1');
+                            } else {
+                                $btn.removeClass('btn-success').addClass('btn-warning');
+                                $btn.html('<i class="fas fa-exclamation-circle"></i> Unverified');
+                                $btn.data('verified', '0');
+                            }
+                            
+                            // Update counts
+                            updateVerifiedCounts();
+                            
+                            // Apply current filter if active - this will show/hide row based on filter
+                            const activeFilter = $('.verified-filter-btn.active').data('status');
+                            if (activeFilter && activeFilter !== 'all') {
+                                applyVerifiedFilter(activeFilter);
+                            } else {
+                                // If showing all, re-render to ensure consistency
+                                renderTable();
+                            }
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Error updating verified status:', error);
+                        console.error('Response:', xhr.responseText);
+                        alert('Failed to update verified status. Please try again.');
+                    },
+                    complete: function() {
+                        // Re-enable button
+                        $btn.prop('disabled', false);
+                    }
+                });
             });
 
             // Verified filter button handlers
             $(document).on('click', '.verified-filter-btn', function() {
                 $('.verified-filter-btn').removeClass('active');
+                $('.doubtful-filter-btn').removeClass('active');
+                $('.filter-show-all-btn').removeClass('active');
                 $(this).addClass('active');
                 const status = $(this).data('status');
                 applyVerifiedFilter(status);
+            });
+
+            // Doubtful filter button handler
+            $(document).on('click', '.doubtful-filter-btn', function() {
+                $('.verified-filter-btn').removeClass('active');
+                $('.doubtful-filter-btn').removeClass('active');
+                $('.filter-show-all-btn').removeClass('active');
+                $(this).addClass('active');
+                const status = $(this).data('status');
+                applyDoubtfulFilter(status);
+            });
+
+            // Show All filter button handler (centralized)
+            $(document).on('click', '.filter-show-all-btn', function() {
+                $('.verified-filter-btn').removeClass('active');
+                $('.doubtful-filter-btn').removeClass('active');
+                $('.filter-show-all-btn').removeClass('active');
+                $(this).addClass('active');
+                filteredData = [...tableData];
+                renderTable();
             });
 
             // Apply verified filter
             function applyVerifiedFilter(status) {
                 let tempData = [...tableData];
                 
-                if (status === 'all') {
-                    // No verified filter
-                } else if (status === 'green') {
-                    tempData = tempData.filter(item => item.IS_VERIFIED === 1 || item.IS_VERIFIED === true);
+                if (status === 'green') {
+                    // Show only verified items
+                    tempData = tempData.filter(item => {
+                        const verified = item.IS_VERIFIED === 1 || item.IS_VERIFIED === true || item.is_verified === true || item.is_verified === 1;
+                        return verified;
+                    });
                 } else if (status === 'yellow') {
-                    tempData = tempData.filter(item => !item.IS_VERIFIED || item.IS_VERIFIED === 0 || item.IS_VERIFIED === false);
+                    // Show only unverified items
+                    tempData = tempData.filter(item => {
+                        const verified = item.IS_VERIFIED === 1 || item.IS_VERIFIED === true || item.is_verified === true || item.is_verified === 1;
+                        return !verified;
+                    });
                 }
                 
                 // Apply Doubtful filter if active
                 const doubtfulFilter = $('.doubtful-filter-btn.active').data('status');
                 if (doubtfulFilter && doubtfulFilter !== 'all') {
                     if (doubtfulFilter === 'doubtful') {
-                        tempData = tempData.filter(item => item.IS_DOUBTFUL === 1 || item.IS_DOUBTFUL === true);
+                        // Show only doubtful items (red flag) - these have is_doubtful = false
+                        tempData = tempData.filter(item => {
+                            const doubtful = item.IS_DOUBTFUL === 1 || item.IS_DOUBTFUL === true || item.is_doubtful === true || item.is_doubtful === 1 || item.is_doubtful === '1';
+                            // Doubtful items have red flag, which means is_doubtful = false (not true)
+                            return !doubtful;
+                        });
                     }
                 }
                 
@@ -2807,65 +2962,101 @@
                 renderTable();
             }
 
-            // Doubtful status button click handler
-            $(document).on('click', '.doubtful-status-btn', function() {
+            // Doubtful status button click handler - Default red flag, turns to green check
+            $(document).on('click', '.doubtful-status-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
                 const $btn = $(this);
                 const sku = $btn.data('sku');
                 const currentDoubtful = $btn.data('doubtful') === '1';
                 const newDoubtful = !currentDoubtful;
-                const rowIndex = parseInt($btn.data('index'));
                 
-                // Update button appearance
-                if (newDoubtful) {
-                    $btn.removeClass('btn-success').addClass('btn-danger');
-                    $btn.html('<i class="fas fa-flag text-danger"></i> Doubtful');
-                    $btn.data('doubtful', '1');
-                } else {
-                    $btn.removeClass('btn-danger').addClass('btn-success');
-                    $btn.html('<i class="fas fa-flag text-success"></i> OK');
-                    $btn.data('doubtful', '0');
-                }
+                // Disable button during save
+                $btn.prop('disabled', true);
                 
-                // Update in-memory data
-                if (tableData[rowIndex]) {
-                    tableData[rowIndex].IS_DOUBTFUL = newDoubtful ? 1 : 0;
-                }
-                
-                // Update counts
-                updateDoubtfulCounts();
-                
-                // Apply current filter if active
-                const activeFilter = $('.doubtful-filter-btn.active').data('status');
-                if (activeFilter && activeFilter !== 'all') {
-                    applyDoubtfulFilter(activeFilter);
-                }
-            });
-
-            // Doubtful filter button handlers
-            $(document).on('click', '.doubtful-filter-btn', function() {
-                $('.doubtful-filter-btn').removeClass('active');
-                $(this).addClass('active');
-                const status = $(this).data('status');
-                applyDoubtfulFilter(status);
+                // Save to server
+                $.ajax({
+                    url: '/update-doubtful-status',
+                    method: 'POST',
+                    data: {
+                        sku: sku,
+                        is_doubtful: newDoubtful ? 1 : 0, // Send as 1 or 0 for better compatibility
+                        _token: $('meta[name="csrf-token"]').attr('content')
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            // Find item in tableData by SKU and update both versions
+                            const itemIndex = tableData.findIndex(item => item.SKU === sku);
+                            if (itemIndex !== -1) {
+                                tableData[itemIndex].IS_DOUBTFUL = newDoubtful ? 1 : 0;
+                                tableData[itemIndex].is_doubtful = newDoubtful;
+                            }
+                            
+                            // Update button appearance - Red flag to Green check
+                            if (newDoubtful) {
+                                // Clicked: Change from red flag to green check
+                                $btn.removeClass('btn-danger').addClass('btn-success');
+                                $btn.html('<i class="fas fa-check text-success"></i> OK');
+                                $btn.data('doubtful', '1');
+                            } else {
+                                // Unclicked: Change back to red flag
+                                $btn.removeClass('btn-success').addClass('btn-danger');
+                                $btn.html('<i class="fas fa-flag text-danger"></i> Doubtful');
+                                $btn.data('doubtful', '0');
+                            }
+                            
+                            // Update counts
+                            updateDoubtfulCounts();
+                            
+                            // Apply current filter if active
+                            const activeFilter = $('.doubtful-filter-btn.active').data('status');
+                            if (activeFilter && activeFilter !== 'all') {
+                                applyDoubtfulFilter(activeFilter);
+                            } else {
+                                renderTable();
+                            }
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Error updating doubtful status:', error);
+                        alert('Failed to update doubtful status. Please try again.');
+                    },
+                    complete: function() {
+                        // Re-enable button
+                        $btn.prop('disabled', false);
+                    }
+                });
             });
 
             // Apply doubtful filter
             function applyDoubtfulFilter(status) {
                 let tempData = [...tableData];
                 
-                if (status === 'all') {
-                    // No doubtful filter
-                } else if (status === 'doubtful') {
-                    tempData = tempData.filter(item => item.IS_DOUBTFUL === 1 || item.IS_DOUBTFUL === true);
+                if (status === 'doubtful') {
+                    // Show only doubtful items (red flag) - these have is_doubtful = false
+                    tempData = tempData.filter(item => {
+                        const doubtful = item.IS_DOUBTFUL === 1 || item.IS_DOUBTFUL === true || item.is_doubtful === true || item.is_doubtful === 1 || item.is_doubtful === '1';
+                        // Doubtful items have red flag, which means is_doubtful = false (not true)
+                        return !doubtful;
+                    });
                 }
                 
                 // Apply Verified filter if active
                 const verifiedFilter = $('.verified-filter-btn.active').data('status');
                 if (verifiedFilter && verifiedFilter !== 'all') {
                     if (verifiedFilter === 'green') {
-                        tempData = tempData.filter(item => item.IS_VERIFIED === 1 || item.IS_VERIFIED === true);
+                        // Show only verified items
+                        tempData = tempData.filter(item => {
+                            const verified = item.IS_VERIFIED === 1 || item.IS_VERIFIED === true || item.is_verified === true || item.is_verified === 1;
+                            return verified;
+                        });
                     } else if (verifiedFilter === 'yellow') {
-                        tempData = tempData.filter(item => !item.IS_VERIFIED || item.IS_VERIFIED === 0 || item.IS_VERIFIED === false);
+                        // Show only unverified items
+                        tempData = tempData.filter(item => {
+                            const verified = item.IS_VERIFIED === 1 || item.IS_VERIFIED === true || item.is_verified === true || item.is_verified === 1;
+                            return !verified;
+                        });
                     }
                 }
                 

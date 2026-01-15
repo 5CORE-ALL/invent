@@ -275,13 +275,24 @@ class VerificationAdjustmentController extends Controller
                 $item->VERIFIED_STOCK = $inv->verified_stock ?? null;
                 $item->TO_ADJUST = $inv->to_adjust ?? null;
                 $item->REASON = $inv->reason ?? null;
-                $item->REMARKS = $inv->REMARKS ?? null;
-                $item->APPROVED = (bool)($inv->approved ?? false);
+                $item->REMARKS = $inv->remarks ?? null;
+                $item->APPROVED = (bool)($inv->is_approved ?? false);
                 $item->APPROVED_BY = $inv->approved_by ?? null;
                 $item->APPROVED_AT = $inv->approved_at ?? null;
+                $item->is_verified = (bool)($inv->is_verified ?? false);
+                $item->is_doubtful = (bool)($inv->is_doubtful ?? false);
+                // Also set uppercase versions for compatibility
+                $item->IS_VERIFIED = (bool)($inv->is_verified ?? false);
+                $item->IS_DOUBTFUL = (bool)($inv->is_doubtful ?? false);
 
                 $adjustedQty = isset($item->TO_ADJUST) && is_numeric($item->TO_ADJUST) ? floatval($item->TO_ADJUST) : 0;
                 $item->LOSS_GAIN = round($adjustedQty * $lp, 2);
+            } else {
+                // For parent rows, set default values
+                $item->IS_VERIFIED = false;
+                $item->is_verified = false;
+                $item->IS_DOUBTFUL = false;
+                $item->is_doubtful = false;
             }
 
             // OVERRIDE: Explicitly set IS_HIDE to 0 for all items to override any filtering
@@ -1114,6 +1125,74 @@ class VerificationAdjustmentController extends Controller
             $inventory = Inventory::create([
                 'sku' => $validated['sku'],
                 'is_ra_checked' => $validated['is_ra_checked'],
+            ]);
+        }
+
+        return response()->json(['success' => true]);
+    }
+
+    public function updateVerifiedStatus(Request $request)
+    {
+        $validated = $request->validate([
+            'sku' => 'required|string',
+            'is_verified' => 'required'
+        ]);
+
+        // Convert various boolean formats to actual boolean
+        $isVerified = filter_var($request->input('is_verified'), FILTER_VALIDATE_BOOLEAN);
+        
+        // Also accept string/numeric values
+        if (is_string($request->input('is_verified'))) {
+            $isVerified = in_array(strtolower($request->input('is_verified')), ['true', '1', 'yes', 'on']);
+        } elseif (is_numeric($request->input('is_verified'))) {
+            $isVerified = (bool)$request->input('is_verified');
+        }
+
+        $inventory = Inventory::where('sku', $validated['sku'])->first();
+
+        if ($inventory) {
+            // SKU exists → Update is_verified
+            $inventory->is_verified = $isVerified;
+            $inventory->save();
+        } else {
+            // SKU not found → Create new record
+            $inventory = Inventory::create([
+                'sku' => $validated['sku'],
+                'is_verified' => $isVerified,
+            ]);
+        }
+
+        return response()->json(['success' => true]);
+    }
+
+    public function updateDoubtfulStatus(Request $request)
+    {
+        $validated = $request->validate([
+            'sku' => 'required|string',
+            'is_doubtful' => 'required'
+        ]);
+
+        // Convert various boolean formats to actual boolean
+        $isDoubtful = filter_var($request->input('is_doubtful'), FILTER_VALIDATE_BOOLEAN);
+        
+        // Also accept string/numeric values
+        if (is_string($request->input('is_doubtful'))) {
+            $isDoubtful = in_array(strtolower($request->input('is_doubtful')), ['true', '1', 'yes', 'on']);
+        } elseif (is_numeric($request->input('is_doubtful'))) {
+            $isDoubtful = (bool)$request->input('is_doubtful');
+        }
+
+        $inventory = Inventory::where('sku', $validated['sku'])->first();
+
+        if ($inventory) {
+            // SKU exists → Update is_doubtful
+            $inventory->is_doubtful = $isDoubtful;
+            $inventory->save();
+        } else {
+            // SKU not found → Create new record
+            $inventory = Inventory::create([
+                'sku' => $validated['sku'],
+                'is_doubtful' => $isDoubtful,
             ]);
         }
 

@@ -29,6 +29,8 @@ class Inventory extends Model
         'warehouse_id',
         'to_warehouse',
         'adjustment',
+        'is_verified',
+        'is_doubtful',
     ];
 
     public function warehouse()

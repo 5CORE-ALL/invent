@@ -520,6 +520,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/update-to-adjust', [ShopifyController::class, 'updateToAdjust']);
     Route::post('/update-approved-by-ih', [VerificationAdjustmentController::class, 'updateApprovedByIH']);
     Route::post('/update-ra-status', [VerificationAdjustmentController::class, 'updateRAStatus']);
+    Route::post('/update-verified-status', [VerificationAdjustmentController::class, 'updateVerifiedStatus']);
+    Route::post('/update-doubtful-status', [VerificationAdjustmentController::class, 'updateDoubtfulStatus']);
     Route::get('/verified-stock-activity-log', [VerificationAdjustmentController::class, 'getVerifiedStockActivityLog']);
     Route::get('/view-inventory-data', [VerificationAdjustmentController::class, 'viewInventory'])->name('view-inventory');
     Route::get('/inventory-history', [VerificationAdjustmentController::class, 'getSkuWiseHistory']);
