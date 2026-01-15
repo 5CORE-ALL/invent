@@ -38,8 +38,9 @@ class SyncMetaInsightsDailyJob implements ShouldQueue
         $this->userId = $userId;
         $this->entityType = $entityType;
         $this->entityMetaId = $entityMetaId;
-        $this->dateStart = $dateStart ?? Carbon::now()->subDays(30)->format('Y-m-d');
-        $this->dateEnd = $dateEnd ?? Carbon::now()->format('Y-m-d');
+        // Default to last 1 day for daily graph data
+        $this->dateStart = $dateStart ?? Carbon::yesterday()->format('Y-m-d');
+        $this->dateEnd = $dateEnd ?? Carbon::yesterday()->format('Y-m-d');
     }
 
     public function handle(MetaAdsService $metaAdsService): void

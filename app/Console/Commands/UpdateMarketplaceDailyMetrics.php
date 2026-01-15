@@ -86,7 +86,7 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateAmazonMetrics($date)
     {
-        // 33 days: Get latest Amazon order date from ShipHub and calculate 33-day range
+        // 30 days: Get latest Amazon order date from ShipHub and calculate 30-day range
         $latestDate = DB::connection('shiphub')
             ->table('orders')
             ->where('marketplace', '=', 'amazon')
@@ -97,7 +97,7 @@ class UpdateMarketplaceDailyMetrics extends Command
         }
 
         $latestDateCarbon = Carbon::parse($latestDate);
-        $startDate = $latestDateCarbon->copy()->subDays(32); // 33 days total (matches AmazonSalesController)
+        $startDate = $latestDateCarbon->copy()->subDays(29)->startOfDay(); // 30 days total (matches AmazonSalesController)
 
         // Get order items from ShipHub (matching AmazonSalesController exactly)
         $orderItems = DB::connection('shiphub')
@@ -2387,7 +2387,7 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateWalmartMetrics($date)
     {
-        // 33 days: Get latest Walmart order date from walmart_daily_data (same as Sales page)
+        // 30 days: Get latest Walmart order date from walmart_daily_data (same as Sales page)
         $latestDate = \App\Models\WalmartDailyData::max('order_date');
 
         if (!$latestDate) {
@@ -2395,7 +2395,7 @@ class UpdateMarketplaceDailyMetrics extends Command
         }
 
         $latestDateCarbon = Carbon::parse($latestDate);
-        $startDate = $latestDateCarbon->copy()->subDays(32); // 33 days total (matches Amazon)
+        $startDate = $latestDateCarbon->copy()->subDays(29)->startOfDay(); // 30 days total (matches Amazon)
 
         // Get Walmart orders from walmart_daily_data (same as Sales page)
         $orders = \App\Models\WalmartDailyData::where('period', 'l30')

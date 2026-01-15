@@ -191,6 +191,8 @@ class AutoUpdateAmazonBgtKw extends Command
 
                 $sales = $matchedCampaignL30->sales30d ?? 0;
                 $spend = $matchedCampaignL30->spend ?? 0;
+                $row['spend'] = $spend;
+                $row['units_ordered_l30'] = $amazonSheet->units_ordered_l30 ?? 0;
 
                 if ($spend > 0 && $sales > 0) {
                     $row['acos_L30'] = round(($spend / $sales) * 100, 2);
@@ -230,21 +232,40 @@ class AutoUpdateAmazonBgtKw extends Command
             foreach ($validCampaignsForTotal as $row) {
                 $acos = (float) ($row['acos_L30'] ?? 0);
                 $price = (float) ($row['price'] ?? 0);
+                $spend = (float) ($row['spend'] ?? 0);
+
+                // If spend = 0 and ACOS = 0%, keep budget at $3
+                if ($spend == 0 && $acos == 0) {
+                    $row['sbgt'] = 3;
+                    $result[] = (object) $row;
+                    continue;
+                }
+
+                // If price is between 10-20, set budget to $1
+                if ($price >= 10 && $price <= 20) {
+                    $row['sbgt'] = 1;
+                    $result[] = (object) $row;
+                    continue;
+                }
+
+                // If price < $10 and L30 units ordered = 0, set budget to $1
+                $unitsOrderedL30 = (float) ($row['units_ordered_l30'] ?? 0);
+                if ($price < 10 && $unitsOrderedL30 == 0) {
+                    $row['sbgt'] = 1;
+                    $result[] = (object) $row;
+                    continue;
+                }
 
                 // ACOS-based sbgt rule
                 if ($acos < 5) {
-                    $acos_sbgt = 8;
-                } elseif ($acos < 10) {
-                    $acos_sbgt = 7;
-                } elseif ($acos < 15) {
                     $acos_sbgt = 6;
-                } elseif ($acos < 20) {
+                } elseif ($acos < 10) {
                     $acos_sbgt = 5;
-                } elseif ($acos < 25) {
+                } elseif ($acos < 15) {
                     $acos_sbgt = 4;
-                } elseif ($acos < 30) {
+                } elseif ($acos < 20) {
                     $acos_sbgt = 3;
-                } elseif ($acos < 35) {
+                } elseif ($acos < 25) {
                     $acos_sbgt = 2;
                 } else {
                     $acos_sbgt = 1;

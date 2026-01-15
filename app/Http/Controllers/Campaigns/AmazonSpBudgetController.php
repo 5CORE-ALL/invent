@@ -110,6 +110,74 @@ class AmazonSpBudgetController extends Controller
         return $data['keywords'] ?? [];
     }
 
+    /**
+     * Get SB ad groups by campaigns (for HL campaigns)
+     */
+    public function getSbAdGroupsByCampaigns(array $campaignIds)
+    {
+        $accessToken = $this->getAccessToken();
+        $client = new Client();
+
+        $normalizedCampaignIds = array_values(array_filter(array_map(function ($id) {
+            if (is_null($id)) {
+                return null;
+            }
+            return trim((string) $id);
+        }, $campaignIds), function ($id) {
+            return $id !== '';
+        }));
+
+        if (empty($normalizedCampaignIds)) {
+            return [];
+        }
+
+        $url = 'https://advertising-api.amazon.com/sb/v4/adGroups/list';
+        $payload = [
+            'campaignIdFilter' => ['include' => $normalizedCampaignIds],
+            'stateFilter' => ['include' => ['ENABLED']],
+        ];
+
+        $response = $client->post($url, [
+            'headers' => [
+                'Amazon-Advertising-API-ClientId' => env('AMAZON_ADS_CLIENT_ID'),
+                'Authorization' => 'Bearer ' . $accessToken,
+                'Amazon-Advertising-API-Scope' => $this->profileId,
+                'Content-Type' => 'application/vnd.sbadgroupresource.v4+json',
+                'Accept' => 'application/vnd.sbadgroupresource.v4+json',
+            ],
+            'json' => $payload,
+        ]);
+
+        $data = json_decode($response->getBody(), true);
+        return $data['adGroups'] ?? [];
+    }
+
+    /**
+     * Get SB keywords by ad group (for HL campaigns)
+     */
+    public function getSbKeywordsByAdGroup($adGroupId)
+    {
+        $accessToken = $this->getAccessToken();
+        $client = new Client();
+
+        $url = 'https://advertising-api.amazon.com/sb/keywords';
+        
+        $response = $client->get($url, [
+            'headers' => [
+                'Amazon-Advertising-API-ClientId' => env('AMAZON_ADS_CLIENT_ID'),
+                'Authorization' => 'Bearer ' . $accessToken,
+                'Amazon-Advertising-API-Scope' => $this->profileId,
+                'Accept' => 'application/vnd.sbkeyword.v3.2+json',
+            ],
+            'query' => [
+                'adGroupIdFilter' => $adGroupId,
+            ],
+        ]);
+
+        $data = json_decode($response->getBody(), true);
+        return $data ?? [];
+    }
+
     public function getTargetsAdByCampaign($campaignId)
     {
         $accessToken = $this->getAccessToken();
@@ -1931,7 +1999,11 @@ class AmazonSpBudgetController extends Controller
         // So last_sbid = previous day's calculated SBID, SBID = current day's calculated SBID
         // This prevents both columns from showing the same value after page refresh
         $dayBeforeYesterday = date('Y-m-d', strtotime('-2 days'));
+        $yesterday = date('Y-m-d', strtotime('-1 day'));
         $lastSbidMap = [];
+        $sbidMMap = [];
+        $sbidApprovedMap = [];
+        
         if ($campaignType === 'HL') {
             $lastSbidReports = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
                 ->where('report_date_range', $dayBeforeYesterday)
@@ -1940,6 +2012,34 @@ class AmazonSpBudgetController extends Controller
             foreach ($lastSbidReports as $report) {
                 if (!empty($report->campaign_id) && !empty($report->last_sbid)) {
                     $lastSbidMap[$report->campaign_id] = $report->last_sbid;
+                }
+            }
+            
+            // Fetch sbid_m from yesterday's records first, then L1 as fallback
+            $sbidMReports = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+                ->where(function($q) use ($yesterday) {
+                    $q->where('report_date_range', $yesterday)
+                      ->orWhere('report_date_range', 'L1');
+                })
+                ->where('campaignStatus', '!=', 'ARCHIVED')
+                ->get()
+                ->sortBy(function($report) use ($yesterday) {
+                    // Prioritize yesterday's records over L1
+                    return $report->report_date_range === $yesterday ? 0 : 1;
+                })
+                ->groupBy('campaign_id');
+            
+            foreach ($sbidMReports as $campaignId => $reports) {
+                // Get the first report (prioritized by yesterday)
+                $report = $reports->first();
+                if (!empty($report->campaign_id)) {
+                    if (!empty($report->sbid_m)) {
+                        $sbidMMap[$report->campaign_id] = $report->sbid_m;
+                    }
+                    // Check if SBID is approved (sbid matches sbid_m)
+                    if (!empty($report->sbid_m) && $report->sbid == $report->sbid_m) {
+                        $sbidApprovedMap[$report->campaign_id] = true;
+                    }
                 }
             }
         } else {
@@ -1963,6 +2063,47 @@ class AmazonSpBudgetController extends Controller
             foreach ($lastSbidReports as $report) {
                 if (!empty($report->campaign_id) && !empty($report->last_sbid)) {
                     $lastSbidMap[$report->campaign_id] = $report->last_sbid;
+                }
+            }
+            
+            // Fetch sbid_m from yesterday's records first, then L1 as fallback
+            $sbidMReports = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+                ->where(function($q) use ($yesterday) {
+                    $q->where('report_date_range', $yesterday)
+                      ->orWhere('report_date_range', 'L1');
+                })
+                ->where('campaignStatus', '!=', 'ARCHIVED');
+            
+            if ($campaignType === 'PT') {
+                $sbidMReports->where(function($q) {
+                    $q->where('campaignName', 'LIKE', '% PT')
+                      ->orWhere('campaignName', 'LIKE', '% PT.')
+                      ->orWhere('campaignName', 'LIKE', '%PT')
+                      ->orWhere('campaignName', 'LIKE', '%PT.');
+                });
+            } else {
+                $sbidMReports->where('campaignName', 'NOT LIKE', '%PT')
+                            ->where('campaignName', 'NOT LIKE', '%PT.');
+            }
+            
+            $sbidMReports = $sbidMReports->get()
+                ->sortBy(function($report) use ($yesterday) {
+                    // Prioritize yesterday's records over L1
+                    return $report->report_date_range === $yesterday ? 0 : 1;
+                })
+                ->groupBy('campaign_id');
+            
+            foreach ($sbidMReports as $campaignId => $reports) {
+                // Get the first report (prioritized by yesterday)
+                $report = $reports->first();
+                if (!empty($report->campaign_id)) {
+                    if (!empty($report->sbid_m)) {
+                        $sbidMMap[$report->campaign_id] = $report->sbid_m;
+                    }
+                    // Check if SBID is approved (sbid matches sbid_m)
+                    if (!empty($report->sbid_m) && $report->sbid == $report->sbid_m) {
+                        $sbidApprovedMap[$report->campaign_id] = true;
+                    }
                 }
             }
         }
@@ -2303,6 +2444,8 @@ class AmazonSpBudgetController extends Controller
                     'has_custom_sprice' => $hasCustomSprice,
                     'SPRICE_STATUS' => $spriceStatus,
                     'last_sbid' => isset($lastSbidMap[$campaignId]) ? $lastSbidMap[$campaignId] : '',
+                    'sbid_m' => isset($sbidMMap[$campaignId]) ? $sbidMMap[$campaignId] : '',
+                    'sbid_approved' => isset($sbidApprovedMap[$campaignId]) ? $sbidApprovedMap[$campaignId] : false,
                 ];
             }
 
@@ -3882,6 +4025,368 @@ class AmazonSpBudgetController extends Controller
                     AND (last_sbid IS NULL OR last_sbid = '')
                 ", array_merge($bindings, $campaignIds, [$yesterday]));
             }
+        }
+    }
+
+    /**
+     * Save SBID M to database
+     */
+    public function saveAmazonSbidM(Request $request)
+    {
+        try {
+            $campaignId = $request->input('campaign_id');
+            $sbidM = $request->input('sbid_m');
+            $campaignType = $request->input('campaign_type'); // KW, PT, or HL
+
+            if (!$campaignId || !$sbidM) {
+                return response()->json([
+                    'status' => 400,
+                    'message' => 'Campaign ID and SBID M are required'
+                ], 400);
+            }
+
+            $sbidM = floatval($sbidM);
+            if ($sbidM <= 0) {
+                return response()->json([
+                    'status' => 400,
+                    'message' => 'SBID M must be greater than 0'
+                ], 400);
+            }
+
+            $yesterday = date('Y-m-d', strtotime('-1 day'));
+
+            if ($campaignType === 'HL') {
+                // Update SB campaigns - try yesterday first, then L1 as fallback
+                // First try yesterday's date
+                $updated = DB::table('amazon_sb_campaign_reports')
+                    ->where('campaign_id', $campaignId)
+                    ->where('report_date_range', $yesterday)
+                    ->where('ad_type', 'SPONSORED_BRANDS')
+                    ->update([
+                        'sbid_m' => (string)$sbidM
+                    ]);
+                
+                // If no record found for yesterday, try L1
+                if ($updated === 0) {
+                    $updated = DB::table('amazon_sb_campaign_reports')
+                        ->where('campaign_id', $campaignId)
+                        ->where('report_date_range', 'L1')
+                        ->where('ad_type', 'SPONSORED_BRANDS')
+                        ->update([
+                            'sbid_m' => (string)$sbidM
+                        ]);
+                }
+            } else {
+                // Update SP campaigns (KW and PT) - try yesterday first, then L1 as fallback
+                // First try yesterday's date
+                $updated = DB::table('amazon_sp_campaign_reports')
+                    ->where('campaign_id', $campaignId)
+                    ->where('report_date_range', $yesterday)
+                    ->where('ad_type', 'SPONSORED_PRODUCTS')
+                    ->update([
+                        'sbid_m' => (string)$sbidM
+                    ]);
+                
+                // If no record found for yesterday, try L1
+                if ($updated === 0) {
+                    $updated = DB::table('amazon_sp_campaign_reports')
+                        ->where('campaign_id', $campaignId)
+                        ->where('report_date_range', 'L1')
+                        ->where('ad_type', 'SPONSORED_PRODUCTS')
+                        ->update([
+                            'sbid_m' => (string)$sbidM
+                        ]);
+                }
+            }
+
+            if ($updated > 0) {
+                return response()->json([
+                    'status' => 200,
+                    'message' => 'SBID M saved successfully',
+                    'sbid_m' => $sbidM
+                ]);
+            } else {
+                // Log for debugging
+                FacadesLog::error('SBID M save failed', [
+                    'campaign_id' => $campaignId,
+                    'campaign_type' => $campaignType,
+                    'yesterday' => $yesterday,
+                    'sbid_m' => $sbidM
+                ]);
+                
+                return response()->json([
+                    'status' => 404,
+                    'message' => 'Campaign not found. Please ensure the campaign exists for yesterday\'s date or L1.'
+                ], 404);
+            }
+        } catch (\Exception $e) {
+            FacadesLog::error('Error saving SBID M: ' . $e->getMessage(), [
+                'campaign_id' => $request->input('campaign_id'),
+                'campaign_type' => $request->input('campaign_type'),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'status' => 500,
+                'message' => 'Error saving SBID M: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Approve SBID M and update SBID in campaign reports
+     */
+    public function approveAmazonSbid(Request $request)
+    {
+        try {
+            $campaignId = $request->input('campaign_id');
+            $sbidM = $request->input('sbid_m');
+            $campaignType = $request->input('campaign_type'); // KW, PT, or HL
+
+            if (!$campaignId || !$sbidM) {
+                return response()->json([
+                    'status' => 400,
+                    'message' => 'Campaign ID and SBID M are required'
+                ], 400);
+            }
+
+            $sbidM = floatval($sbidM);
+            if ($sbidM <= 0) {
+                return response()->json([
+                    'status' => 400,
+                    'message' => 'SBID M must be greater than 0'
+                ], 400);
+            }
+
+            $yesterday = date('Y-m-d', strtotime('-1 day'));
+            
+            // Check all possible date ranges where campaign might exist
+            // Include yesterday, L1, L7, and also check if campaign exists in any date range
+            $dateRanges = [$yesterday, 'L1', 'L7'];
+            $updated = 0;
+
+            if ($campaignType === 'HL') {
+                // First, try to find the campaign in any of the common date ranges
+                $campaignExists = DB::table('amazon_sb_campaign_reports')
+                    ->where('campaign_id', $campaignId)
+                    ->whereIn('report_date_range', $dateRanges)
+                    ->where('ad_type', 'SPONSORED_BRANDS')
+                    ->exists();
+                
+                if ($campaignExists) {
+                    // Update all matching records in the date ranges
+                    $updated = DB::table('amazon_sb_campaign_reports')
+                        ->where('campaign_id', $campaignId)
+                        ->whereIn('report_date_range', $dateRanges)
+                        ->where('ad_type', 'SPONSORED_BRANDS')
+                        ->update([
+                            'sbid' => (string)$sbidM,
+                            'sbid_m' => (string)$sbidM
+                        ]);
+                } else {
+                    // If not found in common ranges, try to find in any date range
+                    $updated = DB::table('amazon_sb_campaign_reports')
+                        ->where('campaign_id', $campaignId)
+                        ->where('ad_type', 'SPONSORED_BRANDS')
+                        ->where('campaignStatus', '!=', 'ARCHIVED')
+                        ->update([
+                            'sbid' => (string)$sbidM,
+                            'sbid_m' => (string)$sbidM
+                        ]);
+                }
+            } else {
+                // First, try to find the campaign in any of the common date ranges
+                $campaignExists = DB::table('amazon_sp_campaign_reports')
+                    ->where('campaign_id', $campaignId)
+                    ->whereIn('report_date_range', $dateRanges)
+                    ->where('ad_type', 'SPONSORED_PRODUCTS')
+                    ->exists();
+                
+                if ($campaignExists) {
+                    // Update all matching records in the date ranges
+                    $updated = DB::table('amazon_sp_campaign_reports')
+                        ->where('campaign_id', $campaignId)
+                        ->whereIn('report_date_range', $dateRanges)
+                        ->where('ad_type', 'SPONSORED_PRODUCTS')
+                        ->update([
+                            'sbid' => (string)$sbidM,
+                            'sbid_m' => (string)$sbidM
+                        ]);
+                } else {
+                    // If not found in common ranges, try to find in any date range
+                    $updated = DB::table('amazon_sp_campaign_reports')
+                        ->where('campaign_id', $campaignId)
+                        ->where('ad_type', 'SPONSORED_PRODUCTS')
+                        ->where('campaignStatus', '!=', 'ARCHIVED')
+                        ->update([
+                            'sbid' => (string)$sbidM,
+                            'sbid_m' => (string)$sbidM
+                        ]);
+                }
+            }
+
+            if ($updated > 0) {
+                // Update bids on Amazon Ads site using API
+                try {
+                    $apiUpdateResult = $this->updateCampaignBidsOnAmazon($campaignId, $sbidM, $campaignType);
+                    
+                    return response()->json([
+                        'status' => 200,
+                        'message' => 'SBID approved and updated successfully on Amazon',
+                        'sbid' => $sbidM,
+                        'api_result' => $apiUpdateResult
+                    ]);
+                } catch (\Exception $e) {
+                    // Database update succeeded but API update failed
+                    FacadesLog::error('SBID approved in DB but API update failed: ' . $e->getMessage(), [
+                        'campaign_id' => $campaignId,
+                        'campaign_type' => $campaignType,
+                        'sbid_m' => $sbidM
+                    ]);
+                    
+                    return response()->json([
+                        'status' => 200,
+                        'message' => 'SBID approved in database, but Amazon API update failed: ' . $e->getMessage(),
+                        'sbid' => $sbidM,
+                        'warning' => true
+                    ]);
+                }
+            } else {
+                // Log for debugging
+                FacadesLog::error('SBID approve failed', [
+                    'campaign_id' => $campaignId,
+                    'campaign_type' => $campaignType,
+                    'yesterday' => $yesterday,
+                    'sbid_m' => $sbidM
+                ]);
+                
+                return response()->json([
+                    'status' => 404,
+                    'message' => 'Campaign not found. Please ensure the campaign exists for yesterday\'s date or L1.'
+                ], 404);
+            }
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 500,
+                'message' => 'Error approving SBID: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Update campaign bids on Amazon Ads site using API
+     */
+    private function updateCampaignBidsOnAmazon($campaignId, $newBid, $campaignType)
+    {
+        ini_set('max_execution_time', 300);
+        ini_set('memory_limit', '512M');
+
+        $allKeywords = [];
+
+        // Get ad groups for the campaign
+        if ($campaignType === 'HL') {
+            // For SB campaigns (HL), use different method
+            $adGroups = $this->getSbAdGroupsByCampaigns([$campaignId]);
+        } else {
+            // For SP campaigns (KW and PT)
+            $adGroups = $this->getAdGroupsByCampaigns([$campaignId]);
+        }
+        
+        if (empty($adGroups)) {
+            throw new \Exception('No ad groups found for campaign');
+        }
+
+        // Get keywords for each ad group
+        foreach ($adGroups as $adGroup) {
+            if ($campaignType === 'HL') {
+                // For SB campaigns (HL), use different method
+                $keywords = $this->getSbKeywordsByAdGroup($adGroup['adGroupId']);
+            } else {
+                // For SP campaigns (KW and PT)
+                $keywords = $this->getKeywordsByAdGroup($adGroup['adGroupId']);
+            }
+            
+            foreach ($keywords as $kw) {
+                if ($campaignType === 'HL') {
+                    // For SB campaigns (HL)
+                    $allKeywords[] = [
+                        'keywordId' => $kw['keywordId'],
+                        'campaignId' => $campaignId,
+                        'adGroupId' => $adGroup['adGroupId'],
+                        'bid' => $newBid,
+                        'state' => $kw['state'] ?? 'enabled'
+                    ];
+                } else {
+                    // For SP campaigns (KW and PT)
+                    $allKeywords[] = [
+                        'keywordId' => $kw['keywordId'],
+                        'bid' => $newBid,
+                    ];
+                }
+            }
+        }
+
+        if (empty($allKeywords)) {
+            throw new \Exception('No keywords found to update');
+        }
+
+        // Remove duplicates
+        $allKeywords = collect($allKeywords)
+            ->unique('keywordId')
+            ->values()
+            ->toArray();
+
+        $accessToken = $this->getAccessToken();
+        $client = new Client();
+        $results = [];
+
+        try {
+            if ($campaignType === 'HL') {
+                // Use SB keywords endpoint for HL campaigns
+                $url = 'https://advertising-api.amazon.com/sb/keywords';
+                $chunks = array_chunk($allKeywords, 100);
+                foreach ($chunks as $chunk) {
+                    $response = $client->put($url, [
+                        'headers' => [
+                            'Amazon-Advertising-API-ClientId' => env('AMAZON_ADS_CLIENT_ID'),
+                            'Authorization' => 'Bearer ' . $accessToken,
+                            'Amazon-Advertising-API-Scope' => $this->profileId,
+                            'Content-Type' => 'application/json',
+                        ],
+                        'json' => $chunk,
+                        'timeout' => 60,
+                        'connect_timeout' => 30,
+                    ]);
+
+                    $results[] = json_decode($response->getBody(), true);
+                }
+            } else {
+                // Use SP keywords endpoint for KW and PT campaigns
+                $url = 'https://advertising-api.amazon.com/sp/keywords';
+                $chunks = array_chunk($allKeywords, 100);
+                foreach ($chunks as $chunk) {
+                    $response = $client->put($url, [
+                        'headers' => [
+                            'Amazon-Advertising-API-ClientId' => env('AMAZON_ADS_CLIENT_ID'),
+                            'Authorization' => 'Bearer ' . $accessToken,
+                            'Amazon-Advertising-API-Scope' => $this->profileId,
+                            'Content-Type' => 'application/vnd.spKeyword.v3+json',
+                            'Accept' => 'application/vnd.spKeyword.v3+json',
+                        ],
+                        'json' => [
+                            'keywords' => $chunk
+                        ],
+                        'timeout' => 60,
+                        'connect_timeout' => 30,
+                    ]);
+
+                    $results[] = json_decode($response->getBody(), true);
+                }
+            }
+
+            return $results;
+        } catch (\Exception $e) {
+            throw new \Exception('Amazon API error: ' . $e->getMessage());
         }
     }
 

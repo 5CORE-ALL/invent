@@ -201,6 +201,11 @@
                             0 Sold: <span id="zero-sold-count">0</span>
                         </span>
                         
+                        <!-- Price Comparison Badge -->
+                        <span class="badge bg-danger fs-6 p-2 price-filter-badge" data-filter="prc-gt-lmp" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter items where Prc > LMP">
+                            Prc > LMP: <span id="prc-gt-lmp-count">0</span>
+                        </span>
+                        
                         <!-- Financial Metrics -->
                         <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold;">Total PFT: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total Sales: $0.00</span>
@@ -350,6 +355,7 @@
         let increaseModeActive = false; // Track increase mode state
         let selectedSkus = new Set(); // Track selected SKUs across all pages
         let soldFilterActive = 'all'; // Track sold filter state: 'all', 'sold', 'zero'
+        let priceFilterActive = false; // Track price filter state: true = show only Prc > LMP
 
         // SKU-specific chart
         function initSkuMetricsChart() {
@@ -597,6 +603,22 @@
                     $('#sold-filter').val('sold'); // Show only sold items
                 } else if (filter === 'zero') {
                     $('#sold-filter').val('zero'); // Show only 0-sold items
+                }
+                
+                // Re-apply filters
+                applyFilters();
+            });
+
+            // Price filter badge click handler
+            $('.price-filter-badge').on('click', function() {
+                // Toggle the price filter
+                priceFilterActive = !priceFilterActive;
+                
+                // Update badge appearance
+                if (priceFilterActive) {
+                    $(this).removeClass('bg-danger').addClass('bg-warning').css('color', 'black');
+                } else {
+                    $(this).removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
                 }
                 
                 // Re-apply filters
@@ -1708,7 +1730,16 @@
                             // Empty for parent rows
                             if (rowData.is_parent_summary || !value) return '';
 
-                            return '$' + parseFloat(value).toFixed(2);
+                            const price = parseFloat(value);
+                            const lmpPrice = parseFloat(rowData.lmp_price || 0);
+                            const priceFormatted = '$' + price.toFixed(2);
+                            
+                            // Color red if price > lmp_price
+                            if (lmpPrice > 0 && price > lmpPrice) {
+                                return `<span style="color: #dc3545; font-weight: 600;">${priceFormatted}</span>`;
+                            }
+                            
+                            return priceFormatted;
                         },
                         sorter: "number",
                         width: 70
@@ -2573,6 +2604,18 @@
                     });
                 }
 
+                // Price filter (Prc > LMP)
+                if (priceFilterActive) {
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return false;
+                        
+                        const price = parseFloat(data.price) || 0;
+                        const lmpPrice = parseFloat(data.lmp_price) || 0;
+                        
+                        return lmpPrice > 0 && price > lmpPrice;
+                    });
+                }
+
                 updateCalcValues();
                 updateSummary();
                 // Update select all checkbox after filter is applied
@@ -2641,6 +2684,7 @@
                 let totalSkuCount = 0;
                 let totalSoldCount = 0;
                 let zeroSoldCount = 0;
+                let prcGtLmpCount = 0;
 
                 data.forEach(row => {
                     if (!row['is_parent_summary'] && parseFloat(row['INV']) > 0) {
@@ -2659,6 +2703,13 @@
                             totalSoldCount++;
                         } else {
                             zeroSoldCount++;
+                        }
+                        
+                        // Count Prc > LMP
+                        const price = parseFloat(row['price'] || 0);
+                        const lmpPrice = parseFloat(row['lmp_price'] || 0);
+                        if (lmpPrice > 0 && price > lmpPrice) {
+                            prcGtLmpCount++;
                         }
                         
                         const dil = parseFloat(row['E Dil%'] || 0);
@@ -2695,6 +2746,9 @@
                 // Update sold counts
                 $('#total-sold-count').text(totalSoldCount.toLocaleString());
                 $('#zero-sold-count').text(zeroSoldCount.toLocaleString());
+                
+                // Update Prc > LMP count
+                $('#prc-gt-lmp-count').text(prcGtLmpCount.toLocaleString());
                 
                 // Calculate TCOS% = (Total Spend L30 / Total Sales) * 100
                 const tcosPercent = totalSalesAmt > 0 ? ((totalSpendL30 / totalSalesAmt) * 100) : 0;

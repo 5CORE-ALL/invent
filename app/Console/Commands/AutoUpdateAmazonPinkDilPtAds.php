@@ -50,8 +50,12 @@ class AutoUpdateAmazonPinkDilPtAds extends Command
             $campaignsToUpdate = [];
 
             foreach ($campaigns as $campaign) {
-                // Check if dil is pink (dilPercent > 50) AND ACOS > 30%
-                if (($campaign->dilPercent ?? 0) > 50 && ($campaign->acos_L30 ?? 0) > 30) {
+                // Check if (dil is pink (dilPercent > 50) AND ACOS > 35%) OR (ratings < 3.5) OR (price < 10 AND units_ordered_l30 > 0)
+                $rating = isset($campaign->rating) && $campaign->rating !== null ? (float) $campaign->rating : null;
+                $price = isset($campaign->price) ? (float) $campaign->price : null;
+                $unitsL30 = $campaign->A_L30 ?? 0;
+                $shouldPause = (($campaign->dilPercent ?? 0) > 50 && ($campaign->acos_L30 ?? 0) > 35) || ($rating !== null && $rating < 3.5) || ($price < 10 && $unitsL30 > 0);
+                if ($shouldPause) {
                     $campaignsToPause[] = $campaign->campaign_id;
                 } else {
                     $campaignsToUpdate[] = $campaign;
@@ -109,6 +113,41 @@ class AutoUpdateAmazonPinkDilPtAds extends Command
                     return strtoupper($item->sku);
                 });
                 $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            }
+
+            // Fetch latest ratings from junglescout_product_data (same logic as getAmazonUtilizedAdsData)
+            $junglescoutData = collect();
+            
+            // Get latest by SKU
+            $skuRatings = DB::table('junglescout_product_data as j1')
+                ->select('j1.sku', 'j1.data')
+                ->whereNotNull('j1.sku')
+                ->whereIn('j1.sku', $skus)
+                ->whereRaw('j1.updated_at = (SELECT MAX(j2.updated_at) FROM junglescout_product_data j2 WHERE j2.sku = j1.sku)')
+                ->get();
+            
+            foreach ($skuRatings as $item) {
+                $data = json_decode($item->data, true);
+                $rating = $data['rating'] ?? null;
+                if ($item->sku && !$junglescoutData->has($item->sku)) {
+                    $junglescoutData->put($item->sku, $rating);
+                }
+            }
+            
+            // Get latest by parent as fallback
+            $parentRatings = DB::table('junglescout_product_data as j1')
+                ->select('j1.parent', 'j1.data')
+                ->whereNotNull('j1.parent')
+                ->whereIn('j1.parent', $skus)
+                ->whereRaw('j1.updated_at = (SELECT MAX(j2.updated_at) FROM junglescout_product_data j2 WHERE j2.parent = j1.parent)')
+                ->get();
+            
+            foreach ($parentRatings as $item) {
+                $data = json_decode($item->data, true);
+                $rating = $data['rating'] ?? null;
+                if ($item->parent && !$junglescoutData->has($item->parent)) {
+                    $junglescoutData->put($item->parent, $rating);
+                }
             }
 
         $amazonSpCampaignReportsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
@@ -175,8 +214,10 @@ class AutoUpdateAmazonPinkDilPtAds extends Command
             $row = [];
             $row['INV']    = $shopify->inv ?? 0;
             $row['A_L30']  = $amazonSheet->units_ordered_l30 ?? 0;
+            $row['price']  = $amazonSheet->price ?? null;
             $row['campaign_id'] = $campaignId;
             $row['campaignName'] = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
+            $row['rating'] = $junglescoutData[$pm->sku] ?? null;
             $row['sbgt'] = 1;
 
             if ($row['INV'] > 0 && !empty($row['campaignName'])) {
