@@ -192,6 +192,7 @@ class AutoUpdateAmazonBgtKw extends Command
                 $sales = $matchedCampaignL30->sales30d ?? 0;
                 $spend = $matchedCampaignL30->spend ?? 0;
                 $row['spend'] = $spend;
+                $row['units_ordered_l30'] = $amazonSheet->units_ordered_l30 ?? 0;
 
                 if ($spend > 0 && $sales > 0) {
                     $row['acos_L30'] = round(($spend / $sales) * 100, 2);
@@ -242,6 +243,14 @@ class AutoUpdateAmazonBgtKw extends Command
 
                 // If price is between 10-20, set budget to $1
                 if ($price >= 10 && $price <= 20) {
+                    $row['sbgt'] = 1;
+                    $result[] = (object) $row;
+                    continue;
+                }
+
+                // If price < $10 and L30 units ordered = 0, set budget to $1
+                $unitsOrderedL30 = (float) ($row['units_ordered_l30'] ?? 0);
+                if ($price < 10 && $unitsOrderedL30 == 0) {
                     $row['sbgt'] = 1;
                     $result[] = (object) $row;
                     continue;

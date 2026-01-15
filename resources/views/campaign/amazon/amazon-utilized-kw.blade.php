@@ -1789,7 +1789,14 @@
                             var acos = parseFloat(row.acos || 0);
                             var price = parseFloat(row.price || 0);
                             var spend = parseFloat(row.l30_spend || 0);
+                            var aL30 = parseFloat(row.A_L30 || 0);
                             var sbgtAcos, sbgtPrice;
+
+                            // Special condition: price < $10 and A_L30 = 0 → $1 budget (SBGT = 1)
+                            if (price < 10 && aL30 === 0) {
+                                var sbgt = 1;
+                                return `<div class="text-center"><span class="fw-bold sbgt-value">${sbgt}</span></div>`;
+                            }
 
                             // Special condition: if spend = 0 and acos = 0%, keep budget at $3 (SBGT = 3)
                             if (spend === 0 && acos === 0) {

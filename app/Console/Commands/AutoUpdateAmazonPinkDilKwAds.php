@@ -50,9 +50,11 @@ class AutoUpdateAmazonPinkDilKwAds extends Command
             $campaignsToUpdate = [];
 
             foreach ($campaigns as $campaign) {
-                // Check if (dil is pink (dilPercent > 50) AND ACOS > 35%) OR (ratings < 3.5)
+                // Check if (dil is pink (dilPercent > 50) AND ACOS > 35%) OR (ratings < 3.5) OR (price < 10 AND units_ordered_l30 > 0)
                 $rating = isset($campaign->rating) && $campaign->rating !== null ? (float) $campaign->rating : null;
-                $shouldPause = (($campaign->dilPercent ?? 0) > 50 && ($campaign->acos_L30 ?? 0) > 35) || ($rating !== null && $rating < 3.5);
+                $price = isset($campaign->price) ? (float) $campaign->price : null;
+                $unitsL30 = $campaign->A_L30 ?? 0;
+                $shouldPause = (($campaign->dilPercent ?? 0) > 50 && ($campaign->acos_L30 ?? 0) > 35) || ($rating !== null && $rating < 3.5) || ($price < 10 && $unitsL30 > 0);
                 if ($shouldPause) {
                     $campaignsToPause[] = $campaign->campaign_id;
                 } else {
@@ -194,6 +196,7 @@ class AutoUpdateAmazonPinkDilKwAds extends Command
             $row = [];
             $row['INV']    = $shopify->inv ?? 0;
             $row['A_L30']  = $amazonSheet->units_ordered_l30 ?? 0;
+            $row['price']  = $amazonSheet->price ?? null;
             $row['campaign_id'] = $campaignId;
             $row['campaignName'] = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
             $row['rating'] = $junglescoutData[$pm->sku] ?? null;

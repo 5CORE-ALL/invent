@@ -31,8 +31,9 @@ class MetaAdsSyncCommand extends Command
     {
         $userId = $this->option('user-id') ? (int) $this->option('user-id') : null;
         $adAccountMetaId = $this->option('ad-account');
-        $dateStart = $this->option('from') ?? Carbon::now()->subDays(30)->format('Y-m-d');
-        $dateEnd = $this->option('to') ?? Carbon::now()->format('Y-m-d');
+        // Default to last 1 day for daily graph data
+        $dateStart = $this->option('from') ?? Carbon::yesterday()->format('Y-m-d');
+        $dateEnd = $this->option('to') ?? Carbon::yesterday()->format('Y-m-d');
         $insightsOnly = $this->option('insights-only');
 
         $this->info('Starting Meta Ads sync...');
@@ -67,9 +68,11 @@ class MetaAdsSyncCommand extends Command
                         SyncMetaCampaignsJob::dispatch($userId, $account->meta_id);
                     }
                 }
-                $this->line('✓ Campaigns queued');
+                $this->line('✓ Campaigns queued (' . ($adAccountMetaId ? 1 : $adAccounts->count()) . ' jobs)');
 
                 // Step 3: Sync AdSets (for each campaign)
+                // Note: We dispatch ad sets jobs based on existing campaigns in DB
+                // If campaigns haven't been synced yet, run campaigns sync first, then run this command again
                 $this->info('Syncing ad sets...');
                 $campaigns = MetaCampaign::when($userId, fn($q) => $q->where('user_id', $userId))
                     ->when($adAccountMetaId, function ($q) use ($adAccountMetaId) {
@@ -80,10 +83,14 @@ class MetaAdsSyncCommand extends Command
                     })
                     ->get();
 
-                foreach ($campaigns as $campaign) {
-                    SyncMetaAdSetsJob::dispatch($userId, $campaign->meta_id);
+                if ($campaigns->isEmpty()) {
+                    $this->warn('⚠ No campaigns found in database. Please process campaigns jobs first, then run sync again for ad sets.');
+                } else {
+                    foreach ($campaigns as $campaign) {
+                        SyncMetaAdSetsJob::dispatch($userId, $campaign->meta_id);
+                    }
+                    $this->line('✓ Ad sets queued (' . $campaigns->count() . ' jobs)');
                 }
-                $this->line('✓ Ad sets queued');
 
                 // Step 4: Sync Ads (for each ad set)
                 $this->info('Syncing ads...');

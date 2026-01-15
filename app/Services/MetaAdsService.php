@@ -343,7 +343,10 @@ class MetaAdsService
                     'until' => $dateEnd,
                 ]),
                 'level' => $entityType,
+                'time_increment' => 1, // Daily breakdown for graphs
                 'fields' => implode(',', [
+                    'date_start',
+                    'date_stop',
                     'impressions',
                     'clicks',
                     'reach',
