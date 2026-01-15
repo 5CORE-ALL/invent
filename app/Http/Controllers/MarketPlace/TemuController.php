@@ -18,6 +18,7 @@ use App\Models\TemuPricing;
 use App\Models\TemuViewData;
 use App\Models\TemuAdData;
 use App\Models\TemuRPricing;
+use App\Models\TemuListingStatus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -26,6 +27,7 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Carbon\Carbon;
+use App\Models\AmazonChannelSummary;
 
 class TemuController extends Controller
 {
@@ -362,6 +364,42 @@ class TemuController extends Controller
         $product->save();
 
         return response()->json(['success' => true]);
+    }
+    
+    public function saveListingStatus(Request $request)
+    {
+        $validated = $request->validate([
+            'sku' => 'required|string',
+            'nr_req' => 'nullable|string|in:REQ,NRL,NR',
+            'listed' => 'nullable|string|in:Listed,Pending',
+            'buyer_link' => 'nullable|url',
+            'seller_link' => 'nullable|url',
+        ]);
+
+        $sku = $validated['sku'];
+        $status = TemuListingStatus::where('sku', $sku)->first();
+
+        $existing = $status ? $status->value : [];
+
+        // Only update the fields that are present in the request
+        $fields = ['nr_req', 'listed', 'buyer_link', 'seller_link'];
+        foreach ($fields as $field) {
+            if ($request->has($field)) {
+                // Normalize NR to NRL for consistency
+                if ($field === 'nr_req' && isset($validated[$field]) && $validated[$field] === 'NR') {
+                    $existing[$field] = 'NRL';
+                } else {
+                    $existing[$field] = $validated[$field];
+                }
+            }
+        }
+
+        TemuListingStatus::updateOrCreate(
+            ['sku' => $validated['sku']],
+            ['value' => $existing]
+        );
+
+        return response()->json(['status' => 'success']);
     }
 
 
@@ -1505,9 +1543,12 @@ class TemuController extends Controller
             
             // Fetch Amazon pricing data
             $amazonData = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
+            
+            // Fetch Temu Listing Status data (nr_req and listed)
+            $statusData = TemuListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
             // 4. Process data - iterate through ALL product masters
-            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $viewData, $adData, $temuDataViewData, $amazonData, $rPricingData, $percentage, $temuPricingSkusNormalized, $normalizeSku) {
+            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $viewData, $adData, $temuDataViewData, $amazonData, $rPricingData, $percentage, $temuPricingSkusNormalized, $normalizeSku, $statusData) {
                 $sku = $productMaster->sku;
                 
                 // Get related data (may be null if not in Temu)
@@ -1641,6 +1682,19 @@ class TemuController extends Controller
                 $normalizedCurrentSku = $normalizeSku($sku);
                 $missing = isset($temuPricingSkusNormalized[$normalizedCurrentSku]) ? '' : 'M';
                 
+                // Get nr_req and listed from TemuListingStatus
+                $status = $statusData->get($sku);
+                $statusValue = null;
+                if ($status) {
+                    $statusValue = is_array($status->value) 
+                        ? $status->value 
+                        : (is_string($status->value) ? json_decode($status->value, true) : []);
+                }
+                $nr_req = $statusValue['nr_req'] ?? ($inventory > 0 ? 'REQ' : 'NRL');
+                $listed = $statusValue['listed'] ?? ($inventory > 0 ? 'Pending' : 'Listed');
+                $buyer_link = $statusValue['buyer_link'] ?? null;
+                $seller_link = $statusValue['seller_link'] ?? null;
+                
                 return [
                     'sku' => $sku,
                     'parent' => $productMaster->parent ?? '',
@@ -1681,9 +1735,16 @@ class TemuController extends Controller
                     'nroi_percent' => round($nroiPercent, 2),
                     'sprice' => $sprice,
                     'starget' => $starget,
-                    'recommended_base_price' => $recommendedBasePrice
+                    'recommended_base_price' => $recommendedBasePrice,
+                    'nr_req' => $nr_req,
+                    'listed' => $listed,
+                    'buyer_link' => $buyer_link,
+                    'seller_link' => $seller_link
                 ];
             });
+
+            // Auto-save daily summary in background (non-blocking)
+            $this->saveDailySummaryIfNeeded($processedData->toArray());
 
             return response()->json($processedData);
         } catch (\Exception $e) {
@@ -2803,6 +2864,211 @@ class TemuController extends Controller
         } catch (\Exception $e) {
             Log::error('Error saving S Target: ' . $e->getMessage());
             return response()->json(['error' => 'Failed to save S Target'], 500);
+        }
+    }
+
+    /**
+     * Auto-save daily Temu summary snapshot (channel-wise)
+     * Matches JavaScript updateSummary() logic exactly
+     */
+    private function saveDailySummaryIfNeeded($products)
+    {
+        try {
+            $today = now()->toDateString();
+            
+            // No cache - always update when page loads
+            
+            // Filter: inventory > 0 && nr_req === 'REQ' (EXACT JavaScript logic)
+            $filteredData = collect($products)->filter(function($p) {
+                $invCheck = floatval($p['inventory'] ?? 0) > 0;
+                $reqCheck = ($p['nr_req'] ?? '') === 'REQ';
+                
+                return $invCheck && $reqCheck;
+            });
+            
+            if ($filteredData->isEmpty()) {
+                return; // No valid products
+            }
+            
+            // Initialize counters (EXACT JavaScript variable names)
+            $totalProducts = $filteredData->count();
+            $totalQuantity = 0;
+            $totalPriceWeighted = 0;
+            $totalQty = 0;
+            $totalRevenue = 0;
+            $totalProfit = 0;
+            $totalLp = 0;
+            $totalGprft = 0;
+            $totalGroi = 0;
+            $totalAds = 0;
+            $totalNpft = 0;
+            $totalNroi = 0;
+            $totalCvr = 0;
+            $totalDil = 0;
+            $totalSpend = 0;
+            $totalViews = 0;
+            $totalTemuL30 = 0;
+            $totalInv = 0;
+            $cvrCount = 0;
+            $dilCount = 0;
+            $zeroSoldCount = 0;
+            $missingCount = 0;
+            $mappedCount = 0;
+            $notMappedCount = 0;
+            $lessAmzCount = 0;
+            $moreAmzCount = 0;
+            
+            // Loop through each row (EXACT JavaScript forEach logic)
+            foreach ($filteredData as $row) {
+                $qty = intval($row['quantity'] ?? 0);
+                $price = floatval($row['base_price'] ?? 0);
+                $totalQuantity += $qty;
+                $totalPriceWeighted += $price * $qty;
+                $totalQty += $qty;
+                
+                // Revenue = Temu Price × Temu L30
+                $temuPrice = floatval($row['temu_price'] ?? 0);
+                $temuL30 = intval($row['temu_l30'] ?? 0);
+                $totalRevenue += $temuPrice * $temuL30;
+                
+                // Profit from row data
+                $totalProfit += floatval($row['profit'] ?? 0);
+                
+                // LP (Landing Price / COGS)
+                $totalLp += floatval($row['lp'] ?? 0);
+                
+                // Percentage metrics (for averaging)
+                $totalGprft += floatval($row['profit_percent'] ?? 0);
+                $totalGroi += floatval($row['roi_percent'] ?? 0);
+                $totalAds += floatval($row['ads_percent'] ?? 0);
+                $totalNpft += floatval($row['npft_percent'] ?? 0);
+                $totalNroi += floatval($row['nroi_percent'] ?? 0);
+                
+                // CVR% (only count non-zero values)
+                $cvr = floatval($row['cvr_percent'] ?? 0);
+                if ($cvr > 0) {
+                    $totalCvr += $cvr;
+                    $cvrCount++;
+                }
+                
+                // DIL% (only count non-zero values)
+                $dil = floatval($row['dil_percent'] ?? 0);
+                if ($dil > 0) {
+                    $totalDil += $dil;
+                    $dilCount++;
+                }
+                
+                // Ad spend and views
+                $totalSpend += floatval($row['spend'] ?? 0);
+                $totalViews += intval($row['product_clicks'] ?? 0);
+                $totalTemuL30 += $temuL30;
+                
+                // Inventory and counts
+                $inventory = floatval($row['inventory'] ?? 0);
+                $totalInv += $inventory;
+                
+                // Zero sold count
+                if ($temuL30 == 0) {
+                    $zeroSoldCount++;
+                }
+                
+                // Missing
+                if (($row['missing'] ?? '') === 'M') {
+                    $missingCount++;
+                }
+                
+                // Mapped/Not Mapped
+                $goodsId = $row['goods_id'] ?? '';
+                $temuStock = floatval($row['temu_stock'] ?? 0);
+                if ($goodsId && $inventory > 0 && $temuStock > 0 && $inventory == $temuStock) {
+                    $mappedCount++;
+                } elseif ($goodsId && ($temuStock == 0 || ($temuStock > 0 && $inventory != $temuStock))) {
+                    $notMappedCount++;
+                }
+                
+                // Compare Temu Price with Amazon Price
+                $amazonPrice = floatval($row['a_price'] ?? 0);
+                if ($amazonPrice > 0 && $temuPrice > 0) {
+                    if ($temuPrice < $amazonPrice) {
+                        $lessAmzCount++;
+                    } elseif ($temuPrice > $amazonPrice) {
+                        $moreAmzCount++;
+                    }
+                }
+            }
+            
+            // Calculate averages (EXACT JavaScript logic)
+            $avgPrice = $totalQty > 0 ? $totalPriceWeighted / $totalQty : 0;
+            $avgGprft = $totalProducts > 0 ? $totalGprft / $totalProducts : 0;
+            $avgGroi = $totalProducts > 0 ? $totalGroi / $totalProducts : 0;
+            $avgAds = $totalProducts > 0 ? $totalAds / $totalProducts : 0;
+            $avgNpft = $totalProducts > 0 ? $totalNpft / $totalProducts : 0;
+            $avgNroi = $totalProducts > 0 ? $totalNroi / $totalProducts : 0;
+            $avgCvr = $cvrCount > 0 ? $totalCvr / $cvrCount : 0;
+            $avgDil = $dilCount > 0 ? $totalDil / $dilCount : 0;
+            
+            // Store ALL metrics in JSON (flexible!)
+            $summaryData = [
+                // Counts
+                'total_products' => $totalProducts,
+                'zero_sold_count' => $zeroSoldCount,
+                'missing_count' => $missingCount,
+                'mapped_count' => $mappedCount,
+                'not_mapped_count' => $notMappedCount,
+                'less_amz_count' => $lessAmzCount,
+                'more_amz_count' => $moreAmzCount,
+                
+                // Totals
+                'total_quantity' => $totalQuantity,
+                'total_revenue' => round($totalRevenue, 2),
+                'total_profit' => round($totalProfit, 2),
+                'total_lp' => round($totalLp, 2),
+                'total_spend' => round($totalSpend, 2),
+                'total_views' => $totalViews,
+                'total_temu_l30' => $totalTemuL30,
+                'total_inv' => round($totalInv, 2),
+                
+                // Averages
+                'avg_price' => round($avgPrice, 2),
+                'avg_gprft' => round($avgGprft, 2),
+                'avg_groi' => round($avgGroi, 2),
+                'avg_ads' => round($avgAds, 2),
+                'avg_npft' => round($avgNpft, 2),
+                'avg_nroi' => round($avgNroi, 2),
+                'avg_cvr' => round($avgCvr, 2),
+                'avg_dil' => round($avgDil, 2),
+                
+                // Metadata
+                'total_products_count' => count($products),
+                'calculated_at' => now()->toDateTimeString(),
+                
+                // Active Filters
+                'filters_applied' => [
+                    'inventory' => 'gt0',  // INV > 0
+                    'nr_req' => 'REQ',     // REQ only
+                ],
+            ];
+            
+            // Save or update as JSON (channel-wise)
+            AmazonChannelSummary::updateOrCreate(
+                [
+                    'channel' => 'temu',
+                    'snapshot_date' => $today
+                ],
+                [
+                    'summary_data' => $summaryData,
+                    'notes' => 'Auto-saved daily snapshot (INV > 0, REQ only)',
+                ]
+            );
+            
+            Log::info("Daily Temu summary snapshot saved for {$today}", [
+                'product_count' => $totalProducts,
+                'zero_sold_count' => $zeroSoldCount,
+            ]);
+            
+        } catch (\Exception $e) {
+            // Don't break the main response if summary save fails
+            Log::error('Error saving daily Temu summary: ' . $e->getMessage());
         }
     }
 }

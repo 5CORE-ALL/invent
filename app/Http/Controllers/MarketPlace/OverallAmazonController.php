@@ -26,6 +26,7 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use App\Models\AmazonFbmManual;
 use App\Models\AmazonListingStatus;
+use App\Models\AmazonChannelSummary;
 
 class OverallAmazonController extends Controller
 {
@@ -2810,7 +2811,10 @@ class OverallAmazonController extends Controller
         try {
             $response = $this->getViewAmazonData($request);
             $data = json_decode($response->getContent(), true);
-            
+
+            // Auto-save daily summary in background (non-blocking)
+            $this->saveDailySummaryIfNeeded($data['data'] ?? []);
+
             return response()->json($data['data'] ?? []);
         } catch (\Exception $e) {
             Log::error('Error fetching Amazon data for Tabulator: ' . $e->getMessage());
@@ -3196,6 +3200,151 @@ class OverallAmazonController extends Controller
                 'success' => false,
                 'error' => 'Error updating rating'
             ], 500);
+        }
+    }
+
+    /**
+     * Auto-save daily summary snapshot (only once per day)
+     * Uses JSON storage - flexible and matches JavaScript exactly
+     */
+    private function saveDailySummaryIfNeeded($products)
+    {
+        try {
+            $today = now()->toDateString();
+            
+            // No cache - always update when page loads
+            // Uses updateOrCreate so it updates existing record for today
+            
+            // Filter: !is_parent_summary && INV > 0 && NR !== 'NR' (EXACT JavaScript logic with RL filter)
+            $validProducts = collect($products)->filter(function($p) {
+                // Same as JavaScript default filters
+                $invCheck = !isset($p['is_parent_summary']) && floatval($p['INV'] ?? 0) > 0;
+                $rlCheck = ($p['NR'] ?? '') !== 'NR'; // RL filter: exclude NR items
+                
+                return $invCheck && $rlCheck;
+            });
+            
+            if ($validProducts->isEmpty()) {
+                return; // No valid products
+            }
+            
+            // Initialize counters (EXACT JavaScript variable names)
+            $totalSkuCount = 0;
+            $totalSoldCount = 0;
+            $zeroSoldCount = 0;
+            $prcGtLmpCount = 0;
+            $totalSpendL30 = 0;
+            $totalPftAmt = 0;
+            $totalSalesAmt = 0;
+            $totalLpAmt = 0;
+            $totalAmazonInv = 0;
+            $totalAmazonL30 = 0;
+            $totalViews = 0;
+            $totalWeightedPrice = 0;
+            
+            // Loop through each row (EXACT JavaScript forEach logic)
+            foreach ($validProducts as $row) {
+                $totalSkuCount++;
+                $totalSpendL30 += floatval($row['AD_Spend_L30'] ?? 0);
+                $totalPftAmt += floatval($row['Total_pft'] ?? 0);
+                $totalSalesAmt += floatval($row['T_Sale_l30'] ?? 0);
+                $totalLpAmt += floatval($row['LP_productmaster'] ?? 0) * floatval($row['A_L30'] ?? 0);
+                $totalAmazonInv += floatval($row['INV'] ?? 0);
+                
+                $aL30 = floatval($row['A_L30'] ?? 0);
+                $totalAmazonL30 += $aL30;
+                
+                // Count sold and 0-sold (EXACT JavaScript logic)
+                if ($aL30 > 0) {
+                    $totalSoldCount++;
+                } else {
+                    $zeroSoldCount++;
+                }
+                
+                // Count Prc > LMP (EXACT JavaScript logic)
+                $price = floatval($row['price'] ?? 0);
+                $lmpPrice = floatval($row['lmp_price'] ?? 0);
+                if ($lmpPrice > 0 && $price > $lmpPrice) {
+                    $prcGtLmpCount++;
+                }
+                
+                // Weighted price calculation
+                $totalWeightedPrice += $price * floatval($row['A_L30'] ?? 0);
+                
+                // Views
+                $totalViews += floatval($row['Sess30'] ?? 0);
+            }
+            
+            // Calculate averages and percentages (EXACT JavaScript logic)
+            $avgPrice = $totalAmazonL30 > 0 ? $totalWeightedPrice / $totalAmazonL30 : 0;
+            $avgCVR = $totalViews > 0 ? ($totalAmazonL30 / $totalViews * 100) : 0;
+            $tcosPercent = $totalSalesAmt > 0 ? (($totalSpendL30 / $totalSalesAmt) * 100) : 0;
+            $groiPercent = $totalLpAmt > 0 ? (($totalPftAmt / $totalLpAmt) * 100) : 0;
+            $nroiPercent = $groiPercent - $tcosPercent;
+            
+            // Calculate GPFT % (average gross profit)
+            $avgGpftPercent = $totalSalesAmt > 0 ? (($totalSalesAmt - $totalLpAmt) / $totalSalesAmt * 100) : 0;
+            
+            // Store ALL metrics in JSON (flexible!)
+            $summaryData = [
+                // Counts
+                'total_sku_count' => $totalSkuCount,
+                'sold_count' => $totalSoldCount,
+                'zero_sold_count' => $zeroSoldCount,
+                'prc_gt_lmp_count' => $prcGtLmpCount,
+                
+                // Financial Totals
+                'total_spend_l30' => round($totalSpendL30, 2),
+                'total_pft_amt' => round($totalPftAmt, 2),
+                'total_sales_amt' => round($totalSalesAmt, 2),
+                'total_lp_amt' => round($totalLpAmt, 2),
+                
+                // Inventory
+                'total_amazon_inv' => round($totalAmazonInv, 2),
+                'total_amazon_l30' => round($totalAmazonL30, 2),
+                'total_views' => $totalViews,
+                
+                // Calculated Percentages
+                'tcos_percent' => round($tcosPercent, 2),
+                'groi_percent' => round($groiPercent, 2),
+                'nroi_percent' => round($nroiPercent, 2),
+                'cvr_percent' => round($avgCVR, 2),
+                'gpft_percent' => round($avgGpftPercent, 2),
+                
+                // Averages
+                'avg_price' => round($avgPrice, 2),
+                
+                // Metadata
+                'total_products_count' => count($products),
+                'calculated_at' => now()->toDateTimeString(),
+                
+                // Active Filters
+                'filters_applied' => [
+                    'inventory' => 'more',  // INV > 0
+                    'nrl' => 'req',        // RL only (exclude NR)
+                ],
+            ];
+            
+            // Save or update as JSON (channel-wise)
+            AmazonChannelSummary::updateOrCreate(
+                [
+                    'channel' => 'amazon',
+                    'snapshot_date' => $today
+                ],
+                [
+                    'summary_data' => $summaryData,
+                    'notes' => 'Auto-saved daily snapshot (INV > 0, RL only)',
+                ]
+            );
+            
+            Log::info("Daily Amazon summary snapshot saved for {$today}", [
+                'sku_count' => $totalSkuCount,
+                'sold_count' => $totalSoldCount,
+            ]);
+            
+        } catch (\Exception $e) {
+            // Don't break the main response if summary save fails
+            Log::error('Error saving daily Amazon summary: ' . $e->getMessage());
         }
     }
 }

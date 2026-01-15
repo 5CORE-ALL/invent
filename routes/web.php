@@ -356,6 +356,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/update-executive', [ChannelMasterController::class, 'updateExecutive']);
     Route::post('/update-checkbox', [ChannelMasterController::class, 'sendToGoogleSheet']);
     Route::get('/channels-master-data', [ChannelMasterController::class, 'getViewChannelData']);
+    Route::get('/channel-master-history/{channel}', [ChannelMasterController::class, 'getChannelHistory']);
     // Route::get('/get-channel-sales-data', [ChannelMasterController::class, 'getChannelSalesData']);
     Route::get('/sales-trend-data', [ChannelMasterController::class, 'getSalesTrendData']);
     Route::get('/dashboard-metrics', [ChannelMasterController::class, 'getDashboardMetrics']);
@@ -520,6 +521,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/update-to-adjust', [ShopifyController::class, 'updateToAdjust']);
     Route::post('/update-approved-by-ih', [VerificationAdjustmentController::class, 'updateApprovedByIH']);
     Route::post('/update-ra-status', [VerificationAdjustmentController::class, 'updateRAStatus']);
+    Route::post('/update-verified-status', [VerificationAdjustmentController::class, 'updateVerifiedStatus']);
+    Route::post('/update-doubtful-status', [VerificationAdjustmentController::class, 'updateDoubtfulStatus']);
     Route::get('/verified-stock-activity-log', [VerificationAdjustmentController::class, 'getVerifiedStockActivityLog']);
     Route::get('/view-inventory-data', [VerificationAdjustmentController::class, 'viewInventory'])->name('view-inventory');
     Route::get('/inventory-history', [VerificationAdjustmentController::class, 'getSkuWiseHistory']);
@@ -1321,6 +1324,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu-pricing/save-sprice', [TemuController::class, 'saveTemuSprice']);
     Route::post('/temu-decrease-column-visibility', [TemuController::class, 'saveTemuDecreaseColumnVisibility']);
     Route::get('/temu-decrease-column-visibility', [TemuController::class, 'getTemuDecreaseColumnVisibility']);
+    Route::post('/temu-decrease/save-listing-status', [TemuController::class, 'saveListingStatus']);
     
     // Temu Metrics and Cell Update
     Route::get('/temu-metrics-history', [TemuController::class, 'getTemuMetricsHistory'])->name('temu.metrics.history');

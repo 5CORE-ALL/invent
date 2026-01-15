@@ -224,7 +224,8 @@ class VerificationAdjustmentController extends Controller
             return $sku;
         };
 
-        // Fetch product master
+        // OVERRIDE: Fetch ALL product master data - NO FILTERING
+        // This ensures ALL SKUs from product_master are returned regardless of any other conditions
         $productMasterData = ProductMaster::all();
 
         // Get SKUs from product master
@@ -241,18 +242,19 @@ class VerificationAdjustmentController extends Controller
             ->get()
             ->keyBy(fn($item) => $normalizeSku($item->sku));
 
-        // Fetch verified inventory - get latest record per SKU for ALL SKUs in product master
-        // This ensures all SKUs from product master are included, even if they have hidden inventory records
+        // OVERRIDE: Fetch verified inventory for ALL SKUs - NO FILTERING BY is_hide
+        // Get latest record per SKU for ALL SKUs in product master, regardless of is_hide status
         $latestInventoryIds = Inventory::whereIn('sku', $originalSkus)
             ->select(DB::raw('MAX(id) as latest_id'))
             ->groupBy('sku')
             ->pluck('latest_id');
 
         $verifiedInventory = Inventory::whereIn('id', $latestInventoryIds)
+            ->with('verifiedByUser')
             ->get()
             ->keyBy(fn($inv) => $normalizeSku($inv->sku));
 
-        // Merge everything
+        // OVERRIDE: Merge everything - return ALL SKUs from product_master without any filtering
         $data = $productMasterData->map(function ($item) use ($shopifyData, $verifiedInventory, $normalizeSku) {
             $sku = $normalizeSku($item->sku ?? '');
             $values = $item->values;
@@ -274,14 +276,40 @@ class VerificationAdjustmentController extends Controller
                 $item->VERIFIED_STOCK = $inv->verified_stock ?? null;
                 $item->TO_ADJUST = $inv->to_adjust ?? null;
                 $item->REASON = $inv->reason ?? null;
-                $item->REMARKS = $inv->REMARKS ?? null;
-                $item->APPROVED = (bool)($inv->approved ?? false);
+                $item->REMARKS = $inv->remarks ?? null;
+                $item->APPROVED = (bool)($inv->is_approved ?? false);
                 $item->APPROVED_BY = $inv->approved_by ?? null;
                 $item->APPROVED_AT = $inv->approved_at ?? null;
+                $item->is_verified = (bool)($inv->is_verified ?? false);
+                $item->is_doubtful = (bool)($inv->is_doubtful ?? false);
+                // Also set uppercase versions for compatibility
+                $item->IS_VERIFIED = (bool)($inv->is_verified ?? false);
+                $item->IS_DOUBTFUL = (bool)($inv->is_doubtful ?? false);
+                
+                // Get verified by user's first name
+                $verifiedByUser = $inv->verifiedByUser ?? null;
+                if ($verifiedByUser && $verifiedByUser->name) {
+                    // Extract first name from full name (assumes "First Last" format)
+                    $nameParts = explode(' ', trim($verifiedByUser->name));
+                    $item->VERIFIED_BY_FIRST_NAME = $nameParts[0] ?? $verifiedByUser->name;
+                } else {
+                    $item->VERIFIED_BY_FIRST_NAME = null;
+                }
 
                 $adjustedQty = isset($item->TO_ADJUST) && is_numeric($item->TO_ADJUST) ? floatval($item->TO_ADJUST) : 0;
                 $item->LOSS_GAIN = round($adjustedQty * $lp, 2);
+            } else {
+                // For parent rows, set default values
+                $item->IS_VERIFIED = false;
+                $item->is_verified = false;
+                $item->IS_DOUBTFUL = false;
+                $item->is_doubtful = false;
+                $item->VERIFIED_BY_FIRST_NAME = null;
             }
+
+            // OVERRIDE: Explicitly set IS_HIDE to 0 for all items to override any filtering
+            $item->IS_HIDE = 0;
+            $item->is_hide = 0;
 
             return $item;
         });
@@ -1110,6 +1138,149 @@ class VerificationAdjustmentController extends Controller
                 'sku' => $validated['sku'],
                 'is_ra_checked' => $validated['is_ra_checked'],
             ]);
+        }
+
+        return response()->json(['success' => true]);
+    }
+
+    public function updateVerifiedStatus(Request $request)
+    {
+        $validated = $request->validate([
+            'sku' => 'required|string',
+            'is_verified' => 'required'
+        ]);
+
+        // Normalize SKU to match data loading logic
+        $normalizeSku = function ($sku) {
+            $sku = strtoupper(trim($sku));
+            $sku = preg_replace('/\s+/u', ' ', $sku);         // collapse spaces
+            $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);  // remove hidden whitespace
+            return $sku;
+        };
+        $normalizedSku = $normalizeSku($validated['sku']);
+
+        // Convert various boolean formats to actual boolean
+        $isVerified = filter_var($request->input('is_verified'), FILTER_VALIDATE_BOOLEAN);
+        
+        // Also accept string/numeric values
+        if (is_string($request->input('is_verified'))) {
+            $isVerified = in_array(strtolower($request->input('is_verified')), ['true', '1', 'yes', 'on']);
+        } elseif (is_numeric($request->input('is_verified'))) {
+            $isVerified = (bool)$request->input('is_verified');
+        }
+
+        // Get the latest inventory record for this SKU (same logic as data loading)
+        // Use raw query to match normalized SKU (case-insensitive, space-normalized)
+        $latestInventory = Inventory::whereRaw('UPPER(TRIM(sku)) = ?', [$normalizedSku])
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $verifiedByFirstName = null;
+        
+        if ($latestInventory) {
+            // Update the latest record
+            $latestInventory->is_verified = $isVerified;
+            // Only set verified_by when marking as verified (true)
+            if ($isVerified && Auth::check()) {
+                $latestInventory->verified_by = Auth::id();
+            } elseif (!$isVerified) {
+                // Clear verified_by when unverifying
+                $latestInventory->verified_by = null;
+            }
+            $latestInventory->save();
+            
+            // Load the verified_by user relationship
+            $latestInventory->load('verifiedByUser');
+            $inventory = $latestInventory;
+        } else {
+            // SKU not found → Create new record using DB facade to handle AUTO_INCREMENT properly
+            try {
+                $id = DB::table('inventories')->insertGetId([
+                    'sku' => $normalizedSku,
+                    'is_verified' => $isVerified,
+                    'verified_by' => ($isVerified && Auth::check()) ? Auth::id() : null,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+                $inventory = Inventory::find($id);
+            } catch (\Exception $e) {
+                // Fallback: Try using Eloquent create (might work if table structure is fixed)
+                $inventory = new Inventory();
+                $inventory->sku = $normalizedSku;
+                $inventory->is_verified = $isVerified;
+                $inventory->verified_by = ($isVerified && Auth::check()) ? Auth::id() : null;
+                $inventory->save();
+            }
+            
+            // Load the verified_by user relationship
+            $inventory->load('verifiedByUser');
+        }
+        
+        // Get the first name of the user who verified
+        if ($inventory->verifiedByUser && $inventory->verifiedByUser->name) {
+            $nameParts = explode(' ', trim($inventory->verifiedByUser->name));
+            $verifiedByFirstName = $nameParts[0] ?? $inventory->verifiedByUser->name;
+        }
+
+        return response()->json([
+            'success' => true,
+            'verified_by_first_name' => $verifiedByFirstName
+        ]);
+    }
+
+    public function updateDoubtfulStatus(Request $request)
+    {
+        $validated = $request->validate([
+            'sku' => 'required|string',
+            'is_doubtful' => 'required'
+        ]);
+
+        // Normalize SKU to match data loading logic
+        $normalizeSku = function ($sku) {
+            $sku = strtoupper(trim($sku));
+            $sku = preg_replace('/\s+/u', ' ', $sku);         // collapse spaces
+            $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);  // remove hidden whitespace
+            return $sku;
+        };
+        $normalizedSku = $normalizeSku($validated['sku']);
+
+        // Convert various boolean formats to actual boolean
+        $isDoubtful = filter_var($request->input('is_doubtful'), FILTER_VALIDATE_BOOLEAN);
+        
+        // Also accept string/numeric values
+        if (is_string($request->input('is_doubtful'))) {
+            $isDoubtful = in_array(strtolower($request->input('is_doubtful')), ['true', '1', 'yes', 'on']);
+        } elseif (is_numeric($request->input('is_doubtful'))) {
+            $isDoubtful = (bool)$request->input('is_doubtful');
+        }
+
+        // Get the latest inventory record for this SKU (same logic as data loading)
+        // Use raw query to match normalized SKU (case-insensitive, space-normalized)
+        $latestInventory = Inventory::whereRaw('UPPER(TRIM(sku)) = ?', [$normalizedSku])
+            ->orderBy('id', 'desc')
+            ->first();
+
+        if ($latestInventory) {
+            // Update the latest record
+            $latestInventory->is_doubtful = $isDoubtful;
+            $latestInventory->save();
+        } else {
+            // SKU not found → Create new record using DB facade to handle AUTO_INCREMENT properly
+            try {
+                $id = DB::table('inventories')->insertGetId([
+                    'sku' => $normalizedSku,
+                    'is_doubtful' => $isDoubtful,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+                $latestInventory = Inventory::find($id);
+            } catch (\Exception $e) {
+                // Fallback: Try using Eloquent create (might work if table structure is fixed)
+                $latestInventory = new Inventory();
+                $latestInventory->sku = $normalizedSku;
+                $latestInventory->is_doubtful = $isDoubtful;
+                $latestInventory->save();
+            }
         }
 
         return response()->json(['success' => true]);

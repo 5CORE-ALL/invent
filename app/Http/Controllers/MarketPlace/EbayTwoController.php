@@ -25,6 +25,7 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Carbon\Carbon;
+use App\Models\AmazonChannelSummary;
 
 class EbayTwoController extends Controller
 {
@@ -434,6 +435,9 @@ class EbayTwoController extends Controller
                 $result[] = (object) $row;
             }
         }
+
+        // Auto-save daily summary in background (non-blocking)
+        $this->saveDailySummaryIfNeeded($result);
 
         return response()->json([
             "message" => "eBay2 Data Fetched Successfully",
@@ -1197,6 +1201,180 @@ class EbayTwoController extends Controller
                 'success' => false,
                 'message' => $e->getMessage()
             ], 500);
+        }
+    }
+
+    /**
+     * Auto-save daily eBay 2 summary snapshot (channel-wise)
+     * Matches JavaScript updateSummary() logic exactly
+     */
+    private function saveDailySummaryIfNeeded($products)
+    {
+        try {
+            $today = now()->toDateString();
+            
+            // No cache - always update when page loads
+            
+            // Filter: INV > 0 && nr_req === 'REQ' (EXACT JavaScript logic)
+            $filteredData = collect($products)->filter(function($p) {
+                $invCheck = floatval($p->INV ?? 0) > 0;
+                $reqCheck = ($p->nr_req ?? '') === 'REQ';
+                
+                return $invCheck && $reqCheck;
+            });
+            
+            if ($filteredData->isEmpty()) {
+                return; // No valid products
+            }
+            
+            // Initialize counters (EXACT JavaScript variable names)
+            $totalSkuCount = $filteredData->count();
+            $totalPmtSpendL30 = 0;
+            $totalPftAmt = 0;
+            $totalSalesAmt = 0;
+            $totalLpAmt = 0;
+            $totalFbaInv = 0;
+            $totalFbaL30 = 0;
+            $zeroSoldCount = 0;
+            $moreSoldCount = 0;
+            $missingCount = 0;
+            $mapCount = 0;
+            $notMapCount = 0;
+            $lessAmzCount = 0;
+            $moreAmzCount = 0;
+            $totalWeightedPrice = 0;
+            $totalL30 = 0;
+            $totalViews = 0;
+            
+            // Loop through each row (EXACT JavaScript forEach logic)
+            foreach ($filteredData as $row) {
+                $inv = floatval($row->INV ?? 0);
+                $ebayL30 = floatval($row->{'eBay L30'} ?? 0);
+                
+                $totalPftAmt += floatval($row->Total_pft ?? 0);
+                $totalSalesAmt += floatval($row->T_Sale_l30 ?? 0);
+                $totalLpAmt += floatval($row->LP_productmaster ?? 0) * $ebayL30;
+                $totalFbaInv += $inv;
+                $totalFbaL30 += $ebayL30;
+                $totalPmtSpendL30 += floatval($row->pmt_spend_L30 ?? 0);
+                
+                // Count sold and 0-sold
+                if ($ebayL30 == 0) {
+                    $zeroSoldCount++;
+                } else {
+                    $moreSoldCount++;
+                }
+                
+                // Count Missing (exclude NR items)
+                $ebayPrice = floatval($row->{'eBay Price'} ?? 0);
+                $itemId = $row->eBay_item_id ?? '';
+                $nrReq = $row->nr_req ?? '';
+                if ($ebayPrice == 0 && (!$itemId || $itemId === null || $itemId === '') && $nrReq !== 'NR' && $nrReq !== 'NRL') {
+                    $missingCount++;
+                }
+                
+                // Count Map and N MP
+                if ($itemId && $itemId !== null && $itemId !== '') {
+                    $ebayStock = floatval($row->{'E Stock'} ?? 0);
+                    if ($inv > 0 && $ebayStock > 0 && $inv == $ebayStock) {
+                        $mapCount++;
+                    } elseif ($inv > 0 && ($ebayStock == 0 || ($ebayStock > 0 && $inv != $ebayStock))) {
+                        $notMapCount++;
+                    }
+                }
+                
+                // Count < Amz and > Amz
+                $amazonPrice = floatval($row->{'A Price'} ?? 0);
+                if ($amazonPrice > 0 && $ebayPrice > 0) {
+                    if ($ebayPrice < $amazonPrice) {
+                        $lessAmzCount++;
+                    } elseif ($ebayPrice > $amazonPrice) {
+                        $moreAmzCount++;
+                    }
+                }
+                
+                // Weighted price
+                $totalWeightedPrice += $ebayPrice * $ebayL30;
+                $totalL30 += $ebayL30;
+                
+                // Views
+                $totalViews += floatval($row->views ?? 0);
+            }
+            
+            // Calculate averages and percentages (EXACT JavaScript logic)
+            $avgPrice = $totalL30 > 0 ? $totalWeightedPrice / $totalL30 : 0;
+            $avgCVR = $totalViews > 0 ? ($totalL30 / $totalViews * 100) : 0;
+            $tacosPercent = $totalSalesAmt > 0 ? (($totalPmtSpendL30 / $totalSalesAmt) * 100) : 0;
+            $groiPercent = $totalLpAmt > 0 ? (($totalPftAmt / $totalLpAmt) * 100) : 0;
+            $avgGpft = $totalSalesAmt > 0 ? (($totalPftAmt / $totalSalesAmt) * 100) : 0; // GPFT = (PFT/Sales)*100
+            $npftPercent = $avgGpft - $tacosPercent;
+            $nroiPercent = $groiPercent - $tacosPercent;
+            
+            // Store ALL metrics in JSON (flexible!)
+            $summaryData = [
+                // Counts
+                'total_sku_count' => $totalSkuCount,
+                'sold_count' => $moreSoldCount,
+                'zero_sold_count' => $zeroSoldCount,
+                'missing_count' => $missingCount,
+                'map_count' => $mapCount,
+                'not_map_count' => $notMapCount,
+                'less_amz_count' => $lessAmzCount,
+                'more_amz_count' => $moreAmzCount,
+                
+                // Financial Totals
+                'total_pmt_spend_l30' => round($totalPmtSpendL30, 2),
+                'total_pft_amt' => round($totalPftAmt, 2),
+                'total_sales_amt' => round($totalSalesAmt, 2),
+                'total_lp_amt' => round($totalLpAmt, 2),
+                
+                // Inventory
+                'total_fba_inv' => round($totalFbaInv, 2),
+                'total_ebay_l30' => round($totalFbaL30, 2),
+                'total_views' => $totalViews,
+                
+                // Calculated Percentages
+                'tcos_percent' => round($tacosPercent, 2),
+                'groi_percent' => round($groiPercent, 2),
+                'nroi_percent' => round($nroiPercent, 2),
+                'cvr_percent' => round($avgCVR, 2),
+                'gpft_percent' => round($avgGpft, 2),
+                'npft_percent' => round($npftPercent, 2),
+                
+                // Averages
+                'avg_price' => round($avgPrice, 2),
+                
+                // Metadata
+                'total_products_count' => count($products),
+                'calculated_at' => now()->toDateTimeString(),
+                
+                // Active Filters
+                'filters_applied' => [
+                    'inventory' => 'more',  // INV > 0
+                    'nrl' => 'REQ',        // REQ only
+                ],
+            ];
+            
+            // Save or update as JSON (channel-wise)
+            AmazonChannelSummary::updateOrCreate(
+                [
+                    'channel' => 'ebay2',
+                    'snapshot_date' => $today
+                ],
+                [
+                    'summary_data' => $summaryData,
+                    'notes' => 'Auto-saved daily snapshot (INV > 0, REQ only)',
+                ]
+            );
+            
+            Log::info("Daily eBay2 summary snapshot saved for {$today}", [
+                'sku_count' => $totalSkuCount,
+                'sold_count' => $moreSoldCount,
+            ]);
+            
+        } catch (\Exception $e) {
+            // Don't break the main response if summary save fails
+            Log::error('Error saving daily eBay2 summary: ' . $e->getMessage());
         }
     }
 }

@@ -140,6 +140,8 @@
                         <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI%: 0%</span>
                         <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz</span>
                         <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz</span>
+                        <span class="badge bg-danger fs-6 p-2" id="missing-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing prices">MISSING: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="mapping-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter inventory mapping issues">MAPPING: 0</span>
                     </div>
                 </div>
             </div>
@@ -365,6 +367,22 @@
         $('#more-amz-badge').on('click', function() {
             moreAmzFilterActive = !moreAmzFilterActive;
             lessAmzFilterActive = false; // Deactivate the other filter
+            applyFilters();
+        });
+
+        // MISSING badge click handler - filter only (no column hiding)
+        let missingFilterActive = false;
+        $('#missing-badge').on('click', function() {
+            missingFilterActive = !missingFilterActive;
+            mappingFilterActive = false; // Deactivate mapping filter
+            applyFilters();
+        });
+
+        // MAPPING badge click handler - filter only (no column hiding)
+        let mappingFilterActive = false;
+        $('#mapping-badge').on('click', function() {
+            mappingFilterActive = !mappingFilterActive;
+            missingFilterActive = false; // Deactivate missing filter
             applyFilters();
         });
 
@@ -794,6 +812,20 @@
                     sorter: "number"
                 },
                 {
+                    title: "BB Stock",
+                    field: "BB INV",
+                    hozAlign: "center",
+                    width: 60,
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        if (value === 0) {
+                            return '<span style="color: #6c757d;">0</span>';
+                        }
+                        return `<span style="font-weight: 600;">${value}</span>`;
+                    }
+                },
+                {
                     title: "NR/REQ",
                     field: "nr_req",
                     hozAlign: "center",
@@ -856,6 +888,57 @@
                         return `$${value.toFixed(2)}`;
                     },
                     width: 70
+                },
+                {
+                    title: "<span style='color: #a00211;'>Missing</span>",
+                    field: "Missing",
+                    hozAlign: "center",
+                    sorter: "string",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const price = parseFloat(rowData['BB Price']) || 0;
+                        const inv = parseFloat(rowData['INV']) || 0;
+                        const nrReq = rowData['nr_req'] || 'REQ';
+                        
+                        // Don't show for NR items or INV = 0
+                        if (nrReq === 'NR' || inv === 0) {
+                            return '';
+                        }
+                        
+                        if (price === 0) {
+                            return '<span style="color: #a00211; font-weight: 600;">M</span>';
+                        }
+                        return '';
+                    },
+                    width: 60
+                },
+                {
+                    title: "Mapping",
+                    field: "Mapping",
+                    hozAlign: "center",
+                    sorter: "string",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const ourInv = parseFloat(rowData['INV']) || 0;
+                        const bbInv = parseFloat(rowData['BB INV']) || 0; // Marketplace inventory from BestBuy
+                        const price = parseFloat(rowData['BB Price']) || 0;
+                        const nrReq = rowData['nr_req'] || 'REQ';
+                        
+                        // Don't show for NR items, INV = 0, or Missing items (price = 0)
+                        if (nrReq === 'NR' || ourInv === 0 || price === 0) {
+                            return '';
+                        }
+                        
+                        if (ourInv === bbInv) {
+                            // Stocks match exactly - show green MAP
+                            return '<span style="color: #28a745; font-weight: 600; background-color: #d4edda; padding: 2px 6px; border-radius: 3px;">MAP</span>';
+                        } else {
+                            // Stocks don't match - show red N MP with qty difference
+                            const diff = Math.abs(bbInv - ourInv);
+                            return `<span style="color: #a00211; font-weight: 600; background-color: #f8d7da; padding: 2px 6px; border-radius: 3px;">N MP (${diff})</span>`;
+                        }
+                    },
+                    width: 90
                 },
                 {
                     title: "GPFT%",
@@ -1224,6 +1307,30 @@
                 });
             }
 
+            // MISSING filter - show rows with price = 0 or null (excluding NR items and INV = 0)
+            if (missingFilterActive) {
+                table.addFilter(function(data) {
+                    const price = parseFloat(data['BB Price']) || 0;
+                    const inv = parseFloat(data['INV']) || 0;
+                    const nrReq = data['nr_req'] || 'REQ';
+                    // Only show REQ items with INV > 0 and missing prices
+                    return nrReq === 'REQ' && inv > 0 && price === 0;
+                });
+            }
+
+            // MAPPING filter - show rows with inventory mismatch (excluding NR items, INV = 0, and Missing items)
+            if (mappingFilterActive) {
+                table.addFilter(function(data) {
+                    const ourInv = parseFloat(data['INV']) || 0;
+                    const bbInv = parseFloat(data['BB INV']) || 0;
+                    const price = parseFloat(data['BB Price']) || 0;
+                    const nrReq = data['nr_req'] || 'REQ';
+                    const isMissing = (price === 0);
+                    // Only show REQ items with INV > 0, NOT Missing, and mapping issues (any difference)
+                    return nrReq === 'REQ' && ourInv > 0 && !isMissing && ourInv !== bbInv;
+                });
+            }
+
             updateSummary();
         }
 
@@ -1242,6 +1349,7 @@
             let totalPft = 0, totalSales = 0, totalGpft = 0, totalPrice = 0, priceCount = 0;
             let totalInv = 0, totalL30 = 0, zeroSoldCount = 0, totalDil = 0, dilCount = 0;
             let totalCogs = 0, totalRoi = 0, roiCount = 0;
+            let missingCount = 0, mappingCount = 0;
 
             data.forEach(row => {
                 totalPft += parseFloat(row.Profit) || 0;
@@ -1249,12 +1357,21 @@
                 totalGpft += parseFloat(row['GPFT%']) || 0;
                 
                 const price = parseFloat(row['BB Price']) || 0;
+                const inv = parseFloat(row.INV) || 0;
+                const nrReq = row['nr_req'] || 'REQ';
+                const isMissing = (price === 0);
+                
                 if (price > 0) {
                     totalPrice += price;
                     priceCount++;
+                } else {
+                    // Only count missing prices for REQ items with INV > 0
+                    if (nrReq === 'REQ' && inv > 0) {
+                        missingCount++;
+                    }
                 }
                 
-                totalInv += parseFloat(row.INV) || 0;
+                totalInv += inv;
                 totalL30 += parseFloat(row['BB L30']) || 0;
                 
                 if ((parseFloat(row['BB L30']) || 0) === 0) {
@@ -1276,6 +1393,15 @@
                     totalRoi += roi;
                     roiCount++;
                 }
+
+                // Count mapping issues (any inventory mismatch, only for REQ items with INV > 0 and NOT Missing)
+                if (nrReq === 'REQ' && inv > 0 && !isMissing) {
+                    const ourInv = inv;
+                    const bbInv = parseFloat(row['BB INV']) || 0;
+                    if (ourInv !== bbInv) {
+                        mappingCount++;
+                    }
+                }
             });
 
             const avgGpft = data.length > 0 ? totalGpft / data.length : 0;
@@ -1293,6 +1419,8 @@
             $('#avg-dil-badge').text(`DIL%: ${(avgDil * 100).toFixed(1)}%`);
             $('#total-cogs-badge').text(`COGS: $${Math.round(totalCogs).toLocaleString()}`);
             $('#roi-percent-badge').text(`ROI%: ${avgRoi.toFixed(1)}%`);
+            $('#missing-badge').text(`MISSING: ${missingCount}`);
+            $('#mapping-badge').text(`MAPPING: ${mappingCount}`);
         }
 
         // Build Column Visibility Dropdown

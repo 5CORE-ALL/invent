@@ -371,55 +371,19 @@
             applyFilters();
         });
 
-        // MISSING badge click handler - filter and show only specific columns
+        // MISSING badge click handler - filter only (no column hiding)
         let missingFilterActive = false;
         $('#missing-badge').on('click', function() {
             missingFilterActive = !missingFilterActive;
             mappingFilterActive = false; // Deactivate mapping filter
-            
-            if (missingFilterActive) {
-                // Hide all columns except: SKU, INV, Sold (L30), DIL, Missing, MAP
-                table.getColumns().forEach(col => {
-                    const field = col.getField();
-                    if (field === '(Child) sku' || field === 'INV' || field === 'MC L30' || 
-                        field === 'MC Dil%' || field === 'Missing' || field === 'Mapping') {
-                        col.show();
-                    } else {
-                        col.hide();
-                    }
-                });
-            } else {
-                // Show all columns
-                table.getColumns().forEach(col => {
-                    col.show();
-                });
-            }
             applyFilters();
         });
 
-        // MAPPING badge click handler - filter and show only specific columns
+        // MAPPING badge click handler - filter only (no column hiding)
         let mappingFilterActive = false;
         $('#mapping-badge').on('click', function() {
             mappingFilterActive = !mappingFilterActive;
             missingFilterActive = false; // Deactivate missing filter
-            
-            if (mappingFilterActive) {
-                // Hide all columns except: SKU, INV, Sold (L30), DIL, Missing, MAP
-                table.getColumns().forEach(col => {
-                    const field = col.getField();
-                    if (field === '(Child) sku' || field === 'INV' || field === 'MC L30' || 
-                        field === 'MC Dil%' || field === 'Missing' || field === 'Mapping') {
-                        col.show();
-                    } else {
-                        col.hide();
-                    }
-                });
-            } else {
-                // Show all columns
-                table.getColumns().forEach(col => {
-                    col.show();
-                });
-            }
             applyFilters();
         });
 
@@ -978,6 +942,13 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const price = parseFloat(rowData['MC Price']) || 0;
+                        const inv = parseFloat(rowData['INV']) || 0;
+                        const nrReq = rowData['nr_req'] || 'REQ';
+                        
+                        // Don't show for NR items or INV = 0
+                        if (nrReq === 'NR' || inv === 0) {
+                            return '';
+                        }
                         
                         if (price === 0) {
                             return '<span style="color: #a00211; font-weight: 600;">M</span>';
@@ -987,22 +958,32 @@
                     width: 60
                 },
                 {
-                    title: "<span style='color: #a00211;'>Mapping</span>",
+                    title: "Mapping",
                     field: "Mapping",
                     hozAlign: "center",
                     sorter: "string",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const ourInv = parseFloat(rowData['INV']) || 0;
-                        const mcInv = parseFloat(rowData['MC INV']) || 0; // Marketplace inventory from Macy's API
+                        const mcInv = parseFloat(rowData['MC INV']) || 0; // Marketplace inventory from Macy's
+                        const price = parseFloat(rowData['MC Price']) || 0;
+                        const nrReq = rowData['nr_req'] || 'REQ';
                         
-                        const diff = Math.abs(mcInv - ourInv);
-                        if (diff > 3) {
-                            return '<span style="color: #a00211; font-weight: 600;">MAP</span>';
+                        // Don't show for NR items, INV = 0, or Missing items (price = 0)
+                        if (nrReq === 'NR' || ourInv === 0 || price === 0) {
+                            return '';
                         }
-                        return '';
+                        
+                        if (ourInv === mcInv) {
+                            // Stocks match exactly - show green MAP
+                            return '<span style="color: #28a745; font-weight: 600; background-color: #d4edda; padding: 2px 6px; border-radius: 3px;">MAP</span>';
+                        } else {
+                            // Stocks don't match - show red N MP with qty difference
+                            const diff = Math.abs(mcInv - ourInv);
+                            return `<span style="color: #a00211; font-weight: 600; background-color: #f8d7da; padding: 2px 6px; border-radius: 3px;">N MP (${diff})</span>`;
+                        }
                     },
-                    width: 60
+                    width: 90
                 },
                 {
                     title: "GPFT%",
@@ -1371,21 +1352,27 @@
                 });
             }
 
-            // MISSING filter - show rows with price = 0 or null
+            // MISSING filter - show rows with price = 0 or null (excluding NR items and INV = 0)
             if (missingFilterActive) {
                 table.addFilter(function(data) {
                     const price = parseFloat(data['MC Price']) || 0;
-                    return price === 0;
+                    const inv = parseFloat(data['INV']) || 0;
+                    const nrReq = data['nr_req'] || 'REQ';
+                    // Only show REQ items with INV > 0 and missing prices
+                    return nrReq === 'REQ' && inv > 0 && price === 0;
                 });
             }
 
-            // MAPPING filter - show rows with inventory difference > 3
+            // MAPPING filter - show rows with inventory mismatch (excluding NR items, INV = 0, and Missing items)
             if (mappingFilterActive) {
                 table.addFilter(function(data) {
                     const ourInv = parseFloat(data['INV']) || 0;
                     const mcInv = parseFloat(data['MC INV']) || 0;
-                    const diff = Math.abs(mcInv - ourInv);
-                    return diff > 3;
+                    const price = parseFloat(data['MC Price']) || 0;
+                    const nrReq = data['nr_req'] || 'REQ';
+                    const isMissing = (price === 0);
+                    // Only show REQ items with INV > 0, NOT Missing, and mapping issues (any difference)
+                    return nrReq === 'REQ' && ourInv > 0 && !isMissing && ourInv !== mcInv;
                 });
             }
 
@@ -1414,14 +1401,21 @@
                 totalGpft += parseFloat(row['GPFT%']) || 0;
                 
                 const price = parseFloat(row['MC Price']) || 0;
+                const inv = parseFloat(row.INV) || 0;
+                const nrReq = row['nr_req'] || 'REQ';
+                const isMissing = (price === 0);
+                
                 if (price > 0) {
                     totalPrice += price;
                     priceCount++;
                 } else {
-                    missingCount++; // Count missing prices
+                    // Only count missing prices for REQ items with INV > 0
+                    if (nrReq === 'REQ' && inv > 0) {
+                        missingCount++;
+                    }
                 }
                 
-                totalInv += parseFloat(row.INV) || 0;
+                totalInv += inv;
                 totalL30 += parseFloat(row['MC L30']) || 0;
                 
                 if ((parseFloat(row['MC L30']) || 0) === 0) {
@@ -1444,12 +1438,13 @@
                     roiCount++;
                 }
 
-                // Count mapping issues (inventory difference > 3)
-                const ourInv = parseFloat(row['INV']) || 0;
-                const mcInv = parseFloat(row['MC INV']) || 0;
-                const diff = Math.abs(mcInv - ourInv);
-                if (diff > 3) {
-                    mappingCount++;
+                // Count mapping issues (any inventory mismatch, only for REQ items with INV > 0 and NOT Missing)
+                if (nrReq === 'REQ' && inv > 0 && !isMissing) {
+                    const ourInv = inv;
+                    const mcInv = parseFloat(row['MC INV']) || 0;
+                    if (ourInv !== mcInv) {
+                        mappingCount++;
+                    }
                 }
             });
 

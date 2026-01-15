@@ -213,6 +213,15 @@
                         </select>
                     </div>
 
+                    <!-- NRL/REQ Filter -->
+                    <div>
+                        <select id="nr-req-filter" class="form-select form-select-sm" style="width: 100px;">
+                            <option value="all">ALL</option>
+                            <option value="NRL">NRL</option>
+                            <option value="REQ" selected>REQ</option>
+                        </select>
+                    </div>
+
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-secondary dropdown-toggle" type="button"
                             id="columnVisibilityDropdown" data-bs-toggle="dropdown" aria-expanded="false">
@@ -2136,6 +2145,43 @@
                         return `${sku} <button class="btn btn-sm ms-1 view-sku-chart" data-sku="${sku}" title="View Metrics Chart" style="border: none; background: none; color: #87CEEB; padding: 2px 6px;"><i class="fa fa-info-circle"></i></button>`;
                     }
                 },
+              
+                {
+                    title: "INV",
+                    field: "inventory",
+                    hozAlign: "center",
+                    sorter: "number"
+                },
+                {
+                    title: "Temu Stock",
+                    field: "temu_stock",
+                    hozAlign: "center",
+                    sorter: "number",
+                    visible: false
+                },
+                {
+                    title: "OVL30",
+                    field: "ovl30",
+                    hozAlign: "center",
+                    sorter: "number"
+                },
+                    {
+                    title: "Dil%",
+                    field: "dil_percent",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const dil = parseFloat(cell.getValue()) || 0;
+                        
+                        let color = '';
+                        if (dil < 16.66) color = '#a00211'; // red (includes 0)
+                        else if (dil >= 16.66 && dil < 25) color = '#ffc107'; // yellow
+                        else if (dil >= 25 && dil < 50) color = '#28a745'; // green
+                        else color = '#e83e8c'; // pink (50 and above)
+                        
+                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
+                    }
+                },
                 {
                     title: "Missing",
                     field: "missing",
@@ -2199,41 +2245,36 @@
                     }
                 },
                 {
-                    title: "INV",
-                    field: "inventory",
+                    title: "NRL/REQ",
+                    field: "nr_req",
                     hozAlign: "center",
-                    sorter: "number"
-                },
-                {
-                    title: "Temu Stock",
-                    field: "temu_stock",
-                    hozAlign: "center",
-                    sorter: "number",
-                    visible: false
-                },
-                {
-                    title: "OVL30",
-                    field: "ovl30",
-                    hozAlign: "center",
-                    sorter: "number"
-                },
-                    {
-                    title: "Dil%",
-                    field: "dil_percent",
-                    hozAlign: "center",
-                    sorter: "number",
                     formatter: function(cell) {
-                        const dil = parseFloat(cell.getValue()) || 0;
-                        
-                        let color = '';
-                        if (dil < 16.66) color = '#a00211'; // red (includes 0)
-                        else if (dil >= 16.66 && dil < 25) color = '#ffc107'; // yellow
-                        else if (dil >= 25 && dil < 50) color = '#28a745'; // green
-                        else color = '#e83e8c'; // pink (50 and above)
-                        
-                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
-                    }
+                        const row = cell.getRow().getData();
+                        const nrl = row['nr_req'] || '';
+                        const sku = row['sku'];
+
+                        // Determine current value (default to REQ if empty)
+                        let value = '';
+                        if (nrl === 'NRL' || nrl === 'NR') {
+                            value = 'NRL';
+                        } else if (nrl === 'REQ') {
+                            value = 'REQ';
+                        } else {
+                            value = 'REQ'; // Default to REQ
+                        }
+
+                        return `<select class="form-select form-select-sm nr-select" data-sku="${sku}"
+                            style="border: 1px solid #ddd; text-align: center; cursor: pointer; padding: 2px 4px; font-size: 16px; width: 50px; height: 28px;">
+                            <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>🟢</option>
+                            <option value="NRL" ${value === 'NRL' ? 'selected' : ''}>🔴</option>
+                        </select>`;
+                    },
+                    cellClick: function(e, cell) {
+                        e.stopPropagation();
+                    },
+                    width: 60
                 },
+
                 {
                     title: "Temu L30",
                     field: "temu_l30",
@@ -2678,7 +2719,8 @@
                         precision: 2
                     },
                     visible: false
-                }
+                },
+                
             ]
         });
 
@@ -2901,6 +2943,17 @@
                 });
             }
 
+            // NRL/REQ filter
+            const nrReqFilter = $('#nr-req-filter').val();
+            if (nrReqFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const nr_req = data['nr_req'] || 'REQ';
+                    // Handle both NR and NRL as same value
+                    const dataValue = (nr_req === 'NR' || nr_req === 'NRL') ? 'NRL' : nr_req;
+                    return dataValue === nrReqFilter;
+                });
+            }
+
             updateSummary();
             updateSelectAllCheckbox();
             
@@ -2919,7 +2972,7 @@
             }
         }
 
-        $('#inventory-filter, #gpft-filter, #cvr-filter, #ads-filter, #sprice-filter, #ads-req-filter, #ads-running-filter').on('change', function() {
+        $('#inventory-filter, #gpft-filter, #cvr-filter, #ads-filter, #sprice-filter, #ads-req-filter, #ads-running-filter, #nr-req-filter').on('change', function() {
             applyFilters();
         });
 
@@ -3030,6 +3083,33 @@
                     }
                 });
             }
+        });
+
+        // NR/REQ dropdown change handler (Amazon style)
+        $(document).on('change', '.nr-select', function() {
+            const $select = $(this);
+            const value = $select.val();
+            const sku = $select.data('sku');
+
+            // Save to database
+            $.ajax({
+                url: '/temu-decrease/save-listing-status',
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                data: {
+                    sku: sku,
+                    nr_req: value
+                },
+                success: function(response) {
+                    const message = response.message || 'NR/REQ updated successfully';
+                    showToast(message, 'success');
+                },
+                error: function(xhr) {
+                    showToast('Failed to update NR/REQ', 'error');
+                }
+            });
         });
 
         function buildColumnDropdown() {
