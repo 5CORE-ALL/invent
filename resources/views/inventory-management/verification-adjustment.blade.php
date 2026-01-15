@@ -229,6 +229,27 @@
         .verified-filter-btn.active {
             box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.5);
         }
+        
+        /* Ensure verified filter button is green */
+        #filter-verified-green,
+        #filter-verified-green.btn-success {
+            background-color: #28a745 !important;
+            border-color: #28a745 !important;
+            color: #fff !important;
+        }
+        
+        #filter-verified-green:hover,
+        #filter-verified-green.btn-success:hover {
+            background-color: #218838 !important;
+            border-color: #1e7e34 !important;
+        }
+        
+        #filter-verified-green.active,
+        #filter-verified-green.btn-success.active {
+            background-color: #218838 !important;
+            border-color: #1e7e34 !important;
+            box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.5) !important;
+        }
 
         /* ========== HIDE LAST APPROVED COLUMN ========== */
         /* Hide Last Approved column header and data cells while maintaining column alignment */
@@ -2641,6 +2662,14 @@
 
                     const $skuCell = $('<td>').addClass('skuColumn').css('position', 'static');
                     
+                    // Copy icon button for copying SKU to clipboard
+                    const copyButton = `<i class="fas fa-copy text-secondary copy-sku-icon" 
+                        data-sku="${item.SKU || ''}" 
+                        title="Copy SKU to clipboard" 
+                        style="cursor: pointer; margin-left: 5px; font-size: 12px; opacity: 0.7;" 
+                        onmouseover="this.style.opacity='1'" 
+                        onmouseout="this.style.opacity='0.7'"></i>`;
+                    
                     // Eye icon button for viewing history
                     let eyeButton = '';
                     if (isParentRow) {
@@ -2658,7 +2687,7 @@
                     }
                     
                     if (isParentRow) {
-                        $skuCell.html(`<strong>${sku}</strong> ${eyeButton}<input type="hidden" class="sku-hidden" value="${item.SKU || ''}" />`);
+                        $skuCell.html(`<strong>${sku}</strong> ${copyButton} ${eyeButton}<input type="hidden" class="sku-hidden" value="${item.SKU || ''}" />`);
                     } else {
                         const buyerLink = item.raw_data?.['B Link'] || '';
                         const sellerLink = item.raw_data?.['AMZ LINK SL'] || '';
@@ -2671,11 +2700,12 @@
                                         ${sellerLink ? `<div class="sku-link"><a href="${sellerLink}" target="_blank" rel="noopener noreferrer">Seller link</a></div>` : ''}
                                     </div>
                                 </div>
+                                ${copyButton}
                                 ${eyeButton}
                                 <input type="hidden" class="sku-hidden" value="${item.SKU || ''}" />
                             `);
                         } else {
-                            $skuCell.html(`${sku} ${eyeButton}<input type="hidden" class="sku-hidden" value="${item.SKU || ''}" />`);
+                            $skuCell.html(`${sku} ${copyButton} ${eyeButton}<input type="hidden" class="sku-hidden" value="${item.SKU || ''}" />`);
                         }
                     }
                     $row.append($skuCell);
@@ -2918,6 +2948,72 @@
             }
 
             // Verified status button click handler
+            // Copy SKU to clipboard functionality
+            $(document).on('click', '.copy-sku-icon', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const sku = $(this).data('sku') || '';
+                if (!sku) {
+                    return;
+                }
+                
+                // Use modern Clipboard API if available
+                if (navigator.clipboard && window.isSecureContext) {
+                    navigator.clipboard.writeText(sku).then(function() {
+                        // Show success feedback
+                        const $icon = $(e.target);
+                        const originalClass = $icon.attr('class');
+                        $icon.removeClass('fa-copy').addClass('fa-check text-success');
+                        $icon.attr('title', 'Copied!');
+                        
+                        setTimeout(function() {
+                            $icon.attr('class', originalClass);
+                            $icon.attr('title', 'Copy SKU to clipboard');
+                        }, 2000);
+                    }).catch(function(err) {
+                        console.error('Failed to copy: ', err);
+                        // Fallback to old method
+                        fallbackCopyToClipboard(sku, e.target);
+                    });
+                } else {
+                    // Fallback for older browsers
+                    fallbackCopyToClipboard(sku, e.target);
+                }
+            });
+            
+            // Fallback copy function for older browsers
+            function fallbackCopyToClipboard(text, iconElement) {
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-999999px';
+                textArea.style.top = '-999999px';
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                
+                try {
+                    const successful = document.execCommand('copy');
+                    if (successful) {
+                        const $icon = $(iconElement);
+                        const originalClass = $icon.attr('class');
+                        $icon.removeClass('fa-copy').addClass('fa-check text-success');
+                        $icon.attr('title', 'Copied!');
+                        
+                        setTimeout(function() {
+                            $icon.attr('class', originalClass);
+                            $icon.attr('title', 'Copy SKU to clipboard');
+                        }, 2000);
+                    }
+                } catch (err) {
+                    console.error('Fallback copy failed: ', err);
+                    alert('Failed to copy SKU. Please copy manually: ' + text);
+                }
+                
+                document.body.removeChild(textArea);
+            }
+
             $(document).on('click', '.verified-status-btn', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
