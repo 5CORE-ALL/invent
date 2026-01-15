@@ -143,6 +143,15 @@
     background: transparent;
   }
 
+  .copy-sku-icon:hover {
+    color: #1d4ed8 !important;
+    transform: scale(1.1);
+  }
+
+  .copy-sku-icon:active {
+    transform: scale(0.95);
+  }
+
 </style>
 @section('content')
 @include('layouts.shared.page-title', ['page_title' => 'Transit Container INV', 'sub_title' => 'Transit Container INV'])
@@ -582,7 +591,23 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
               }
             },
             // { title: "Parent", field: "parent"},
-            { title: "Sku", field: "our_sku" },
+            { 
+              title: "Sku", 
+              field: "our_sku",
+              formatter: function(cell) {
+                const sku = cell.getValue() || '';
+                return `
+                  <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+                    <span>${sku}</span>
+                    <i class="fas fa-copy copy-sku-icon" 
+                       data-sku="${sku}" 
+                       style="cursor: pointer; color: #2563eb; font-size: 0.9rem; transition: color 0.2s;"
+                       title="Copy SKU">
+                    </i>
+                  </div>
+                `;
+              }
+            },
             // { title: "Supplier", field: "supplier_name", editor: "input" },
             {
               title: "Status",
@@ -876,6 +901,32 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
     window.tabTables = window.tabTables || {};
     window.tabTables[index] = table;
 
+    // Copy SKU functionality
+    table.on("cellClick", function(e, cell) {
+        const target = e.target;
+        if (target && target.classList.contains('copy-sku-icon')) {
+            const sku = target.getAttribute('data-sku');
+            if (sku) {
+                // Copy to clipboard
+                navigator.clipboard.writeText(sku).then(function() {
+                    // Visual feedback
+                    const originalColor = target.style.color;
+                    target.style.color = '#10b981';
+                    target.classList.remove('fa-copy');
+                    target.classList.add('fa-check');
+                    
+                    setTimeout(function() {
+                        target.style.color = originalColor;
+                        target.classList.remove('fa-check');
+                        target.classList.add('fa-copy');
+                    }, 1000);
+                }).catch(function(err) {
+                    console.error('Failed to copy SKU:', err);
+                    alert('Failed to copy SKU to clipboard');
+                });
+            }
+        }
+    });
 
     // ✅ Ensure listener runs only once
     const exportBtn = document.getElementById("export-tab-excel");
