@@ -1562,6 +1562,18 @@
                         sorter: "number",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
+                            // Check if spend (adFees) is 0
+                            var adFees = parseFloat(row.adFees || 0);
+                            
+                            // If spend is 0, show "-"
+                            if (adFees === 0) {
+                                var td = cell.getElement();
+                                td.classList.remove('green-bg', 'pink-bg', 'red-bg');
+                                return '<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">' +
+                                    '-' +
+                                    '<i class="fa-solid fa-info-circle toggle-metrics-btn" style="cursor: pointer; font-size: 12px; margin-left: 5px;" title="Toggle Clicks, Spend, Ad Sold"></i></div>';
+                            }
+                            
                             var acosRaw = row.acos;
                             var acos = parseFloat(acosRaw);
                             if (isNaN(acos)) {
