@@ -26,6 +26,7 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Carbon\Carbon;
 use Exception;
+use App\Models\AmazonChannelSummary;
 
 class EbayController extends Controller
 {
@@ -70,7 +71,10 @@ class EbayController extends Controller
         try {
             $response = $this->getViewEbayData($request);
             $data = json_decode($response->getContent(), true);
-            
+
+            // Auto-save daily summary in background (non-blocking)
+            $this->saveDailySummaryIfNeeded($data['data'] ?? []);
+
             return response()->json($data['data'] ?? []);
         } catch (\Exception $e) {
             Log::error('Error fetching eBay data for Tabulator: ' . $e->getMessage());
@@ -1997,6 +2001,194 @@ class EbayController extends Controller
             return response()->json([
                 'error' => 'Error importing ratings: ' . $e->getMessage()
             ], 500);
+        }
+    }
+
+    /**
+     * Auto-save daily eBay summary snapshot (channel-wise)
+     * Matches JavaScript updateSummary() logic exactly
+     */
+    private function saveDailySummaryIfNeeded($products)
+    {
+        try {
+            $today = now()->toDateString();
+            
+            // No cache - always update when page loads
+            // Uses updateOrCreate so it updates existing record for today
+            
+            // ALL data with INV > 0 (for grand totals)
+            $allData = collect($products)->filter(function($p) {
+                return floatval($p['INV'] ?? 0) > 0;
+            });
+            
+            // Filtered data: INV > 0 && nr_req === 'REQ' (for other metrics)
+            $filteredData = collect($products)->filter(function($p) {
+                $invCheck = floatval($p['INV'] ?? 0) > 0;
+                $reqCheck = ($p['nr_req'] ?? '') === 'REQ';
+                return $invCheck && $reqCheck;
+            });
+            
+            if ($filteredData->isEmpty()) {
+                return; // No valid products
+            }
+            
+            // Initialize counters (EXACT JavaScript variable names)
+            $totalSkuCount = $filteredData->count();
+            $moreSoldCount = 0;   // eBay L30 > 0
+            $zeroSoldCount = 0;   // eBay L30 = 0
+            $missingCount = 0;    // No eBay item ID
+            $mapCount = 0;        // INV = eBay Stock
+            $notMapCount = 0;     // INV != eBay Stock
+            $lessAmzCount = 0;    // eBay Price < Amazon Price
+            $moreAmzCount = 0;    // eBay Price > Amazon Price
+            $prcGtLmpCount = 0;   // eBay Price > LMP Price
+            
+            $totalPftAmt = 0;
+            $totalSalesAmt = 0;
+            $totalLpAmt = 0;
+            $totalFbaInv = 0;
+            $totalEbayL30 = 0;
+            $totalWeightedPrice = 0;
+            
+            // Grand totals (from ALL data)
+            $grandTotalKwSpend = 0;
+            $grandTotalPmtSpend = 0;
+            $grandTotalSpend = 0;
+            
+            // Calculate grand totals from ALL data (no REQ filter - matches JavaScript)
+            foreach ($allData as $row) {
+                $grandTotalKwSpend += floatval($row['kw_spend_L30'] ?? 0);
+                $grandTotalPmtSpend += floatval($row['pmt_spend_L30'] ?? 0);
+                $grandTotalSpend += floatval($row['AD_Spend_L30'] ?? 0);
+            }
+            
+            // Loop through FILTERED data (with REQ filter - matches JavaScript)
+            foreach ($filteredData as $row) {
+                $inv = floatval($row['INV'] ?? 0);
+                $ebayL30 = floatval($row['eBay L30'] ?? 0);
+                
+                $totalPftAmt += floatval($row['Total_pft'] ?? 0);
+                $totalSalesAmt += floatval($row['T_Sale_l30'] ?? 0);
+                $totalLpAmt += floatval($row['LP_productmaster'] ?? 0) * $ebayL30;
+                $totalFbaInv += $inv;
+                $totalEbayL30 += $ebayL30;
+                
+                // Count sold and 0-sold (EXACT JavaScript logic)
+                if ($ebayL30 == 0) {  // Use == for proper float comparison
+                    $zeroSoldCount++;
+                } else {
+                    $moreSoldCount++;
+                }
+                
+                // Count Missing (no eBay item ID)
+                $itemId = $row['eBay_item_id'] ?? '';
+                if (!$itemId || $itemId === null || $itemId === '') {
+                    $missingCount++;
+                }
+                
+                // Count Map and N MP (only if exists in eBay)
+                if ($itemId && $itemId !== null && $itemId !== '') {
+                    $ebayStock = floatval($row['eBay Stock'] ?? 0);
+                    if ($inv > 0 && $ebayStock > 0 && $inv === $ebayStock) {
+                        $mapCount++;
+                    } else if ($inv > 0 && ($ebayStock === 0 || ($ebayStock > 0 && $inv !== $ebayStock))) {
+                        $notMapCount++;
+                    }
+                }
+                
+                // Count < Amz and > Amz
+                $ebayPrice = floatval($row['eBay Price'] ?? 0);
+                $amazonPrice = floatval($row['A Price'] ?? 0);
+                if ($amazonPrice > 0 && $ebayPrice > 0) {
+                    if ($ebayPrice < $amazonPrice) {
+                        $lessAmzCount++;
+                    } else if ($ebayPrice > $amazonPrice) {
+                        $moreAmzCount++;
+                    }
+                }
+                
+                // Count Prc > LMP
+                $lmpPrice = floatval($row['lmp_price'] ?? 0);
+                if ($lmpPrice > 0 && $ebayPrice > $lmpPrice) {
+                    $prcGtLmpCount++;
+                }
+                
+                // Weighted price
+                $totalWeightedPrice += $ebayPrice * $ebayL30;
+            }
+            
+            // Calculate averages and percentages (EXACT JavaScript logic)
+            $avgPrice = $totalEbayL30 > 0 ? $totalWeightedPrice / $totalEbayL30 : 0;
+            $tcosPercent = $totalSalesAmt > 0 ? (($grandTotalSpend / $totalSalesAmt) * 100) : 0;
+            $groiPercent = $totalLpAmt > 0 ? (($totalPftAmt / $totalLpAmt) * 100) : 0;
+            $nroiPercent = $groiPercent - $tcosPercent;
+            $gpftPercent = $totalSalesAmt > 0 ? (($totalSalesAmt - $totalLpAmt) / $totalSalesAmt * 100) : 0;
+            
+            // Store ALL metrics in JSON (flexible!)
+            $summaryData = [
+                // Counts
+                'total_sku_count' => $totalSkuCount,
+                'sold_count' => $moreSoldCount,
+                'zero_sold_count' => $zeroSoldCount,
+                'missing_count' => $missingCount,
+                'map_count' => $mapCount,
+                'not_map_count' => $notMapCount,
+                'less_amz_count' => $lessAmzCount,
+                'more_amz_count' => $moreAmzCount,
+                'prc_gt_lmp_count' => $prcGtLmpCount,
+                
+                // Financial Totals
+                'grand_total_kw_spend' => round($grandTotalKwSpend, 2),
+                'grand_total_pmt_spend' => round($grandTotalPmtSpend, 2),
+                'grand_total_spend' => round($grandTotalSpend, 2),
+                'total_pft_amt' => round($totalPftAmt, 2),
+                'total_sales_amt' => round($totalSalesAmt, 2),
+                'total_lp_amt' => round($totalLpAmt, 2),
+                
+                // Inventory
+                'total_fba_inv' => round($totalFbaInv, 2),
+                'total_ebay_l30' => round($totalEbayL30, 2),
+                
+                // Calculated Percentages
+                'tcos_percent' => round($tcosPercent, 2),
+                'groi_percent' => round($groiPercent, 2),
+                'nroi_percent' => round($nroiPercent, 2),
+                'gpft_percent' => round($gpftPercent, 2),
+                
+                // Averages
+                'avg_price' => round($avgPrice, 2),
+                
+                // Metadata
+                'total_products_count' => count($products),
+                'calculated_at' => now()->toDateTimeString(),
+                
+                // Active Filters (eBay specific)
+                'filters_applied' => [
+                    'inventory' => 'more',  // INV > 0
+                    'nrl' => 'REQ',        // REQ only
+                ],
+            ];
+            
+            // Save or update as JSON (channel-wise)
+            AmazonChannelSummary::updateOrCreate(
+                [
+                    'channel' => 'ebay',
+                    'snapshot_date' => $today
+                ],
+                [
+                    'summary_data' => $summaryData,
+                    'notes' => 'Auto-saved daily snapshot (INV > 0, REQ only)',
+                ]
+            );
+            
+            Log::info("Daily eBay summary snapshot saved for {$today}", [
+                'sku_count' => $totalSkuCount,
+                'sold_count' => $moreSoldCount,
+            ]);
+            
+        } catch (\Exception $e) {
+            // Don't break the main response if summary save fails
+            Log::error('Error saving daily eBay summary: ' . $e->getMessage());
         }
     }
 }

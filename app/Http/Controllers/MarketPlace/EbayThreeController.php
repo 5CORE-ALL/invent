@@ -23,6 +23,8 @@ use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use App\Models\AmazonChannelSummary;
+
 class EbayThreeController extends Controller
 {
     protected $apiController;
@@ -60,7 +62,10 @@ class EbayThreeController extends Controller
         try {
             $response = $this->getViewEbay3DataTabulator($request);
             $data = json_decode($response->getContent(), true);
-            
+
+            // Auto-save daily summary in background (non-blocking)
+            $this->saveDailySummaryIfNeeded($data['data'] ?? []);
+
             return response()->json($data['data'] ?? []);
         } catch (\Exception $e) {
             Log::error('Error fetching eBay3 data for Tabulator: ' . $e->getMessage());
@@ -1628,6 +1633,227 @@ class EbayThreeController extends Controller
             return response()->json([
                 'error' => 'Failed to clear SPRICE data: ' . $e->getMessage()
             ], 500);
+        }
+    }
+
+    /**
+     * Auto-save daily eBay 3 summary snapshot (channel-wise)
+     * Matches JavaScript updateSummary() logic exactly
+     */
+    private function saveDailySummaryIfNeeded($products)
+    {
+        try {
+            $today = now()->toDateString();
+            
+            // No cache - always update when page loads
+            
+            // Flatten tree structure for SKU-only view (matches JavaScript logic)
+            $flatData = [];
+            foreach ($products as $item) {
+                // Convert to array if it's an object
+                $parent = is_array($item) ? $item : (array) $item;
+                
+                if (isset($parent['_children']) && is_array($parent['_children'])) {
+                    // Add only child rows, skip parent
+                    foreach ($parent['_children'] as $child) {
+                        $flatData[] = is_array($child) ? $child : (array) $child;
+                    }
+                } else {
+                    // If no children, check if it's not a parent row
+                    $sku = $parent['(Child) sku'] ?? '';
+                    if (!str_contains(strtoupper($sku), 'PARENT')) {
+                        $flatData[] = $parent;
+                    }
+                }
+            }
+            
+            // Filter: INV > 0 && nr_req === 'REQ' (EXACT JavaScript logic after flattening)
+            $filteredData = collect($flatData)->filter(function($p) {
+                $invCheck = floatval($p['INV'] ?? 0) > 0;
+                $reqCheck = ($p['nr_req'] ?? '') === 'REQ';
+                
+                return $invCheck && $reqCheck;
+            });
+            
+            if ($filteredData->isEmpty()) {
+                return; // No valid products
+            }
+            
+            // Get spend from database tables (same as view does)
+            $totalKwSpendL30 = DB::table('ebay_3_priority_reports')
+                ->where('report_range', 'L30')
+                ->selectRaw('SUM(CAST(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "") AS DECIMAL(10,2))) as total_spend')
+                ->value('total_spend') ?? 0;
+            
+            $totalPmtSpendL30 = DB::table('ebay_3_general_reports')
+                ->where('report_range', 'L30')
+                ->selectRaw('SUM(CAST(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "") AS DECIMAL(10,2))) as total_spend')
+                ->value('total_spend') ?? 0;
+            
+            $totalSpendL30 = $totalKwSpendL30 + $totalPmtSpendL30;
+            
+            // Initialize counters (EXACT JavaScript variable names)
+            $totalSkuCount = $filteredData->count();
+            $totalTcos = 0;
+            $totalPftAmt = 0;
+            $totalSalesAmt = 0;
+            $totalLpAmt = 0;
+            $totalFbaInv = 0;
+            $totalFbaL30 = 0;
+            $totalDilPercent = 0;
+            $dilCount = 0;
+            $zeroSoldCount = 0;
+            $moreSoldCount = 0;
+            $lessAmzCount = 0;
+            $moreAmzCount = 0;
+            $missingCount = 0;
+            $mapCount = 0;
+            $invStockCount = 0;
+            $totalWeightedPrice = 0;
+            $totalL30 = 0;
+            $totalViews = 0;
+            
+            // Loop through each row (EXACT JavaScript forEach logic)
+            foreach ($filteredData as $row) {
+                $totalTcos += floatval($row['AD%'] ?? 0);
+                $totalPftAmt += floatval($row['Total_pft'] ?? 0);
+                $totalSalesAmt += floatval($row['T_Sale_l30'] ?? 0);
+                $totalLpAmt += floatval($row['LP_productmaster'] ?? 0) * floatval($row['eBay L30'] ?? 0);
+                $totalFbaInv += floatval($row['INV'] ?? 0);
+                $totalFbaL30 += floatval($row['eBay L30'] ?? 0);
+                
+                // Don't sum spend from rows - we use database totals from above
+                
+                $l30 = floatval($row['eBay L30'] ?? 0);
+                if ($l30 == 0) {
+                    $zeroSoldCount++;
+                } else {
+                    $moreSoldCount++;
+                }
+                
+                $dil = floatval($row['E Dil%'] ?? 0);
+                if (!is_nan($dil) && $dil != 0) {
+                    $totalDilPercent += $dil;
+                    $dilCount++;
+                }
+                
+                // Compare eBay Price with Amazon Price
+                $ebayPrice = floatval($row['eBay Price'] ?? 0);
+                $amazonPrice = floatval($row['A Price'] ?? 0);
+                
+                if ($amazonPrice > 0 && $ebayPrice > 0) {
+                    if ($ebayPrice < $amazonPrice) {
+                        $lessAmzCount++;
+                    } elseif ($ebayPrice > $amazonPrice) {
+                        $moreAmzCount++;
+                    }
+                }
+                
+                // Count Missing - no item_id
+                $itemId = $row['eBay_item_id'] ?? '';
+                if (!$itemId || $itemId === null || $itemId === '') {
+                    $missingCount++;
+                }
+                
+                // Stock comparison
+                $ebayStock = floatval($row['eBay Stock'] ?? 0);
+                $inv = floatval($row['INV'] ?? 0);
+                
+                if ($inv > 0 && $ebayStock > 0 && $inv == $ebayStock) {
+                    $mapCount++;
+                }
+                
+                if ($inv > 0 && $ebayStock > 0 && $inv != $ebayStock) {
+                    $invStockCount++;
+                }
+                
+                // Weighted price
+                $totalWeightedPrice += $ebayPrice * $l30;
+                $totalL30 += $l30;
+                
+                // Views
+                $totalViews += floatval($row['views'] ?? 0);
+            }
+            
+            // Calculate averages and percentages (EXACT JavaScript logic)
+            $avgPrice = $totalL30 > 0 ? $totalWeightedPrice / $totalL30 : 0;
+            $avgCVR = $totalViews > 0 ? ($totalL30 / $totalViews * 100) : 0;
+            $tacosPercent = $totalSalesAmt > 0 ? (($totalSpendL30 / $totalSalesAmt) * 100) : 0;
+            $groiPercent = $totalLpAmt > 0 ? (($totalPftAmt / $totalLpAmt) * 100) : 0;
+            $avgGpft = $totalSalesAmt > 0 ? (($totalPftAmt / $totalSalesAmt) * 100) : 0;
+            $npftPercent = $avgGpft - $tacosPercent;
+            $nroiPercent = $groiPercent - $tacosPercent;
+            $avgDil = $dilCount > 0 ? $totalDilPercent / $dilCount : 0;
+            
+            // Store ALL metrics in JSON (flexible!)
+            $summaryData = [
+                // Counts
+                'total_sku_count' => $totalSkuCount,
+                'sold_count' => $moreSoldCount,
+                'zero_sold_count' => $zeroSoldCount,
+                'missing_count' => $missingCount,
+                'map_count' => $mapCount,
+                'inv_stock_count' => $invStockCount,
+                'less_amz_count' => $lessAmzCount,
+                'more_amz_count' => $moreAmzCount,
+                
+                // Financial Totals
+                'total_kw_spend_l30' => round($totalKwSpendL30, 2),
+                'total_pmt_spend_l30' => round($totalPmtSpendL30, 2),
+                'total_spend_l30' => round($totalSpendL30, 2),
+                'total_pft_amt' => round($totalPftAmt, 2),
+                'total_sales_amt' => round($totalSalesAmt, 2),
+                'total_lp_amt' => round($totalLpAmt, 2),
+                
+                // Inventory
+                'total_fba_inv' => round($totalFbaInv, 2),
+                'total_ebay_l30' => round($totalFbaL30, 2),
+                'total_views' => $totalViews,
+                
+                // Calculated Percentages
+                'tcos_percent' => round($tacosPercent, 2),
+                'groi_percent' => round($groiPercent, 2),
+                'nroi_percent' => round($nroiPercent, 2),
+                'cvr_percent' => round($avgCVR, 2),
+                'gpft_percent' => round($avgGpft, 2),
+                'npft_percent' => round($npftPercent, 2),
+                'avg_dil' => round($avgDil, 2),
+                
+                // Averages
+                'avg_price' => round($avgPrice, 2),
+                
+                // Metadata
+                'total_products_count' => count($products),
+                'calculated_at' => now()->toDateTimeString(),
+                
+                // Active Filters
+                'filters_applied' => [
+                    'view_mode' => 'sku',     // SKU only
+                    'inventory' => 'more',    // INV > 0
+                    'nrl' => 'REQ',          // REQ only
+                ],
+            ];
+            
+            // Save or update as JSON (channel-wise)
+            AmazonChannelSummary::updateOrCreate(
+                [
+                    'channel' => 'ebay3',
+                    'snapshot_date' => $today
+                ],
+                [
+                    'summary_data' => $summaryData,
+                    'notes' => 'Auto-saved daily snapshot (INV > 0, REQ only, SKU only)',
+                ]
+            );
+            
+            Log::info("Daily eBay3 summary snapshot saved for {$today}", [
+                'sku_count' => $totalSkuCount,
+                'sold_count' => $moreSoldCount,
+            ]);
+            
+        } catch (\Exception $e) {
+            // Don't break the main response if summary save fails
+            Log::error('Error saving daily eBay3 summary: ' . $e->getMessage());
         }
     }
 }

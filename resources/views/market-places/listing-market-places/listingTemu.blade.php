@@ -1100,7 +1100,7 @@
                                 <select id="nr-req-filter" class="form-control form-control-sm">
                                     <option value="all">All</option>
                                     <option value="REQ">REQ</option>
-                                    <option value="NR">NRL</option>
+                                    <option value="NRL">NRL</option>
                                 </select>
                             </div>
                             <div class="form-group col-md-6">
@@ -1561,14 +1561,15 @@
                     const $dropdown = $('<select>')
                         .addClass('nr-req-dropdown form-control form-control-sm')
                         .append('<option value="REQ" class="req-option">REQ</option>')
-                        .append('<option value="NR" class="nr-option">NRL</option>');
+                        .append('<option value="NRL" class="nr-option">NRL</option>');
 
-                    const initialValue = item.nr_req || 'REQ';
+                    // Handle both NR and NRL for backward compatibility
+                    const initialValue = (item.nr_req === 'NR' ? 'NRL' : item.nr_req) || 'REQ';
                     $dropdown.val(initialValue);
 
                     if (initialValue === 'REQ') {
                         $dropdown.css('background-color', '#28a745').css('color', 'white');
-                    } else if (initialValue === 'NR') {
+                    } else if (initialValue === 'NRL' || initialValue === 'NR') {
                         $dropdown.css('background-color', '#dc3545').css('color', 'white');
                     }
 

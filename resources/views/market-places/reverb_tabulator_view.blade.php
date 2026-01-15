@@ -245,9 +245,9 @@
                         <span class="badge bg-secondary fs-6 p-2" id="roi-percent-badge" style="color: black; font-weight: bold;">ROI%: 0%</span>
                         <span class="badge bg-danger fs-6 p-2" id="less-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices less than Amazon">&lt; Amz: 0</span>
                         <span class="badge fs-6 p-2" id="more-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter prices greater than Amazon">&gt; Amz: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing SKUs">Missing: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="map-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter mapped SKUs">Map: 0</span>
-                        <span class="badge bg-warning fs-6 p-2" id="inv-r-stock-badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter INV > R Stock">INV > R Stock: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter missing SKUs">MISSING: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="map-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter mapped SKUs">MAP: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="inv-r-stock-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter not mapped SKUs">N MAP: 0</span>
                     </div>
                 </div>
             </div>
@@ -1005,14 +1005,13 @@
                     formatter: function(cell) {
                         const value = cell.getValue();
                         
+                        if (!value) return '';
+                        
                         if (value === 'Map') {
-                            return '<span style="color: #28a745; font-weight: bold;">Map</span>';
-                        } else if (value && value.startsWith('N Map|')) {
+                            return '<span style="color: #28a745; font-weight: bold; background-color: #d4edda; padding: 2px 6px; border-radius: 3px;">MAP</span>';
+                        } else if (value.includes('N Map|')) {
                             const diff = value.split('|')[1];
-                            return `<span style="color: #dc3545; font-weight: bold;">N Map (${diff})</span>`;
-                        } else if (value && value.startsWith('Diff|')) {
-                            const diff = value.split('|')[1];
-                            return `<span style="color: #ffc107; font-weight: bold;">${diff}<br>(INV > R Stock)</span>`;
+                            return `<span style="color: #dc3545; font-weight: bold; background-color: #f8d7da; padding: 2px 6px; border-radius: 3px;">N MP (${diff})</span>`;
                         }
                         return '';
                     }
@@ -1509,21 +1508,35 @@
                 });
             }
 
-            // Missing filter - show SKUs missing in Reverb
+            // Missing filter - show SKUs missing in Reverb (REQ items with INV > 0 only)
             if (missingFilterActive) {
-                table.addFilter("Missing", "=", "M");
+                table.addFilter(function(data) {
+                    const missing = data['Missing'] || '';
+                    const inv = parseFloat(data['INV']) || 0;
+                    const nrReq = data['nr_req'] || 'REQ';
+                    return missing === 'M' && nrReq === 'REQ' && inv > 0;
+                });
             }
 
-            // Map filter - show SKUs where INV = R Stock
+            // Map filter - show SKUs where INV = R Stock (REQ items with INV > 0 and NOT Missing)
             if (mapFilterActive) {
-                table.addFilter("MAP", "=", "Map");
+                table.addFilter(function(data) {
+                    const mapValue = data['MAP'] || '';
+                    const inv = parseFloat(data['INV']) || 0;
+                    const nrReq = data['nr_req'] || 'REQ';
+                    const isMissing = (data['Missing'] || '') === 'M';
+                    return mapValue === 'Map' && nrReq === 'REQ' && inv > 0 && !isMissing;
+                });
             }
 
-            // INV > R Stock filter - show SKUs where INV > R Stock
+            // N Map filter - show SKUs where stocks don't match (REQ items with INV > 0 and NOT Missing)
             if (invRStockFilterActive) {
                 table.addFilter(function(data) {
-                    const mapValue = data['MAP'];
-                    return mapValue && mapValue.startsWith('Diff|');
+                    const mapValue = data['MAP'] || '';
+                    const inv = parseFloat(data['INV']) || 0;
+                    const nrReq = data['nr_req'] || 'REQ';
+                    const isMissing = (data['Missing'] || '') === 'M';
+                    return mapValue.includes('N Map|') && nrReq === 'REQ' && inv > 0 && !isMissing;
                 });
             }
 
@@ -1597,19 +1610,23 @@
                     moreAmzCount++;
                 }
                 
-                // Count Missing
-                if (row['Missing'] === 'M') {
+                const inv = parseFloat(row['INV']) || 0;
+                const nrReq = row['nr_req'] || 'REQ';
+                const isMissing = row['Missing'] === 'M';
+                
+                // Count Missing (only REQ items with INV > 0)
+                if (isMissing && nrReq === 'REQ' && inv > 0) {
                     missingCount++;
                 }
                 
-                // Count Map
-                const mapValue = row['MAP'];
-                if (mapValue === 'Map') {
+                // Count Map (only REQ items with INV > 0 and NOT Missing)
+                const mapValue = row['MAP'] || '';
+                if (mapValue === 'Map' && nrReq === 'REQ' && inv > 0 && !isMissing) {
                     mapCount++;
                 }
                 
-                // Count INV > R Stock
-                if (mapValue && mapValue.startsWith('Diff|')) {
+                // Count N Map (only REQ items with INV > 0 and NOT Missing)
+                if (mapValue.includes('N Map|') && nrReq === 'REQ' && inv > 0 && !isMissing) {
                     invRStockCount++;
                 }
             });
@@ -1632,9 +1649,9 @@
             $('#roi-percent-badge').text(`ROI%: ${avgRoi.toFixed(1)}%`);
             $('#less-amz-badge').text(`< Amz: ${lessAmzCount}`);
             $('#more-amz-badge').text(`> Amz: ${moreAmzCount}`);
-            $('#missing-count-badge').text(`Missing: ${missingCount}`);
-            $('#map-count-badge').text(`Map: ${mapCount}`);
-            $('#inv-r-stock-badge').text(`INV > R Stock: ${invRStockCount}`);
+            $('#missing-count-badge').text(`MISSING: ${missingCount}`);
+            $('#map-count-badge').text(`MAP: ${mapCount}`);
+            $('#inv-r-stock-badge').text(`N MAP: ${invRStockCount}`);
         }
 
         // Build Column Visibility Dropdown

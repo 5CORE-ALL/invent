@@ -17,6 +17,7 @@ use App\Models\ReverbListingStatus;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use App\Models\AmazonChannelSummary;
 
 class ReverbController extends Controller
 {
@@ -653,7 +654,10 @@ class ReverbController extends Controller
         try {
             $response = $this->getViewReverbTabularData($request);
             $data = json_decode($response->getContent(), true);
-            
+
+            // Auto-save daily summary in background (non-blocking)
+            $this->saveDailySummaryIfNeeded($data['data'] ?? []);
+
             return response()->json($data['data'] ?? []);
         } catch (\Exception $e) {
             Log::error('Error fetching Reverb data for Tabulator: ' . $e->getMessage());
@@ -754,24 +758,11 @@ class ReverbController extends Controller
                 $processedItem["RV L30"] = 0;
                 $processedItem["RV L60"] = 0;
                 $processedItem["R Stock"] = 0;
-                $processedItem["Missing"] = 'M'; // SKU NOT in Reverb - mark as Missing
+                $processedItem["Missing"] = ''; // Will be set later based on INV and nr_req
             }
 
-            // Calculate MAP (INV vs R Stock comparison)
-            $inv = $processedItem["INV"];
-            $rStock = $processedItem["R Stock"];
-            
-            if ($inv == $rStock) {
-                $processedItem["MAP"] = 'Map';
-            } elseif ($rStock > $inv) {
-                // R Stock is more than INV - show N Map with qty
-                $diff = $rStock - $inv;
-                $processedItem["MAP"] = "N Map|$diff"; // Using | as separator
-            } else {
-                // INV is more than R Stock - show only the difference number
-                $diff = $inv - $rStock;
-                $processedItem["MAP"] = "Diff|$diff"; // Using | as separator
-            }
+            // Store temp values for MAP calculation after nr_req is set
+            $tempMissingCheck = !isset($reverbData[$sku]);
 
             // Calculate CVR percentage (L30 / Views * 100)
             $views = $processedItem["Views"];
@@ -810,6 +801,34 @@ class ReverbController extends Controller
                 } else {
                     $processedItem["nr_req"] = 'REQ'; // Default
                 }
+            }
+
+            // Now calculate MAP and Missing based on nr_req and INV
+            $inv = $processedItem["INV"];
+            $rStock = $processedItem["R Stock"];
+            $nrReq = $processedItem["nr_req"];
+            
+            // Missing: Only for REQ items with INV > 0
+            $isMissing = false;
+            if ($nrReq === 'REQ' && $inv > 0 && $tempMissingCheck) {
+                $processedItem["Missing"] = 'M';
+                $isMissing = true;
+            } else {
+                $processedItem["Missing"] = '';
+            }
+            
+            // MAP: Only for REQ items with INV > 0 and NOT Missing
+            if ($nrReq === 'REQ' && $inv > 0 && !$isMissing) {
+                if ($inv == $rStock) {
+                    $processedItem["MAP"] = 'Map';
+                } else {
+                    // Stocks don't match - show N Map with qty difference
+                    $diff = abs($inv - $rStock);
+                    $processedItem["MAP"] = "N Map|$diff";
+                }
+            } else {
+                // Don't show MAP for NR items, INV = 0, or Missing items
+                $processedItem["MAP"] = '';
             }
 
             // Get SPRICE from reverb_view_data
@@ -1062,5 +1081,185 @@ class ReverbController extends Controller
         Cache::put($key, $visibility, now()->addDays(365));
         
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * Auto-save daily Reverb summary snapshot (channel-wise)
+     * Matches JavaScript updateSummary() logic exactly
+     */
+    private function saveDailySummaryIfNeeded($products)
+    {
+        try {
+            $today = now()->toDateString();
+            
+            // No cache - always update when page loads
+            
+            // Filter: INV > 0 && nr_req === 'REQ' && not parent (EXACT JavaScript logic)
+            $filteredData = collect($products)->filter(function($p) {
+                $invCheck = floatval($p['INV'] ?? 0) > 0;
+                $reqCheck = ($p['nr_req'] ?? '') === 'REQ';
+                $notParent = !(isset($p['Parent']) && str_starts_with($p['Parent'], 'PARENT'));
+                
+                return $invCheck && $reqCheck && $notParent;
+            });
+            
+            if ($filteredData->isEmpty()) {
+                return; // No valid products
+            }
+            
+            // Initialize counters (EXACT JavaScript variable names)
+            $totalSkuCount = $filteredData->count();
+            $totalPft = 0;
+            $totalSales = 0;
+            $totalGpft = 0;
+            $totalPrice = 0;
+            $priceCount = 0;
+            $totalInv = 0;
+            $totalL30 = 0;
+            $zeroSoldCount = 0;
+            $moreSoldCount = 0;
+            $totalDil = 0;
+            $dilCount = 0;
+            $totalCogs = 0;
+            $totalRoi = 0;
+            $roiCount = 0;
+            $lessAmzCount = 0;
+            $moreAmzCount = 0;
+            $missingCount = 0;
+            $mapCount = 0;
+            $invRStockCount = 0;
+            
+            // Loop through each row (EXACT JavaScript forEach logic)
+            foreach ($filteredData as $row) {
+                $totalPft += floatval($row['Profit'] ?? 0);
+                $totalSales += floatval($row['Sales L30'] ?? 0);
+                $totalGpft += floatval($row['GPFT%'] ?? 0);
+                
+                $price = floatval($row['RV Price'] ?? 0);
+                if ($price > 0) {
+                    $totalPrice += $price;
+                    $priceCount++;
+                }
+                
+                $totalInv += floatval($row['INV'] ?? 0);
+                $totalL30 += floatval($row['RV L30'] ?? 0);
+                
+                $l30 = floatval($row['RV L30'] ?? 0);
+                if ($l30 == 0) {
+                    $zeroSoldCount++;
+                } else {
+                    $moreSoldCount++;
+                }
+                
+                $dil = floatval($row['RV Dil%'] ?? 0);
+                if ($dil > 0) {
+                    $totalDil += $dil;
+                    $dilCount++;
+                }
+                
+                // COGS = LP × RV L30
+                $lp = floatval($row['LP_productmaster'] ?? 0);
+                $totalCogs += $lp * $l30;
+                
+                $roi = floatval($row['ROI%'] ?? 0);
+                if ($roi != 0) {
+                    $totalRoi += $roi;
+                    $roiCount++;
+                }
+                
+                // Compare RV Price with Amazon Price
+                $rvPrice = floatval($row['RV Price'] ?? 0);
+                $amzPrice = floatval($row['A Price'] ?? 0);
+                
+                if ($amzPrice > 0 && $rvPrice > 0) {
+                    if ($rvPrice < $amzPrice) {
+                        $lessAmzCount++;
+                    } elseif ($rvPrice > $amzPrice) {
+                        $moreAmzCount++;
+                    }
+                }
+                
+                // Count Missing
+                if (($row['Missing'] ?? '') === 'M') {
+                    $missingCount++;
+                }
+                
+                // Count Map
+                $mapValue = $row['MAP'] ?? '';
+                if ($mapValue === 'Map') {
+                    $mapCount++;
+                }
+
+                // Count N Map (not mapped - any stock mismatch)
+                if ($mapValue && str_starts_with($mapValue, 'N Map|')) {
+                    $invRStockCount++;
+                }
+            }
+            
+            // Calculate averages and percentages (EXACT JavaScript logic)
+            $avgGpft = $totalSkuCount > 0 ? $totalGpft / $totalSkuCount : 0;
+            $avgPrice = $priceCount > 0 ? $totalPrice / $priceCount : 0;
+            $avgDil = $dilCount > 0 ? $totalDil / $dilCount : 0;
+            $avgRoi = $roiCount > 0 ? $totalRoi / $roiCount : 0;
+            
+            // Store ALL metrics in JSON (flexible!)
+            $summaryData = [
+                // Counts
+                'total_sku_count' => $totalSkuCount,
+                'sold_count' => $moreSoldCount,
+                'zero_sold_count' => $zeroSoldCount,
+                'missing_count' => $missingCount,
+                'map_count' => $mapCount,
+                'inv_r_stock_count' => $invRStockCount,
+                'less_amz_count' => $lessAmzCount,
+                'more_amz_count' => $moreAmzCount,
+                
+                // Financial Totals
+                'total_pft' => round($totalPft, 2),
+                'total_sales' => round($totalSales, 2),
+                'total_cogs' => round($totalCogs, 2),
+                
+                // Inventory
+                'total_inv' => round($totalInv, 2),
+                'total_l30' => round($totalL30, 2),
+                
+                // Calculated Percentages & Averages
+                'avg_gpft' => round($avgGpft, 2),
+                'avg_dil' => round($avgDil, 2),
+                'avg_roi' => round($avgRoi, 2),
+                'avg_price' => round($avgPrice, 2),
+                
+                // Metadata
+                'total_products_count' => count($products),
+                'calculated_at' => now()->toDateTimeString(),
+                
+                // Active Filters
+                'filters_applied' => [
+                    'inventory' => 'more',  // INV > 0
+                    'nrl' => 'REQ',        // REQ only
+                ],
+            ];
+            
+            // Save or update as JSON (channel-wise)
+            AmazonChannelSummary::updateOrCreate(
+                [
+                    'channel' => 'reverb',
+                    'snapshot_date' => $today
+                ],
+                [
+                    'summary_data' => $summaryData,
+                    'notes' => 'Auto-saved daily snapshot (INV > 0, REQ only)',
+                ]
+            );
+            
+            Log::info("Daily Reverb summary snapshot saved for {$today}", [
+                'sku_count' => $totalSkuCount,
+                'sold_count' => $moreSoldCount,
+            ]);
+            
+        } catch (\Exception $e) {
+            // Don't break the main response if summary save fails
+            Log::error('Error saving daily Reverb summary: ' . $e->getMessage());
+        }
     }
 }
