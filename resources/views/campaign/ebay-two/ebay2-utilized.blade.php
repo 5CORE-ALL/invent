@@ -423,23 +423,19 @@
                                     <option value="REQ">REQ</option>
                                 </select>
                             </div>
-                                    <div class="col-md-1">
-                                        <label class="form-label fw-semibold mb-2 d-block"
-                                            style="color: transparent; font-size: 0.8125rem;">Actions</label>
-                                        <div class="d-flex flex-column gap-2">
-                                            <button id="apr-all-sbid-btn" class="btn btn-info btn-sm w-100 d-none">
-                                                <i class="fa-solid fa-check-double me-1"></i>
-                                                APR ALL SBID
-                                            </button>
-                                            <button id="bulk-update-sbid-m-btn" class="btn btn-warning btn-sm w-100 d-none">
-                                                <i class="fa-solid fa-save me-1"></i>
-                                                Bulk Update SBID M
-                                            </button>
-                                            <button id="export-data-btn" class="btn btn-success btn-sm w-100">
-                                                <i class="fa-solid fa-download me-1"></i>
-                                                Export
-                                            </button>
-                                        </div>
+                                    <div class="col-md-4 d-flex gap-2 align-items-end mt-2">
+                                        <button id="apr-all-sbid-btn" class="btn btn-info btn-sm flex-fill d-none">
+                                            <i class="fa-solid fa-check-double me-1"></i>
+                                            APR ALL SBID
+                                        </button>
+                                        <button id="bulk-update-sbid-m-btn" class="btn btn-warning btn-sm flex-fill d-none">
+                                            <i class="fa-solid fa-save me-1"></i>
+                                            Bulk Update SBID M
+                                        </button>
+                                        <button id="export-data-btn" class="btn btn-success btn-sm">
+                                            <i class="fa-solid fa-download me-1"></i>
+                                            Export Data
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -657,62 +653,104 @@
                         }
                     }
 
-                    // Calculate utilization and count BEFORE applying filters
-                    // This ensures counts match total SKU count logic (count all SKUs with campaigns, not just filtered ones)
-                    if (isValidSku) {
-                        // Only count SKUs that have campaigns (have campaign_id and campaignName)
-                        const hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
-                        if (hasCampaign) {
-                            let budget = parseFloat(row.campaignBudgetAmount) || 0;
-                            let l7_spend = parseFloat(row.l7_spend || 0);
-                            let l1_spend = parseFloat(row.l1_spend || 0);
+                    // Apply all filters except utilization type filter
+                    // Global search filter
+                    let searchVal = $("#global-search").val()?.toLowerCase() || "";
+                    if (searchVal && !(row.campaignName?.toLowerCase().includes(searchVal)) && !(row.sku?.toLowerCase().includes(searchVal))) {
+                        return;
+                    }
 
-                            // Only count if budget > 0 (need valid budget to calculate utilization)
-                            if (budget > 0) {
-                                let ub7 = (l7_spend / (budget * 7)) * 100;
-                                let ub1 = (l1_spend / budget) * 100;
+                    // Status filter
+                    let statusVal = $("#status-filter").val();
+                    if (statusVal && row.campaignStatus !== statusVal) {
+                        return;
+                    }
 
-                                // Count 7UB (ub7 >= 70 && ub7 <= 90) - independent of utilization type (only once per SKU)
-                                if (ub7 >= 70 && ub7 <= 90 && !processedSkusFor7Ub.has(sku)) {
-                                    processedSkusFor7Ub.add(sku);
-                                    ub7Count++;
-                                }
+                    // Inventory filter
+                    let invFilterVal = $("#inv-filter").val();
+                    if (!invFilterVal || invFilterVal === '') {
+                        // Default: exclude INV = 0 and negative
+                        if (inv <= 0) return;
+                    } else if (invFilterVal === "ALL") {
+                        // ALL option shows everything
+                    } else if (invFilterVal === "INV_0") {
+                        // Show only INV = 0
+                        if (inv !== 0) return;
+                    } else if (invFilterVal === "OTHERS") {
+                        // Show only INV > 0
+                        if (inv <= 0) return;
+                    }
 
-                                // Count 7UB + 1UB (both ub7 and ub1 >= 70 && <= 90) - independent of utilization type (only once per SKU)
-                                if (ub7 >= 70 && ub7 <= 90 && ub1 >= 70 && ub1 <= 90 && !processedSkusFor7Ub1Ub.has(sku)) {
-                                    processedSkusFor7Ub1Ub.add(sku);
-                                    ub7Ub1Count++;
-                                }
-
-                                // Skip if this SKU has already been categorized for utilization type
-                                if (!processedSkusForOver.has(sku) && !processedSkusForUnder.has(sku) && !processedSkusForCorrectly.has(sku)) {
-                                    // Mutually exclusive categorization (same as controller for eBay2)
-                                    // Count each SKU only once, based on priority order
-                                    
-                                    // Over-utilized check (priority 1) - Double condition: both UB7 AND UB1 must be > 99
-                                    if (ub7 > 99 && ub1 > 99) {
-                                        processedSkusForOver.add(sku);
-                                        overCount++;
-                                    }
-                                    // Under-utilized check (priority 2: only if not over-utilized) - Double condition: both UB7 AND UB1 must be < 66
-                                    else if (ub7 < 66 && ub1 < 66) {
-                                        processedSkusForUnder.add(sku);
-                                        underCount++;
-                                    }
-                                    // Correctly-utilized check (priority 3: only if not already categorized) - Double condition: both UB7 AND UB1 must be between 66-99
-                                    else if (ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99) {
-                                        processedSkusForCorrectly.add(sku);
-                                        correctlyCount++;
-                                    }
-                                }
-                            }
+                    // NRA filter
+                    let nraFilterVal = $("#nra-filter").val();
+                    if (nraFilterVal) {
+                        let rowNra = row.NR ? row.NR.trim() : "";
+                        if (nraFilterVal === 'RA') {
+                            // For "RA" filter, include empty/null values too
+                            if (rowNra === 'NRA') return;
+                        } else {
+                            // For "NRA" or "LATER", exact match
+                            if (rowNra !== nraFilterVal) return;
                         }
                     }
 
-                    // Count valid SKUs (all non-PARENT SKUs, regardless of filters)
-                    if (isValidSku && !processedSkusForValid.has(sku)) {
-                        processedSkusForValid.add(sku);
+                    // NRL filter
+                    let nrlFilterVal = $("#nrl-filter").val();
+                    if (nrlFilterVal) {
+                        let rowNrl = row.NRL ? row.NRL.trim() : "";
+                        if (nrlFilterVal === 'REQ') {
+                            // For "REQ" filter, include empty/null values too
+                            if (rowNrl === 'NRL' || rowNrl === 'NR') return;
+                        } else {
+                            // For "NRL", exact match
+                            if (rowNrl !== nrlFilterVal && rowNrl !== 'NR') return;
+                        }
+                    }
+
+                    // eBay SKU filter - show only SKUs that have campaign
+                    if (showEbaySkuOnly) {
+                        const hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                        if (!hasCampaign) return;
+                    }
+
+                    // Count valid SKUs that pass all filters
+                    if (isValidSku) {
                         validSkuCount++;
+                    }
+
+                    // Now calculate utilization and count - only for rows with campaigns
+                    const hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                    if (hasCampaign) {
+                        let budget = parseFloat(row.campaignBudgetAmount) || 0;
+                        let l7_spend = parseFloat(row.l7_spend || 0);
+                        let l1_spend = parseFloat(row.l1_spend || 0);
+
+                        let ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
+                        let ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
+
+                        // 7UB + 1UB condition categorization (matches command and filter logic)
+                        if (ub7 > 99 && ub1 > 99) {
+                            overCount++;
+                        } else if (ub7 < 66 && ub1 < 66) {
+                            // For under utilized, also check INV > 0 (matches filter logic)
+                            if (inv > 0) {
+                                underCount++;
+                            }
+                        } else if (ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99) {
+                            correctlyCount++;
+                        }
+
+                        // Count 7UB (ub7 >= 70 && ub7 <= 90) - only for rows with campaigns
+                        if (ub7 >= 70 && ub7 <= 90 && !processedSkusFor7Ub.has(sku)) {
+                            processedSkusFor7Ub.add(sku);
+                            ub7Count++;
+                        }
+
+                        // Count 7UB + 1UB (both ub7 and ub1 >= 70 && <= 90) - only for rows with campaigns
+                        if (ub7 >= 70 && ub7 <= 90 && ub1 >= 70 && ub1 <= 90 && !processedSkusFor7Ub1Ub.has(sku)) {
+                            processedSkusFor7Ub1Ub.add(sku);
+                            ub7Ub1Count++;
+                        }
                     }
                 });
 
@@ -809,15 +847,36 @@
                 }
 
                 // Update dropdown option texts with counts
-                // Use totalSkuCountFromBackend (255) to match backend count exactly
+                // Use totalSkuCountFromBackend to match backend count exactly
+                // Utilization counts already exclude missing rows (only count rows with campaigns)
+                // Calculate actual filtered count to match pagination
+                let actualOverCount = overCount;
+                let actualUnderCount = underCount;
+                let actualCorrectlyCount = correctlyCount;
+                
+                // If utilization type is selected, get count from filtered data to match pagination
+                if (currentUtilizationType !== 'all' && typeof table !== 'undefined' && table) {
+                    try {
+                        const filteredData = table.getData('active');
+                        if (currentUtilizationType === 'over') {
+                            actualOverCount = filteredData.length;
+                        } else if (currentUtilizationType === 'under') {
+                            actualUnderCount = filteredData.length;
+                        } else if (currentUtilizationType === 'correctly') {
+                            actualCorrectlyCount = filteredData.length;
+                        }
+                    } catch (e) {
+                        console.error('Error getting filtered count:', e);
+                    }
+                }
+                
                 const utilizationSelect = document.getElementById('utilization-type-select');
                 if (utilizationSelect) {
-                    // Always use backend count (255) for "All" option
-                    var totalCount = totalSkuCountFromBackend > 0 ? totalSkuCountFromBackend : validSkuCount;
-                    utilizationSelect.options[0].text = `All (${totalCount})`;
-                    utilizationSelect.options[1].text = `Over Utilized (${overCount})`;
-                    utilizationSelect.options[2].text = `Under Utilized (${underCount})`;
-                    utilizationSelect.options[3].text = `Correctly Utilized (${correctlyCount})`;
+                    utilizationSelect.options[0].text = `All (${totalSkuCountFromBackend || validSkuCount})`;
+                    // Show utilization counts - use actual filtered count if utilization type is selected
+                    utilizationSelect.options[1].text = `Over Utilized (${currentUtilizationType === 'over' ? actualOverCount : overCount})`;
+                    utilizationSelect.options[2].text = `Under Utilized (${currentUtilizationType === 'under' ? actualUnderCount : underCount})`;
+                    utilizationSelect.options[3].text = `Correctly Utilized (${currentUtilizationType === 'correctly' ? actualCorrectlyCount : correctlyCount})`;
                 }
             }
 
@@ -1732,6 +1791,19 @@
                         width: 70
                     },
                     {
+                        title: "L BID",
+                        field: "last_sbid",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            if (!value || value === '' || value === '0' || value === 0) {
+                                return '-';
+                            }
+                            return parseFloat(value).toFixed(2);
+                        },
+                        width: 70
+                    },
+                    {
                         title: "SBID",
                         field: "sbid",
                         hozAlign: "center",
@@ -2050,59 +2122,101 @@
                         title: "SBID M",
                         field: "sbid_m",
                         hozAlign: "center",
-                        formatter: function(cell, formatterParams, onRendered) {
-                            var row = cell.getRow().getData();
-                            var rowComponent = cell.getRow();
-                            
-                            // Use stable unique identifier (campaign_id + sku) that doesn't change with row position
-                            var uniqueId = (row.campaign_id || '') + '_' + (row.sku || '');
-                            
-                            // Check if this row has an edited value stored (prioritize edited value over row data)
-                            var value = editedSbidMValues[uniqueId] !== undefined ? editedSbidMValues[uniqueId] : row.sbid_m;
-                            
-                            // Check if NRA (🔴) is selected - don't show input for NRA
-                            var nraValue = row.NR ? row.NR.trim() : "";
-                            if (nraValue === 'NRA') {
+                        editor: "input",
+                        editorParams: {
+                            elementAttributes: {
+                                maxlength: "10"
+                            }
+                        },
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            if (!value || value === '' || value === '0' || value === 0) {
                                 return '-';
                             }
-                            
-                            var sbidM = '';
-                            if (value !== null && value !== undefined && value !== '') {
-                                var numValue = parseFloat(value);
-                                if (!isNaN(numValue) && numValue >= 0) {
-                                    sbidM = numValue.toFixed(2);
-                                }
-                            }
-                            
-                            // Use onRendered to ensure input field maintains its value after reformat
-                            onRendered(function() {
-                                var inputElement = cell.getElement().querySelector('.sbid-m-input');
-                                if (inputElement) {
-                                    // Ensure the input has the correct value from editedSbidMValues or row data
-                                    var currentValue = editedSbidMValues[uniqueId] !== undefined ? editedSbidMValues[uniqueId] : row.sbid_m;
-                                    if (currentValue !== null && currentValue !== undefined && currentValue !== '') {
-                                        var numVal = parseFloat(currentValue);
-                                        if (!isNaN(numVal) && numVal >= 0) {
-                                            inputElement.value = numVal.toFixed(2);
-                                        } else {
-                                            inputElement.value = '';
-                                        }
-                                    } else {
-                                        inputElement.value = '';
-                                    }
-                                }
-                            });
-                            
-                            return `
-                                <input type="number" class="form-control form-control-sm text-center sbid-m-input" value="${sbidM}" min="0" step="0.01" data-campaign-id="${row.campaign_id || ''}" data-unique-id="${uniqueId}" data-sku="${row.sku || ''}" style="width: 70px;">
-                            `;
+                            return parseFloat(value).toFixed(2);
                         },
-                        visible: true,
                         width: 70
                     },
                     {
                         title: "APR BID",
                         field: "apr_bid",
+                        hozAlign: "center",
+                        visible: true,
+                        formatter: function(cell) {
+                            var rowData = cell.getRow().getData();
+                            var apprSbid = rowData.apprSbid || '';
+                            
+                            if (apprSbid && apprSbid !== '' && parseFloat(apprSbid) > 0) {
+                                // Green checkmark circle icon when bid is pushed
+                            return `
+                                    <div style="display: flex; justify-content: center; align-items: center;">
+                                        <i class="fa-solid fa-circle-check update-bid-icon" style="color: #28a745; font-size: 20px; cursor: default;" title="Bid pushed: ${apprSbid}"></i>
+                                </div>
+                            `;
+                            } else {
+                                // Check icon (clickable) when bid is not pushed
+                                return `
+                                    <div style="display: flex; justify-content: center; align-items: center;">
+                                        <i class="fa-solid fa-check update-bid-icon" style="color: #6c757d; font-size: 18px; cursor: pointer;" title="Click to push bid"></i>
+                                    </div>
+                                `;
+                            }
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains("update-bid-icon") || e.target.closest(".update-bid-icon")) {
+                                var rowData = cell.getRow().getData();
+                                
+                                // Check if bid is already pushed
+                                var apprSbid = rowData.apprSbid || '';
+                                if (apprSbid && apprSbid !== '' && parseFloat(apprSbid) > 0) {
+                                    return; // Don't allow re-push
+                                }
+                                
+                                // Check if NRA (🔴) is selected
+                                var nraValue = rowData.NR ? rowData.NR.trim() : "";
+                                if (nraValue === 'NRA') {
+                                    showToast('error', 'Cannot update bid for NRA campaigns');
+                                    return; // Skip update if NRA is selected
+                                }
+                                
+                                // Get sbid_m value (saved value)
+                                var sbidM = parseFloat(rowData.sbid_m) || 0;
+                                
+                                if (sbidM <= 0) {
+                                    showToast('error', 'SBID M value is required. Please save SBID M first.');
+                                    return;
+                                                }
+                                
+                                if (!rowData.campaign_id) {
+                                    showToast('error', 'Campaign ID not found');
+                                    return;
+                                        }
+                                
+                                // Use sbid_m value to update eBay site
+                                updateBid(sbidM, rowData.campaign_id, cell);
+                            }
+                        }
+                    },
+                    {
+                        title: "Status",
+                        field: "campaignStatus",
+                        width: 80,
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var status = cell.getValue();
+                            if (status === 'RUNNING') {
+                                return '<div style="display: flex; justify-content: center; align-items: center;"><span style="width: 12px; height: 12px; background-color: #28a745; border-radius: 50%; display: inline-block;"></span></div>';
+                            } else if (status === 'PAUSED') {
+                                return '<div style="display: flex; justify-content: center; align-items: center;"><span style="width: 12px; height: 12px; background-color: #ffc107; border-radius: 50%; display: inline-block;"></span></div>';
+                            } else if (status === 'ENDED') {
+                                return '<div style="display: flex; justify-content: center; align-items: center;"><span style="width: 12px; height: 12px; background-color: #dc3545; border-radius: 50%; display: inline-block;"></span></div>';
+                            }
+                            return status;
+                        }
+                    },
+                    {
+                        title: "APR BID",
+                        field: "apr_bid_old",
                         hozAlign: "center",
                         visible: false,
                         width: 100,
@@ -2259,23 +2373,6 @@
                                 }
                                 updateBid(sbid, rowData.campaign_id);
                             }
-                        }
-                    },
-                    {
-                        title: "Status",
-                        field: "campaignStatus",
-                        width: 80,
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            var status = cell.getValue();
-                            if (status === 'RUNNING') {
-                                return '<div style="display: flex; justify-content: center; align-items: center;"><span style="width: 12px; height: 12px; background-color: #28a745; border-radius: 50%; display: inline-block;"></span></div>';
-                            } else if (status === 'PAUSED') {
-                                return '<div style="display: flex; justify-content: center; align-items: center;"><span style="width: 12px; height: 12px; background-color: #ffc107; border-radius: 50%; display: inline-block;"></span></div>';
-                            } else if (status === 'ENDED') {
-                                return '<div style="display: flex; justify-content: center; align-items: center;"><span style="width: 12px; height: 12px; background-color: #dc3545; border-radius: 50%; display: inline-block;"></span></div>';
-                            }
-                            return status;
                         }
                     }
                 ],
@@ -2543,7 +2640,21 @@
                     }
                 }
 
+                // Exclude missing rows (rows without campaigns) when utilization type is over, under, or correctly
+                // This includes both red dots (missing) and yellow dots (NRA/NRL missing)
+                if (currentUtilizationType === 'over' || currentUtilizationType === 'under' || currentUtilizationType === 'correctly') {
+                    const hasCampaign = data.hasCampaign !== undefined ? data.hasCampaign : (data.campaign_id && data.campaignName);
+                    // Check for yellow dots (NRA/NRL missing) - these are also missing rows
+                    let rowNrl = data.NRL ? data.NRL.trim() : "";
+                    let rowNra = data.NR ? data.NR.trim() : "";
+                    // Exclude if no campaign OR if it's a yellow dot (NRL='NR'/'NRL' or NRA='NRA')
+                    if (!hasCampaign || rowNrl === 'NRL' || rowNrl === 'NR' || rowNra === 'NRA') {
+                        return false; // Hide missing rows (both red and yellow dots)
+                    }
+                }
+
                 // Apply utilization type filter (ebay2 specific logic)
+                // Only calculate utilization for rows with campaigns (already checked above)
                 let budget = parseFloat(data.campaignBudgetAmount) || 0;
                 let l7_spend = parseFloat(data.l7_spend || 0);
                 let l1_spend = parseFloat(data.l1_spend || 0);
@@ -2579,51 +2690,124 @@
                 } else {
                     table.showColumn('sbid');
                 }
-                // Ensure APR BID remains hidden
-                table.hideColumn('apr_bid');
+                // Show APR BID column
+                table.showColumn('apr_bid');
+            });
 
-                // Update counts when data is filtered (debounced)
-                let filterTimeout = null;
-                table.on("dataFiltered", function(filteredRows) {
-                    // Don't clear processed SKUs here - it's maintained by the filter function
-                    if (filterTimeout) clearTimeout(filterTimeout);
-                    filterTimeout = setTimeout(function() {
-                        updateButtonCounts();
-                        updateL30Totals();
-                    }, 200);
-                });
+            table.on("cellEdited", function(cell) {
+                const field = cell.getField();
+                if (field === "sbid_m") {
+                    const data = cell.getRow().getData();
+                    const campaignId = data.campaign_id;
+                    let value = cell.getValue();
 
-                // Debounced search
-                let searchTimeout = null;
-                $("#global-search").on("keyup", function() {
-                    if (searchTimeout) clearTimeout(searchTimeout);
-                    searchTimeout = setTimeout(function() {
-                        // Clear processed SKUs set before filtering (filter will rebuild it)
-                        if (showEbaySkuOnly) {
-                            processedEbaySkus.clear();
+                    if (!campaignId) {
+                        showToast('error', 'Campaign ID not found');
+                        return;
+                    }
+
+                    // Clean the value
+                    let cleanValue = String(value).replace(/[$\s]/g, '');
+                    cleanValue = parseFloat(cleanValue) || 0;
+
+                    if (cleanValue <= 0) {
+                        showToast('error', 'SBID M must be greater than 0');
+                        cell.setValue('');
+                        return;
+                    }
+
+                    $.ajax({
+                        url: '/update-ebay2-sbid-m',
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                        },
+                        data: {
+                            campaign_id: campaignId,
+                            sbid_m: cleanValue
+                        },
+                        success: function(response) {
+                            if (response.status === 200) {
+                                // Update row data - clear apprSbid when sbid_m is updated
+                                var row = cell.getRow();
+                                // Get current data and create a copy to avoid reference issues
+                                var currentData = JSON.parse(JSON.stringify(row.getData()));
+                                
+                                // Update sbid_m and clear apprSbid so new bid can be pushed
+                                currentData.sbid_m = cleanValue;
+                                currentData.apprSbid = ''; // Clear apprSbid to allow new bid push
+                                
+                                // Update the row with complete data
+                                row.update(currentData);
+                                
+                                // Force redraw of the row to refresh all formatters including APR BID
+                                setTimeout(function() {
+                                    row.reformat();
+                                }, 50);
+                                
+                                showToast('success', 'SBID M saved successfully');
+                            } else {
+                                showToast('error', response.message || 'Failed to save SBID M');
+                            }
+                        },
+                        error: function(xhr) {
+                            var errorMsg = 'Failed to save SBID M';
+                            if (xhr.responseJSON && xhr.responseJSON.message) {
+                                errorMsg = xhr.responseJSON.message;
+                            } else if (xhr.status === 404) {
+                                errorMsg = 'Campaign not found. Please ensure the campaign exists.';
+                            } else if (xhr.status === 500) {
+                                errorMsg = 'Server error. Please try again.';
+                            }
+                            showToast('error', errorMsg);
+                            // Revert the cell value on error
+                            cell.restoreOldValue();
                         }
-                        table.setFilter(combinedFilter);
-                    }, 300);
-                });
+                    });
+                }
+            });
 
-                $("#status-filter, #inv-filter, #nra-filter, #nrl-filter").on("change", function() {
+            // Update counts when data is filtered (debounced)
+            let filterTimeout = null;
+            table.on("dataFiltered", function(filteredRows) {
+                // Don't clear processed SKUs here - it's maintained by the filter function
+                if (filterTimeout) clearTimeout(filterTimeout);
+                filterTimeout = setTimeout(function() {
+                    updateButtonCounts();
+                    updateL30Totals();
+                }, 200);
+            });
+
+            // Debounced search
+            let searchTimeout = null;
+            $("#global-search").on("keyup", function() {
+                if (searchTimeout) clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(function() {
                     // Clear processed SKUs set before filtering (filter will rebuild it)
                     if (showEbaySkuOnly) {
                         processedEbaySkus.clear();
                     }
                     table.setFilter(combinedFilter);
-                    // Update counts when filter changes - use longer timeout to ensure filter is applied
-                    setTimeout(function() {
-                        updateButtonCounts();
-                        updateL30Totals();
-                    }, 300);
-                });
+                }, 300);
+            });
 
-                // Initial update of all button counts after data loads
+            $("#status-filter, #inv-filter, #nra-filter, #nrl-filter").on("change", function() {
+                // Clear processed SKUs set before filtering (filter will rebuild it)
+                if (showEbaySkuOnly) {
+                    processedEbaySkus.clear();
+                }
+                table.setFilter(combinedFilter);
+                // Update counts when filter changes - use longer timeout to ensure filter is applied
                 setTimeout(function() {
                     updateButtonCounts();
-                }, 1000);
+                    updateL30Totals();
+                }, 300);
             });
+
+            // Initial update of all button counts after data loads
+            setTimeout(function() {
+                updateButtonCounts();
+            }, 1000);
 
             table.on("rowSelectionChanged", function(data, rows) {
                 if (data.length > 0) {
@@ -2807,7 +2991,7 @@
                     })
                     .catch(err => {
                         console.error('Error updating field:', err);
-                        alert('Error updating field. Please try again.');
+                        showToast('error', 'Error updating field. Please try again.');
                     });
                 }
                 
@@ -2858,7 +3042,7 @@
                         } else {
                             e.target.value = '';
                         }
-                        alert("Cannot edit SBID M for NRA campaigns");
+                        showToast('error', 'Cannot edit SBID M for NRA campaigns');
                         return;
                     }
                     
@@ -2878,7 +3062,7 @@
                             } else {
                                 e.target.value = '';
                             }
-                            alert("Please enter a valid number (>= 0)");
+                            showToast('error', 'Please enter a valid number (>= 0)');
                             return;
                         }
                     }
@@ -2902,9 +3086,18 @@
                     .then(res => res.json())
                     .then(data => {
                         if (data.status === 200) {
+                            showToast('success', 'SBID M saved successfully');
                             // Success - value already stored in editedSbidMValues
-                            // Don't call row.update() to prevent reformatting
-                            // The editedSbidMValues object will maintain the value for this row
+                            // Clear apprSbid when sbid_m is updated so new bid can be pushed
+                            if (row) {
+                                var currentRowData = row.getData();
+                                currentRowData.apprSbid = ''; // Clear apprSbid to allow new bid push
+                                // Update the row to refresh APR BID column icon
+                                row.update(currentRowData);
+                                setTimeout(function() {
+                                    row.reformat();
+                                }, 50);
+                            }
                         } else {
                             // Restore previous value on error
                             editedSbidMValues[uniqueId] = prevValue;
@@ -2913,7 +3106,7 @@
                             } else {
                                 e.target.value = '';
                             }
-                            console.error("Failed to save SBID M:", data.message);
+                            showToast('error', data.message || 'Failed to save SBID M');
                         }
                     })
                     .catch(err => {
@@ -3426,13 +3619,11 @@
                 const overlay = document.getElementById("progress-overlay");
                 overlay.style.display = "flex";
 
-                // Prepare campaign IDs and values (same value for all)
+                // Prepare campaign IDs (same value for all campaigns)
                 var campaignIds = [];
-                var sbidMValues = [];
                 
                 validCampaigns.forEach(function(campaign) {
                     campaignIds.push(campaign.campaign_id);
-                    sbidMValues.push(sbidMValue);
                     
                     // Update local editedSbidMValues for immediate UI feedback
                     var uniqueId = campaign.campaign_id + '_' + campaign.sku;
@@ -3443,7 +3634,14 @@
                     }
                 });
 
-                // Send bulk update request
+                // Validate sbidMValue before sending
+                if (sbidMValue === null || sbidMValue === undefined || sbidMValue === '') {
+                    overlay.style.display = "none";
+                    showToast('error', 'SBID M value is required');
+                    return;
+                }
+
+                // Send bulk update request (same format as main eBay)
                 fetch('/bulk-update-ebay2-sbid-m', {
                     method: 'POST',
                     headers: {
@@ -3452,7 +3650,7 @@
                     },
                     body: JSON.stringify({
                         campaign_ids: campaignIds,
-                        sbid_m_values: sbidMValues
+                        sbid_m: sbidMValue
                     })
                 })
                 .then(res => res.json())
@@ -3474,26 +3672,40 @@
                             }
                         });
                         
-                        var successMessage = "SBID M bulk updated successfully for " + data.total_campaigns + " campaign(s)!";
-                        if (nraCampaigns.length > 0) {
-                            successMessage += "\n\nNote: " + nraCampaigns.length + " NRA campaign(s) were skipped.";
-                        }
-                        alert(successMessage);
+                        showToast('success', data.message || 'SBID M saved successfully for ' + (data.updated_count || data.total_count || 0) + ' campaign(s)');
                         
-                        // Refresh table data to show updated values from database
-                        table.replaceData();
+                        // Update the selected rows with the new sbid_m value and clear apprSbid
+                        validCampaigns.forEach(function(campaign) {
+                            var row = campaign.row;
+                            if (row) {
+                                var rowData = row.getData();
+                                if (rowData.campaign_id && campaignIds.includes(rowData.campaign_id)) {
+                                    // Update sbid_m and clear apprSbid so new bid can be pushed
+                                    rowData.sbid_m = sbidMValue;
+                                    rowData.apprSbid = ''; // Clear apprSbid to allow new bid push
+                                    
+                                    // Update the row
+                                    row.update(rowData);
+                                    
+                                    // Force redraw of the row to refresh all formatters including APR BID
+                                    setTimeout(function() {
+                                        row.reformat();
+                                    }, 50);
+                                }
+                            }
+                        });
                     } else {
-                        alert("Error: " + (data.message || "Failed to update SBID M values"));
+                        showToast('error', data.message || 'Failed to save SBID M');
                     }
                 })
                 .catch(err => {
                     overlay.style.display = "none";
                     console.error("Error bulk updating SBID M:", err);
-                    alert("Error updating SBID M values. Please try again.");
+                    showToast('error', 'Error updating SBID M values. Please try again.');
                 });
             });
 
-            function updateBid(aprBid, campaignId) {
+            function updateBid(aprBid, campaignId, cell) {
                 const overlay = document.getElementById("progress-overlay");
                 overlay.style.display = "flex";
 
@@ -3512,19 +3724,29 @@
                 .then(res => res.json())
                 .then(data => {
                     if (data.status === 200) {
-                        alert("Keywords updated successfully!");
+                        showToast('success', 'Keywords updated successfully!');
+                        
+                        // Update row data with apprSbid value
+                        if (cell) {
+                            var rowData = cell.getRow().getData();
+                            rowData.apprSbid = aprBid;
+                            cell.getRow().update(rowData);
+                            
+                            // Reformat the cell to show green checkmark
+                            cell.getRow().reformat();
+                        }
                     } else {
                         let errorMsg = data.message || "Something went wrong";
                         if (errorMsg.includes("Premium Ads")) {
-                            alert("Error: " + errorMsg);
+                            showToast('error', 'Error: ' + errorMsg);
                         } else {
-                            alert("Something went wrong: " + errorMsg);
+                            showToast('error', 'Something went wrong: ' + errorMsg);
                         }
                     }
                 })
                 .catch(err => {
                     console.error(err);
-                    alert("Error updating bid");
+                    showToast('error', 'Error updating bid');
                 })
                 .finally(() => {
                     overlay.style.display = "none";
@@ -3644,6 +3866,27 @@
                     }
                 })
                 .catch(err => console.error('Error loading chart:', err));
+        }
+
+        function showToast(type, message) {
+            // Create toast container if it doesn't exist
+            if (!$('.toast-container').length) {
+                $('body').append(
+                    '<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>');
+            }
+
+            const toast = $(
+                `<div class="toast align-items-center text-white bg-${type === 'success' ? 'success' : type === 'error' ? 'danger' : 'info'} border-0" role="alert">
+                    <div class="d-flex">
+                        <div class="toast-body">${message}</div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                    </div>
+                </div>`
+            );
+            $('.toast-container').append(toast);
+            const bsToast = new bootstrap.Toast(toast[0]);
+            bsToast.show();
+            setTimeout(() => toast.remove(), 3000);
         }
     </script>
 @endsection

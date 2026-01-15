@@ -416,7 +416,135 @@
                                     <option value="REQ">REQ</option>
                                 </select>
                             </div>
-                                    <div class="col-md-4 d-flex gap-2 align-items-end mt-2">
+                                </div>
+                                
+                                <!-- Multi Range Filter Section -->
+                                <div class="row g-3 align-items-end mb-3 pt-3 border-top">
+                                    <div class="col-12 mb-2">
+                                        <label class="form-label fw-semibold mb-2"
+                                            style="color: #475569; font-size: 0.8125rem;">
+                                            <i class="fa-solid fa-filter me-1" style="color: #64748b;"></i>Range Filters
+                                        </label>
+                                    </div>
+                                    
+                                    <!-- 1UB% Filter -->
+                                    <div class="col-md-3">
+                                        <label class="form-label fw-semibold mb-2"
+                                            style="color: #475569; font-size: 0.8125rem;">
+                                            1UB% Range
+                                        </label>
+                                        <div class="d-flex gap-2">
+                                            <input type="number" id="range-filter-1ub-min" class="form-control form-control-sm" 
+                                                placeholder="Min" step="0.01" style="border-color: #e2e8f0;">
+                                            <input type="number" id="range-filter-1ub-max" class="form-control form-control-sm" 
+                                                placeholder="Max" step="0.01" style="border-color: #e2e8f0;">
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- 7UB% Filter -->
+                                    <div class="col-md-3">
+                                        <label class="form-label fw-semibold mb-2"
+                                            style="color: #475569; font-size: 0.8125rem;">
+                                            7UB% Range
+                                        </label>
+                                        <div class="d-flex gap-2">
+                                            <input type="number" id="range-filter-7ub-min" class="form-control form-control-sm" 
+                                                placeholder="Min" step="0.01" style="border-color: #e2e8f0;">
+                                            <input type="number" id="range-filter-7ub-max" class="form-control form-control-sm" 
+                                                placeholder="Max" step="0.01" style="border-color: #e2e8f0;">
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- LBid Filter -->
+                                    <div class="col-md-3">
+                                        <label class="form-label fw-semibold mb-2"
+                                            style="color: #475569; font-size: 0.8125rem;">
+                                            LBid Range
+                                        </label>
+                                        <div class="d-flex gap-2">
+                                            <input type="number" id="range-filter-lbid-min" class="form-control form-control-sm" 
+                                                placeholder="Min" step="0.01" style="border-color: #e2e8f0;">
+                                            <input type="number" id="range-filter-lbid-max" class="form-control form-control-sm" 
+                                                placeholder="Max" step="0.01" style="border-color: #e2e8f0;">
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Acos Filter -->
+                                    <div class="col-md-3">
+                                        <label class="form-label fw-semibold mb-2"
+                                            style="color: #475569; font-size: 0.8125rem;">
+                                            Acos Range
+                                        </label>
+                                        <div class="d-flex gap-2">
+                                            <input type="number" id="range-filter-acos-min" class="form-control form-control-sm" 
+                                                placeholder="Min" step="0.01" style="border-color: #e2e8f0;">
+                                            <input type="number" id="range-filter-acos-max" class="form-control form-control-sm" 
+                                                placeholder="Max" step="0.01" style="border-color: #e2e8f0;">
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Action Buttons -->
+                                    <div class="col-12 d-flex gap-2 align-items-end mt-2">
+                                        <button id="apply-all-range-filters-btn" class="btn btn-primary btn-sm">
+                                            <i class="fa-solid fa-filter me-1"></i>
+                                            Apply All Filters
+                                        </button>
+                                        <button id="clear-all-range-filters-btn" class="btn btn-secondary btn-sm">
+                                            <i class="fa-solid fa-times me-1"></i>
+                                            Clear All
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <!-- INC/DEC SBID Section -->
+                                <div class="row g-3 align-items-end mb-3 pt-3 border-top">
+                                    <div class="col-md-3">
+                                        <label class="form-label fw-semibold mb-2"
+                                            style="color: #475569; font-size: 0.8125rem;">
+                                            <i class="fa-solid fa-calculator me-1" style="color: #64748b;"></i>INC/DEC SBID
+                                        </label>
+                                        <div class="btn-group w-100" role="group">
+                                            <button type="button" id="inc-dec-btn" class="btn btn-warning btn-sm dropdown-toggle" 
+                                                    data-bs-toggle="dropdown" aria-expanded="false">
+                                                <i class="fa-solid fa-plus-minus me-1"></i>
+                                                INC/DEC (By Value)
+                                            </button>
+                                            <ul class="dropdown-menu" id="inc-dec-dropdown">
+                                                <li><a class="dropdown-item" href="#" data-type="value">By Value</a></li>
+                                                <li><a class="dropdown-item" href="#" data-type="percentage">By Percentage</a></li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label fw-semibold mb-2"
+                                            style="color: #475569; font-size: 0.8125rem;">
+                                            <span id="inc-dec-label">Value/Percentage</span>
+                                        </label>
+                                        <input type="number" id="inc-dec-input" class="form-control form-control-md" 
+                                            placeholder="Enter value (e.g., +0.5 or -0.5)" step="0.01" 
+                                            style="border-color: #e2e8f0;">
+                                    </div>
+                                    <div class="col-md-3 d-flex gap-2 align-items-end">
+                                        <button id="apply-inc-dec-btn" class="btn btn-success btn-sm flex-fill">
+                                            <i class="fa-solid fa-check me-1"></i>
+                                            Apply
+                                        </button>
+                                        <button id="clear-inc-dec-btn" class="btn btn-secondary btn-sm flex-fill">
+                                            <i class="fa-solid fa-times me-1"></i>
+                                            Clear Input
+                                        </button>
+                                    </div>
+                                    <div class="col-md-3 d-flex align-items-end">
+                                        <button id="clear-sbid-m-btn" class="btn btn-danger btn-sm w-100">
+                                            <i class="fa-solid fa-trash me-1"></i>
+                                            Clear SBID M (Selected)
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <!-- Action Buttons Row -->
+                                <div class="row">
+                                    <div class="col-md-12 d-flex gap-2 align-items-end mt-2">
                                         <button id="apr-all-sbid-btn" class="btn btn-info btn-sm flex-fill d-none">
                                                 <i class="fa-solid fa-check-double me-1"></i>
                                                 APR ALL SBID
@@ -511,6 +639,17 @@
             let totalL30Sales = 0;
             let totalSkuCountFromBackend = 0; // Store total SKU count from backend
             let ebaySkuCountFromBackend = 0; // Store eBay SKU count from backend
+            
+            // Multi range filter variables - allows multiple filters simultaneously
+            let rangeFilters = {
+                '1ub': { min: null, max: null },
+                '7ub': { min: null, max: null },
+                'lbid': { min: null, max: null },
+                'acos': { min: null, max: null }
+            };
+            
+            // INC/DEC SBID variables
+            let incDecType = 'value'; // 'value' or 'percentage'
 
             const getDilColor = (value) => {
                 const percent = parseFloat(value) * 100;
@@ -2673,6 +2812,65 @@
                     if (!((ub7 >= 66 && ub7 <= 99) && (ub1 >= 66 && ub1 <= 99))) return false;
                 }
 
+                // Apply all range filters (multiple filters can be active simultaneously)
+                // 1UB% filter
+                if (rangeFilters['1ub'].min !== null || rangeFilters['1ub'].max !== null) {
+                    if (rangeFilters['1ub'].min !== null && ub1 < rangeFilters['1ub'].min) {
+                        return false;
+                    }
+                    if (rangeFilters['1ub'].max !== null && ub1 > rangeFilters['1ub'].max) {
+                        return false;
+                    }
+                }
+                
+                // 7UB% filter
+                if (rangeFilters['7ub'].min !== null || rangeFilters['7ub'].max !== null) {
+                    if (rangeFilters['7ub'].min !== null && ub7 < rangeFilters['7ub'].min) {
+                        return false;
+                    }
+                    if (rangeFilters['7ub'].max !== null && ub7 > rangeFilters['7ub'].max) {
+                        return false;
+                    }
+                }
+                
+                // LBid filter
+                if (rangeFilters['lbid'].min !== null || rangeFilters['lbid'].max !== null) {
+                    let lbidRaw = data.last_sbid;
+                    let lbidValue = 0;
+                    // Parse LBid, treat empty/0 as 0
+                    if (!lbidRaw || lbidRaw === '' || lbidRaw === '0' || lbidRaw === 0) {
+                        lbidValue = 0;
+                    } else {
+                        lbidValue = parseFloat(lbidRaw);
+                        if (isNaN(lbidValue)) {
+                            lbidValue = 0;
+                        }
+                    }
+                    
+                    if (rangeFilters['lbid'].min !== null && lbidValue < rangeFilters['lbid'].min) {
+                        return false;
+                    }
+                    if (rangeFilters['lbid'].max !== null && lbidValue > rangeFilters['lbid'].max) {
+                        return false;
+                    }
+                }
+                
+                // Acos filter
+                if (rangeFilters['acos'].min !== null || rangeFilters['acos'].max !== null) {
+                    let acosRaw = data.acos;
+                    let acosValue = parseFloat(acosRaw);
+                    if (isNaN(acosValue) || acosValue === 0) {
+                        acosValue = 100; // Treat 0 ACOS as 100%
+                    }
+                    
+                    if (rangeFilters['acos'].min !== null && acosValue < rangeFilters['acos'].min) {
+                        return false;
+                    }
+                    if (rangeFilters['acos'].max !== null && acosValue > rangeFilters['acos'].max) {
+                        return false;
+                    }
+                }
+
                 return true;
             }
 
@@ -2783,6 +2981,443 @@
                         updateL30Totals();
                         updatePaginationCount();
                     }, 300);
+                });
+
+                // Multi range filter handlers - apply all filters simultaneously
+                $("#apply-all-range-filters-btn").on("click", function() {
+                    let hasError = false;
+                    
+                    // Get and validate 1UB% filter
+                    let ub1Min = $("#range-filter-1ub-min").val();
+                    let ub1Max = $("#range-filter-1ub-max").val();
+                    rangeFilters['1ub'].min = ub1Min !== '' ? parseFloat(ub1Min) : null;
+                    rangeFilters['1ub'].max = ub1Max !== '' ? parseFloat(ub1Max) : null;
+                    if (rangeFilters['1ub'].min !== null && rangeFilters['1ub'].max !== null && rangeFilters['1ub'].min > rangeFilters['1ub'].max) {
+                        alert('1UB%: Minimum value cannot be greater than maximum value');
+                        hasError = true;
+                    }
+                    
+                    // Get and validate 7UB% filter
+                    let ub7Min = $("#range-filter-7ub-min").val();
+                    let ub7Max = $("#range-filter-7ub-max").val();
+                    rangeFilters['7ub'].min = ub7Min !== '' ? parseFloat(ub7Min) : null;
+                    rangeFilters['7ub'].max = ub7Max !== '' ? parseFloat(ub7Max) : null;
+                    if (rangeFilters['7ub'].min !== null && rangeFilters['7ub'].max !== null && rangeFilters['7ub'].min > rangeFilters['7ub'].max) {
+                        alert('7UB%: Minimum value cannot be greater than maximum value');
+                        hasError = true;
+                    }
+                    
+                    // Get and validate LBid filter
+                    let lbidMin = $("#range-filter-lbid-min").val();
+                    let lbidMax = $("#range-filter-lbid-max").val();
+                    rangeFilters['lbid'].min = lbidMin !== '' ? parseFloat(lbidMin) : null;
+                    rangeFilters['lbid'].max = lbidMax !== '' ? parseFloat(lbidMax) : null;
+                    if (rangeFilters['lbid'].min !== null && rangeFilters['lbid'].max !== null && rangeFilters['lbid'].min > rangeFilters['lbid'].max) {
+                        alert('LBid: Minimum value cannot be greater than maximum value');
+                        hasError = true;
+                    }
+                    
+                    // Get and validate Acos filter
+                    let acosMin = $("#range-filter-acos-min").val();
+                    let acosMax = $("#range-filter-acos-max").val();
+                    rangeFilters['acos'].min = acosMin !== '' ? parseFloat(acosMin) : null;
+                    rangeFilters['acos'].max = acosMax !== '' ? parseFloat(acosMax) : null;
+                    if (rangeFilters['acos'].min !== null && rangeFilters['acos'].max !== null && rangeFilters['acos'].min > rangeFilters['acos'].max) {
+                        alert('Acos: Minimum value cannot be greater than maximum value');
+                        hasError = true;
+                    }
+                    
+                    if (hasError) {
+                        return;
+                    }
+                    
+                    // Apply all filters
+                    table.setFilter(combinedFilter);
+                    setTimeout(function() {
+                        updateButtonCounts();
+                        updateL30Totals();
+                        updatePaginationCount();
+                    }, 300);
+                });
+
+                $("#clear-all-range-filters-btn").on("click", function() {
+                    // Clear all filter values
+                    rangeFilters['1ub'].min = null;
+                    rangeFilters['1ub'].max = null;
+                    rangeFilters['7ub'].min = null;
+                    rangeFilters['7ub'].max = null;
+                    rangeFilters['lbid'].min = null;
+                    rangeFilters['lbid'].max = null;
+                    rangeFilters['acos'].min = null;
+                    rangeFilters['acos'].max = null;
+                    
+                    // Clear all input fields
+                    $("#range-filter-1ub-min").val('');
+                    $("#range-filter-1ub-max").val('');
+                    $("#range-filter-7ub-min").val('');
+                    $("#range-filter-7ub-max").val('');
+                    $("#range-filter-lbid-min").val('');
+                    $("#range-filter-lbid-max").val('');
+                    $("#range-filter-acos-min").val('');
+                    $("#range-filter-acos-max").val('');
+                    
+                    // Apply cleared filters
+                    table.setFilter(combinedFilter);
+                    setTimeout(function() {
+                        updateButtonCounts();
+                        updateL30Totals();
+                        updatePaginationCount();
+                    }, 300);
+                });
+                
+                // Auto-apply filters when input values change (debounced)
+                let rangeFilterTimeout = null;
+                function applyRangeFiltersOnChange() {
+                    if (rangeFilterTimeout) clearTimeout(rangeFilterTimeout);
+                    rangeFilterTimeout = setTimeout(function() {
+                        // Update filter values from inputs
+                        let ub1Min = $("#range-filter-1ub-min").val();
+                        let ub1Max = $("#range-filter-1ub-max").val();
+                        rangeFilters['1ub'].min = ub1Min !== '' ? parseFloat(ub1Min) : null;
+                        rangeFilters['1ub'].max = ub1Max !== '' ? parseFloat(ub1Max) : null;
+                        
+                        let ub7Min = $("#range-filter-7ub-min").val();
+                        let ub7Max = $("#range-filter-7ub-max").val();
+                        rangeFilters['7ub'].min = ub7Min !== '' ? parseFloat(ub7Min) : null;
+                        rangeFilters['7ub'].max = ub7Max !== '' ? parseFloat(ub7Max) : null;
+                        
+                        let lbidMin = $("#range-filter-lbid-min").val();
+                        let lbidMax = $("#range-filter-lbid-max").val();
+                        rangeFilters['lbid'].min = lbidMin !== '' ? parseFloat(lbidMin) : null;
+                        rangeFilters['lbid'].max = lbidMax !== '' ? parseFloat(lbidMax) : null;
+                        
+                        let acosMin = $("#range-filter-acos-min").val();
+                        let acosMax = $("#range-filter-acos-max").val();
+                        rangeFilters['acos'].min = acosMin !== '' ? parseFloat(acosMin) : null;
+                        rangeFilters['acos'].max = acosMax !== '' ? parseFloat(acosMax) : null;
+                        
+                        // Apply filters (skip validation for auto-apply)
+                        table.setFilter(combinedFilter);
+                        setTimeout(function() {
+                            updateButtonCounts();
+                            updateL30Totals();
+                            updatePaginationCount();
+                        }, 300);
+                    }, 500); // 500ms debounce
+                }
+                
+                // Add change event listeners to all range filter inputs
+                $("#range-filter-1ub-min, #range-filter-1ub-max, #range-filter-7ub-min, #range-filter-7ub-max, #range-filter-lbid-min, #range-filter-lbid-max, #range-filter-acos-min, #range-filter-acos-max").on("input change", function() {
+                    applyRangeFiltersOnChange();
+                });
+                
+                // INC/DEC SBID handlers
+                // Dropdown selection handler
+                $("#inc-dec-dropdown .dropdown-item").on("click", function(e) {
+                    e.preventDefault();
+                    incDecType = $(this).data('type');
+                    var labelText = incDecType === 'value' ? 'Value (e.g., +0.5 or -0.5)' : 'Percentage (e.g., +10 or -10)';
+                    $("#inc-dec-label").text(incDecType === 'value' ? 'Value' : 'Percentage');
+                    $("#inc-dec-input").attr('placeholder', labelText);
+                    $("#inc-dec-btn").text(incDecType === 'value' ? 'INC/DEC (By Value)' : 'INC/DEC (By %)');
+                });
+                
+                // Helper function to get L Bid (last_sbid) value for a row - used as base value for INC/DEC
+                function getCurrentSbid(rowData) {
+                    // Use L Bid (last_sbid) as the base value
+                    var lastSbid = rowData.last_sbid;
+                    
+                    // Check if L Bid is empty, null, 0, or invalid
+                    if (!lastSbid || lastSbid === '' || lastSbid === '0' || lastSbid === 0) {
+                        return null; // No L Bid value available
+                    }
+                    
+                    var sbidValue = parseFloat(lastSbid);
+                    if (isNaN(sbidValue) || sbidValue <= 0) {
+                        return null;
+                    }
+                    
+                    return sbidValue;
+                }
+                
+                // Apply INC/DEC button handler
+                $("#apply-inc-dec-btn").on("click", function() {
+                    var inputValue = $("#inc-dec-input").val();
+                    if (!inputValue || inputValue === '') {
+                        alert('Please enter a value');
+                        return;
+                    }
+                    
+                    var incDecValue = parseFloat(inputValue);
+                    if (isNaN(incDecValue)) {
+                        alert('Please enter a valid number');
+                        return;
+                    }
+                    
+                    // Get only selected rows
+                    var selectedRows = table.getRows('selected');
+                    if (selectedRows.length === 0) {
+                        showToast('warning', 'Please select at least one row to apply increment/decrement');
+                        return;
+                    }
+                    
+                    // Prepare data for bulk save
+                    var campaignSbidMap = {}; // { campaign_id: new_sbid_m }
+                    var rowsToUpdate = []; // Store rows for later update
+                    
+                    selectedRows.forEach(function(row) {
+                        var rowData = row.getData();
+                        var campaignId = rowData.campaign_id;
+                        
+                        // Skip rows without campaign_id
+                        if (!campaignId) {
+                            return;
+                        }
+                        
+                        // Get L Bid (last_sbid) as base value
+                        var currentLbid = getCurrentSbid(rowData);
+                        if (currentLbid === null || currentLbid === 0) {
+                            return; // Skip rows with no L Bid value
+                        }
+                        
+                        // Calculate new SBID based on L Bid and INC/DEC type
+                        var newSbid = 0;
+                        if (incDecType === 'value') {
+                            // By value: new = L Bid + input
+                            newSbid = currentLbid + incDecValue;
+                        } else {
+                            // By percentage: new = L Bid * (1 + input/100)
+                            newSbid = currentLbid * (1 + incDecValue / 100);
+                        }
+                        
+                        // Ensure new SBID is not negative
+                        if (newSbid < 0) {
+                            newSbid = 0;
+                        }
+                        
+                        // Round to 2 decimal places
+                        newSbid = Math.round(newSbid * 100) / 100;
+                        
+                        // Store campaign ID and calculated SBID
+                        campaignSbidMap[campaignId] = newSbid;
+                        rowsToUpdate.push({ row: row, campaignId: campaignId, newSbid: newSbid });
+                    });
+                    
+                    if (Object.keys(campaignSbidMap).length === 0) {
+                        showToast('warning', 'No selected rows with valid L Bid and campaign ID found');
+                        return;
+                    }
+                    
+                    // Show progress overlay
+                    const overlay = document.getElementById("progress-overlay");
+                    overlay.style.display = "flex";
+                    
+                    // Prepare campaign IDs and SBID M values arrays
+                    var campaignIds = Object.keys(campaignSbidMap);
+                    
+                    // Save all calculated values individually for each campaign
+                    var savePromises = [];
+                    var campaignRowMap = {}; // Map campaign ID to row info for easy lookup
+                    
+                    rowsToUpdate.forEach(function(rowInfo) {
+                        campaignRowMap[rowInfo.campaignId] = rowInfo;
+                    });
+                    
+                    campaignIds.forEach(function(campaignId) {
+                        var newSbidValue = campaignSbidMap[campaignId];
+                        var savePromise = $.ajax({
+                            url: '/save-ebay-sbid-m',
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                            },
+                            data: {
+                                campaign_id: campaignId,
+                                sbid_m: newSbidValue
+                            }
+                        }).then(function(response) {
+                            return { campaignId: campaignId, response: response, success: true };
+                        }).catch(function(error) {
+                            return { campaignId: campaignId, error: error, success: false };
+                        });
+                        savePromises.push(savePromise);
+                    });
+                    
+                    // Wait for all saves to complete
+                    Promise.all(savePromises).then(function(results) {
+                        var successCount = 0;
+                        var errorCount = 0;
+                        
+                        results.forEach(function(result) {
+                            if (result.success && result.response && result.response.status === 200) {
+                                successCount++;
+                                // Update row data using campaign ID to find the correct row
+                                var rowInfo = campaignRowMap[result.campaignId];
+                                if (rowInfo) {
+                                    var rowData = rowInfo.row.getData();
+                                    var currentData = JSON.parse(JSON.stringify(rowData));
+                                    currentData.sbid_m = rowInfo.newSbid;
+                                    currentData.apprSbid = ''; // Clear apprSbid when sbid_m is updated
+                                    rowInfo.row.update(currentData);
+                                    setTimeout(function() {
+                                        rowInfo.row.reformat();
+                                    }, 50);
+                                }
+                            } else {
+                                errorCount++;
+                                console.error('Error saving SBID M for campaign:', result.campaignId, result.error || result.response);
+                            }
+                        });
+                        
+                        overlay.style.display = "none";
+                        
+                        if (successCount > 0) {
+                            showToast('success', 'SBID M saved successfully for ' + successCount + ' campaign(s)');
+                            // Redraw table to ensure all updates are visible
+                            table.redraw(true);
+                        } else {
+                            showToast('error', 'Failed to save SBID M values');
+                        }
+                        
+                        if (errorCount > 0) {
+                            console.warn('Some campaigns failed to save:', errorCount);
+                        }
+                    }).catch(function(error) {
+                        overlay.style.display = "none";
+                        showToast('error', 'Error saving SBID M values');
+                        console.error('Error in bulk save:', error);
+                    });
+                });
+                
+                // Clear INC/DEC button handler
+                $("#clear-inc-dec-btn").on("click", function() {
+                    // Clear input field only - sbid_m values remain in database
+                    $("#inc-dec-input").val('');
+                    showToast('info', 'Input cleared. SBID M values remain saved in database.');
+                });
+                
+                // Clear SBID M button handler - clears sbid_m for selected rows
+                // Attach handler using event delegation to ensure it works
+                $(document).on("click", "#clear-sbid-m-btn", function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('Clear SBID M button clicked');
+                    
+                    // Check if table is available
+                    if (typeof table === 'undefined' || !table) {
+                        showToast('error', 'Table not initialized yet. Please wait.');
+                        return;
+                    }
+                    
+                    // Get only selected rows
+                    var selectedRows = table.getRows('selected');
+                    console.log('Selected rows:', selectedRows.length);
+                    
+                    if (selectedRows.length === 0) {
+                        showToast('warning', 'Please select at least one row to clear SBID M');
+                        return;
+                    }
+                    
+                    // Confirm before clearing
+                    var confirmClear = confirm('Are you sure you want to clear SBID M for ' + selectedRows.length + ' selected row(s)?');
+                    if (!confirmClear) {
+                        return;
+                    }
+                    
+                    // Show progress overlay
+                    const overlay = document.getElementById("progress-overlay");
+                    if (overlay) {
+                        overlay.style.display = "flex";
+                    }
+                    
+                    // Prepare campaign IDs and rows to update
+                    var campaignIds = [];
+                    var campaignRowMap = {};
+                    
+                    selectedRows.forEach(function(row) {
+                        var rowData = row.getData();
+                        var campaignId = rowData.campaign_id;
+                        
+                        // Skip rows without campaign_id
+                        if (!campaignId) {
+                            return;
+                        }
+                        
+                        campaignIds.push(String(campaignId).trim());
+                        campaignRowMap[campaignId] = row;
+                    });
+                    
+                    console.log('Campaign IDs to clear:', campaignIds);
+                    
+                    if (campaignIds.length === 0) {
+                        if (overlay) overlay.style.display = "none";
+                        showToast('warning', 'No selected rows with valid campaign ID found');
+                        return;
+                    }
+                    
+                    // Since the save endpoint requires sbid_m > 0, we need to clear via direct database update
+                    // Use a custom endpoint or update directly via AJAX to set sbid_m to NULL/empty
+                    $.ajax({
+                        url: '/clear-ebay-sbid-m-bulk',
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                        },
+                        data: {
+                            campaign_ids: campaignIds
+                        },
+                        success: function(response) {
+                            console.log('Clear response:', response);
+                            if (response && response.status === 200) {
+                                var successCount = response.updated_count || campaignIds.length;
+                                
+                                // Update row data - clear sbid_m and apprSbid
+                                campaignIds.forEach(function(campaignId) {
+                                    var row = campaignRowMap[campaignId];
+                                    if (row) {
+                                        var rowData = row.getData();
+                                        var currentData = JSON.parse(JSON.stringify(rowData));
+                                        currentData.sbid_m = ''; // Clear sbid_m
+                                        currentData.apprSbid = ''; // Clear apprSbid
+                                        row.update(currentData);
+                                        setTimeout(function() {
+                                            row.reformat();
+                                        }, 50);
+                                    }
+                                });
+                                
+                                if (overlay) overlay.style.display = "none";
+                                showToast('success', 'SBID M cleared successfully for ' + successCount + ' campaign(s)');
+                                table.redraw(true);
+                            } else {
+                                if (overlay) overlay.style.display = "none";
+                                showToast('error', response.message || 'Failed to clear SBID M values');
+                            }
+                        },
+                        error: function(xhr) {
+                            console.error('Error clearing SBID M:', xhr);
+                            // If endpoint doesn't exist, update frontend directly
+                            var successCount = 0;
+                            campaignIds.forEach(function(campaignId) {
+                                var row = campaignRowMap[campaignId];
+                                if (row) {
+                                    var rowData = row.getData();
+                                    var currentData = JSON.parse(JSON.stringify(rowData));
+                                    currentData.sbid_m = ''; // Clear sbid_m in frontend
+                                    currentData.apprSbid = ''; // Clear apprSbid
+                                    row.update(currentData);
+                                    setTimeout(function() {
+                                        row.reformat();
+                                    }, 50);
+                                    successCount++;
+                                }
+                            });
+                            
+                            if (overlay) overlay.style.display = "none";
+                            showToast('info', 'SBID M cleared in display for ' + successCount + ' row(s). Database update requires backend endpoint implementation.');
+                            table.redraw(true);
+                        }
+                    });
                 });
 
                 // Initial update of all button counts after data loads
@@ -2957,7 +3592,7 @@ document.getElementById("apr-all-sbid-btn").addEventListener("click", function()
                 var seenCampaignIds = new Set();
                 
                 allSelectedRows.forEach(function(row) {
-                    var rowData = row.getData();
+                        var rowData = row.getData();
                     var campaignId = rowData.campaign_id;
                     if (campaignId && !seenCampaignIds.has(campaignId)) {
                         selectedCampaignIds.push(campaignId);

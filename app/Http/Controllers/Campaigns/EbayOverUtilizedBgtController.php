@@ -2401,4 +2401,123 @@ class EbayOverUtilizedBgtController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Clear SBID M for multiple eBay campaigns (bulk clear)
+     */
+    public function clearEbaySbidMBulk(Request $request)
+    {
+        try {
+            $campaignIds = $request->input('campaign_ids', []);
+
+            if (empty($campaignIds) || !is_array($campaignIds)) {
+                return response()->json([
+                    'status' => 400,
+                    'message' => 'Campaign IDs array is required'
+                ], 400);
+            }
+
+            // Filter out invalid campaign IDs and ensure they are unique
+            $campaignIds = array_filter($campaignIds, function($id) {
+                return !empty($id) && $id !== null && $id !== '';
+            });
+            $campaignIds = array_values(array_unique($campaignIds)); // Re-index array and remove duplicates
+
+            if (empty($campaignIds)) {
+                return response()->json([
+                    'status' => 400,
+                    'message' => 'No valid campaign IDs provided'
+                ], 400);
+            }
+
+            $yesterday = date('Y-m-d', strtotime('-1 day'));
+
+            // Batch clear for yesterday's date (most common case)
+            $updatedYesterday = DB::table('ebay_priority_reports')
+                ->whereIn('campaign_id', $campaignIds)
+                ->where('report_range', $yesterday)
+                ->where('campaignStatus', 'RUNNING')
+                ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+                ->where('campaign_name', 'NOT LIKE', 'General - %')
+                ->where('campaign_name', 'NOT LIKE', 'Default%')
+                ->update([
+                    'sbid_m' => null, // Clear sbid_m
+                    'apprSbid' => '' // Clear apprSbid
+                ]);
+
+            // Get campaign IDs that were updated for yesterday
+            $updatedCampaignIds = DB::table('ebay_priority_reports')
+                ->whereIn('campaign_id', $campaignIds)
+                ->where('report_range', $yesterday)
+                ->where('campaignStatus', 'RUNNING')
+                ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+                ->where('campaign_name', 'NOT LIKE', 'General - %')
+                ->where('campaign_name', 'NOT LIKE', 'Default%')
+                ->whereNull('sbid_m')
+                ->pluck('campaign_id')
+                ->toArray();
+
+            $remainingCampaignIds = array_diff($campaignIds, $updatedCampaignIds);
+
+            // Batch clear for L1 (fallback for campaigns not found in yesterday)
+            if (!empty($remainingCampaignIds)) {
+                DB::table('ebay_priority_reports')
+                    ->whereIn('campaign_id', $remainingCampaignIds)
+                    ->where('report_range', 'L1')
+                    ->where('campaignStatus', 'RUNNING')
+                    ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+                    ->where('campaign_name', 'NOT LIKE', 'General - %')
+                    ->where('campaign_name', 'NOT LIKE', 'Default%')
+                    ->update([
+                        'sbid_m' => null, // Clear sbid_m
+                        'apprSbid' => '' // Clear apprSbid
+                    ]);
+            }
+
+            // Batch clear L7 and L30 records for all campaigns (for consistency)
+            DB::table('ebay_priority_reports')
+                ->whereIn('campaign_id', $campaignIds)
+                ->whereIn('report_range', ['L7', 'L30'])
+                ->where('campaignStatus', 'RUNNING')
+                ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+                ->where('campaign_name', 'NOT LIKE', 'General - %')
+                ->where('campaign_name', 'NOT LIKE', 'Default%')
+                ->update([
+                    'sbid_m' => null, // Clear sbid_m
+                    'apprSbid' => '' // Clear apprSbid
+                ]);
+
+            // Count total cleared campaigns (yesterday + L1) - only count campaigns from our selected list
+            $totalCleared = DB::table('ebay_priority_reports')
+                ->whereIn('campaign_id', $campaignIds) // Strictly limit to selected campaigns
+                ->whereIn('report_range', [$yesterday, 'L1'])
+                ->where('campaignStatus', 'RUNNING')
+                ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+                ->where('campaign_name', 'NOT LIKE', 'General - %')
+                ->where('campaign_name', 'NOT LIKE', 'Default%')
+                ->whereNull('sbid_m')
+                ->distinct()
+                ->count('campaign_id');
+
+            // Ensure we don't count more than we selected
+            $clearedCount = min($totalCleared, count($campaignIds));
+
+            return response()->json([
+                'status' => 200,
+                'message' => "SBID M cleared successfully for {$clearedCount} campaign(s)",
+                'updated_count' => $clearedCount,
+                'total_count' => count($campaignIds)
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error clearing eBay SBID M bulk: ' . $e->getMessage(), [
+                'campaign_ids' => $request->input('campaign_ids'),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'status' => 500,
+                'message' => 'Error clearing SBID M: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 }
