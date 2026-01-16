@@ -1379,16 +1379,16 @@
                                             <input type="text" id="activityLogFilterSku" class="form-control form-control-sm" placeholder="Search SKU...">
                                         </div>
                                         <div class="col-md-3">
-                                            <label for="activityLogFilterPerson" class="form-label text-white" style="font-weight: 600; margin-bottom: 5px;">
-                                                <i class="fas fa-user"></i> Filter by Person
-                                            </label>
-                                            <input type="text" id="activityLogFilterPerson" class="form-control form-control-sm" placeholder="Search Person...">
-                                        </div>
-                                        <div class="col-md-3">
                                             <label for="activityLogFilterReason" class="form-label text-white" style="font-weight: 600; margin-bottom: 5px;">
                                                 <i class="fas fa-tag"></i> Filter by Reason
                                             </label>
                                             <input type="text" id="activityLogFilterReason" class="form-control form-control-sm" placeholder="Search Reason...">
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label for="activityLogFilterPerson" class="form-label text-white" style="font-weight: 600; margin-bottom: 5px;">
+                                                <i class="fas fa-user"></i> Filter by Person
+                                            </label>
+                                            <input type="text" id="activityLogFilterPerson" class="form-control form-control-sm" placeholder="Search Person...">
                                         </div>
                                     </div>
                                     <div class="row mt-2">
@@ -3804,9 +3804,17 @@
             
 
             function getParentBySku(sku) {
-                sku = sku.trim().toUpperCase();
-                const row = tableData.find(item => item.SKU.trim().toUpperCase() === sku);
-                return row ? row.Parent : '(No Parent)';
+                if (!sku || !tableData || tableData.length === 0) {
+                    return '(No Parent)';
+                }
+                // Normalize SKU for matching - handle various formats
+                const normalizedSku = String(sku).trim().toUpperCase().replace(/\s+/g, ' ');
+                const row = tableData.find(item => {
+                    if (!item || !item.SKU) return false;
+                    const itemSku = String(item.SKU).trim().toUpperCase().replace(/\s+/g, ' ');
+                    return itemSku === normalizedSku;
+                });
+                return row && row.Parent ? row.Parent : '(No Parent)';
             }
 
             function getLPBySku(sku) {
@@ -3867,11 +3875,13 @@
                             onmouseover="this.style.opacity='1'" 
                             onmouseout="this.style.opacity='0.7'"></i>`;
                         
+                        // Normalize parent title for filtering - handle "(No Parent)" case
+                        const normalizedParent = (parentTitle || '').toString().toLowerCase().trim();
                         tableBody.append(`
-                            <tr data-parent="${(parentTitle || '').toLowerCase()}" 
-                                data-sku="${(item.sku || '').toLowerCase()}" 
-                                data-person="${(item.approved_by || '').toLowerCase()}" 
-                                data-reason="${(item.reason || '').toLowerCase()}">
+                            <tr data-parent="${normalizedParent}" 
+                                data-sku="${(item.sku || '').toString().toLowerCase().trim()}" 
+                                data-reason="${(item.reason || '').toString().toLowerCase().trim()}" 
+                                data-person="${(item.approved_by || '').toString().toLowerCase().trim()}">
                                 <td>${parentTitle}</td>
                                 <td>${item.sku} ${copyButton}</td>
                                 <td>${item.verified_stock ?? '-'}</td>
@@ -3894,8 +3904,8 @@
             function filterActivityLogTable() {
                 const parentFilter = $('#activityLogFilterParent').val().toLowerCase().trim();
                 const skuFilter = $('#activityLogFilterSku').val().toLowerCase().trim();
-                const personFilter = $('#activityLogFilterPerson').val().toLowerCase().trim();
                 const reasonFilter = $('#activityLogFilterReason').val().toLowerCase().trim();
+                const personFilter = $('#activityLogFilterPerson').val().toLowerCase().trim();
 
                 let visibleLossGainTotal = 0;
                 let visibleCount = 0;
@@ -3912,17 +3922,17 @@
                         return;
                     }
                     
-                    const parent = $row.data('parent') || '';
-                    const sku = $row.data('sku') || '';
-                    const person = $row.data('person') || '';
-                    const reason = $row.data('reason') || '';
+                    const parent = ($row.data('parent') || '').toString();
+                    const sku = ($row.data('sku') || '').toString();
+                    const reason = ($row.data('reason') || '').toString();
+                    const person = ($row.data('person') || '').toString();
 
                     const matchesParent = !parentFilter || parent.indexOf(parentFilter) > -1;
                     const matchesSku = !skuFilter || sku.indexOf(skuFilter) > -1;
-                    const matchesPerson = !personFilter || person.indexOf(personFilter) > -1;
                     const matchesReason = !reasonFilter || reason.indexOf(reasonFilter) > -1;
+                    const matchesPerson = !personFilter || person.indexOf(personFilter) > -1;
 
-                    const isVisible = matchesParent && matchesSku && matchesPerson && matchesReason;
+                    const isVisible = matchesParent && matchesSku && matchesReason && matchesPerson;
                     $row.toggle(isVisible);
 
                     if (isVisible) {
@@ -3939,13 +3949,13 @@
                 $('#activityLossGainTotal').text(`${Math.trunc(visibleLossGainTotal)}`);
 
                 // Show message if no results
-                if (visibleCount === 0 && (parentFilter || skuFilter || personFilter || reasonFilter)) {
+                if (visibleCount === 0 && (parentFilter || skuFilter || reasonFilter || personFilter)) {
                     $('#activityLogTable tbody').append('<tr><td colspan="9" class="text-center text-muted">No matching records found.</td></tr>');
                 }
             }
 
             // Filter event handlers
-            $('#activityLogFilterParent, #activityLogFilterSku, #activityLogFilterPerson, #activityLogFilterReason').on('keyup', function() {
+            $('#activityLogFilterParent, #activityLogFilterSku, #activityLogFilterReason, #activityLogFilterPerson').on('keyup', function() {
                 filterActivityLogTable();
             });
 
@@ -3953,8 +3963,8 @@
             $('#activityLogClearFilters').on('click', function() {
                 $('#activityLogFilterParent').val('');
                 $('#activityLogFilterSku').val('');
-                $('#activityLogFilterPerson').val('');
                 $('#activityLogFilterReason').val('');
+                $('#activityLogFilterPerson').val('');
                 filterActivityLogTable();
             });
 
