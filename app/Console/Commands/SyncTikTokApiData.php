@@ -184,6 +184,9 @@ class SyncTikTokApiData extends Command
             // Process and store analytics/views
             $this->processAnalytics($data['analytics'] ?? []);
             
+            // Pull views from tiktok_sheet_data table (populated by sync:tiktok-sheet-data command)
+            $this->syncViewsFromSheetData();
+            
             // Process and store reviews/ratings
             $this->processReviews($data['reviews'] ?? []);
 
@@ -439,6 +442,70 @@ class SyncTikTokApiData extends Command
         }
 
         $this->info("Reviews/Ratings: {$updated} records updated");
+    }
+
+    /**
+     * Sync views from tiktok_sheet_data table (populated by sync:tiktok-sheet-data command)
+     * This is needed because views are not available via API with current version
+     */
+    protected function syncViewsFromSheetData()
+    {
+        $this->info('Syncing views from tiktok_sheet_data table...');
+        
+        try {
+            // Get all TikTok products that have SKUs
+            $tiktokProducts = TikTokProduct::whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->get();
+            
+            if ($tiktokProducts->isEmpty()) {
+                $this->warn('No TikTok products with SKUs found');
+                return;
+            }
+            
+            $updated = 0;
+            $skus = $tiktokProducts->pluck('sku')->map(function($sku) {
+                return strtoupper(trim($sku));
+            })->toArray();
+            
+            // Get views from tiktok_sheet_data table
+            $sheetData = TiktokSheet::whereIn('sku', $skus)
+                ->whereNotNull('views')
+                ->get()
+                ->keyBy(function($item) {
+                    return strtoupper(trim($item->sku));
+                });
+            
+            if ($sheetData->isEmpty()) {
+                $this->warn('No view data found in tiktok_sheet_data table');
+                $this->info('Note: Run "php artisan sync:tiktok-sheet-data" to import views from Google Sheet');
+                return;
+            }
+            
+            // Update TikTok products with views from sheet data
+            foreach ($tiktokProducts as $tiktokProduct) {
+                $normalizedSku = strtoupper(trim($tiktokProduct->sku));
+                $sheetItem = $sheetData->get($normalizedSku);
+                
+                if ($sheetItem && $sheetItem->views !== null) {
+                    $views = (float)$sheetItem->views;
+                    if ($tiktokProduct->views != $views) {
+                        $tiktokProduct->views = $views;
+                        $tiktokProduct->save();
+                        $updated++;
+                    }
+                }
+            }
+            
+            $this->info("Views: {$updated} records updated from sheet data");
+            
+        } catch (\Exception $e) {
+            $this->error('Error syncing views from sheet data: ' . $e->getMessage());
+            Log::error('TikTok views sync from sheet error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+        }
     }
 
     /**

@@ -444,7 +444,7 @@ class TikTokShopService
     }
 
     /**
-     * Get product analytics using the library
+     * Get product analytics using the library with API version 202405
      */
     public function getProductAnalytics(int $startTime = null, int $endTime = null, array $productIds = []): ?array
     {
@@ -472,13 +472,34 @@ class TikTokShopService
                 $params['product_id_list'] = array_slice($productIds, 0, 50);
             }
 
-            $this->output('info', 'Calling Analytics->getShopProductPerformanceList() with params: ' . json_encode($params));
+            // Try to use library's method with API version 202405
+            // First, try using reflection to set API version if the library supports it
+            try {
+                $reflection = new \ReflectionClass($this->client);
+                if ($reflection->hasMethod('setApiVersion')) {
+                    $this->client->setApiVersion('202405');
+                    $this->output('info', 'Set API version to 202405');
+                }
+            } catch (\Exception $e) {
+                // Method doesn't exist, continue
+            }
+
+            $this->output('info', 'Calling Analytics->getShopProductPerformanceList() with API version 202405...');
+            $this->output('info', 'Params: ' . json_encode($params));
+            
             // Use getShopProductPerformanceList for product analytics
             $response = $this->client->Analytics->getShopProductPerformanceList($params);
             $this->lastResponse = $response;
             
             if (isset($response['code']) && $response['code'] != 0) {
                 $this->output('error', 'getProductAnalytics API error: Code ' . $response['code'] . ', Message: ' . ($response['message'] ?? 'No message'));
+                
+                // If version error, try making direct signed request
+                if (isset($response['message']) && strpos($response['message'], '202405') !== false) {
+                    $this->output('info', 'Library method failed with version error, trying direct signed API call...');
+                    return $this->getProductAnalyticsDirect($startTime, $endTime, $productIds);
+                }
+                
                 return null;
             }
             
@@ -496,8 +517,127 @@ class TikTokShopService
             Log::error('TikTok getProductAnalytics failed', ['error' => $e->getMessage()]);
             return null;
         } catch (\Exception $e) {
-            $this->output('error', 'getProductAnalytics Exception: ' . $e->getMessage() . ' (Class: ' . get_class($e) . ')');
+            $errorMessage = $e->getMessage();
+            $this->output('error', 'getProductAnalytics Exception: ' . $errorMessage . ' (Class: ' . get_class($e) . ')');
+            
+            // If version error, try direct signed request
+            if (strpos($errorMessage, '202405') !== false || strpos($errorMessage, 'API version') !== false) {
+                $this->output('info', 'Library method failed with version error, trying direct signed API call...');
+                return $this->getProductAnalyticsDirect($startTime, $endTime, $productIds);
+            }
+            
             Log::error('TikTok getProductAnalytics failed', ['error' => $e->getMessage()]);
+            return null;
+        }
+    }
+    
+    /**
+     * Make direct signed API call to Analytics endpoint with version 202405
+     * Uses the library's internal signing mechanism
+     */
+    protected function getProductAnalyticsDirect(int $startTime, int $endTime, array $productIds): ?array
+    {
+        try {
+            if (!$this->accessToken || !$this->shopCipher) {
+                $this->output('error', 'Missing access token or shop cipher for direct API call');
+                return null;
+            }
+            
+            // Use reflection to access the library's internal request method
+            $reflection = new \ReflectionClass($this->client);
+            
+            // Try to find the request method
+            $requestMethod = null;
+            if ($reflection->hasMethod('request')) {
+                $requestMethod = $reflection->getMethod('request');
+                $requestMethod->setAccessible(true);
+            } elseif ($reflection->hasMethod('call')) {
+                $requestMethod = $reflection->getMethod('call');
+                $requestMethod->setAccessible(true);
+            }
+            
+            if ($requestMethod) {
+                $this->output('info', 'Using library internal request method with API version 202405...');
+                
+                $body = [
+                    'shop_cipher' => $this->shopCipher,
+                    'start_time' => $startTime,
+                    'end_time' => $endTime,
+                ];
+                
+                if (!empty($productIds)) {
+                    $body['product_id_list'] = array_slice($productIds, 0, 50);
+                }
+                
+                // Try calling the internal method
+                $response = $requestMethod->invoke($this->client, 'GET', '/analytics/202405/products/query', $body);
+                
+                if ($response && !isset($response['code'])) {
+                    $this->output('info', '✓ Successfully fetched analytics using direct signed request');
+                    return $response;
+                }
+            }
+            
+            // Fallback: Try using library's HTTP client directly
+            $this->output('info', 'Trying alternative method: using library HTTP client...');
+            return $this->makeSignedAnalyticsRequest($startTime, $endTime, $productIds);
+            
+        } catch (\Exception $e) {
+            $this->output('error', 'Direct signed request failed: ' . $e->getMessage());
+            Log::error('TikTok direct signed analytics request failed', ['error' => $e->getMessage()]);
+            return null;
+        }
+    }
+    
+    /**
+     * Make signed HTTP request to TikTok Analytics API
+     * This creates a properly signed request using HMAC
+     */
+    protected function makeSignedAnalyticsRequest(int $startTime, int $endTime, array $productIds): ?array
+    {
+        try {
+            $baseUrl = 'https://open-api.tiktokglobalshop.com';
+            $path = '/analytics/202405/products/query';
+            $method = 'POST';
+            
+            $body = [
+                'shop_cipher' => $this->shopCipher,
+                'start_time' => $startTime,
+                'end_time' => $endTime,
+            ];
+            
+            if (!empty($productIds)) {
+                $body['product_id_list'] = array_slice($productIds, 0, 50);
+            }
+            
+            $timestamp = time();
+            $nonce = bin2hex(random_bytes(16));
+            
+            // Create signature using TikTok's HMAC signing
+            $signString = $this->clientKey . $path . $timestamp . $nonce . $this->shopCipher . json_encode($body);
+            $sign = hash_hmac('sha256', $signString, $this->clientSecret);
+            
+            $this->output('info', 'Making signed request to: ' . $baseUrl . $path);
+            
+            $response = Http::timeout(30)->withHeaders([
+                'Content-Type' => 'application/json',
+                'X-TT-ACCESS-TOKEN' => $this->accessToken,
+                'X-TT-ACCESS-TIMESTAMP' => $timestamp,
+                'X-TT-ACCESS-NONCE' => $nonce,
+                'X-TT-ACCESS-SIGN' => $sign,
+            ])->post($baseUrl . $path, $body);
+            
+            if ($response->successful()) {
+                $data = $response->json();
+                $this->output('info', '✓ Successfully fetched analytics using signed request');
+                return $data;
+            } else {
+                $this->output('error', 'Signed request failed: Status ' . $response->status() . ', Body: ' . $response->body());
+                return null;
+            }
+            
+        } catch (\Exception $e) {
+            $this->output('error', 'Signed request exception: ' . $e->getMessage());
             return null;
         }
     }
