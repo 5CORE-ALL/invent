@@ -640,9 +640,9 @@
                             const rowData = cell.getRow().getData();
                             const channel = (rowData['Channel '] || '').trim().toLowerCase();
                             
-                            // For Walmart, use TACOS %
+                            // For Walmart, Temu, and Shopify B2C, use TACOS %
                             let adsPercent = 0;
-                            if (channel === 'walmart') {
+                            if (channel === 'walmart' || channel === 'temu' || channel === 'shopifyb2c') {
                                 adsPercent = parseNumber(rowData['TACOS %'] || 0);
                             } else {
                                 adsPercent = parseNumber(cell.getValue() || 0);
@@ -729,9 +729,12 @@
                             const walmartSpent = parseNumber(rowData['Walmart Spent'] || 0);
                             
                             // For Walmart, use Walmart Spent as total
+                            // For Temu and Shopify B2C, use KW Spent as total (Google Ads/Temu ad spend is stored in KW Spent field)
                             let totalSpent = 0;
                             if (channel === 'walmart') {
                                 totalSpent = walmartSpent;
+                            } else if (channel === 'temu' || channel === 'shopifyb2c') {
+                                totalSpent = kwSpent;
                             } else {
                                 totalSpent = kwSpent + pmtSpent + hlSpent;
                             }
@@ -751,6 +754,40 @@
                                                    font-weight: bold;">
                                         <option value="total" selected style="background-color: #91e1ff; color: black; font-weight: bold;">$${Math.round(totalSpent).toLocaleString('en-US')}</option>
                                         <option value="walmart" style="background-color: #0071ce; color: white; font-weight: bold;">WM: $${walmartSpent.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option>
+                                    </select>
+                                `;
+                            }
+
+                            // For Temu, show single option
+                            if (channel === 'temu') {
+                                return `
+                                    <select class="form-select form-select-sm ad-spend-select"
+                                            style="min-width: 90px;
+                                                   font-size: 10px;
+                                                   padding: 3px 6px;
+                                                   background-color: #91e1ff;
+                                                   color: black;
+                                                   border: 1px solid #91e1ff;
+                                                   font-weight: bold;">
+                                        <option value="total" selected style="background-color: #91e1ff; color: black; font-weight: bold;">$${Math.round(totalSpent).toLocaleString('en-US')}</option>
+                                        <option value="temu" style="background-color: #ff6600; color: white; font-weight: bold;">TM: $${kwSpent.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option>
+                                    </select>
+                                `;
+                            }
+
+                            // For Shopify B2C, show single option (Google Ads)
+                            if (channel === 'shopifyb2c') {
+                                return `
+                                    <select class="form-select form-select-sm ad-spend-select"
+                                            style="min-width: 90px;
+                                                   font-size: 10px;
+                                                   padding: 3px 6px;
+                                                   background-color: #91e1ff;
+                                                   color: black;
+                                                   border: 1px solid #91e1ff;
+                                                   font-weight: bold;">
+                                        <option value="total" selected style="background-color: #91e1ff; color: black; font-weight: bold;">$${Math.round(totalSpent).toLocaleString('en-US')}</option>
+                                        <option value="google" style="background-color: #4285f4; color: white; font-weight: bold;">G: $${kwSpent.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option>
                                     </select>
                                 `;
                             }
@@ -775,11 +812,20 @@
                         bottomCalc: function(values, data) {
                             let total = 0;
                             data.forEach(row => {
+                                const channel = (row['Channel '] || '').trim().toLowerCase();
                                 const kwSpent = parseNumber(row['KW Spent'] || 0);
                                 const pmtSpent = parseNumber(row['PMT Spent'] || 0);
                                 const hlSpent = parseNumber(row['HL Spent'] || 0);
                                 const walmartSpent = parseNumber(row['Walmart Spent'] || 0);
-                                total += kwSpent + pmtSpent + hlSpent + walmartSpent;
+                                
+                                // For Walmart, Temu, and Shopify B2C, only count their specific spend field to avoid double counting
+                                if (channel === 'walmart') {
+                                    total += walmartSpent;
+                                } else if (channel === 'temu' || channel === 'shopifyb2c') {
+                                    total += kwSpent; // Temu/Google Ads spend is stored in KW Spent
+                                } else {
+                                    total += kwSpent + pmtSpent + hlSpent;
+                                }
                             });
                             return total;
                         },
@@ -944,6 +990,7 @@
                 let validChannels = 0;
                 
                 data.forEach(row => {
+                    const channel = (row['Channel '] || '').trim().toLowerCase();
                     const l30Sales = parseNumber(row['L30 Sales'] || 0);
                     const l30Orders = parseNumber(row['L30 Orders'] || 0);
                     const clicks = parseNumber(row['clicks'] || 0);
@@ -953,12 +1000,20 @@
                     const nroi = parseNumber(row['N ROI'] || 0);
                     const cogs = parseNumber(row['cogs'] || 0);
                     
-                    // Ad spend
+                    // Ad spend - handle Walmart, Temu, and Shopify B2C separately to avoid double counting
                     const kwSpent = parseNumber(row['KW Spent'] || 0);
                     const pmtSpent = parseNumber(row['PMT Spent'] || 0);
                     const hlSpent = parseNumber(row['HL Spent'] || 0);
                     const walmartSpent = parseNumber(row['Walmart Spent'] || 0);
-                    const adSpend = kwSpent + pmtSpent + hlSpent + walmartSpent;
+                    
+                    let adSpend = 0;
+                    if (channel === 'walmart') {
+                        adSpend = walmartSpent;
+                    } else if (channel === 'temu' || channel === 'shopifyb2c') {
+                        adSpend = kwSpent; // Temu/Google Ads spend is stored in KW Spent
+                    } else {
+                        adSpend = kwSpent + pmtSpent + hlSpent;
+                    }
                     
                     totalL30Sales += l30Sales;
                     totalL30Orders += l30Orders;
@@ -979,11 +1034,19 @@
                     }
                 });
                 
-                // Calculate overall metrics
+                // Calculate overall metrics (same as channel-masters)
                 const avgGprofit = totalL30Sales > 0 ? (totalPft / totalL30Sales) * 100 : 0;
                 const avgGroi = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
-                const avgNpft = validChannels > 0 ? npftSum / validChannels : 0;
-                const avgNroi = validChannels > 0 ? nroiSum / validChannels : 0;
+                
+                // Calculate average Ads% = Total Ad Spend / Total L30 Sales (same as channel-masters)
+                const avgAdsPercent = totalL30Sales > 0 ? (totalAdSpend / totalL30Sales) * 100 : 0;
+                
+                // N PFT = G PFT - Ads% (same as channel-masters)
+                const avgNpft = avgGprofit - avgAdsPercent;
+                
+                // N ROI = (Net Profit / COGS) * 100 where Net Profit = Total PFT - Total Ad Spend (same as channel-masters)
+                const netProfit = totalPft - totalAdSpend;
+                const avgNroi = totalCogs > 0 ? (netProfit / totalCogs) * 100 : 0;
                 
                 // Update badges
                 $('#total-channels').text(totalChannels);

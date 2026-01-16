@@ -8,6 +8,7 @@ use App\Models\AmazonOrder;
 use App\Models\EbayOrder;
 use App\Models\Ebay2Order;
 use App\Models\TemuDailyData;
+use App\Models\TemuAdData;
 use App\Models\SheinDailyData;
 use App\Models\MercariDailyData;
 use App\Models\AliexpressDailyData;
@@ -108,6 +109,8 @@ class UpdateMarketplaceDailyMetrics extends Command
             ->where(function($query) {
                 $query->where('o.order_status', '!=', 'Canceled')
                       ->where('o.order_status', '!=', 'Cancelled')
+                      ->where('o.order_status', '!=', 'canceled')
+                      ->where('o.order_status', '!=', 'cancelled')
                       ->orWhereNull('o.order_status');
             })
             ->select([
@@ -557,13 +560,17 @@ class UpdateMarketplaceDailyMetrics extends Command
         $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
-        // Calculate PMT Spent for eBay 2 (from ebay_2_general_reports)
+        // Calculate ad spend for eBay 2
         $thirtyDaysAgo = Carbon::now()->subDays(30);
 
-        // eBay 2 may not have priority reports (KW Spent = 0)
-        $kwSpent = 0;
+        // KW Spent from ebay_2_priority_reports (CPC ads)
+        $kwSpent = DB::table('ebay_2_priority_reports')
+            ->where('report_range', 'L30')
+            ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
+            ->selectRaw('SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")) as total_spend')
+            ->value('total_spend') ?? 0;
 
-        // PMT Spent from ebay_2_general_reports
+        // PMT Spent from ebay_2_general_reports (Promoted Listings)
         $pmtSpent = DB::table('ebay_2_general_reports')
             ->where('report_range', 'L30')
             ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
@@ -837,6 +844,19 @@ class UpdateMarketplaceDailyMetrics extends Command
         $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
+        // Calculate Temu Ad Spend (from temu_ad_data table)
+        // The table contains L30 data and is truncated/refreshed on each upload
+        $temuSpent = TemuAdData::sum('spend') ?? 0;
+
+        // Calculate TACOS %: (Temu Spent / Total Sales) * 100
+        $tacosPercentage = $totalL30Sales > 0 ? ($temuSpent / $totalL30Sales) * 100 : 0;
+
+        // Calculate N PFT: GPFT % - TACOS %
+        $nPftPercentage = $pftPercentage - $tacosPercentage;
+
+        // Calculate N ROI: ROI % - TACOS %
+        $nRoiPercentage = $roiPercentage - $tacosPercentage;
+
         return [
             'total_orders' => $totalOrders,
             'total_quantity' => $totalQuantity,
@@ -848,6 +868,11 @@ class UpdateMarketplaceDailyMetrics extends Command
             'roi_percentage' => $roiPercentage,
             'avg_price' => $avgPrice,
             'l30_sales' => $totalL30Sales,
+            'kw_spent' => round($temuSpent, 2), // Store Temu ad spend in kw_spent field
+            'pmt_spent' => 0, // Temu doesn't have separate PMT
+            'tacos_percentage' => round($tacosPercentage, 1),
+            'n_pft' => round($nPftPercentage, 1),
+            'n_roi' => round($nRoiPercentage, 1),
         ];
     }
 
@@ -1568,6 +1593,25 @@ class UpdateMarketplaceDailyMetrics extends Command
         $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
+        // Calculate Google Ads Spent for Shopify B2C (L30)
+        $yesterday = Carbon::yesterday();
+        $startDate = $yesterday->copy()->subDays(29); // 30 days total
+        
+        $googleSpent = DB::table('google_ads_campaigns')
+            ->whereDate('date', '>=', $startDate)
+            ->whereDate('date', '<=', $yesterday)
+            ->where('advertising_channel_type', 'SHOPPING')
+            ->sum('metrics_cost_micros') / 1000000 ?? 0; // Convert micros to dollars
+
+        // Calculate TACOS %: (Google Spent / Total Sales) * 100
+        $tacosPercentage = $totalRevenue > 0 ? ($googleSpent / $totalRevenue) * 100 : 0;
+
+        // Calculate N PFT: GPFT % - TACOS %
+        $nPftPercentage = $pftPercentage - $tacosPercentage;
+
+        // Calculate N ROI: ROI % - TACOS %
+        $nRoiPercentage = $roiPercentage - $tacosPercentage;
+
         return [
             'total_orders' => $totalOrders,
             'total_quantity' => $totalQuantity,
@@ -1579,10 +1623,11 @@ class UpdateMarketplaceDailyMetrics extends Command
             'roi_percentage' => round($roiPercentage, 1),
             'avg_price' => $avgPrice,
             'l30_sales' => $totalRevenue,
-            'kw_spent' => 0,
-            'pmt_spent' => 0,
-            'n_pft' => $totalPft,
-            'n_roi' => round($roiPercentage, 1),
+            'kw_spent' => round($googleSpent, 2), // Store Google Ads spend in kw_spent field
+            'pmt_spent' => 0, // Shopify B2C only has Google Ads
+            'tacos_percentage' => round($tacosPercentage, 1),
+            'n_pft' => round($nPftPercentage, 1),
+            'n_roi' => round($nRoiPercentage, 1),
         ];
     }
 
