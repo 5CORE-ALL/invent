@@ -744,6 +744,9 @@
                                         <a href="{{ route('channel.master', ['channels', 'channel-masters']) }}"
                                             target="_blank">Active Channels</a>
                                     </li>
+                                    <li>
+                                        <a href="{{ route('all.marketplace.master') }}">All Marketplace Master</a>
+                                    </li>
                                     <!-- Start Nikhil Code -->
                                     {{-- <li>
                                         <a href="{{ route('channel.ads.master') }}">AD Masters</a>
