@@ -895,6 +895,37 @@
             </div>
         </div>
 
+        <!-- Channel History Graph Modal -->
+        <div class="modal fade" id="channelHistoryGraphModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-xl">
+                <div class="modal-content">
+                    <div class="modal-header" style="background: linear-gradient(135deg, #4361ee, #3f37c9);">
+                        <h5 class="modal-title text-white">
+                            <i class="fas fa-chart-area me-2"></i> 
+                            <span id="modalGraphChannelName">Channel</span> - Historical Data Graph (Last 30 Days)
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="loadingGraphMessage" class="text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-3 text-muted">Loading chart data...</p>
+                        </div>
+                        <div id="dataInfoMessage" class="alert alert-info" style="display: none; margin-bottom: 15px;">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <span id="dataPointsInfo"></span>
+                        </div>
+                        <div id="historyGraphContainer" style="width: 100%; height: 550px; display: none;"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div id="customLoader" style="display: flex; justify-content: center; align-items: center; height: 300px;">
             <div class="spinner-border text-info" role="status">
                 <span class="sr-only">Loading...</span>
@@ -1966,6 +1997,286 @@
             jq('#historyTableBody').html(html);
         }
 
+        // Show channel history graph modal
+        function showChannelHistoryGraph(channelName) {
+            // Update modal content with channel name
+            jq('#modalGraphChannelName').text(channelName);
+            jq('#loadingGraphMessage').show();
+            jq('#historyGraphContainer').hide();
+
+            // Show modal using Bootstrap 5 syntax
+            const modalElement = document.getElementById('channelHistoryGraphModal');
+            const modal = new bootstrap.Modal(modalElement);
+            modal.show();
+
+            // Fetch historical data
+            const channelKey = channelName.toLowerCase().replace(/\s+/g, '');
+
+            jq.ajax({
+                url: '/channel-master-history/' + channelKey,
+                method: 'GET',
+                success: function(response) {
+                    if (response.status === 200 && response.data && response.data.length > 0) {
+                        renderHistoryGraph(response.data, channelName);
+                    } else {
+                        jq('#loadingGraphMessage').html('<p class="text-center text-muted">No historical data found</p>');
+                    }
+                },
+                error: function() {
+                    jq('#loadingGraphMessage').html('<p class="text-center text-danger">Error loading data</p>');
+                }
+            });
+        }
+
+        // Render history graph using Google Charts
+        function renderHistoryGraph(data, channelName) {
+            const toNum = (v, def = 0) => {
+                const n = parseFloat(String(v).replace(/,/g, ''));
+                return Number.isFinite(n) ? n : def;
+            };
+
+            // Format date nicely
+            const formatDate = (dateStr) => {
+                if (!dateStr) return '';
+                const datePart = dateStr.split('T')[0];
+                return datePart;
+            };
+
+            console.log('Total data points received:', data.length);
+            console.log('Historical data:', data);
+
+            // Prepare data for Google Charts - reverse to show oldest to newest
+            const chartData = [
+                ['Date', 'L30 Sales', 'L30 Orders', 'Gprofit%', 'NPFT%']
+            ];
+
+            // Reverse data to show chronological order (oldest to newest)
+            const reversedData = [...data].reverse();
+
+            reversedData.forEach(row => {
+                const summaryData = row.summary_data || {};
+                const npft = toNum(summaryData.gprofit_percent || 0) - toNum(summaryData.tcos_percent || 0);
+                
+                chartData.push([
+                    formatDate(row.snapshot_date),
+                    toNum(summaryData.l30_sales),
+                    toNum(summaryData.l30_orders),
+                    toNum(summaryData.gprofit_percent),
+                    npft
+                ]);
+            });
+
+            console.log('Chart data prepared:', chartData);
+
+            // Calculate min/max for dynamic axis scaling
+            let minSales = Infinity, maxSales = -Infinity;
+            let minOrders = Infinity, maxOrders = -Infinity;
+            let minGprofit = Infinity, maxGprofit = -Infinity;
+            let minNPFT = Infinity, maxNPFT = -Infinity;
+
+            // Skip header row (index 0)
+            for (let i = 1; i < chartData.length; i++) {
+                const row = chartData[i];
+                const sales = row[1];
+                const orders = row[2];
+                const gprofit = row[3];
+                const npft = row[4];
+
+                if (sales < minSales) minSales = sales;
+                if (sales > maxSales) maxSales = sales;
+                if (orders < minOrders) minOrders = orders;
+                if (orders > maxOrders) maxOrders = orders;
+                if (gprofit < minGprofit) minGprofit = gprofit;
+                if (gprofit > maxGprofit) maxGprofit = gprofit;
+                if (npft < minNPFT) minNPFT = npft;
+                if (npft > maxNPFT) maxNPFT = npft;
+            }
+
+            // Calculate combined min/max for left axis (Sales & Orders)
+            const leftMin = Math.min(minSales, minOrders);
+            const leftMax = Math.max(maxSales, maxOrders);
+            const leftRange = leftMax - leftMin;
+            const leftAxisMin = Math.max(0, leftMin - (leftRange * 0.15)); // 15% buffer below
+            const leftAxisMax = leftMax + (leftRange * 0.15); // 15% buffer above
+
+            // Calculate combined min/max for right axis (Percentages)
+            const rightMin = Math.min(minGprofit, minNPFT);
+            const rightMax = Math.max(maxGprofit, maxNPFT);
+            const rightRange = rightMax - rightMin;
+            const rightAxisMin = Math.max(0, rightMin - (rightRange * 0.15)); // 15% buffer below
+            const rightAxisMax = rightMax + (rightRange * 0.15); // 15% buffer above
+
+            console.log('Left Axis Range:', leftAxisMin, '-', leftAxisMax);
+            console.log('Right Axis Range:', rightAxisMin, '-', rightAxisMax);
+
+            // Load Google Charts and draw the chart
+            google.charts.load('current', { packages: ['corechart', 'line'] });
+            google.charts.setOnLoadCallback(() => {
+                const dataTable = google.visualization.arrayToDataTable(chartData);
+
+                const options = {
+                    title: `${channelName} - Historical Trends (Last ${data.length} Days)`,
+                    titleTextStyle: {
+                        fontSize: 18,
+                        bold: true,
+                        color: '#333333'
+                    },
+                    curveType: 'none',
+                    legend: { 
+                        position: 'bottom',
+                        textStyle: { fontSize: 12 },
+                        alignment: 'center'
+                    },
+                    interpolateNulls: false,
+                    hAxis: {
+                        title: 'Date',
+                        titleTextStyle: { fontSize: 13, bold: true, color: '#333' },
+                        slantedText: true,
+                        slantedTextAngle: 45,
+                        textStyle: { fontSize: 11, color: '#333', bold: true },
+                        gridlines: { 
+                            color: '#e0e0e0',
+                            count: -1
+                        },
+                        minorGridlines: { 
+                            color: '#f5f5f5',
+                            count: 2
+                        },
+                        baselineColor: '#999',
+                        showTextEvery: 1
+                    },
+                    series: {
+                        0: { 
+                            color: '#1e88e5',
+                            lineWidth: 3,
+                            pointSize: 6,
+                            pointShape: 'circle',
+                            targetAxisIndex: 0,
+                            visibleInLegend: true
+                        },
+                        1: { 
+                            color: '#ff9800',
+                            lineWidth: 3,
+                            pointSize: 6,
+                            pointShape: 'circle',
+                            targetAxisIndex: 0,
+                            visibleInLegend: true
+                        },
+                        2: { 
+                            color: '#e53935',
+                            lineWidth: 3,
+                            pointSize: 6,
+                            pointShape: 'circle',
+                            targetAxisIndex: 1,
+                            visibleInLegend: true
+                        },
+                        3: { 
+                            color: '#43a047',
+                            lineWidth: 3,
+                            pointSize: 6,
+                            pointShape: 'circle',
+                            targetAxisIndex: 1,
+                            visibleInLegend: true
+                        }
+                    },
+                    vAxes: {
+                        0: { 
+                            title: 'Sales & Orders',
+                            titleTextStyle: { 
+                                color: '#1e88e5', 
+                                fontSize: 14, 
+                                bold: true 
+                            },
+                            textStyle: { 
+                                color: '#000000', 
+                                fontSize: 14,
+                                bold: true 
+                            },
+                            gridlines: { 
+                                color: '#d0d0d0',
+                                count: 6
+                            },
+                            format: 'short',
+                            viewWindow: { 
+                                min: leftAxisMin,
+                                max: leftAxisMax
+                            }
+                        },
+                        1: { 
+                            title: 'Profit % (Gprofit% & NPFT%)',
+                            titleTextStyle: { 
+                                color: '#e53935', 
+                                fontSize: 14, 
+                                bold: true 
+                            },
+                            textStyle: { 
+                                color: '#000000', 
+                                fontSize: 14,
+                                bold: true 
+                            },
+                            gridlines: { 
+                                color: '#d0d0d0',
+                                count: 6
+                            },
+                            format: 'short',
+                            viewWindow: { 
+                                min: rightAxisMin,
+                                max: rightAxisMax
+                            }
+                        }
+                    },
+                    chartArea: {
+                        left: 120,
+                        top: 80,
+                        right: 150,
+                        bottom: 120,
+                        backgroundColor: '#ffffff'
+                    },
+                    backgroundColor: {
+                        fill: '#ffffff',
+                        strokeWidth: 1,
+                        stroke: '#cccccc'
+                    },
+                    tooltip: { 
+                        isHtml: false,
+                        textStyle: { fontSize: 11 },
+                        showColorCode: true
+                    },
+                    animation: {
+                        startup: true,
+                        duration: 800,
+                        easing: 'out'
+                    },
+                    pointsVisible: true
+                };
+
+                // Hide loading message and show chart
+                jq('#loadingGraphMessage').hide();
+                jq('#historyGraphContainer').show();
+                
+                // Show data info
+                if (data.length < 30) {
+                    jq('#dataPointsInfo').text(`Showing ${data.length} days of available historical data. Data accumulates daily.`);
+                    jq('#dataInfoMessage').removeClass('alert-warning').addClass('alert-info').show();
+                } else {
+                    jq('#dataInfoMessage').hide();
+                }
+
+                const chart = new google.visualization.LineChart(document.getElementById('historyGraphContainer'));
+                chart.draw(dataTable, options);
+                
+                // Redraw chart on window resize
+                window.addEventListener('resize', function() {
+                    chart.draw(dataTable, options);
+                });
+                
+                // Ensure chart is properly sized when modal is fully shown
+                setTimeout(function() {
+                    chart.draw(dataTable, options);
+                }, 300);
+            });
+        }
+
         function initializeDataTable() {
             try {
                 if (!jq('#channelTable').length) {
@@ -2024,13 +2335,14 @@
                                 'aliexpress': '/aliexpressAnalysis',
                             };
                             
-                            // Add history icon
+                            // Add history icon and graph icon
                             const historyIcon = `<i class="fas fa-chart-line history-icon" style="cursor:pointer;color:#4361ee;font-size:14px;margin-left:8px;" title="View Historical Data" data-channel="${data}"></i>`;
-                            
+                            const graphIcon = `<i class="fas fa-chart-area graph-icon" style="cursor:pointer;color:#28a745;font-size:14px;margin-left:8px;" title="View Historical Graph" data-channel="${data}"></i>`;
+
                             const routeUrl = routeMap[channelName];
                             return routeUrl
-                                ? `<div><a href="${routeUrl}" target="_blank" style="color: #007bff; text-decoration: underline;">${data}</a>${historyIcon}</div>`
-                                : `<div><span>${data}</span>${historyIcon}</div>`;
+                                ? `<div><a href="${routeUrl}" target="_blank" style="color: #007bff; text-decoration: underline;">${data}</a>${historyIcon}${graphIcon}</div>`
+                                : `<div><span>${data}</span>${historyIcon}${graphIcon}</div>`;
                         }
                     },
                     {
@@ -2448,9 +2760,18 @@
                 jq('#channelTable tbody').on('click', '.history-icon', function (e) {
                     e.preventDefault();
                     e.stopPropagation();
-                    
+
                     const channelName = jq(this).data('channel');
                     showChannelHistory(channelName);
+                });
+
+                // Add click handler for graph icon - show graph modal
+                jq('#channelTable tbody').on('click', '.graph-icon', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    const channelName = jq(this).data('channel');
+                    showChannelHistoryGraph(channelName);
                 });
 
 
