@@ -314,15 +314,37 @@ class SyncTikTokApiData extends Command
 
         foreach ($analytics as $analytic) {
             try {
-                $productId = $analytic['product_id'] ?? null;
-                $sku = $analytic['sku'] ?? null;
+                // Extract product_id from various possible fields
+                $productId = $analytic['product_id'] 
+                    ?? $analytic['id'] 
+                    ?? $analytic['productId']
+                    ?? $analytic['product']['id'] ?? null;
+                
+                // Extract SKU if available
+                $sku = $analytic['sku'] 
+                    ?? $analytic['seller_sku']
+                    ?? $analytic['product']['sku'] ?? null;
                 
                 if (!$productId && !$sku) {
                     continue;
                 }
 
-                // Extract views
-                $views = $analytic['product_views'] ?? $analytic['views'] ?? 0;
+                // Extract views from various possible fields
+                $views = $analytic['product_views'] 
+                    ?? $analytic['views'] 
+                    ?? $analytic['total_views']
+                    ?? $analytic['view_count']
+                    ?? $analytic['page_views']
+                    ?? $analytic['metrics']['product_views'] 
+                    ?? $analytic['metrics']['views']
+                    ?? $analytic['metrics']['total_views']
+                    ?? $analytic['performance']['product_views']
+                    ?? $analytic['performance']['views']
+                    ?? $analytic['data']['product_views']
+                    ?? $analytic['data']['views'] ?? 0;
+                
+                // Ensure views is an integer
+                $views = (int) $views;
 
                 // Try to find by product_id first, then by SKU
                 $tiktokProduct = null;
