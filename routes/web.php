@@ -357,6 +357,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/update-checkbox', [ChannelMasterController::class, 'sendToGoogleSheet']);
     Route::get('/channels-master-data', [ChannelMasterController::class, 'getViewChannelData']);
     Route::get('/channel-master-history/{channel}', [ChannelMasterController::class, 'getChannelHistory']);
+    Route::get('/all-marketplace-master', [ChannelMasterController::class, 'allMarketplaceMaster'])->name('all.marketplace.master');
     // Route::get('/get-channel-sales-data', [ChannelMasterController::class, 'getChannelSalesData']);
     Route::get('/sales-trend-data', [ChannelMasterController::class, 'getSalesTrendData']);
     Route::get('/dashboard-metrics', [ChannelMasterController::class, 'getDashboardMetrics']);
@@ -517,6 +518,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/lost-gain-product-data', [VerificationAdjustmentController::class, 'getLostGainProductData']);
     Route::post('/lost-gain-update-ia', [VerificationAdjustmentController::class, 'updateIAStatus']);
     Route::post('/update-verified-stock', [VerificationAdjustmentController::class, 'updateVerifiedStock']);
+    Route::post('/save-remark', [VerificationAdjustmentController::class, 'saveRemark']);
     Route::get('/get-verified-stock', [VerificationAdjustmentController::class, 'getVerifiedStock']);
     Route::post('/update-to-adjust', [ShopifyController::class, 'updateToAdjust']);
     Route::post('/update-approved-by-ih', [VerificationAdjustmentController::class, 'updateApprovedByIH']);

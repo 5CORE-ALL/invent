@@ -465,14 +465,23 @@ class VerificationAdjustmentController extends Controller
 
     public function updateVerifiedStock(Request $request)
     {
-        $validated = $request->validate([
+        // Make reason required only when is_approved is true
+        $rules = [
             'sku' => 'nullable|string',
             'verified_stock' => 'required|numeric',
             'on_hand' => 'nullable|numeric',
-            'reason' => 'required|string',
             'remarks' => 'nullable|string',
             'is_approved' => 'required|boolean',
-        ]);
+        ];
+        
+        // Only require reason when approving
+        if ($request->input('is_approved', false)) {
+            $rules['reason'] = 'required|string';
+        } else {
+            $rules['reason'] = 'nullable|string';
+        }
+        
+        $validated = $request->validate($rules);
 
         $lp = 0;
         $sku = trim($validated['sku']);
@@ -1284,6 +1293,61 @@ class VerificationAdjustmentController extends Controller
         }
 
         return response()->json(['success' => true]);
+    }
+
+    public function saveRemark(Request $request)
+    {
+        $validated = $request->validate([
+            'sku' => 'required|string',
+            'remark' => 'nullable|string',
+        ]);
+
+        // Normalize SKU to match data loading logic
+        $normalizeSku = function ($sku) {
+            $sku = strtoupper(trim($sku));
+            $sku = preg_replace('/\s+/u', ' ', $sku);         // collapse spaces
+            $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);  // remove hidden whitespace
+            return $sku;
+        };
+        $normalizedSku = $normalizeSku($validated['sku']);
+        $remark = $validated['remark'] ?? '';
+
+        try {
+            DB::beginTransaction();
+
+            // Create a new inventory record with the remark and current timestamp
+            $record = new Inventory();
+            $record->sku = $normalizedSku;
+            $record->remarks = $remark;
+            $record->created_at = Carbon::now('America/New_York');
+            $record->updated_at = Carbon::now('America/New_York');
+            $record->save();
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Remark saved successfully',
+                'data' => [
+                    'sku' => $record->sku,
+                    'remarks' => $record->remarks,
+                    'created_at' => $record->created_at->format('Y-m-d H:i:s'),
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            
+            Log::error('Failed to save remark', [
+                'sku' => $normalizedSku,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to save remark: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     public function getVerifiedStockActivityLog(Request $request)
