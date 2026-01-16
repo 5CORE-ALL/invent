@@ -3263,34 +3263,49 @@
                             let approvedAtFormatted = '-';
                             if (approvedAt) {
                                 const dateObj = new Date(approvedAt);
-                                const day = dateObj.getUTCDate().toString().padStart(2, '0');
-                                const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", 
-                                                    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-                                const month = monthNames[dateObj.getUTCMonth()];
-                                const year = dateObj.getUTCFullYear();
+                                // Validate the date
+                                if (!isNaN(dateObj.getTime())) {
+                                    const day = dateObj.getUTCDate().toString().padStart(2, '0');
+                                    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+                                                        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                                    const month = monthNames[dateObj.getUTCMonth()];
+                                    const year = dateObj.getUTCFullYear();
 
-                                let hours = dateObj.getUTCHours();
-                                const minutes = dateObj.getUTCMinutes().toString().padStart(2, '0');
-                                const ampm = hours >= 12 ? 'PM' : 'AM';
-                                hours = hours % 12;
-                                hours = hours ? hours : 12; // 0 becomes 12
+                                    let hours = dateObj.getUTCHours();
+                                    const minutes = dateObj.getUTCMinutes().toString().padStart(2, '0');
+                                    const ampm = hours >= 12 ? 'PM' : 'AM';
+                                    hours = hours % 12;
+                                    hours = hours ? hours : 12; // 0 becomes 12
 
-                                approvedAtFormatted = `${day} ${month} ${year}<br><small>${hours}:${minutes} ${ampm}</small>`;
-
+                                    approvedAtFormatted = `${day} ${month} ${year}<br><small>${hours}:${minutes} ${ampm}</small>`;
+                                } else {
+                                    console.warn('Invalid approved_at date:', approvedAt);
+                                }
                             }
 
                             if (!isNaN(index)) {
                                 filteredData[index].APPROVED = !!isApproved;
                                 filteredData[index].APPROVED_BY = isApproved ? approvedBy : '-';
+                                // Store both the raw date and formatted version
                                 filteredData[index].APPROVED_AT = isApproved ? approvedAt : '-';
+                                filteredData[index].APPROVED_AT_FORMATTED = isApproved ? approvedAtFormatted : '-';
                                 filteredData[index].TO_ADJUST = toAdjust;
                                 filteredData[index].ADJUSTED_QTY = isApproved ? toAdjust : 0;
                                 filteredData[index].LOSS_GAIN = isApproved ? lossGain : 0;
                             }
 
+                            // Always update the UI elements, especially for approved_at
                             $row.find('.approved-by').text(isApproved ? approvedBy : '-');
-
-                            $row.find('.approved-at').html(isApproved ? approvedAtFormatted : '-');
+                            
+                            // Update approved_at - use formatted version if available, otherwise use raw
+                            if (isApproved && approvedAtFormatted !== '-') {
+                                $row.find('.approved-at').html(approvedAtFormatted);
+                            } else if (isApproved && approvedAt) {
+                                // Fallback: if formatting failed but we have a date, try to display it
+                                $row.find('.approved-at').html(approvedAt);
+                            } else {
+                                $row.find('.approved-at').html('-');
+                            }
 
                             $row.find('.adjusted-qty').text(isApproved ? toAdjust : '-');
                             $row.find('.loss-gain').text(isApproved ? Math.trunc(lossGain) : '0');
@@ -3311,20 +3326,20 @@
                             showNotification(alertType, message);
                             
                             // After successful approval, automatically uncheck the checkbox
+                            // But keep the approved_at and approved_by visible to show when it was last approved
                             if (isApproved) {
                                 setTimeout(() => {
                                     $checkbox.prop('checked', false);
-                                    // Update the data model to reflect unchecked state
+                                    // Update the data model - keep approved_at and approved_by, but mark as unchecked
                                     if (!isNaN(index)) {
-                                        filteredData[index].APPROVED = false;
-                                        filteredData[index].APPROVED_BY = '-';
-                                        filteredData[index].APPROVED_AT = '-';
+                                        filteredData[index].APPROVED = false; // Checkbox is unchecked
+                                        // Keep APPROVED_BY and APPROVED_AT to show last approval info
+                                        // These were already set above, so they remain
                                         filteredData[index].ADJUSTED_QTY = 0;
                                         filteredData[index].LOSS_GAIN = 0;
                                     }
-                                    // Update UI elements
-                                    $row.find('.approved-by').text('-');
-                                    $row.find('.approved-at').html('-');
+                                    // Update UI elements - clear adjusted qty and loss gain, but keep approved info
+                                    // The approved-by and approved-at are already set above and will remain visible
                                     $row.find('.adjusted-qty').text('-');
                                     $row.find('.loss-gain').text('0');
                                     
