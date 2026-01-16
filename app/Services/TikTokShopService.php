@@ -543,6 +543,19 @@ class TikTokShopService
             
             $this->output('info', 'getProductViews: Attempting to fetch view data for ' . count($products) . ' products...');
             
+            // Debug: Log first product structure to see what fields are available
+            if (!empty($products[0])) {
+                $sampleProduct = $products[0];
+                $sampleKeys = array_keys($sampleProduct);
+                $this->output('info', 'Sample product keys: ' . implode(', ', array_slice($sampleKeys, 0, 20)) . (count($sampleKeys) > 20 ? '...' : ''));
+                Log::debug('TikTok product sample structure', [
+                    'keys' => $sampleKeys,
+                    'has_data' => isset($sampleProduct['data']),
+                    'has_metrics' => isset($sampleProduct['metrics']),
+                    'has_performance' => isset($sampleProduct['performance']),
+                ]);
+            }
+            
             $viewsData = [];
             $productIds = [];
             
@@ -586,6 +599,8 @@ class TikTokShopService
                 }
             }
             
+            $this->output('info', 'Extracted ' . count($viewsData) . ' products with views from product list data');
+            
             // If we didn't find views in product data, try fetching detailed product info
             if (empty($viewsData) && !empty($productIds)) {
                 $this->output('info', 'Views not found in product list, trying to fetch detailed product data...');
@@ -600,11 +615,14 @@ class TikTokShopService
                     $shopInfo = $this->getShopInfo();
                     if ($shopInfo && isset($shopInfo['shops'][0]['cipher'])) {
                         $this->shopCipher = $shopInfo['shops'][0]['cipher'];
+                        $this->output('info', '✓ Shop cipher retrieved');
+                    } else {
+                        $this->output('warn', 'Could not retrieve shop cipher from shop info');
                     }
                 }
                 
                 if ($this->shopCipher) {
-                    $this->output('info', 'Trying direct API call to analytics endpoint...');
+                    $this->output('info', 'Trying direct API call to analytics endpoint with ' . count($productIds) . ' product IDs...');
                     $viewsData = $this->fetchViewsDirectApi($productIds, $products);
                 } else {
                     $this->output('warn', 'Shop cipher not available, skipping direct API call');
@@ -708,6 +726,60 @@ class TikTokShopService
             $startTime = Carbon::now()->subDays(30)->timestamp;
             $endTime = Carbon::now()->timestamp;
             
+            // First, try using the library's Analytics method (might work with proper error handling)
+            $this->output('info', 'Attempting to use library Analytics method...');
+            try {
+                $analyticsResponse = $this->getProductAnalytics($startTime, $endTime, array_slice($productIds, 0, 50));
+                if ($analyticsResponse && !isset($analyticsResponse['code'])) {
+                    $performanceList = $analyticsResponse['data']['product_performance_list'] 
+                        ?? $analyticsResponse['data']['products'] 
+                        ?? $analyticsResponse['product_performance_list']
+                        ?? $analyticsResponse['products']
+                        ?? $analyticsResponse['data'] ?? [];
+                    
+                    if (!empty($performanceList) && is_array($performanceList)) {
+                        foreach ($performanceList as $item) {
+                            $productId = $item['product_id'] ?? $item['id'] ?? null;
+                            $views = $item['product_views'] 
+                                ?? $item['views'] 
+                                ?? $item['total_views']
+                                ?? $item['view_count']
+                                ?? $item['page_views']
+                                ?? $item['metrics']['product_views']
+                                ?? $item['metrics']['views'] ?? null;
+                            
+                            if ($productId && $views !== null) {
+                                $product = collect($products)->first(function($p) use ($productId) {
+                                    return ($p['id'] ?? $p['product_id'] ?? null) == $productId;
+                                });
+                                
+                                $sku = $product['seller_sku'] 
+                                    ?? $product['sku'] 
+                                    ?? ($product['skus'][0]['seller_sku'] ?? $product['skus'][0]['sku'] ?? null) ?? null;
+                                
+                                $viewsData[] = [
+                                    'product_id' => (string)$productId,
+                                    'sku' => $sku,
+                                    'views' => (int)$views,
+                                    'product_views' => (int)$views,
+                                ];
+                            }
+                        }
+                        
+                        if (!empty($viewsData)) {
+                            $this->output('info', "✓ Successfully fetched views using library Analytics method");
+                            return $viewsData;
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                $this->output('info', 'Library Analytics method failed: ' . $e->getMessage());
+            }
+            
+            // If library method failed, try direct HTTP calls
+            $this->output('info', 'Trying direct HTTP calls to TikTok API...');
+            $batches = array_chunk($productIds, 50);
+            
             foreach ($batches as $batchIndex => $batch) {
                 $this->output('info', "Trying direct API call for batch " . ($batchIndex + 1) . " (" . count($batch) . " products)...");
                 
@@ -726,6 +798,7 @@ class TikTokShopService
                             
                             foreach ($endpoints as $endpoint) {
                                 $url = $baseUrl . $endpoint;
+                                $this->output('info', "  Trying: {$url}");
                                 
                                 $body = [
                                     'shop_cipher' => $this->shopCipher,
@@ -739,8 +812,16 @@ class TikTokShopService
                                     'Content-Type' => 'application/json',
                                 ])->post($url, $body);
                                 
+                                $status = $response->status();
+                                $this->output('info', "  Response status: {$status}");
+                                
                                 if ($response->successful()) {
                                     $data = $response->json();
+                                    
+                                    // Log response structure for debugging
+                                    if (isset($data['code'])) {
+                                        $this->output('info', "  API Response code: {$data['code']}, message: " . ($data['message'] ?? 'N/A'));
+                                    }
                                     
                                     // Check various response structures
                                     $performanceList = $data['data']['product_performance_list'] 
@@ -750,6 +831,7 @@ class TikTokShopService
                                         ?? $data['data'] ?? [];
                                     
                                     if (!empty($performanceList) && is_array($performanceList)) {
+                                        $this->output('info', "  Found " . count($performanceList) . " performance records");
                                         foreach ($performanceList as $item) {
                                             $productId = $item['product_id'] ?? $item['id'] ?? null;
                                             $views = $item['product_views'] 
@@ -784,12 +866,15 @@ class TikTokShopService
                                             return $viewsData; // Success, return immediately
                                         }
                                     }
-                                } elseif ($response->status() == 403 || $response->status() == 400) {
-                                    // API version not supported, try next version
-                                    continue;
+                                } elseif ($status == 403) {
+                                    $this->output('info', "  Access forbidden (403) - API version {$apiVersion} may not be available");
+                                } elseif ($status == 400) {
+                                    $errorData = $response->json();
+                                    $this->output('info', "  Bad request (400): " . ($errorData['message'] ?? 'Unknown error'));
                                 }
                             }
                         } catch (\Exception $e) {
+                            $this->output('info', "  Exception: " . $e->getMessage());
                             // Try next endpoint/version
                             continue;
                         }
