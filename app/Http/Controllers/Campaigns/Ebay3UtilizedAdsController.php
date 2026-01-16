@@ -18,7 +18,7 @@ use Exception;
 class Ebay3UtilizedAdsController extends Controller
 {
     /**
-     * Get eBay2 access token
+     * Get Ebay3 access token
      */
     private function getEbay3AccessToken()
     {
@@ -184,7 +184,7 @@ class Ebay3UtilizedAdsController extends Controller
     }
 
     /**
-     * Update keyword bids for eBay2 campaigns (for automated command)
+     * Update keyword bids for Ebay3 campaigns (for automated command)
      */
     public function updateAutoKeywordsBidDynamic(array $campaignIds, array $newBids)
     {
@@ -202,7 +202,7 @@ class Ebay3UtilizedAdsController extends Controller
         $accessToken = $this->getEbay3AccessToken();
         if (!$accessToken) {
             return response()->json([
-                'message' => 'Failed to retrieve eBay2 access token',
+                'message' => 'Failed to retrieve Ebay3 access token',
                 'status' => 500
             ]);
         }
@@ -400,7 +400,7 @@ class Ebay3UtilizedAdsController extends Controller
         ]);
     }
     /**
-     * Update keyword bids for eBay2 campaigns (for frontend requests)
+     * Update keyword bids for Ebay3 campaigns (for frontend requests)
      */
     public function updateKeywordsBidDynamic(Request $request)
     {
@@ -787,6 +787,7 @@ class Ebay3UtilizedAdsController extends Controller
             if (!isset($campaignMap[$mapKey])) {
                 $price = $ebay->ebay_price ?? 0;
                 $ebayL30 = $ebay->ebay_l30 ?? 0;
+                $views = $ebay->views ?? 0;
                 
                 // Track eBay SKU (if has eBay data with price > 0 or campaign)
                 if (($ebay && $price > 0) || $hasCampaign) {
@@ -807,6 +808,7 @@ class Ebay3UtilizedAdsController extends Controller
                     'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
                     'price' => $price,
                     'ebay_l30' => $ebayL30,
+                    'views' => (int)$views,
                     'l7_spend' => 0,
                     'l7_cpc' => 0,
                     'l1_spend' => 0,
@@ -932,15 +934,18 @@ class Ebay3UtilizedAdsController extends Controller
             // Try to get price and ebay_l30 from EbayMetric using campaign name as SKU
             $price = 0;
             $ebayL30 = 0;
+            $views = 0;
             if ($ebay) {
                 $price = $ebay->ebay_price ?? 0;
                 $ebayL30 = $ebay->ebay_l30 ?? 0;
+                $views = $ebay->views ?? 0;
             } else {
                 // Try to find by campaign name
                 $ebayMetricByName = Ebay3Metric::where('sku', $campaignName)->first();
                 if ($ebayMetricByName) {
                     $price = $ebayMetricByName->ebay_price ?? 0;
                     $ebayL30 = $ebayMetricByName->ebay_l30 ?? 0;
+                    $views = $ebayMetricByName->views ?? 0;
                 }
             }
 
@@ -963,6 +968,7 @@ class Ebay3UtilizedAdsController extends Controller
                 'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
                 'price' => $price,
                 'ebay_l30' => $ebayL30,
+                'views' => (int)$views,
                 'l7_spend' => 0,
                 'l7_cpc' => 0,
                 'l1_spend' => 0,
@@ -1802,8 +1808,8 @@ class Ebay3UtilizedAdsController extends Controller
     }
 
     /**
-     * Calculate and save SBID to last_sbid column for eBay2 campaigns
-     * This matches the frontend SBID calculation logic from ebay2-utilized.blade.php
+     * Calculate and save SBID to last_sbid column for Ebay3 campaigns
+     * This matches the frontend SBID calculation logic from Ebay3-utilized.blade.php
      */
     private function calculateAndSaveSBID($result)
     {
@@ -1996,7 +2002,7 @@ class Ebay3UtilizedAdsController extends Controller
         }
     }
 
-    public function saveEbay2SbidM(Request $request)
+    public function saveEbay3SbidM(Request $request)
     {
         try {
             $campaignId = $request->input('campaign_id');
@@ -2096,7 +2102,7 @@ class Ebay3UtilizedAdsController extends Controller
     /**
      * Save SBID M for multiple eBay campaigns (bulk update)
      */
-    public function saveEbay2SbidMBulk(Request $request)
+    public function saveEbay3SbidMBulk(Request $request)
     {
         try {
             $campaignIds = $request->input('campaign_ids', []);
@@ -2246,7 +2252,7 @@ class Ebay3UtilizedAdsController extends Controller
     /**
      * Clear SBID M for multiple eBay campaigns (bulk clear)
      */
-    public function clearEbay2SbidMBulk(Request $request)
+    public function clearEbay3SbidMBulk(Request $request)
     {
         try {
             $campaignIds = $request->input('campaign_ids', []);
