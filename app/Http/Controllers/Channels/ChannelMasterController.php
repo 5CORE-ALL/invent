@@ -5014,8 +5014,9 @@ class ChannelMasterController extends Controller
     public function getChannelHistory($channel)
     {
         try {
+            // Use California/Pacific timezone for date calculations
             $history = \App\Models\ChannelMasterSummary::where('channel', $channel)
-                ->where('snapshot_date', '>=', now()->subDays(30)->toDateString())
+                ->where('snapshot_date', '>=', now('America/Los_Angeles')->subDays(30)->toDateString())
                 ->orderBy('snapshot_date', 'desc')
                 ->get();
             
@@ -5039,7 +5040,8 @@ class ChannelMasterController extends Controller
     private function saveChannelDailySummaries($channelData)
     {
         try {
-            $today = now()->toDateString();
+            // Use California/Pacific timezone for date storage
+            $today = now('America/Los_Angeles')->toDateString();
             
             foreach ($channelData as $row) {
                 $channelName = strtolower(str_replace([' ', '-', '&', '/'], '', trim($row['Channel '] ?? '')));
