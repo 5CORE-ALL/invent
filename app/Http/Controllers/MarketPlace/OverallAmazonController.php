@@ -1534,27 +1534,56 @@ class OverallAmazonController extends Controller
         $adUpdates  = $marketplaceData ? $marketplaceData->ad_updates : 0;   
 
         // Fetch Amazon SP Campaign Reports for L30 (KW campaigns - NOT PT)
-        $amazonSpCampaignReportsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+        // Use EXACT same logic as AmazonCampaignReportsController::amazonKwAdsView() line 46-57
+        // Group ONLY by campaignName and use MAX(spend) to avoid double-counting duplicate entries
+        $amazonSpCampaignReportsL30 = DB::table('amazon_sp_campaign_reports')
+            ->selectRaw('
+                campaignName,
+                MAX(spend) as spend,
+                SUM(clicks) as clicks,
+                SUM(sales30d) as sales30d,
+                MAX(costPerClick) as costPerClick,
+                MAX(campaignStatus) as campaignStatus
+            ')
+            ->where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L30')
-            ->where(function ($q) use ($skus) {
-                foreach ($skus as $sku) {
-                    $q->orWhere('campaignName', 'NOT LIKE', '%' . $sku . '% PT')
-                      ->orWhere('campaignName', 'NOT LIKE', '%' . $sku . '% pt');
-                }
-            })
+            ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'") // Exclude PT and FBA campaigns
+            ->groupBy('campaignName')
             ->get();
 
         // Fetch Amazon SP Campaign Reports for L30 (PT campaigns)
-        $amazonSpCampaignReportsPtL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+        // Group ONLY by campaignName and use MAX(spend) to avoid double-counting duplicate entries
+        $amazonSpCampaignReportsPtL30 = DB::table('amazon_sp_campaign_reports')
+            ->selectRaw('
+                campaignName,
+                MAX(spend) as spend,
+                SUM(clicks) as clicks,
+                SUM(sales30d) as sales30d,
+                MAX(costPerClick) as costPerClick,
+                MAX(campaignStatus) as campaignStatus
+            ')
+            ->where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L30')
+            ->groupBy('campaignName')
             ->get();
 
         // Fetch Amazon SB Campaign Reports for L30 (HL campaigns)
-        $amazonHlL30 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+        // Use EXACT same logic as AmazonCampaignReportsController::amazonHlAdsView() line 891-901
+        // Group ONLY by campaignName and use MAX(cost) to avoid double-counting duplicate entries
+        $amazonHlL30 = DB::table('amazon_sb_campaign_reports')
+            ->selectRaw('
+                campaignName,
+                MAX(cost) as cost,
+                SUM(clicks) as clicks,
+                SUM(sales) as sales,
+                SUM(purchases) as purchases,
+                SUM(impressions) as impressions,
+                MAX(campaignStatus) as campaignStatus,
+                MAX(campaignBudgetAmount) as campaignBudgetAmount
+            ')
+            ->where('ad_type', 'SPONSORED_BRANDS')
             ->where('report_date_range', 'L30')
-            ->where(function ($q) use ($skus) {
-                foreach ($skus as $sku) $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
-            })
+            ->groupBy('campaignName')
             ->get();
 
         $parentSkuCounts = $productMasters
@@ -2024,9 +2053,31 @@ class OverallAmazonController extends Controller
             }
         }
 
+        // Calculate campaign totals using EXACT same logic as KW/PT/HL Ads pages
+        // This avoids double-counting campaigns that match multiple SKUs
+        // Sum ALL KW campaigns (already filtered to exclude PT/FBA)
+        $total_kw_spend = $amazonSpCampaignReportsL30->sum('spend');
+        
+        // Sum PT campaigns (filter by PT pattern)
+        $total_pt_spend = $amazonSpCampaignReportsPtL30
+            ->filter(function ($item) {
+                $cleanName = strtoupper(trim($item->campaignName));
+                // Only count campaigns ending with PT or PT.
+                return preg_match('/(PT\.?$|FBA$)/', $cleanName);
+            })
+            ->sum('spend');
+        
+        // Sum HL campaigns
+        $total_hl_spend = $amazonHlL30->sum('cost');
+
         return response()->json([
             'message' => 'Data fetched successfully',
             'data' => $finalResult,
+            'campaign_totals' => [
+                'kw_spend_L30' => $total_kw_spend,
+                'pt_spend_L30' => $total_pt_spend,
+                'hl_spend_L30' => $total_hl_spend,
+            ],
             'status' => 200,
         ]);
     }
@@ -2815,7 +2866,10 @@ class OverallAmazonController extends Controller
             // Auto-save daily summary in background (non-blocking)
             $this->saveDailySummaryIfNeeded($data['data'] ?? []);
 
-            return response()->json($data['data'] ?? []);
+            return response()->json([
+                'data' => $data['data'] ?? [],
+                'campaign_totals' => $data['campaign_totals'] ?? []
+            ]);
         } catch (\Exception $e) {
             Log::error('Error fetching Amazon data for Tabulator: ' . $e->getMessage());
             return response()->json(['error' => 'Failed to fetch data'], 500);

@@ -222,6 +222,11 @@
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-amazon-inv-badge" style="color: black; font-weight: bold;">INV: 0</span>
+                        
+                        <!-- Ad Spend Breakdown -->
+                        <span class="badge bg-dark fs-6 p-2" id="kw-spend-badge" style="color: white; font-weight: bold;">KW Ads: $0</span>
+                        <span class="badge bg-secondary fs-6 p-2" id="hl-spend-badge" style="color: white; font-weight: bold;">HL Ads: $0</span>
+                        <span class="badge bg-dark fs-6 p-2" id="pt-spend-badge" style="color: white; font-weight: bold;">PT Ads: $0</span>
                     </div>
                 </div>
             </div>
@@ -1387,6 +1392,12 @@
                     loadSkuMetricsData(currentSku, days);
                 }
             });
+            let campaignTotals = {
+                kw_spend_L30: 0,
+                pt_spend_L30: 0,
+                hl_spend_L30: 0
+            };
+
             table = new Tabulator("#amazon-table", {
                 ajaxURL: "/amazon-data-json",
                 ajaxSorting: false,
@@ -1399,6 +1410,14 @@
                     column: "CVR_L30",
                     dir: "asc"
                 }],
+                ajaxResponse: function(url, params, response) {
+                    // Extract campaign totals from response
+                    if (response.campaign_totals) {
+                        campaignTotals = response.campaign_totals;
+                    }
+                    // Return only the data array to Tabulator
+                    return response.data || response;
+                },
                 rowFormatter: function(row) {
                     const data = row.getData();
                     if (data.is_parent_summary === true) {
@@ -2673,7 +2692,6 @@
             // Update summary badges for INV > 0
             function updateSummary() {
                 const data = table.getData("active");
-                let totalSpendL30 = 0;
                 let totalPftAmt = 0;
                 let totalSalesAmt = 0;
                 let totalLpAmt = 0;
@@ -2689,11 +2707,15 @@
                 data.forEach(row => {
                     if (!row['is_parent_summary'] && parseFloat(row['INV']) > 0) {
                         totalSkuCount++;
-                        totalSpendL30 += parseFloat(row['AD_Spend_L30'] || 0);
+                        // DO NOT sum AD_Spend_L30 from rows - causes double-counting
+                        // Will use campaign totals instead (calculated after loop)
                         totalPftAmt += parseFloat(row['Total_pft'] || 0);
                         totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
                         totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * parseFloat(row['A_L30'] || 0);
                         totalAmazonInv += parseFloat(row['INV'] || 0);
+                        
+                        // Ad Spend Breakdown - DO NOT sum from rows as it causes double-counting
+                        // We'll use the campaign totals from the backend instead (calculated below)
                         
                         const aL30 = parseFloat(row['A_L30'] || 0);
                         totalAmazonL30 += aL30;
@@ -2750,6 +2772,9 @@
                 // Update Prc > LMP count
                 $('#prc-gt-lmp-count').text(prcGtLmpCount.toLocaleString());
                 
+                // Calculate Total Spend L30 from campaign totals (avoid double-counting)
+                const totalSpendL30 = (campaignTotals.kw_spend_L30 || 0) + (campaignTotals.pt_spend_L30 || 0) + (campaignTotals.hl_spend_L30 || 0);
+                
                 // Calculate TCOS% = (Total Spend L30 / Total Sales) * 100
                 const tcosPercent = totalSalesAmt > 0 ? ((totalSpendL30 / totalSalesAmt) * 100) : 0;
                 
@@ -2780,6 +2805,12 @@
                 // AVG PFT% = GPFT% - TACOS% (Net Profit % - after ads)
                 const avgPft = avgGpft - tacosPercent;
                 $('#avg-pft-badge').text('PFT: ' + avgPft.toFixed(1) + '%');
+                
+                // Update Ad Spend Breakdown Badges
+                // Use campaign totals from backend to avoid double-counting
+                $('#kw-spend-badge').text('KW Ads: $' + Math.round(campaignTotals.kw_spend_L30 || 0));
+                $('#hl-spend-badge').text('HL Ads: $' + Math.round(campaignTotals.hl_spend_L30 || 0));
+                $('#pt-spend-badge').text('PT Ads: $' + Math.round(campaignTotals.pt_spend_L30 || 0));
             }
 
             // Build Column Visibility Dropdown
