@@ -2711,6 +2711,11 @@
                             style="cursor: pointer; margin-left: 8px; font-size: 14px;"></i>`;
                     }
                     
+                    // Shopify link icon for non-parent rows
+                    const shopifyDomain = '{{ env("SHOPIFY_STORE_URL") }}';
+                    const shopifyInventoryUrl = shopifyDomain ? `https://${shopifyDomain}/admin/products/inventory?query=${encodeURIComponent(item.SKU || '')}` : '#';
+                    const shopifyLinkIcon = !isParentRow ? `<a href="${shopifyInventoryUrl}" target="_blank" class="shopify-link-icon" title="View in Shopify" style="margin-left: 8px; color: #28a745; text-decoration: none;"><i class="fas fa-external-link-alt"></i></a>` : '';
+                    
                     if (isParentRow) {
                         $skuCell.html(`<strong>${sku}</strong> ${copyButton} ${eyeButton}<input type="hidden" class="sku-hidden" value="${item.SKU || ''}" />`);
                     } else {
@@ -2727,10 +2732,11 @@
                                 </div>
                                 ${copyButton}
                                 ${eyeButton}
+                                ${shopifyLinkIcon}
                                 <input type="hidden" class="sku-hidden" value="${item.SKU || ''}" />
                             `);
                         } else {
-                            $skuCell.html(`${sku} ${copyButton} ${eyeButton}<input type="hidden" class="sku-hidden" value="${item.SKU || ''}" />`);
+                            $skuCell.html(`${sku} ${copyButton} ${eyeButton}${shopifyLinkIcon}<input type="hidden" class="sku-hidden" value="${item.SKU || ''}" />`);
                         }
                     }
                     $row.append($skuCell);
