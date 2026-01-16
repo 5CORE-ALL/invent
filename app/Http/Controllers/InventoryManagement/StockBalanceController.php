@@ -568,7 +568,16 @@ class StockBalanceController extends Controller
 
             $inv = $shopify->inv ?? 0;
             $l30 = $shopify->quantity ?? 0;
-            $dil = $inv != 0 ? ($l30 / $inv) : 0;
+            // Calculate DIL following verification-adjustment pattern:
+            // If INV > 0 and L30 === 0, then DIL = 0
+            // Otherwise, if INV !== 0, then DIL = L30 / INV
+            if ($inv > 0 && $l30 === 0) {
+                $dil = 0;
+            } else if ($inv != 0) {
+                $dil = $l30 / $inv;
+            } else {
+                $dil = 0;
+            }
 
             return [
                 'IMAGE_URL' => $shopify->image_src ?? null,

@@ -315,12 +315,41 @@
             padding: 1rem;
         }
 
+        /* Sortable column styles */
+        .sortable {
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+        }
+
+        .sortable:hover {
+            background-color: #1a56b7 !important;
+        }
+
+        .sort-icon {
+            font-size: 12px;
+            margin-left: 5px;
+            opacity: 0.7;
+        }
+
+        .sort-asc .sort-icon::after {
+            content: ' ↑';
+            opacity: 1;
+            font-weight: bold;
+        }
+
+        .sort-desc .sort-icon::after {
+            content: ' ↓';
+            opacity: 1;
+            font-weight: bold;
+        }
+
     </style>
 @endsection
 
 @section('content')
     @include('layouts.shared/page-title', [
-        'page_title' => 'Stock Balance Inventory',
+        'page_title' => 'Stock Balance/TRF',
         'sub_title' => 'Stock Balance',
     ])
 
@@ -412,6 +441,22 @@
                         </div>
                     </div>
 
+                    <!-- Parent and SKU Filters (Outside Table) -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <label for="filterParent" class="form-label fw-bold">Filter by Parent</label>
+                                    <input type="text" id="filterParent" class="form-control" placeholder="Enter Parent to filter">
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="filterSKU" class="form-label fw-bold">Filter by SKU</label>
+                                    <input type="text" id="filterSKU" class="form-control" placeholder="Enter SKU to filter">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Two Column Layout -->
                     <div class="row">
                         <!-- Left Column: Inventory Table (50%) -->
@@ -420,12 +465,12 @@
                                 <table id="inventoryDataTable" class="table dt-responsive nowrap w-100">
                                     <thead>
                                         <tr>
-                                            <th>IMG</th>
-                                            <th>PARENT</th>
-                                            <th>SKU</th>
-                                            <th>INV</th>
-                                            <th>SOLD</th>
-                                            <th>DIL%</th>
+                                            <th class="sortable" data-column="img">IMG</th>
+                                            <th class="sortable" data-column="parent">PARENT <span class="sort-icon">↕</span></th>
+                                            <th class="sortable" data-column="sku">SKU <span class="sort-icon">↕</span></th>
+                                            <th class="sortable" data-column="inv">INV <span class="sort-icon">↕</span></th>
+                                            <th class="sortable" data-column="sold">SOLD <span class="sort-icon">↕</span></th>
+                                            <th class="sortable" data-column="dil">DIL% <span class="sort-icon">↕</span></th>
                                         </tr>
                                     </thead>
                                     <tbody id="inventory-data-table-body">
@@ -747,6 +792,10 @@
                 let isNavigationActive = false;
                 let filteredInventoryData = [];
 
+                // Sorting System
+                let currentSortColumn = null;
+                let currentSortDirection = null; // 'asc' or 'desc'
+
                 // Function to get DIL color based on value
                 function getDilColor(value) {
                     const percent = parseFloat(value) * 100;
@@ -773,6 +822,8 @@
                                 inventoryDataLoaded = true;
                                 // Initialize parent navigation
                                 initPlaybackControls();
+                                // Set up sorting handlers (in case DOM wasn't ready earlier)
+                                setupSorting();
                                 renderInventoryTable(inventoryData);
                             }
                         },
@@ -783,15 +834,101 @@
                     });
                 }
 
+                // Sort data function
+                function sortData(data, column, direction) {
+                    if (!column) return data;
+                    
+                    const sorted = [...data].sort((a, b) => {
+                        let aValue, bValue;
+                        
+                        switch(column) {
+                            case 'img':
+                                // Sort by SKU since images don't have sortable values
+                                aValue = (a.SKU || '').toLowerCase();
+                                bValue = (b.SKU || '').toLowerCase();
+                                return direction === 'asc' 
+                                    ? aValue.localeCompare(bValue)
+                                    : bValue.localeCompare(aValue);
+                            
+                            case 'parent':
+                                aValue = (a.Parent || '').toLowerCase();
+                                bValue = (b.Parent || '').toLowerCase();
+                                return direction === 'asc' 
+                                    ? aValue.localeCompare(bValue)
+                                    : bValue.localeCompare(aValue);
+                            
+                            case 'sku':
+                                aValue = (a.SKU || '').toLowerCase();
+                                bValue = (b.SKU || '').toLowerCase();
+                                return direction === 'asc' 
+                                    ? aValue.localeCompare(bValue)
+                                    : bValue.localeCompare(aValue);
+                            
+                            case 'inv':
+                                aValue = parseFloat(a.INV) || 0;
+                                bValue = parseFloat(b.INV) || 0;
+                                return direction === 'asc' ? aValue - bValue : bValue - aValue;
+                            
+                            case 'sold':
+                                aValue = parseFloat(a.SOLD) || 0;
+                                bValue = parseFloat(b.SOLD) || 0;
+                                return direction === 'asc' ? aValue - bValue : bValue - aValue;
+                            
+                            case 'dil':
+                                aValue = parseFloat(a.DIL) || 0;
+                                bValue = parseFloat(b.DIL) || 0;
+                                return direction === 'asc' ? aValue - bValue : bValue - aValue;
+                            
+                            default:
+                                return 0;
+                        }
+                    });
+                    
+                    return sorted;
+                }
+
                 // Render inventory table
                 function renderInventoryTable(data) {
                     const tbody = document.getElementById('inventory-data-table-body');
                     tbody.innerHTML = '';
 
+                    // Get filter values
+                    const filterParent = ($('#filterParent').val() || '').toLowerCase().trim();
+                    const filterSKU = ($('#filterSKU').val() || '').toLowerCase().trim();
+
+                    // Filter out rows with "parent" in SKU string (case-insensitive)
+                    let filteredData = data.filter(item => {
+                        const sku = (item.SKU || '').toLowerCase();
+                        return !sku.includes('parent');
+                    });
+
+                    // Apply Parent and SKU filters
+                    if (filterParent || filterSKU) {
+                        filteredData = filteredData.filter(item => {
+                            const itemParent = (item.Parent || '').toLowerCase();
+                            const itemSKU = (item.SKU || '').toLowerCase();
+                            const matchesParent = !filterParent || itemParent.includes(filterParent);
+                            const matchesSKU = !filterSKU || itemSKU.includes(filterSKU);
+                            return matchesParent && matchesSKU;
+                        });
+                    }
+
                     // Use filtered data if navigation is active, otherwise use all data
-                    const dataToRender = isNavigationActive && filteredInventoryData.length > 0 
-                        ? filteredInventoryData 
-                        : data;
+                    let dataToRender = isNavigationActive && filteredInventoryData.length > 0 
+                        ? filteredInventoryData.filter(item => {
+                            const sku = (item.SKU || '').toLowerCase();
+                            const itemParent = (item.Parent || '').toLowerCase();
+                            const itemSKU = (item.SKU || '').toLowerCase();
+                            const matchesParent = !filterParent || itemParent.includes(filterParent);
+                            const matchesSKU = !filterSKU || itemSKU.includes(filterSKU);
+                            return !sku.includes('parent') && matchesParent && matchesSKU;
+                        })
+                        : filteredData;
+
+                    // Apply sorting if a column is selected
+                    if (currentSortColumn && currentSortDirection) {
+                        dataToRender = sortData(dataToRender, currentSortColumn, currentSortDirection);
+                    }
 
                     if (dataToRender.length === 0) {
                         tbody.innerHTML = '<tr><td colspan="6" class="text-center">No records found</td></tr>';
@@ -898,6 +1035,38 @@
 
                         tbody.appendChild(row);
                     });
+
+                    // Update sort indicators in header
+                    updateSortIndicators();
+                }
+
+                // Update sort indicators in table header
+                function updateSortIndicators() {
+                    $('.sortable').removeClass('sort-asc sort-desc');
+                    if (currentSortColumn) {
+                        const sortableHeader = $(`.sortable[data-column="${currentSortColumn}"]`);
+                        sortableHeader.addClass(`sort-${currentSortDirection}`);
+                    }
+                }
+
+                // Set up sort click handlers
+                function setupSorting() {
+                    $('.sortable').off('click').on('click', function() {
+                        const column = $(this).data('column');
+                        
+                        // Toggle sort direction if clicking the same column, otherwise start with ascending
+                        if (currentSortColumn === column) {
+                            currentSortDirection = currentSortDirection === 'asc' ? 'desc' : 'asc';
+                        } else {
+                            currentSortColumn = column;
+                            currentSortDirection = 'asc';
+                        }
+                        
+                        // Re-render table with new sort
+                        if (inventoryDataLoaded) {
+                            renderInventoryTable(inventoryData);
+                        }
+                    });
                 }
 
                 // Parent Navigation Functions
@@ -962,8 +1131,11 @@
                 function showCurrentParent() {
                     if (!isNavigationActive || currentParentIndex === -1) return;
                     
-                    // Filter data to show only current parent's products
-                    filteredInventoryData = inventoryData.filter(item => item.Parent === uniqueParents[currentParentIndex]);
+                    // Filter data to show only current parent's products, excluding rows with "parent" in SKU
+                    filteredInventoryData = inventoryData.filter(item => {
+                        const sku = (item.SKU || '').toLowerCase();
+                        return item.Parent === uniqueParents[currentParentIndex] && !sku.includes('parent');
+                    });
                     
                     // Update UI
                     renderInventoryTable(inventoryData);
@@ -998,6 +1170,16 @@
 
                 // Load inventory data immediately on page load since table is visible by default
                 loadInventoryDataOnInit();
+
+                // Set up sorting handlers
+                setupSorting();
+
+                // Parent and SKU filter handlers
+                $('#filterParent, #filterSKU').on('input', debounce(function() {
+                    if (inventoryDataLoaded) {
+                        renderInventoryTable(inventoryData);
+                    }
+                }, 300));
 
                 $('#toggleInventoryBtn').on('click', function() {
                     const tableContainer = $('#inventoryTableContainer');
@@ -1045,6 +1227,8 @@
                                 inventoryDataLoaded = true;
                                 // Initialize parent navigation
                                 initPlaybackControls();
+                                // Set up sorting handlers (in case DOM wasn't ready earlier)
+                                setupSorting();
                                 renderInventoryTable(inventoryData);
                             }
                         },
