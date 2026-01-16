@@ -28,9 +28,10 @@ class UpdateAmazonChannelSummary extends Command
      */
     public function handle()
     {
-        $date = $this->argument('date') ?? now()->toDateString();
+        // Use California/Pacific timezone
+        $date = $this->argument('date') ?? now('America/Los_Angeles')->toDateString();
         
-        $this->info("Saving Amazon summary for {$date}...");
+        $this->info("Saving Amazon summary for {$date} (California Time)...");
         
         // Check if already exists
         $existing = AmazonChannelSummary::where('snapshot_date', $date)->first();
