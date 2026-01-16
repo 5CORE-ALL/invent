@@ -313,7 +313,7 @@
         }
 
         .sort-arrow {
-            display: inline-block;
+            display: none; /* Hide sort arrow icon but keep functionality */
             margin-left: 5px;
         }
 
@@ -1387,7 +1387,7 @@
                                     <tr>
                                     <th>Parent</th>
                                     <th>SKU</th>
-                                    <th>Verified Stock</th>
+                                    <th>Verified</th>
                                     <th>Adjusted</th>
                                     <th>
                                         <span id="activityLossGainTotal" class="badge bg-primary fs-4"> 0 </span><br>
@@ -1455,7 +1455,7 @@
                                     <th><input type="checkbox" id="selectAllHidden"></th>
                                     <!-- <th>Parent</th> -->
                                     <th>SKU</th>
-                                    <th>Verified Stock</th>
+                                    <th>Verified</th>
                                     <th>Adjusted</th>
                                     <th>Loss/Gain</th>
                                     <th>Reason</th>
@@ -1513,6 +1513,17 @@
                         <div class="d-flex align-items-center">
                             <label for="search-input" class="mr-2 mb-0">Search:</label>
                             <input type="text" id="search-input" class="form-control form-control-sm" placeholder="Search all columns" style="width: 180px;">
+                        </div>
+                        
+                        <!-- Bulk Action Dropdown -->
+                        <div class="d-flex align-items-center">
+                            <label for="bulk-action-select" class="mr-2 mb-0">Action:</label>
+                            <select id="bulk-action-select" class="form-control form-control-sm" style="width: auto; min-width: 180px;">
+                                <option value="">Select action...</option>
+                                <option value="mark-verified">Mark as Verified</option>
+                                <option value="mark-unverified">Mark as Unverified</option>
+                            </select>
+                            <button id="apply-bulk-action" class="btn btn-primary btn-sm ml-2" style="margin-left: 5px;">Apply</button>
                         </div>
                         
                         <!-- All Filters -->
@@ -1603,7 +1614,7 @@
                                     <th>
                                         <div class="metric-total" id="avltosell-total" style="font-weight: bold; color: #007bff;">0</div>
                                     </th> 
-                                    <th colspan="10"></th> <!-- Skipping columns: VERIFIED STOCK, TO ADJUST, REASON, APPR-WM, ADJ HISTORY, ADJ QTY, LOSS/GAIN, APPR-AT, VERIFIED, USER -->
+                                    <th colspan="10"></th> <!-- Skipping columns: VERIFIED, TO ADJUST, REASON, Accept, ADJ HISTORY (hidden), ADJ QTY, LOSS/GAIN, APPR-AT, VERIFIED, USER -->
                                     <th></th> <!-- REMARK -->
                                     <th class="last-approved-header"></th> <!-- LAST APPR-AT (hidden) -->
                                 </tr>
@@ -1682,7 +1693,7 @@
                                         style="vertical-align: middle; white-space: nowrap; padding-right: 4px; width: 130px;">
                                         <div class="d-flex flex-column align-items-center">
                                             <div class="d-flex align-items-center">
-                                                VERIFIED STOCK <span class="sort-arrow"></span>
+                                                VERIFIED <span class="sort-arrow"></span>
                                             </div>
                                         </div>
                                     </th>
@@ -1707,12 +1718,12 @@
                                     <th data-field="tacos" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center">
                                             <div class="d-flex align-items-center">
-                                                APPR-WM <span class="sort-arrow"></span>
+                                                Accept <span class="sort-arrow"></span>
                                             </div>
                                             <!-- <div class="metric-total" id="tacos-total">0%</div> -->
                                         </div>
                                     </th>
-                                    <th data-field="tacos" style="vertical-align: middle; white-space: nowrap;">
+                                    <th data-field="tacos" style="vertical-align: middle; white-space: nowrap; display: none;">
                                         <div class="d-flex flex-column align-items-center">
                                             <div class="d-flex align-items-center">
                                                 ADJ HISTORY<span class="sort-arrow"></span>
@@ -2460,7 +2471,9 @@
                                 const L30 = parseFloat(item.L30) || 0;
                                 let DIL = 0;
 
-                                if (INV !== 0) {
+                                if (INV > 0 && L30 === 0) {
+                                    DIL = 0;
+                                } else if (INV !== 0) {
                                     DIL = (L30 / INV).toFixed(2);
                                 }
                                 
@@ -2610,7 +2623,17 @@
                     // Define sku variable for use in rendering (no filtering applied)
                     const sku = item.SKU || '';
 
+                    // Hide rows that have "parent" in SKU string (case-insensitive)
+                    const skuUpper = String(sku).toUpperCase();
+                    const hasParentInSku = skuUpper.includes('PARENT');
+
                     const $row = $('<tr>');
+                    
+                    // Hide row by default if SKU contains "parent"
+                    if (hasParentInSku) {
+                        $row.css('display', 'none');
+                        $row.addClass('parent-sku-hidden');
+                    }
 
                     const isParentRow = !!item.is_parent || (item.SKU && String(item.SKU).toUpperCase().startsWith('PARENT'));
                     if (isParentRow) {
@@ -2628,7 +2651,7 @@
                             item.ON_HAND = totals.ON_HAND;
                             item.COMMITTED = totals.COMMITTED;
                             item.AVAILABLE_TO_SELL = totals.AVAILABLE_TO_SELL;
-                            item.DIL = totals.INV > 0 ? (totals.L30 / totals.INV).toFixed(2) : 0;
+                            item.DIL = (totals.INV > 0 && totals.L30 === 0) ? 0 : (totals.INV > 0 ? (totals.L30 / totals.INV).toFixed(2) : 0);
                         }
                     }
 
@@ -2802,7 +2825,7 @@
                     `));
 
                     const $historyIcon = $(`
-                        <td class="text-center">
+                        <td class="text-center" style="display: none;">
                             <i class="fas fa-external-link-alt text-primary view-history-icon" 
                             data-sku="${item.SKU}" 
                             title="View History" 
@@ -2912,6 +2935,77 @@
                 });
                 return selectedSkus;
             }
+
+            // Bulk action handler
+            $(document).on('click', '#apply-bulk-action', function() {
+                const action = $('#bulk-action-select').val();
+                if (!action) {
+                    showNotification('warning', 'Please select an action');
+                    return;
+                }
+
+                const selectedSkus = getSelectedRows();
+                if (selectedSkus.length === 0) {
+                    showNotification('warning', 'Please select at least one product');
+                    return;
+                }
+
+                const isVerified = action === 'mark-verified';
+
+                // Show loading notification
+                showNotification('info', `Processing ${selectedSkus.length} product(s)...`);
+
+                // Process each SKU
+                let processed = 0;
+                let failed = 0;
+                const total = selectedSkus.length;
+
+                function processNext(index) {
+                    if (index >= selectedSkus.length) {
+                        // All done
+                        if (failed === 0) {
+                            showNotification('success', `Successfully ${isVerified ? 'verified' : 'unverified'} ${processed} product(s)`);
+                        } else {
+                            showNotification('warning', `Processed ${processed} product(s), ${failed} failed`);
+                        }
+                        // Reload data to reflect changes
+                        loadData();
+                        // Reset dropdown
+                        $('#bulk-action-select').val('');
+                        // Uncheck all checkboxes
+                        $('.row-checkbox').prop('checked', false);
+                        $('#select-all-checkbox').prop('checked', false);
+                        return;
+                    }
+
+                    const sku = selectedSkus[index];
+                    
+                    $.ajax({
+                        url: '/update-verified-status',
+                        method: 'POST',
+                        data: {
+                            sku: sku,
+                            is_verified: isVerified,
+                            _token: $('meta[name="csrf-token"]').attr('content')
+                        },
+                        success: function(res) {
+                            if (res.success) {
+                                processed++;
+                            } else {
+                                failed++;
+                            }
+                            processNext(index + 1);
+                        },
+                        error: function(xhr) {
+                            failed++;
+                            processNext(index + 1);
+                        }
+                    });
+                }
+
+                // Start processing
+                processNext(0);
+            });
 
             // Verified status button click handler
             // Copy SKU to clipboard functionality (for main table)
@@ -3231,7 +3325,7 @@
                 $row.find('.to-adjust').text(toAdjust);
 
                 if (isApproved && $row.find('.verified-stock-input').val().trim() === '') {
-                    alert('Please enter Verified Stock before approving.');
+                    alert('Please enter Verified before approving.');
                     $checkbox.prop('checked', false);
                     return;
                 }
@@ -3388,7 +3482,7 @@
                                         <tr>
                                             <th>SKU</th>
                                             <th>On Hand</th>
-                                            <th>Verified Stock</th>
+                                            <th>Verified</th>
                                             <th>To Adjust</th>
                                             <th>Reason</th>
                                             <th>Approved By</th>
@@ -3530,7 +3624,7 @@
                                         <tr>
                                             <th>SKU</th>
                                             <th>On Hand</th>
-                                            <th>Verified Stock</th>
+                                            <th>Verified</th>
                                             <th>To Adjust</th>
                                             <th>Reason</th>
                                             <th>Approved By</th>
