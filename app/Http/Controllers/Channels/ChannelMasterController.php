@@ -1430,8 +1430,10 @@ class ChannelMasterController extends Controller
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
         $gRoi = $metrics->roi_percentage ?? 0;
-        $nRoi = $metrics->n_roi ?? $gRoi; // N ROI = G ROI when no ads
-        $nPft = $metrics->n_pft ?? $gProfitPct; // N PFT = G PFT when no ads
+        $tacosPercentage = $metrics->tacos_percentage ?? 0;
+        $nPft = $metrics->n_pft ?? $gProfitPct;
+        $nRoi = $metrics->n_roi ?? $gRoi;
+        $temuSpent = $metrics->kw_spent ?? 0; // Temu ad spend is stored in kw_spent field
         
         // Calculate growth
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
@@ -1439,6 +1441,9 @@ class ChannelMasterController extends Controller
         // L60 profit percentage
         $gprofitL60 = 0;
         $gRoiL60 = 0;
+
+        // Calculate Ads %
+        $adsPercentage = $l30Sales > 0 ? ($temuSpent / $l30Sales) * 100 : 0;
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Temu')->first();
@@ -1457,15 +1462,21 @@ class ChannelMasterController extends Controller
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
-            'N ROI'      => round($nRoi, 2),
+            'Total PFT'  => round($totalProfit, 2),
             'N PFT'      => round($nPft, 2) . '%',
+            'N ROI'      => round($nRoi, 2),
+            'KW Spent'   => round($temuSpent, 2), // Temu ad spend
+            'PMT Spent'  => 0, // Temu doesn't have separate PMT
+            'Total Ad Spend' => round($temuSpent, 2),
+            'Ads%'       => round($adsPercentage, 2) . '%',
+            'TACOS %'    => round($tacosPercentage, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
-            'Map' => $mapMissCounts['map'],
-            'Miss' => $mapMissCounts['miss'],
+            'Map'        => $mapMissCounts['map'],
+            'Miss'       => $mapMissCounts['miss'],
         ];
 
         return response()->json([
@@ -3907,8 +3918,10 @@ class ChannelMasterController extends Controller
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
         $gRoi = $metrics->roi_percentage ?? 0;
-        $nPftValue = $metrics->n_pft ?? $totalProfit;
+        $tacosPercentage = $metrics->tacos_percentage ?? 0;
+        $nPft = $metrics->n_pft ?? $gProfitPct;
         $nRoi = $metrics->n_roi ?? $gRoi;
+        $googleSpent = $metrics->kw_spent ?? 0; // Google Ads spend is stored in kw_spent field
         
         // Calculate growth
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
@@ -3917,8 +3930,8 @@ class ChannelMasterController extends Controller
         $gprofitL60 = 0;
         $gRoiL60 = 0;
 
-        // N PFT = (Sum of N PFT / Sum of L30 Sales) * 100
-        $nPft = $l30Sales > 0 ? ($nPftValue / $l30Sales) * 100 : 0;
+        // Calculate Ads %
+        $adsPercentage = $l30Sales > 0 ? ($googleSpent / $l30Sales) * 100 : 0;
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Shopify B2C')->first();
@@ -3940,15 +3953,21 @@ class ChannelMasterController extends Controller
             'gprofitL60' => round($gprofitL60, 1) . '%',
             'G Roi'      => round($gRoi, 1),
             'G RoiL60'   => round($gRoiL60, 1),
+            'Total PFT'  => round($totalProfit, 2),
             'N PFT'      => round($nPft, 1) . '%',
             'N ROI'      => round($nRoi, 1),
+            'KW Spent'   => round($googleSpent, 2), // Google Ads spend
+            'PMT Spent'  => 0, // Shopify B2C doesn't have PMT
+            'Total Ad Spend' => round($googleSpent, 2),
+            'Ads%'       => round($adsPercentage, 1) . '%',
+            'TACOS %'    => round($tacosPercentage, 1) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
             'Update'     => $channelData->update ?? 0,
             'cogs'       => round($totalCogs, 2),
-            'Map' => $mapMissCounts['map'],
-            'Miss' => $mapMissCounts['miss'],
+            'Map'        => $mapMissCounts['map'],
+            'Miss'       => $mapMissCounts['miss'],
         ];
 
         return response()->json([

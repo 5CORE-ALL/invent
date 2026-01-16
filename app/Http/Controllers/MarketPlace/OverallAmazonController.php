@@ -2055,19 +2055,23 @@ class OverallAmazonController extends Controller
 
         // Calculate campaign totals using EXACT same logic as KW/PT/HL Ads pages
         // This avoids double-counting campaigns that match multiple SKUs
-        // Sum ALL KW campaigns (already filtered to exclude PT/FBA)
+        
+        // Sum ALL KW campaigns (already filtered to exclude PT/FBA in query)
         $total_kw_spend = $amazonSpCampaignReportsL30->sum('spend');
         
-        // Sum PT campaigns (filter by PT pattern)
+        // Sum PT campaigns - Use EXACT same logic as AmazonCampaignReportsController::amazonPtAdsView() line 573-578
         $total_pt_spend = $amazonSpCampaignReportsPtL30
             ->filter(function ($item) {
                 $cleanName = strtoupper(trim($item->campaignName));
-                // Only count campaigns ending with PT or PT.
-                return preg_match('/(PT\.?$|FBA$)/', $cleanName);
+                // Include campaigns ending with PT or PT. (matching SQL: LIKE '%PT' OR LIKE '%PT.')
+                $endsWithPt = (str_ends_with($cleanName, 'PT') || str_ends_with($cleanName, 'PT.'));
+                // Exclude FBA PT campaigns (matching SQL: NOT LIKE '%FBA PT%')
+                $isFbaPt = (strpos($cleanName, 'FBA PT') !== false);
+                return $endsWithPt && !$isFbaPt;
             })
             ->sum('spend');
         
-        // Sum HL campaigns
+        // Sum HL campaigns (already grouped by campaignName with MAX cost)
         $total_hl_spend = $amazonHlL30->sum('cost');
 
         return response()->json([
@@ -2864,7 +2868,7 @@ class OverallAmazonController extends Controller
             $data = json_decode($response->getContent(), true);
 
             // Auto-save daily summary in background (non-blocking)
-            $this->saveDailySummaryIfNeeded($data['data'] ?? []);
+            $this->saveDailySummaryIfNeeded($data['data'] ?? [], $data['campaign_totals'] ?? []);
 
             return response()->json([
                 'data' => $data['data'] ?? [],
@@ -3261,7 +3265,7 @@ class OverallAmazonController extends Controller
      * Auto-save daily summary snapshot (only once per day)
      * Uses JSON storage - flexible and matches JavaScript exactly
      */
-    private function saveDailySummaryIfNeeded($products)
+    private function saveDailySummaryIfNeeded($products, $campaignTotals = [])
     {
         try {
             $today = now()->toDateString();
@@ -3339,6 +3343,12 @@ class OverallAmazonController extends Controller
             // Calculate GPFT % (average gross profit)
             $avgGpftPercent = $totalSalesAmt > 0 ? (($totalSalesAmt - $totalLpAmt) / $totalSalesAmt * 100) : 0;
             
+            // Get campaign spend totals from the corrected campaign data
+            $kwSpendL30 = floatval($campaignTotals['kw_spend_L30'] ?? 0);
+            $ptSpendL30 = floatval($campaignTotals['pt_spend_L30'] ?? 0);
+            $hlSpendL30 = floatval($campaignTotals['hl_spend_L30'] ?? 0);
+            $totalCampaignSpend = $kwSpendL30 + $ptSpendL30 + $hlSpendL30;
+            
             // Store ALL metrics in JSON (flexible!)
             $summaryData = [
                 // Counts
@@ -3348,10 +3358,16 @@ class OverallAmazonController extends Controller
                 'prc_gt_lmp_count' => $prcGtLmpCount,
                 
                 // Financial Totals
-                'total_spend_l30' => round($totalSpendL30, 2),
+                'total_spend_l30' => round($totalSpendL30, 2), // From product-level data
                 'total_pft_amt' => round($totalPftAmt, 2),
                 'total_sales_amt' => round($totalSalesAmt, 2),
                 'total_lp_amt' => round($totalLpAmt, 2),
+                
+                // Campaign Spend Breakdown (from corrected campaign totals)
+                'kw_spend_l30' => round($kwSpendL30, 2),
+                'pt_spend_l30' => round($ptSpendL30, 2),
+                'hl_spend_l30' => round($hlSpendL30, 2),
+                'total_campaign_spend' => round($totalCampaignSpend, 2),
                 
                 // Inventory
                 'total_amazon_inv' => round($totalAmazonInv, 2),

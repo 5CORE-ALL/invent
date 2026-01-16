@@ -740,12 +740,12 @@
                             </a>
                             <div class="collapse" id="activeChannelMasyer">
                                 <ul class="side-nav-third-level">
-                                    <li>
+                                    {{-- <li>
                                         <a href="{{ route('channel.master', ['channels', 'channel-masters']) }}"
                                             target="_blank">Active Channels</a>
-                                    </li>
+                                    </li> --}}
                                     <li>
-                                        <a href="{{ route('all.marketplace.master') }}">All Marketplace Master</a>
+                                        <a href="{{ route('all.marketplace.master') }}">Active Channels</a>
                                     </li>
                                     <!-- Start Nikhil Code -->
                                     {{-- <li>
