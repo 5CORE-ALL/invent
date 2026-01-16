@@ -3309,6 +3309,33 @@
                             let alertType = 'success';
                             
                             showNotification(alertType, message);
+                            
+                            // After successful approval, automatically uncheck the checkbox
+                            if (isApproved) {
+                                setTimeout(() => {
+                                    $checkbox.prop('checked', false);
+                                    // Update the data model to reflect unchecked state
+                                    if (!isNaN(index)) {
+                                        filteredData[index].APPROVED = false;
+                                        filteredData[index].APPROVED_BY = '-';
+                                        filteredData[index].APPROVED_AT = '-';
+                                        filteredData[index].ADJUSTED_QTY = 0;
+                                        filteredData[index].LOSS_GAIN = 0;
+                                    }
+                                    // Update UI elements
+                                    $row.find('.approved-by').text('-');
+                                    $row.find('.approved-at').html('-');
+                                    $row.find('.adjusted-qty').text('-');
+                                    $row.find('.loss-gain').text('0');
+                                    
+                                    // Recalculate total loss/gain
+                                    let totalLossGain = filteredData.reduce((sum, item) => {
+                                        const val = parseFloat(item.LOSS_GAIN);
+                                        return !isNaN(val) ? sum + val : sum;
+                                    }, 0);
+                                    $('#lossGainTotalText').text(`$ ${Math.trunc(totalLossGain)}`);
+                                }, 100); // Small delay to ensure message is displayed
+                            }
                         } else {
                             $checkbox.prop('checked', !isApproved);
                             showNotification('danger', res.message || 'Something went wrong.');
