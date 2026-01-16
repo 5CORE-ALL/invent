@@ -1699,6 +1699,11 @@
                                             REASON <span class="sort-arrow"></span>
                                         </div>
                                     </th>
+                                    <th data-field="remark" class="horizontal-header">
+                                        <div class="header-text remarks-input">
+                                            REMARK<span class="sort-arrow"></span>
+                                        </div>
+                                    </th>
                                     <th data-field="tacos" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center">
                                             <div class="d-flex align-items-center">
@@ -1759,11 +1764,6 @@
                                             <div class="d-flex align-items-center">
                                                 USER<span class="sort-arrow"></span>
                                             </div>
-                                        </div>
-                                    </th>
-                                    <th data-field="remark" class="horizontal-header">
-                                        <div class="header-text remarks-input">
-                                            REMARK<span class="sort-arrow"></span>
                                         </div>
                                     </th>
                                     <th data-field="ad cost/ pc" class="last-approved-header" style="vertical-align: middle; white-space: nowrap; width: 0; padding: 0; border: none; visibility: hidden;">
@@ -2481,6 +2481,7 @@
                                     VERIFIED_STOCK: item.verified_stock || '', // User input
                                     TO_ADJUST: item.to_adjust || '', // Auto-calculated
                                     REASON: item.reason || '', // Dropdown
+                                    REMARK: item.REMARKS || item.remarks || '', // Remark field
                                     APPROVED: item.APPROVED === true, // Checkbox state
                                     APPROVED_BY:  item.approved_by || '',
                                     IS_VERIFIED: (item.is_verified === true || item.is_verified === 1 || item.is_verified === '1' || item.IS_VERIFIED === 1 || item.IS_VERIFIED === true) ? 1 : 0, // Verified status from DB
@@ -2783,6 +2784,15 @@
                         </select>
                     `));
 
+                    // REMARK column - contains both hide checkbox and remarks input
+                    // Field should be blank (not showing latest remark) per requirement
+                    $row.append(`<td>
+                        <div class="d-flex align-items-center gap-2">
+                            <input type="checkbox" class="form-check-input hide-row-checkbox" data-sku="${item.SKU}" ${item.IS_HIDE ? 'checked' : ''} style="margin-right: 5px;">
+                            <input type="text" class="form-control remarks-input" data-sku="${item.SKU}" value="" style="flex: 1;" placeholder="Enter remark...">
+                        </div>
+                    </td>`);
+
                     $row.append($('<td>').html(`
                         <div class="d-flex flex-column align-items-center">
                             <input type="checkbox" class="form-check-input approve-checkbox" 
@@ -2831,14 +2841,6 @@
                         'vertical-align': 'middle'
                     }).html(verifiedByFirstName || '—');
                     $row.append($userCell);
-
-                    // REMARK column - contains both hide checkbox and remarks input
-                    $row.append(`<td>
-                        <div class="d-flex align-items-center gap-2">
-                            <input type="checkbox" class="form-check-input hide-row-checkbox" data-sku="${item.SKU}" ${item.IS_HIDE ? 'checked' : ''} style="margin-right: 5px;">
-                            <input type="text" class="form-control remarks-input" data-sku="${item.SKU}" value="${item.REMARK || ''}" style="flex: 1;">
-                        </div>
-                    </td>`);
 
                     // $row.append($('<td>').addClass('last-approved-at').text(item.LAST_APPROVED_AT || '-'));
                     $row.append($('<td>').addClass('last-approved-at').css({
@@ -3319,6 +3321,52 @@
                         showNotification('danger', 'Failed to update data. Please try again.');
                     }
                 });
+            });
+
+            // Save remark when user leaves the field (blur) or presses Enter
+            $(document).on('blur', '.remarks-input', function() {
+                const $input = $(this);
+                const sku = $input.data('sku');
+                const remark = $input.val().trim();
+                
+                if (!sku) {
+                    return;
+                }
+                
+                // Save remark
+                $.ajax({
+                    url: '/save-remark',
+                    method: 'POST',
+                    data: {
+                        sku: sku,
+                        remark: remark,
+                        _token: $('meta[name="csrf-token"]').attr('content')
+                    },
+                    success: function(res) {
+                        if (res.success) {
+                            // Clear the remark field after saving
+                            $input.val('');
+                            showNotification('success', 'Remark saved successfully');
+                        } else {
+                            showNotification('danger', res.message || 'Failed to save remark');
+                        }
+                    },
+                    error: function(xhr) {
+                        let errorMsg = 'Failed to save remark. Please try again.';
+                        if (xhr.responseJSON && xhr.responseJSON.message) {
+                            errorMsg = xhr.responseJSON.message;
+                        }
+                        showNotification('danger', errorMsg);
+                    }
+                });
+            });
+            
+            // Save remark when user presses Enter
+            $(document).on('keypress', '.remarks-input', function(e) {
+                if (e.which === 13) { // Enter key
+                    e.preventDefault();
+                    $(this).blur(); // Trigger blur event which will save the remark
+                }
             });
 
             // call after click history icon 
