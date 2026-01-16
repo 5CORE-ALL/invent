@@ -2070,7 +2070,7 @@
                                     {{-- <li>
                                         <a href="{{ route('ebay.views.data') }}">Ebay Views</a>
                                     </li> --}}
-                                    <li>
+                                    {{-- <li>
                                         <a data-bs-toggle="collapse" href="#ebayAcosSubmenu" aria-expanded="false"
                                             aria-controls="ebayAcosSubmenu">
                                             <span>Ebay ACOS Control</span>
@@ -2104,23 +2104,23 @@
                                                 </li>
                                             </ul>
                                         </div>
-                                    </li>
-                                    <li>
+                                    </li> --}}
+                                    {{-- <li>
                                         <a href="{{ route('ebay.pink.dil.ads') }}">Ebay Pink Dil Ads</a>
-                                    </li>
+                                    </li> --}}
                                     <li>
                                         <a href="{{ route('ebay.pmp.ads') }}">Ebay PMT Ads</a>
                                     </li>
-                                    <li>
+                                    {{-- <li>
                                         <a href="{{ route('ebay.keywords.ads') }}">Ebay Keywords Ads</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('ebay.running.ads') }}">Ebay Running Ads</a>
-                                    </li>
+                                    </li>--}}
                                     <li>
                                         <a href="{{ route('ebay.utilized') }}">Ebay Utilized's</a>
-                                    </li>
-                                    <li>
+                                    </li> 
+                                    {{-- <li>
                                         <a href="{{ route('ebay-over-uti') }}">Ebay OVER UTIL.</a>
                                     </li>
                                     <li>
@@ -2132,7 +2132,7 @@
                                     <li>
                                         <a href="{{ route('ebay.keywords.ads.less-than-twenty') }}">Ebay Ads <
                                                 $30</a>
-                                    </li>
+                                    </li> --}}
                                     <li>
                                         <a href="{{ route('ebay.missing.ads') }}">Ebay MISSING ADS</a>
                                     </li>

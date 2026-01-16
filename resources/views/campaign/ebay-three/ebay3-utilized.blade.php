@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Ebay 3 - Utilized', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Ebay3 - Utilized', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
@@ -144,7 +144,7 @@
             font-size: 1rem;
             color: #4b5563;
             padding: 5px;
-            height: 100px;
+            height: 90px;
         }
 
         .tabulator .tabulator-footer:hover {
@@ -203,20 +203,20 @@
 @endsection
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Ebay 3 - Utilized',
-        'sub_title' => 'Ebay 3 - Utilized',
+        'page_title' => 'Ebay3 - Utilized',
+        'sub_title' => 'Ebay3 - Utilized',
     ])
     <div class="row">
         <div class="col-12">
             <div class="card shadow-sm" style="border: 1px solid rgba(0, 0, 0, 0.05);">
-                <div class="card-body py-4">
-                    <div class="mb-4">
+                <div class="card-body py-3">
+                    <div class="mb-3">
                         <!-- Filters and Stats Section -->
                         <div class="card border-0 shadow-sm mb-4" style="border: 1px solid rgba(0, 0, 0, 0.05) !important;">
                             <div class="card-body p-4">
-                                <!-- Type Filter and Count Cards Row -->
-                                <div class="row g-4 align-items-end mb-3 pb-3 border-bottom">
-                                    <div class="col-md-3">
+                                <!-- Filters Row: Utilization Type, Status, Inventory, NRA, NRL, SBID M -->
+                                <div class="row g-3 align-items-end mb-3">
+                                    <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2"
                                             style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-filter me-1" style="color: #64748b;"></i>Utilization Type
@@ -227,180 +227,42 @@
                                             <option value="under">Under Utilized</option>
                                             <option value="correctly">Correctly Utilized</option>
                                         </select>
-                                </div>
-                                    <div class="col-md-9">
-                                        <label class="form-label fw-semibold mb-2 d-block"
-                                            style="color: #475569; font-size: 0.8125rem;">
-                                            <i class="fa-solid fa-chart-line me-1" style="color: #64748b;"></i>Statistics
-                                        </label>
-                                        <div class="d-flex gap-3 flex-wrap align-items-center">
-                                            <div class="badge-count-item"
-                                                style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Total
-                                                    Parent</span>
-                                                <span class="fw-bold" id="total-sku-count"
-                                                    style="font-size: 1.1rem;">0</span>
-                            </div>
-                                            <div class="badge-count-item ebay-sku-card" id="ebay-sku-card"
-                                                style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
-                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Ebay
-                                                    SKU</span>
-                                                <span class="fw-bold" id="ebay-sku-count"
-                                                    style="font-size: 1.1rem;">0</span>
-                                            </div>
-                                            <div class="badge-count-item total-campaign-card" id="total-campaign-card"
-                                                style="background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
-                                                <span
-                                                    style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Campaign</span>
-                                                <span class="fw-bold" id="total-campaign-count"
-                                                    style="font-size: 1.1rem;">0</span>
-                                        </div>
-                                            <div class="badge-count-item missing-campaign-card" id="missing-campaign-card"
-                                                style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
-                                                <span
-                                                    style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Missing</span>
-                                                <span class="fw-bold" id="missing-campaign-count"
-                                                    style="font-size: 1.1rem;">0</span>
-                                            </div>
-                                            <div class="badge-count-item nra-missing-card" id="nra-missing-card"
-                                                style="background: linear-gradient(135deg, #ffc107 0%, #ffb300 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
-                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">NRA
-                                                    MISSING</span>
-                                                <span class="fw-bold" id="nra-missing-count"
-                                                    style="font-size: 1.1rem;">0</span>
-                                        </div>
-                                            <div class="badge-count-item zero-inv-card" id="zero-inv-card"
-                                                style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
-                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Zero
-                                                    INV</span>
-                                                <span class="fw-bold" id="zero-inv-count"
-                                                    style="font-size: 1.1rem;">0</span>
-                                            </div>
-                                            <div class="badge-count-item nra-card" id="nra-card"
-                                                style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
-                                                <span
-                                                    style="font-size: 0.75rem; display: block; margin-bottom: 2px;">NRA</span>
-                                                <span class="fw-bold" id="nra-count" style="font-size: 1.1rem;">0</span>
-                                        </div>
-                                            <div class="badge-count-item nrl-missing-card" id="nrl-missing-card"
-                                                style="background: linear-gradient(135deg, #ffc107 0%, #ffb300 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
-                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">NRL
-                                                    MISSING</span>
-                                                <span class="fw-bold" id="nrl-missing-count"
-                                                    style="font-size: 1.1rem;">0</span>
-                                        </div>
-                                            <div class="badge-count-item nrl-card" id="nrl-card"
-                                                style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
-                                                <span
-                                                    style="font-size: 0.75rem; display: block; margin-bottom: 2px;">NRL</span>
-                                                <span class="fw-bold" id="nrl-count" style="font-size: 1.1rem;">0</span>
-                                        </div>
-                                            <div class="badge-count-item ra-card" id="ra-card"
-                                                style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
-                                                <span
-                                                    style="font-size: 0.75rem; display: block; margin-bottom: 2px;">RA</span>
-                                                <span class="fw-bold" id="ra-count" style="font-size: 1.1rem;">0</span>
                                     </div>
-                                            <div class="badge-count-item utilization-card" data-type="7ub"
-                                                style="background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
-                                                <span
-                                                    style="font-size: 0.75rem; display: block; margin-bottom: 2px;">7UB</span>
-                                                <span class="fw-bold" id="7ub-count" style="font-size: 1.1rem;">0</span>
-                                            </div>
-                                            <div class="badge-count-item utilization-card" data-type="7ub-1ub"
-                                                style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
-                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">7UB +
-                                                    1UB</span>
-                                                <span class="fw-bold" id="7ub-1ub-count"
-                                                    style="font-size: 1.1rem;">0</span>
-                                            </div>
-                                            <div class="badge-count-item"
-                                                style="background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">L30 CLICKS</span>
-                                                <span class="fw-bold" id="l30-total-clicks"
-                                                    style="font-size: 1.1rem;">0</span>
-                                </div>
-                                            <div class="badge-count-item"
-                                                style="background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">L30 SPEND</span>
-                                                <span class="fw-bold" id="l30-total-spend"
-                                                    style="font-size: 1.1rem;">0</span>
-                                </div>
-                                            <div class="badge-count-item"
-                                                style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">L30 AD SOLD</span>
-                                                <span class="fw-bold" id="l30-total-ad-sold"
-                                                    style="font-size: 1.1rem;">0</span>
-                                </div>
-                                            <div class="badge-count-item"
-                                                style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">AVG ACOS</span>
-                                                <span class="fw-bold" id="avg-acos"
-                                                    style="font-size: 1.1rem;">0</span>
-                                </div>
-                                            <div class="badge-count-item"
-                                                style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">AVG CVR</span>
-                                                <span class="fw-bold" id="avg-cvr"
-                                                    style="font-size: 1.1rem;">0</span>
-                                </div>
-                                </div>
-                            </div>
-                        </div>
-
-                                <!-- Search and Filter Controls Row -->
-                                <div class="row align-items-end">
-                            <div class="col-md-4">
-                                        <label class="form-label fw-semibold mb-2"
-                                            style="color: #475569; font-size: 0.8125rem;">
-                                            <i class="fa-solid fa-search me-1" style="color: #64748b;"></i>Search Campaign
-                                        </label>
-                                <div class="input-group">
-                                            <span class="input-group-text bg-white border-end-0"
-                                                style="border-color: #e2e8f0;">
-                                                <i class="fa-solid fa-search" style="color: #94a3b8;"></i>
-                                    </span>
-                                            <input type="text" id="global-search"
-                                                class="form-control form-control-md border-start-0"
-                                                placeholder="Search by campaign name or SKU..."
-                                                style="border-color: #e2e8f0;">
-                                </div>
-                            </div>
-                            <div class="col-md-2">
+                                    <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2"
                                             style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-toggle-on me-1" style="color: #64748b;"></i>Status
                                         </label>
-                                <select id="status-filter" class="form-select form-select-md">
-                                    <option value="">All Status</option>
-                                    <option value="RUNNING">Running</option>
-                                    <option value="PAUSED">Paused</option>
-                                    <option value="ENDED">Ended</option>
-                                </select>
-                            </div>
+                                        <select id="status-filter" class="form-select form-select-md">
+                                            <option value="">All Status</option>
+                                            <option value="RUNNING">Running</option>
+                                            <option value="PAUSED">Paused</option>
+                                            <option value="ENDED">Ended</option>
+                                        </select>
+                                    </div>
                                     <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2"
                                             style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-boxes me-1" style="color: #64748b;"></i>Inventory
                                         </label>
-                                <select id="inv-filter" class="form-select form-select-md">
-                                            <option value="" selected>All Inventory</option>
-                                    <option value="ALL">ALL</option>
-                                    <option value="INV_0">0 INV</option>
-                                    <option value="OTHERS">OTHERS</option>
-                                </select>
-                            </div>
+                                        <select id="inv-filter" class="form-select form-select-md">
+                                            <option value="">All Inventory</option>
+                                            <option value="ALL" selected>ALL</option>
+                                            <option value="INV_0">0 INV</option>
+                                            <option value="OTHERS">OTHERS</option>
+                                        </select>
+                                    </div>
                                     <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2"
                                             style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-tags me-1" style="color: #64748b;"></i>NRA
                                         </label>
-                                <select id="nra-filter" class="form-select form-select-md">
-                                    <option value="">All NRA</option>
-                                    <option value="NRA">NRA</option>
-                                    <option value="RA">RA</option>
-                                    <option value="LATER">LATER</option>
-                                </select>
+                                        <select id="nra-filter" class="form-select form-select-md">
+                                            <option value="">All NRA</option>
+                                            <option value="NRA">NRA</option>
+                                            <option value="RA">RA</option>
+                                            <option value="LATER">LATER</option>
+                                        </select>
                                     </div>
                                     <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2"
@@ -409,22 +271,255 @@
                                         </label>
                                         <select id="nrl-filter" class="form-select form-select-md">
                                             <option value="">All NRL</option>
-                                    <option value="NRL">NRL</option>
-                                    <option value="REQ">REQ</option>
-                                </select>
-                            </div>
-                                    <div class="col-md-4 d-flex gap-2 align-items-end mt-2">
+                                            <option value="NRL">NRL</option>
+                                            <option value="REQ">REQ</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label fw-semibold mb-2"
+                                            style="color: #475569; font-size: 0.8125rem;">
+                                            <i class="fa-solid fa-filter me-1" style="color: #64748b;"></i>SBID M
+                                        </label>
+                                        <select id="sbid-m-filter" class="form-select form-select-md">
+                                            <option value="">All</option>
+                                            <option value="blank">Blank</option>
+                                            <option value="data">Data</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <!-- Count Badges Row -->
+                                <div class="row pb-3 border-bottom">
+                                    <div class="col-12">
+                                        <label class="form-label fw-semibold mb-2 d-block"
+                                            style="color: #475569; font-size: 0.8125rem;">
+                                            <i class="fa-solid fa-chart-line me-1" style="color: #64748b;"></i>Statistics
+                                        </label>
+                                        <div class="d-flex gap-2 flex-wrap align-items-center">
+                                            <span class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">Total Parent SKU:</span>
+                                                <span class="fw-bold" id="total-sku-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item ebay-sku-card" id="ebay-sku-card"
+                                                style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">Ebay SKU:</span>
+                                                <span class="fw-bold" id="ebay-sku-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item total-campaign-card" id="total-campaign-card"
+                                                style="background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">Campaign:</span>
+                                                <span class="fw-bold" id="total-campaign-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item missing-campaign-card" id="missing-campaign-card"
+                                                style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">Missing:</span>
+                                                <span class="fw-bold" id="missing-campaign-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item nra-missing-card" id="nra-missing-card"
+                                                style="background: linear-gradient(135deg, #ffc107 0%, #ffb300 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">NRA MISSING:</span>
+                                                <span class="fw-bold" id="nra-missing-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item zero-inv-card" id="zero-inv-card"
+                                                style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">Zero INV:</span>
+                                                <span class="fw-bold" id="zero-inv-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item nra-card" id="nra-card"
+                                                style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">NRA:</span>
+                                                <span class="fw-bold" id="nra-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item nrl-missing-card" id="nrl-missing-card"
+                                                style="background: linear-gradient(135deg, #ffc107 0%, #ffb300 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">NRL MISSING:</span>
+                                                <span class="fw-bold" id="nrl-missing-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item nrl-card" id="nrl-card"
+                                                style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">NRL:</span>
+                                                <span class="fw-bold" id="nrl-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item ra-card" id="ra-card"
+                                                style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">RA:</span>
+                                                <span class="fw-bold" id="ra-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item utilization-card" data-type="7ub"
+                                                style="background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">7UB:</span>
+                                                <span class="fw-bold" id="7ub-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item utilization-card" data-type="7ub-1ub"
+                                                style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">7UB+1UB:</span>
+                                                <span class="fw-bold" id="7ub-1ub-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">L30 CLICKS:</span>
+                                                <span class="fw-bold" id="l30-total-clicks" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">L30 SPEND:</span>
+                                                <span class="fw-bold" id="l30-total-spend" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">L30 AD SOLD:</span>
+                                                <span class="fw-bold" id="l30-total-ad-sold" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">AVG ACOS:</span>
+                                                <span class="fw-bold" id="avg-acos" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">AVG CVR:</span>
+                                                <span class="fw-bold" id="avg-cvr" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Multi Range Filter Section -->
+                                <div class="row g-3 align-items-end pt-2">
+                                    <!-- 1UB% Filter -->
+                                    <div class="col-md-2">
+                                        <label class="form-label fw-semibold mb-2"
+                                            style="color: #475569; font-size: 0.8125rem;">
+                                            1UB% Range
+                                        </label>
+                                        <div class="d-flex gap-2">
+                                            <input type="number" id="range-filter-1ub-min"
+                                                class="form-control form-control-sm" placeholder="Min" step="0.01"
+                                                style="border-color: #e2e8f0;">
+                                            <input type="number" id="range-filter-1ub-max"
+                                                class="form-control form-control-sm" placeholder="Max" step="0.01"
+                                                style="border-color: #e2e8f0;">
+                                        </div>
+                                    </div>
+
+                                    <!-- 7UB% Filter -->
+                                    <div class="col-md-2">
+                                        <label class="form-label fw-semibold mb-2"
+                                            style="color: #475569; font-size: 0.8125rem;">
+                                            7UB% Range
+                                        </label>
+                                        <div class="d-flex gap-2">
+                                            <input type="number" id="range-filter-7ub-min"
+                                                class="form-control form-control-sm" placeholder="Min" step="0.01"
+                                                style="border-color: #e2e8f0;">
+                                            <input type="number" id="range-filter-7ub-max"
+                                                class="form-control form-control-sm" placeholder="Max" step="0.01"
+                                                style="border-color: #e2e8f0;">
+                                        </div>
+                                    </div>
+
+                                    <!-- LBid Filter -->
+                                    <div class="col-md-2">
+                                        <label class="form-label fw-semibold mb-2"
+                                            style="color: #475569; font-size: 0.8125rem;">
+                                            LBid Range
+                                        </label>
+                                        <div class="d-flex gap-2">
+                                            <input type="number" id="range-filter-lbid-min"
+                                                class="form-control form-control-sm" placeholder="Min" step="0.01"
+                                                style="border-color: #e2e8f0;">
+                                            <input type="number" id="range-filter-lbid-max"
+                                                class="form-control form-control-sm" placeholder="Max" step="0.01"
+                                                style="border-color: #e2e8f0;">
+                                        </div>
+                                    </div>
+
+                                    <!-- Acos Filter -->
+                                    <div class="col-md-2">
+                                        <label class="form-label fw-semibold mb-2"
+                                            style="color: #475569; font-size: 0.8125rem;">
+                                            Acos Range
+                                        </label>
+                                        <div class="d-flex gap-2">
+                                            <input type="number" id="range-filter-acos-min"
+                                                class="form-control form-control-sm" placeholder="Min" step="0.01"
+                                                style="border-color: #e2e8f0;">
+                                            <input type="number" id="range-filter-acos-max"
+                                                class="form-control form-control-sm" placeholder="Max" step="0.01"
+                                                style="border-color: #e2e8f0;">
+                                        </div>
+                                    </div>
+
+                                    <!-- Action Buttons -->
+                                    <div class="col-md-4 d-flex gap-2 align-items-end">
+                                        <button id="apply-all-range-filters-btn" class="btn btn-primary btn-sm flex-fill">
+                                            <i class="fa-solid fa-filter me-1"></i>
+                                            Apply All Filters
+                                        </button>
+                                        <button id="clear-all-range-filters-btn" class="btn btn-secondary btn-sm flex-fill">
+                                            <i class="fa-solid fa-times me-1"></i>
+                                            Clear All
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- INC/DEC SBID Section and Action Buttons -->
+                                <div class="row g-3 align-items-end pt-3 border-top">
+                                    <div class="col-md-2">
+                                        <label class="form-label fw-semibold mb-2"
+                                            style="color: #475569; font-size: 0.8125rem;">
+                                            <i class="fa-solid fa-calculator me-1" style="color: #64748b;"></i>INC/DEC
+                                            SBID
+                                        </label>
+                                        <div class="btn-group w-100" role="group">
+                                            <button type="button" id="inc-dec-btn"
+                                                class="btn btn-warning btn-sm dropdown-toggle" data-bs-toggle="dropdown"
+                                                aria-expanded="false">
+                                                <i class="fa-solid fa-plus-minus me-1"></i>
+                                                INC/DEC (By Value)
+                                            </button>
+                                            <ul class="dropdown-menu" id="inc-dec-dropdown">
+                                                <li><a class="dropdown-item" href="#" data-type="value">By
+                                                        Value</a></li>
+                                                <li><a class="dropdown-item" href="#" data-type="percentage">By
+                                                        Percentage</a></li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label fw-semibold mb-2"
+                                            style="color: #475569; font-size: 0.8125rem;">
+                                            <span id="inc-dec-label">Value/Percentage</span>
+                                        </label>
+                                        <input type="number" id="inc-dec-input" class="form-control form-control-md"
+                                            placeholder="Enter value (e.g., +0.5 or -0.5)" step="0.01"
+                                            style="border-color: #e2e8f0;">
+                                    </div>
+                                    <div class="col-md-2 d-flex gap-2 align-items-end">
+                                        <button id="apply-inc-dec-btn" class="btn btn-success btn-sm flex-fill">
+                                            <i class="fa-solid fa-check me-1"></i>
+                                            Apply
+                                        </button>
+                                        <button id="clear-inc-dec-btn" class="btn btn-secondary btn-sm flex-fill">
+                                            <i class="fa-solid fa-times me-1"></i>
+                                            Clear Input
+                                        </button>
+                                    </div>
+                                    <div class="col-md-2 d-flex align-items-end">
+                                        <button id="clear-sbid-m-btn" class="btn btn-danger btn-sm w-100">
+                                            <i class="fa-solid fa-trash me-1"></i>
+                                            Clear SBID M (Selected)
+                                        </button>
+                                    </div>
+                                    <div class="col-md-4 d-flex gap-2 align-items-end">
                                         <button id="apr-all-sbid-btn" class="btn btn-info btn-sm flex-fill d-none">
                                             <i class="fa-solid fa-check-double me-1"></i>
                                             APR ALL SBID
                                         </button>
-                                        <button id="bulk-update-sbid-m-btn" class="btn btn-warning btn-sm flex-fill d-none">
+                                        <button id="save-all-sbid-m-btn" class="btn btn-success btn-sm flex-fill d-none">
                                             <i class="fa-solid fa-save me-1"></i>
-                                            Bulk Update SBID M
-                                        </button>
-                                        <button id="export-data-btn" class="btn btn-success btn-sm">
-                                            <i class="fa-solid fa-download me-1"></i>
-                                            Export Data
+                                            SAVE ALL SBID M
                                         </button>
                                     </div>
                                 </div>
@@ -432,8 +527,34 @@
                         </div>
                     </div>
 
+                    <!-- Campaign Search - Just Above Table -->
+                    <div class="row mb-3">
+                        <div class="col-12">
+                            <div class="input-group">
+                                <span class="input-group-text bg-white border-end-0"
+                                    style="border-color: #e2e8f0;">
+                                    <i class="fa-solid fa-search" style="color: #94a3b8;"></i>
+                                </span>
+                                <input type="text" id="global-search"
+                                    class="form-control form-control-md border-start-0"
+                                    placeholder="Search by campaign name or SKU..."
+                                    style="border-color: #e2e8f0;">
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Table Section -->
                     <div id="budget-under-table"></div>
+
+                    <!-- Pagination Count Display -->
+                    <div class="mt-2 d-flex justify-content-between align-items-center">
+                        <div>
+                            <span id="pagination-count" class="badge badge-light"
+                                style="color: #475569; font-size: 0.875rem;">
+                                Showing 0 of 0 rows
+                            </span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -444,7 +565,8 @@
         aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-centered shadow-none">
             <div class="modal-content">
-                <div class="modal-header bg-primary text-white">
+                <div class="modal-header bg-primary text-white"
+                    style="border-top-left-radius: 8px; border-top-right-radius: 8px;">
                     <h5 class="modal-title fw-bold" id="utilizationChartModalLabel">
                         <i class="fa-solid fa-chart-line me-2"></i>
                         <span id="chart-title">Utilization Trend</span>
@@ -501,8 +623,29 @@
             let totalL30Sales = 0;
             let totalSkuCountFromBackend = 0; // Store total SKU count from backend
             let ebaySkuCountFromBackend = 0; // Store eBay SKU count from backend
-            let totalCampaignCountFromBackend = 0; // Store total campaign count from backend
-            let zeroInvCountFromBackend = 0; // Store zero INV count from backend
+
+            // Multi range filter variables - allows multiple filters simultaneously
+            let rangeFilters = {
+                '1ub': {
+                    min: null,
+                    max: null
+                },
+                '7ub': {
+                    min: null,
+                    max: null
+                },
+                'lbid': {
+                    min: null,
+                    max: null
+                },
+                'acos': {
+                    min: null,
+                    max: null
+                }
+            };
+
+            // INC/DEC SBID variables
+            let incDecType = 'value'; // 'value' or 'percentage'
 
             const getDilColor = (value) => {
                 const percent = parseFloat(value) * 100;
@@ -523,10 +666,11 @@
 
                 // Get filtered data (respects all filters except utilization type)
                 // We need to get all data and apply filters manually since utilization type filter is separate
-                    const allData = table.getData('all');
-                    let overCount = 0;
-                    let underCount = 0;
-                    let correctlyCount = 0;
+                // Use 'all' to get all data, then apply filters manually to match what's actually shown
+                const allData = table.getData('all');
+                let overCount = 0;
+                let underCount = 0;
+                let correctlyCount = 0;
                 let missingCount = 0;
                 let nraMissingCount = 0; // Count NRA missing (yellow dots)
                 let nrlMissingCount = 0; // Count NRL missing (yellow dots)
@@ -538,6 +682,7 @@
                 let validSkuCount = 0; // Count only valid SKUs (not parent, not empty)
                 let ub7Count = 0; // Count 7UB
                 let ub7Ub1Count = 0; // Count 7UB + 1UB
+                let ebaySkuCount = 0; // Count eBay SKUs (SKUs with campaigns) after filters
 
                 // Track processed SKUs to avoid counting duplicates
                 const processedSkusForNra = new Set(); // Track SKUs for NRA/RA counting
@@ -547,93 +692,29 @@
                 const processedSkusForNraMissing = new Set(); // Track SKUs for NRA missing counting
                 const processedSkusForNrlMissing = new Set(); // Track SKUs for NRL missing counting
                 const processedSkusForZeroInv = new Set(); // Track SKUs for zero INV counting
-                const processedSkusForOver = new Set(); // Track SKUs for over-utilized counting
-                const processedSkusForUnder = new Set(); // Track SKUs for under-utilized counting
-                const processedSkusForCorrectly = new Set(); // Track SKUs for correctly-utilized counting
-                const processedSkusForValid = new Set(); // Track SKUs for valid SKU counting
-                const processedSkusFor7Ub = new Set(); // Track SKUs for 7UB counting
-                const processedSkusFor7Ub1Ub = new Set(); // Track SKUs for 7UB+1UB counting
 
-                    allData.forEach(function(row) {
-                    // Count valid SKUs (only Parent SKUs, exclude empty SKUs)
+                allData.forEach(function(row) {
+                    // Count valid SKUs (exclude parent SKUs and empty SKUs)
                     const sku = row.sku || '';
-                    const isValidSku = sku && sku.toUpperCase().includes('PARENT');
+                    const isValidSku = sku && !sku.toUpperCase().includes('PARENT');
 
                     // Count zero/negative inventory (INV <= 0) - count BEFORE filters
-                    // This should count all zero INV SKUs regardless of current filter
+                    // This should count all zero INV SKUs regardless of current filter (including PARENT SKUs)
                     let inv = parseFloat(row.INV || 0);
-                    if (inv <= 0 && isValidSku && !processedSkusForZeroInv.has(sku)) {
+                    if (inv <= 0 && sku && !processedSkusForZeroInv.has(sku)) {
                         processedSkusForZeroInv.add(sku);
                         zeroInvCount++;
                     }
 
-                    // Count campaigns, missing, and NRA BEFORE filters - count all regardless of filters
-                    if (isValidSku) {
-                        // Count NRA only for valid SKUs and only once per SKU - BEFORE filters
-                        // RA will be calculated as Total - NRA later
-                        if (!processedSkusForNra.has(sku)) {
-                            processedSkusForNra.add(sku);
-                            // Count only NRA (explicitly marked as 'NRA')
-                            let rowNra = row.NR ? row.NR.trim() : "";
-                            if (rowNra === 'NRA') {
-                                nraCount++;
-                            }
-                            // Note: We don't increment raCount here - it will be calculated as Total - NRA
-                        }
-                        
-                        // Count NRL only for valid SKUs and only once per SKU - BEFORE filters
-                        if (!processedSkusForNrl.has(sku)) {
-                            processedSkusForNrl.add(sku);
-                            // Note: Empty/null NRL defaults to "REQ" in the display
-                            let rowNrl = row.NRL ? row.NRL.trim() : "";
-                            if (rowNrl === 'NRL') {
-                                nrlCount++;
-                            }
-                        }
-
-                        const hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row
-                            .campaign_id && row.campaignName);
-
-                        if (hasCampaign) {
-                            // Count campaign only once per SKU - BEFORE filters
-                            if (!processedSkusForCampaign.has(sku)) {
-                                processedSkusForCampaign.add(sku);
-                                totalCampaignCount++;
-                            }
-                        } else {
-                            // Count missing only once per SKU - BEFORE filters
-                            if (!processedSkusForMissing.has(sku)) {
-                                processedSkusForMissing.add(sku);
-                                // Check if this is a red dot (missing AND not yellow)
-                                let rowNrlForMissing = row.NRL ? row.NRL.trim() : "";
-                                let rowNraForMissing = row.NR ? row.NR.trim() : "";
-                                // Only count as missing (red dot) if neither NRL='NRL' nor NRA='NRA'
-                                let inv = parseFloat(row.INV || 0);
-                                if (rowNrlForMissing !== 'NRL' && rowNraForMissing !== 'NRA') {
-                                    // Count as missing (red dot) if INV > 0
-                                    if (inv > 0) {
-                                        missingCount++;
-                                    }
-                                } else {
-                                    // Count NRL missing (yellow dots) separately
-                                    if (rowNrlForMissing === 'NRL' && !processedSkusForNrlMissing.has(sku)) {
-                                        processedSkusForNrlMissing.add(sku);
-                                        nrlMissingCount++;
-                                    }
-                                    // Count NRA missing (yellow dots) separately
-                                    // If NRL='NRL', NRA should be 'NRA', so count it as NRA missing too
-                                    if (rowNraForMissing === 'NRA' && !processedSkusForNraMissing.has(sku)) {
-                                        processedSkusForNraMissing.add(sku);
-                                        nraMissingCount++;
-                                    } else if (rowNrlForMissing === 'NRL' && !processedSkusForNraMissing.has(sku)) {
-                                        // If NRL='NRL' but NRA is not 'NRA', still count as NRA missing
-                                        // because NRA should be 'NRA' when NRL is 'NRL'
-                                        processedSkusForNraMissing.add(sku);
-                                        nraMissingCount++;
-                                    }
-                                }
-                            }
-                        }
+                    // Count campaigns BEFORE filters - campaigns should be counted regardless of INV
+                    // This ensures PARENT SKUs with INV = 0 are still counted if they have campaigns
+                    // Count by campaign_id to avoid missing campaigns with duplicate SKUs or missing SKUs
+                    const hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row
+                        .campaign_id && row.campaignName);
+                    const campaignId = row.campaign_id || '';
+                    if (hasCampaign && campaignId && !processedSkusForCampaign.has(campaignId)) {
+                        processedSkusForCampaign.add(campaignId);
+                        totalCampaignCount++;
                     }
 
                     // Apply all filters except utilization type filter
@@ -653,7 +734,8 @@
                     // Inventory filter
                     let invFilterVal = $("#inv-filter").val();
                     if (!invFilterVal || invFilterVal === '') {
-                        // Default: show all (no filtering)
+                        // Default: exclude INV = 0 and negative
+                        if (inv <= 0) return;
                     } else if (invFilterVal === "ALL") {
                         // ALL option shows everything
                     } else if (invFilterVal === "INV_0") {
@@ -662,6 +744,32 @@
                     } else if (invFilterVal === "OTHERS") {
                         // Show only INV > 0
                         if (inv <= 0) return;
+                    }
+
+                    // Count NRA and RA for all SKUs (including PARENT SKUs) and only once per SKU (after filters)
+                    if (sku && !processedSkusForNra.has(sku)) {
+                        processedSkusForNra.add(sku);
+                        // Note: Empty/null NRA defaults to "RA" in the display
+                        let rowNra = row.NR ? row.NR.trim() : "";
+                        if (rowNra === 'NRA') {
+                            nraCount++;
+                        } else {
+                            // If NRA is empty, null, or "RA", it shows as "RA" by default
+                            raCount++;
+                        }
+                    }
+
+                    // Count NRL and REQ for all SKUs (including PARENT SKUs) and only once per SKU (after filters)
+                    if (sku && !processedSkusForNrl.has(sku)) {
+                        processedSkusForNrl.add(sku);
+                        // Note: Empty/null NRL defaults to "REQ" in the display
+                        let rowNrl = row.NRL ? row.NRL.trim() : "";
+                        if (rowNrl === 'NRL') {
+                            nrlCount++;
+                        } else {
+                            // If NRL is empty, null, or "REQ", it shows as "REQ" by default
+                            // REQ count is not tracked separately, only NRL
+                        }
                     }
 
                     // NRA filter
@@ -677,14 +785,6 @@
                         }
                     }
 
-                    // eBay SKU filter - show only SKUs that have campaign
-                    if (showEbaySkuOnly) {
-                        const hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row
-                            .campaign_id && row.campaignName);
-                        // Show if has campaign
-                        if (!hasCampaign) return;
-                    }
-
                     // NRL filter
                     let nrlFilterVal = $("#nrl-filter").val();
                     if (nrlFilterVal) {
@@ -698,13 +798,91 @@
                         }
                     }
 
+                    // SBID M filter
+                    let sbidMFilterVal = $("#sbid-m-filter").val();
+                    if (sbidMFilterVal && sbidMFilterVal !== '') {
+                        let rowSbidM = row.sbid_m;
+
+                        // Check if sbid_m is blank/null/empty/0
+                        let isBlank = false;
+
+                        // Check for null, undefined, or empty string
+                        if (rowSbidM === null || rowSbidM === undefined || rowSbidM === '') {
+                            isBlank = true;
+                        } else {
+                            // Convert to string and trim
+                            let strValue = String(rowSbidM).trim();
+
+                            // Check for string representations of zero/empty
+                            if (strValue === '' || strValue === '0' || strValue === '0.0' || strValue ===
+                                '0.00' || strValue === '0.000' || strValue === '-') {
+                                isBlank = true;
+                            } else {
+                                // Try parsing as number
+                                let numValue = parseFloat(strValue);
+                                if (isNaN(numValue) || numValue === 0 || numValue <= 0) {
+                                    isBlank = true;
+                                }
+                            }
+                        }
+
+                        // Apply filter
+                        if (sbidMFilterVal === 'blank' && !isBlank) {
+                            return; // Filter out non-blank values
+                        } else if (sbidMFilterVal === 'data' && isBlank) {
+                            return; // Filter out blank values
+                        }
+                    }
+
+                    // eBay SKU filter - show only SKUs that have campaign (PARENT SKUs don't have price)
+                    // Note: hasCampaign is already defined before filters, so we reuse it here
+                    if (showEbaySkuOnly) {
+                        // Show only if has campaign (price check removed for PARENT SKUs)
+                        if (!hasCampaign) return;
+                    }
+
+                    // Count eBay SKUs (SKUs with campaigns) after all filters are applied
+                    if (hasCampaign && isValidSku) {
+                        ebaySkuCount++;
+                    }
+
+                    // Count missing campaigns for all SKUs (including PARENT SKUs) after filters
+                    // Note: Campaigns are already counted before filters, so we only count missing here
+                    if (!hasCampaign && sku && !processedSkusForMissing.has(sku)) {
+                        processedSkusForMissing.add(sku);
+                        // Check if this is a red dot (missing AND not yellow)
+                        let rowNrlForMissing = row.NRL ? row.NRL.trim() : "";
+                        let rowNraForMissing = row.NR ? row.NR.trim() : "";
+                        // Only count as missing (red dot) if neither NRL='NRL' nor NRA='NRA'
+                        if (rowNrlForMissing !== 'NRL' && rowNraForMissing !== 'NRA') {
+                            missingCount++;
+                        } else {
+                            // Count NRL missing (yellow dots) separately
+                            if (rowNrlForMissing === 'NRL' && !processedSkusForNrlMissing.has(sku)) {
+                                processedSkusForNrlMissing.add(sku);
+                                nrlMissingCount++;
+                            }
+                            // Count NRA missing (yellow dots) separately
+                            // If NRL='NRL', NRA should be 'NRA', so count it as NRA missing too
+                            if (rowNraForMissing === 'NRA' && !processedSkusForNraMissing.has(sku)) {
+                                processedSkusForNraMissing.add(sku);
+                                nraMissingCount++;
+                            } else if (rowNrlForMissing === 'NRL' && !processedSkusForNraMissing.has(sku)) {
+                                // If NRL='NRL' but NRA is not 'NRA', still count as NRA missing
+                                // because NRA should be 'NRA' when NRL is 'NRL'
+                                processedSkusForNraMissing.add(sku);
+                                nraMissingCount++;
+                            }
+                        }
+                    }
+
                     // Count valid SKUs that pass all filters
                     if (isValidSku) {
                         validSkuCount++;
                     }
 
                     // Now calculate utilization and count - only for rows with campaigns
-                    const hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                    // Note: hasCampaign is already defined before filters, so we reuse it here
                     if (hasCampaign) {
                         let budget = parseFloat(row.campaignBudgetAmount) || 0;
                         let l7_spend = parseFloat(row.l7_spend || 0);
@@ -718,6 +896,7 @@
                             overCount++;
                         } else if (ub7 < 66 && ub1 < 66) {
                             // For under utilized, also check INV > 0 (matches filter logic)
+                            let inv = parseFloat(row.INV || 0);
                             if (inv > 0) {
                                 underCount++;
                             }
@@ -725,15 +904,13 @@
                             correctlyCount++;
                         }
 
-                        // Count 7UB (ub7 >= 70 && ub7 <= 90) - only for rows with campaigns
-                        if (ub7 >= 70 && ub7 <= 90 && !processedSkusFor7Ub.has(sku)) {
-                            processedSkusFor7Ub.add(sku);
+                        // Count 7UB (ub7 >= 66 && ub7 <= 99) - only for rows with campaigns
+                        if (ub7 >= 66 && ub7 <= 99) {
                             ub7Count++;
                         }
 
-                        // Count 7UB + 1UB (both ub7 and ub1 >= 70 && <= 90) - only for rows with campaigns
-                        if (ub7 >= 70 && ub7 <= 90 && ub1 >= 70 && ub1 <= 90 && !processedSkusFor7Ub1Ub.has(sku)) {
-                            processedSkusFor7Ub1Ub.add(sku);
+                        // Count 7UB + 1UB (both ub7 and ub1 >= 66 && <= 99) - only for rows with campaigns
+                        if (ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99) {
                             ub7Ub1Count++;
                         }
                     }
@@ -757,14 +934,10 @@
                     nrlMissingCountEl.textContent = nrlMissingCount;
                 }
 
-                // Update total campaign count - use backend count if available, otherwise use calculated count
+                // Update total campaign count
                 const totalCampaignCountEl = document.getElementById('total-campaign-count');
                 if (totalCampaignCountEl) {
-                    if (totalCampaignCountFromBackend > 0) {
-                        totalCampaignCountEl.textContent = totalCampaignCountFromBackend;
-                    } else {
-                        totalCampaignCountEl.textContent = totalCampaignCount;
-                    }
+                    totalCampaignCountEl.textContent = totalCampaignCount;
                 }
 
                 // Update NRA count
@@ -779,15 +952,10 @@
                     nrlCountEl.textContent = nrlCount;
                 }
 
-                // Update RA count - RA = Total SKUs - NRA
+                // Update RA count
                 const raCountEl = document.getElementById('ra-count');
                 if (raCountEl) {
-                    // Use backend total count (255) as base, subtract NRA count
-                    var totalCount = totalSkuCountFromBackend > 0 ? totalSkuCountFromBackend : (nraCount + raCount);
-                    var calculatedRaCount = totalCount - nraCount;
-                    // Ensure RA count is not negative
-                    calculatedRaCount = calculatedRaCount >= 0 ? calculatedRaCount : 0;
-                    raCountEl.textContent = calculatedRaCount;
+                    raCountEl.textContent = raCount;
                 }
 
                 // Update zero INV count
@@ -808,11 +976,28 @@
                     ub7Ub1CountEl.textContent = ub7Ub1Count;
                 }
 
-                // Update total SKU count - Always use backend count (255) if available
+                // Update total SKU count
                 const totalSkuCountEl = document.getElementById('total-sku-count');
                 if (totalSkuCountEl) {
-                    // Use backend count (255) as primary source
-                    totalSkuCountEl.textContent = totalSkuCountFromBackend > 0 ? totalSkuCountFromBackend : validSkuCount;
+                    totalSkuCountEl.textContent = totalSkuCountFromBackend || validSkuCount;
+                }
+
+                // Update eBay SKU count - use filtered count if showEbaySkuOnly is active, otherwise use backend count
+                const ebaySkuCountEl = document.getElementById('ebay-sku-count');
+                if (ebaySkuCountEl) {
+                    if (showEbaySkuOnly && typeof table !== 'undefined' && table) {
+                        // When filter is active, get count from filtered table data to match pagination
+                        try {
+                            const filteredData = table.getData('active');
+                            ebaySkuCountEl.textContent = filteredData.length;
+                        } catch (e) {
+                            console.error('Error getting filtered eBay SKU count:', e);
+                            ebaySkuCountEl.textContent = ebaySkuCount;
+                        }
+                    } else {
+                        // When filter is not active, show the backend count
+                        ebaySkuCountEl.textContent = ebaySkuCountFromBackend;
+                    }
                 }
 
                 // Update dropdown option texts with counts
@@ -822,7 +1007,7 @@
                 let actualOverCount = overCount;
                 let actualUnderCount = underCount;
                 let actualCorrectlyCount = correctlyCount;
-                
+
                 // If utilization type is selected, get count from filtered data to match pagination
                 if (currentUtilizationType !== 'all' && typeof table !== 'undefined' && table) {
                     try {
@@ -838,22 +1023,28 @@
                         console.error('Error getting filtered count:', e);
                     }
                 }
-                
+
                 const utilizationSelect = document.getElementById('utilization-type-select');
                 if (utilizationSelect) {
                     utilizationSelect.options[0].text = `All (${totalSkuCountFromBackend || validSkuCount})`;
                     // Show utilization counts - use actual filtered count if utilization type is selected
-                    utilizationSelect.options[1].text = `Over Utilized (${currentUtilizationType === 'over' ? actualOverCount : overCount})`;
-                    utilizationSelect.options[2].text = `Under Utilized (${currentUtilizationType === 'under' ? actualUnderCount : underCount})`;
-                    utilizationSelect.options[3].text = `Correctly Utilized (${currentUtilizationType === 'correctly' ? actualCorrectlyCount : correctlyCount})`;
+                    utilizationSelect.options[1].text =
+                        `Over Utilized (${currentUtilizationType === 'over' ? actualOverCount : overCount})`;
+                    utilizationSelect.options[2].text =
+                        `Under Utilized (${currentUtilizationType === 'under' ? actualUnderCount : underCount})`;
+                    utilizationSelect.options[3].text =
+                        `Correctly Utilized (${currentUtilizationType === 'correctly' ? actualCorrectlyCount : correctlyCount})`;
                 }
             }
 
-            // Function to update L30 totals from table data
+            // Function to calculate and update L30 totals (clicks, spend, ad_sold)
             // Variables to store L30 totals from backend
             let totalL30ClicksFromBackend = 0;
             let totalL30SpendFromBackend = 0;
             let totalL30AdSoldFromBackend = 0;
+
+            // Track manually selected rows (exclude header checkbox selections)
+            let manuallySelectedRows = new Set();
 
             function updateL30Totals() {
                 // Update L30 CLICKS total from backend
@@ -889,8 +1080,12 @@
                         }
                         table.setFilter(combinedFilter);
                         table.redraw(true);
+                        // Update counts after filter is applied to get accurate counts
+                        setTimeout(function() {
                             updateButtonCounts();
-                        updateL30Totals();
+                            updateL30Totals();
+                            updatePaginationCount();
+                        }, 300);
                     }
                 });
             }
@@ -938,6 +1133,7 @@
                     table.setFilter(combinedFilter);
                     table.redraw(true);
                     updateButtonCounts();
+                    setTimeout(updatePaginationCount, 100);
                 }
             });
 
@@ -980,6 +1176,7 @@
                     table.setFilter(combinedFilter);
                     table.redraw(true);
                     updateButtonCounts();
+                    setTimeout(updatePaginationCount, 100);
                 }
             });
 
@@ -1022,6 +1219,7 @@
                     table.setFilter(combinedFilter);
                     table.redraw(true);
                     updateButtonCounts();
+                    setTimeout(updatePaginationCount, 100);
                 }
             });
 
@@ -1038,6 +1236,9 @@
                     // Reset NRA missing filter
                     showNraMissingOnly = false;
                     document.getElementById('nra-missing-card').style.boxShadow = '';
+                    // Reset NRL missing filter
+                    showNrlMissingOnly = false;
+                    document.getElementById('nrl-missing-card').style.boxShadow = '';
                     // Reset campaign filter
                     showCampaignOnly = false;
                     document.getElementById('total-campaign-card').style.boxShadow = '';
@@ -1046,6 +1247,9 @@
                     document.getElementById('nra-card').style.boxShadow = '';
                     showRaOnly = false;
                     document.getElementById('ra-card').style.boxShadow = '';
+                    // Reset NRL filter
+                    showNrlOnly = false;
+                    document.getElementById('nrl-card').style.boxShadow = '';
                     // Reset eBay SKU filter
                     showEbaySkuOnly = false;
                     document.getElementById('ebay-sku-card').style.boxShadow = '';
@@ -1058,6 +1262,7 @@
                     table.setFilter(combinedFilter);
                     table.redraw(true);
                     updateButtonCounts();
+                    updateL30Totals();
                 }
             });
 
@@ -1101,6 +1306,7 @@
                     table.setFilter(combinedFilter);
                     table.redraw(true);
                     updateButtonCounts();
+                    setTimeout(updatePaginationCount, 100);
                 }
             });
 
@@ -1143,6 +1349,7 @@
                     table.setFilter(combinedFilter);
                     table.redraw(true);
                     updateButtonCounts();
+                    setTimeout(updatePaginationCount, 100);
                 }
             });
 
@@ -1186,6 +1393,7 @@
                     table.setFilter(combinedFilter);
                     table.redraw(true);
                     updateButtonCounts();
+                    setTimeout(updatePaginationCount, 100);
                 }
             });
 
@@ -1229,6 +1437,7 @@
                     table.setFilter(combinedFilter);
                     table.redraw(true);
                     updateButtonCounts();
+                    setTimeout(updatePaginationCount, 100);
                 }
             });
 
@@ -1272,13 +1481,29 @@
                     table.setFilter(combinedFilter);
                     table.redraw(true);
                     updateButtonCounts();
+                    setTimeout(updatePaginationCount, 100);
                 }
             });
 
-            // Store edited SBID M values separately to prevent cross-contamination
-            // This object maintains edited values per row using unique identifier (campaign_id + sku)
-            var editedSbidMValues = {}; // key: unique row id (campaign_id + sku), value: edited sbid_m value
-            
+            // Function to update header checkbox state (defined before table initialization)
+            function updateHeaderCheckboxState() {
+                var headerCheckbox = document.querySelector('.tabulator-select-all-checkbox');
+                if (headerCheckbox && typeof table !== 'undefined') {
+                    var activeRows = table.getRows('active');
+                    var currentPage = table.getPage();
+                    var pageSize = table.getPageSize();
+                    var startIndex = (currentPage - 1) * pageSize;
+                    var endIndex = startIndex + pageSize;
+                    var currentPageRows = activeRows.slice(startIndex, endIndex);
+
+                    var selectedCurrentPageRows = currentPageRows.filter(function(row) {
+                        return row.isSelected();
+                    });
+                    headerCheckbox.checked = currentPageRows.length > 0 && currentPageRows.length ===
+                        selectedCurrentPageRows.length;
+                }
+            }
+
             var table = new Tabulator("#budget-under-table", {
                 index: "sku",
                 ajaxURL: "/ebay-3/utilized/ads/data",
@@ -1289,43 +1514,11 @@
                 layout: "fitData",
                 movableColumns: true,
                 resizableColumns: true,
-                height: "700px",             
+                height: "700px",
                 virtualDom: true,
-                pagination: true,
-                paginationMode: "local",
-                paginationSize: 25,
-                paginationSizeSelector: [10, 25, 50, 100, 200, 500],
-                paginationCounter: function(pageSize, currentRow, currentPage, totalRows, totalPages) {
-                    // Always use backend total count (255) when available, otherwise count unique SKUs from filtered data
-                    // This function will be called within table scope, so we can access global variables
-                    var uniqueSkuCount;
-                    
-                    // Check if filters are applied
-                    var searchVal = $("#global-search").val() || "";
-                    var statusVal = $("#status-filter").val();
-                    var invFilterVal = $("#inv-filter").val();
-                    var nraFilterVal = $("#nra-filter").val();
-                    var hasFilters = searchVal || statusVal || (invFilterVal && invFilterVal !== '' && invFilterVal !== 'ALL') || nraFilterVal || showEbaySkuOnly || (currentUtilizationType !== 'all');
-                    
-                    if (!hasFilters && totalSkuCountFromBackend > 0) {
-                        // No filters applied - use backend count (255)
-                        uniqueSkuCount = totalSkuCountFromBackend;
-                    } else {
-                        // Filters applied - count unique SKUs from filtered data
-                        var filteredData = table.getData('active');
-                        var uniqueSkus = new Set();
-                        filteredData.forEach(function(row) {
-                            var sku = row.sku || '';
-                            if (sku && sku.toUpperCase().includes('PARENT')) {
-                                uniqueSkus.add(sku);
-                            }
-                        });
-                        uniqueSkuCount = uniqueSkus.size;
-                    }
-                    
-                    var endRow = Math.min(currentRow + pageSize - 1, totalRows);
-                    return "Showing " + currentRow + " to " + endRow + " of " + uniqueSkuCount;
-                },
+                pagination: "local",
+                paginationSize: 100,
+                paginationSizeSelector: [25, 50, 100, 200, 500],
                 rowFormatter: function(row) {
                     const data = row.getData();
                     const sku = data["sku"] || '';
@@ -1335,10 +1528,62 @@
                 },
                 columns: [{
                         formatter: "rowSelection",
-                        titleFormatter: "rowSelection",
+                        titleFormatter: function(column) {
+                            var checkbox = document.createElement("input");
+                            checkbox.type = "checkbox";
+                            checkbox.className = "tabulator-select-all-checkbox";
+
+                            // Function to get current page rows
+                            function getCurrentPageRows() {
+                                var activeRows = table.getRows(
+                                'active'); // All rows that pass filters
+                                var currentPage = table.getPage();
+                                var pageSize = table.getPageSize();
+                                var startIndex = (currentPage - 1) * pageSize;
+                                var endIndex = startIndex + pageSize;
+                                return activeRows.slice(startIndex, endIndex);
+                            }
+
+                            // Function to update checkbox state
+                            function updateCheckboxState() {
+                                var currentPageRows = getCurrentPageRows();
+                                var selectedCurrentPageRows = currentPageRows.filter(function(row) {
+                                    return row.isSelected();
+                                });
+                                checkbox.checked = currentPageRows.length > 0 && currentPageRows
+                                    .length === selectedCurrentPageRows.length;
+                            }
+
+                            // Initial state - will be updated by external handlers
+
+                            checkbox.addEventListener("change", function(e) {
+                                e.stopPropagation();
+
+                                var currentPageRows = getCurrentPageRows();
+
+                                if (checkbox.checked) {
+                                    // Select all rows on current page
+                                    currentPageRows.forEach(function(row) {
+                                        row.select();
+                                    });
+                                } else {
+                                    // Deselect all rows on current page
+                                    currentPageRows.forEach(function(row) {
+                                        row.deselect();
+                                    });
+                                }
+                            });
+
+                            return checkbox;
+                        },
                         hozAlign: "center",
                         headerSort: false,
                         width: 50
+                    },
+                    {
+                        title: "Parent",
+                        field: "parent",
+                        visible: false
                     },
                     {
                         title: "SKU",
@@ -1385,12 +1630,24 @@
                         title: "INV",
                         field: "INV",
                         visible: true,
-                        width: 60
+                        width: 60,
+                        titleFormatter: function(column) {
+                            return `
+                                <div style="display: flex; align-items: center; justify-content: center; gap: 5px;">
+                                    <span>INV</span>
+                                    <button class="btn btn-sm btn-link p-0 toggle-inv-cols-btn" 
+                                            style="font-size: 15px; color: #cf2408; text-decoration: none; padding: 0; line-height: 1;" 
+                                            title="Toggle L30, DIL%, NRL, NRA columns">
+                                        <i class="fa-solid fa-circle-info"></i>
+                                    </button>
+                                </div>
+                            `;
+                        }
                     },
                     {
                         title: "OV L30",
                         field: "L30",
-                        visible: true,
+                        visible: false,
                         width: 60
                     },
                     {
@@ -1419,7 +1676,7 @@
                             }
                             return `<div class="text-center"><span style="color: #dc3545; font-weight: bold;">0%</span></div>`;
                         },
-                        visible: true,
+                        visible: false,
                         width: 60
                     },
                     {
@@ -1428,24 +1685,20 @@
                         formatter: function(cell) {
                             const row = cell.getRow();
                             const sku = row.getData().sku;
-                            let value = cell.getValue() || "REQ"; // Default to REQ
-                            // Normalize: if value is "NR", treat it as "NRL" for display
-                            if (value === 'NR') {
-                                value = 'NRL';
-                            }
+                            const value = cell.getValue() || "REQ"; // Default to REQ
 
                             return `
                                     <select class="form-select form-select-sm editable-select" 
                                             data-sku="${sku}" 
                                         data-field="NRL"
                                         style="width: 50px; border: 1px solid gray; padding: 2px; font-size: 20px; text-align: center;">
-                                    <option value="REQ" ${(value === 'REQ' ? 'selected' : '')}>🟢</option>
-                                    <option value="NRL" ${((value === 'NRL' || value === 'NR') ? 'selected' : '')}>🔴</option>
+                                    <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>🟢</option>
+                                    <option value="NRL" ${value === 'NRL' ? 'selected' : ''}>🔴</option>
                                     </select>
                                 `;
                         },
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         width: 70
                     },
                     {
@@ -1455,30 +1708,41 @@
                             const row = cell.getRow();
                             const sku = row.getData().sku;
                             const rowData = row.getData();
-                            // If NRL is 'NR' or 'NRL' (red dot), default to NRA, otherwise default to RA
+                            // If NRL is 'NRL' (red dot), default to NRA, otherwise default to RA
                             const nrlValue = rowData.NRL || "REQ";
-                            const defaultValue = (nrlValue === 'NR' || nrlValue === 'NRL') ? "NRA" : "RA";
+                            const defaultValue = (nrlValue === 'NRL') ? "NRA" : "RA";
                             const value = (cell.getValue()?.trim()) || defaultValue;
 
                             return `
-                                <select class="form-select form-select-sm editable-select" 
-                                        data-sku="${sku}" 
-                                        data-field="NR"
+                                    <select class="form-select form-select-sm editable-select" 
+                                            data-sku="${sku}" 
+                                            data-field="NR"
                                         style="width: 50px; border: 1px solid gray; padding: 2px; font-size: 20px; text-align: center;">
                                     <option value="RA" ${value === 'RA' ? 'selected' : ''}>🟢</option>
                                     <option value="NRA" ${value === 'NRA' ? 'selected' : ''}>🔴</option>
                                     <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>🟡</option>
-                                </select>
-                            `;
+                                    </select>
+                                `;
                         },
                         hozAlign: "center",
-                        visible: true,
+                        visible: false,
                         width: 70
                     },
                     {
                         title: "CAMPAIGN",
                         field: "campaignName",
                         visible: false
+                    },
+                    {
+                        title: "PRICE",
+                        field: "price",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            var price = parseFloat(cell.getValue() || 0);
+                            return "$" + price.toFixed(2);
+                        },
+                        sorter: "number",
+                        width: 80
                     },
                     {
                         title: "EBAY L30",
@@ -1508,7 +1772,7 @@
                         hozAlign: "right",
                         formatter: function(cell) {
                             var value = parseFloat(cell.getValue() || 0);
-                            return value.toFixed(0) + "%";
+                            return value.toFixed(1) + "%";
                         },
                         sorter: "number",
                         width: 70
@@ -1522,13 +1786,58 @@
                         width: 80
                     },
                     {
+                        title: "SBGT",
+                        field: "suggestedBudget",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var acosRaw = row.acos;
+                            var acos = parseFloat(acosRaw);
+
+                            // If acos is 0 (no sales or no ad fees), set it to 100 for budget calculation
+                            // This matches the frontend logic: if(acos === 0) { acos = 100; }
+                            if (isNaN(acos) || acos === 0) {
+                                acos = 100;
+                            }
+
+                            // Calculate suggested budget based on ACOS rules:
+                            // - If ACOS < 4% then budget = $9
+                            // - If 4% ≤ ACOS < 8% then budget = $6
+                            // - If ACOS ≥ 8% (including 100% for no sales) then budget = $3
+                            var suggestedBudget = 0;
+                            if (acos < 4) {
+                                suggestedBudget = 9;
+                            } else if (acos >= 4 && acos < 8) {
+                                suggestedBudget = 6;
+                            } else {
+                                suggestedBudget = 3;
+                            }
+
+                            return suggestedBudget.toFixed(0);
+                        },
+                        sorter: "number",
+                        width: 80
+                    },
+                    {
                         title: "ACOS",
                         field: "acos",
                         hozAlign: "right",
                         sorter: "number",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var acosRaw = row.acos; 
+                            // Check if spend (adFees) is 0
+                            var adFees = parseFloat(row.adFees || 0);
+
+                            // If spend is 0, show "-"
+                            if (adFees === 0) {
+                                var td = cell.getElement();
+                                td.classList.remove('green-bg', 'pink-bg', 'red-bg');
+                                return '<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">' +
+                                    '-' +
+                                    '<i class="fa-solid fa-info-circle toggle-metrics-btn" style="cursor: pointer; font-size: 12px; margin-left: 5px;" title="Toggle Clicks, Spend, Ad Sold"></i></div>';
+                            }
+
+                            var acosRaw = row.acos;
                             var acos = parseFloat(acosRaw);
                             if (isNaN(acos)) {
                                 acos = 0;
@@ -1550,10 +1859,13 @@
                                 acosValue = acos.toFixed(0) + "%";
                             }
 
-                            return '<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">' + acosValue + '<i class="fa-solid fa-info-circle toggle-metrics-btn" style="cursor: pointer; font-size: 12px; margin-left: 5px;" title="Toggle Clicks, Spend, Ad Sold"></i></div>';
+                            return '<div style="display: flex; align-items: center; justify-content: center; gap: 5px;">' +
+                                acosValue +
+                                '<i class="fa-solid fa-info-circle toggle-metrics-btn" style="cursor: pointer; font-size: 12px; margin-left: 5px;" title="Toggle Clicks, Spend, Ad Sold"></i></div>';
                         },
                         cellClick: function(e, cell) {
-                            if (e.target.classList.contains('toggle-metrics-btn') || e.target.closest('.toggle-metrics-btn')) {
+                            if (e.target.classList.contains('toggle-metrics-btn') || e.target
+                                .closest('.toggle-metrics-btn')) {
                                 e.stopPropagation();
                                 var clicksVisible = table.getColumn('clicks').isVisible();
                                 var spendVisible = table.getColumn('adFees').isVisible();
@@ -1630,24 +1942,24 @@
                             var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            
-                            // Different color logic based on utilization type (ebay3 specific)
+
+                            // Different color logic based on utilization type
                             if (currentUtilizationType === 'over') {
                                 // Over-utilized: Check UB7 only
-                                if (ub7 >= 70 && ub7 <= 90) {
+                                if (ub7 >= 66 && ub7 <= 99) {
                                     td.classList.add('green-bg');
-                                } else if (ub7 > 90) {
+                                } else if (ub7 > 99) {
                                     td.classList.add('pink-bg');
-                                } else if (ub7 < 70) {
+                                } else if (ub7 < 66) {
                                     td.classList.add('red-bg');
                                 }
                             } else {
                                 // Under-utilized and Correctly-utilized: Only check UB7 (no ACOS check)
-                                if (ub7 >= 70 && ub7 <= 90) {
+                                if (ub7 >= 66 && ub7 <= 99) {
                                     td.classList.add('green-bg');
-                                } else if (ub7 > 90) {
+                                } else if (ub7 > 99) {
                                     td.classList.add('pink-bg');
-                                } else if (ub7 < 70) {
+                                } else if (ub7 < 66) {
                                     td.classList.add('red-bg');
                                 }
                             }
@@ -1677,11 +1989,11 @@
                             var ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            if (ub1 >= 70 && ub1 <= 90) {
+                            if (ub1 >= 66 && ub1 <= 99) {
                                 td.classList.add('green-bg');
-                            } else if (ub1 > 90) {
+                            } else if (ub1 > 99) {
                                 td.classList.add('pink-bg');
-                            } else if (ub1 < 70) {
+                            } else if (ub1 < 66) {
                                 td.classList.add('red-bg');
                             }
                             return ub1.toFixed(0) + "%";
@@ -1729,10 +2041,19 @@
                         title: "SBID",
                         field: "sbid",
                         hozAlign: "center",
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            // Check if value is null, 0, or 0.0
+                            if (value === null || value === undefined || value === '' || value ===
+                                0 || value === 0.0 || parseFloat(value) === 0) {
+                                return '-';
+                            }
+                            return parseFloat(value).toFixed(2);
+                        },
                         sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
                             var aData = aRow.getData();
                             var bData = bRow.getData();
-                            
+
                             // Helper function to calculate SBID for a row
                             function calculateSbid(rowData) {
                                 // Check if NRA (🔴) is selected
@@ -1740,19 +2061,32 @@
                                 if (nraValue === 'NRA') {
                                     return -1; // Special value for sorting (will show as '-')
                                 }
-                                
+
                                 var l1Cpc = parseFloat(rowData.l1_cpc) || 0;
                                 var l7Cpc = parseFloat(rowData.l7_cpc) || 0;
                                 var budget = parseFloat(rowData.campaignBudgetAmount) || 0;
-                                var ub7 = budget > 0 ? (parseFloat(rowData.l7_spend) || 0) / (budget * 7) * 100 : 0;
-                                var ub1 = budget > 0 ? (parseFloat(rowData.l1_spend) || 0) / budget * 100 : 0;
+                                var ub7 = budget > 0 ? (parseFloat(rowData.l7_spend) || 0) / (
+                                    budget * 7) * 100 : 0;
+                                var ub1 = budget > 0 ? (parseFloat(rowData.l1_spend) || 0) /
+                                    budget * 100 : 0;
                                 var sbid = 0;
-                                
-                                // Special rule: If UB7 = 0% and UB1 = 0%, set SBID to 0.50 (ebay3 doesn't have price field)
-                                if (ub7 === 0 && ub1 === 0) {
-                                    return 0.50;
+
+                                // Helper function to get UB color
+                                function getUbColor(ub) {
+                                    if (ub >= 66 && ub <= 99) return 'green';
+                                    if (ub > 99) return 'pink';
+                                    return 'red';
                                 }
-                                
+
+                                // Check UB7 and UB1 colors (no exclusions)
+                                var ub7Color = getUbColor(ub7);
+                                var ub1Color = getUbColor(ub1);
+
+                                // Special rule: If UB7 = 0% and UB1 = 0%, return 0 (price-based SBID removed for PARENT SKUs)
+                                if (ub7 === 0 && ub1 === 0) {
+                                    return 0;
+                                }
+
                                 // Rule: If both UB7 and UB1 are above 99%, set SBID as L1_CPC * 0.90
                                 if (ub7 > 99 && ub1 > 99) {
                                     if (l1Cpc > 0) {
@@ -1763,23 +2097,103 @@
                                         return 0;
                                     }
                                 }
-                                
-                                if (currentUtilizationType === 'over') {
-                                    // If L1 CPC > 1.25, use L1 CPC * 0.80, otherwise use L1 CPC * 0.90
-                                    var cpcToUse = (l1Cpc && !isNaN(l1Cpc) && l1Cpc > 0) ? l1Cpc : ((l7Cpc && !isNaN(l7Cpc) && l7Cpc > 0) ? l7Cpc : 0);
-                                    if (cpcToUse > 1.25) {
-                                        sbid = Math.floor(cpcToUse * 0.80 * 100) / 100;
-                                    } else if (cpcToUse > 0) {
-                                        sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
-                                    } else {
-                                        sbid = 0.50; // Fallback when both CPCs are 0
+
+                                if (currentUtilizationType === 'all') {
+                                    // For total campaigns, determine individual campaign's utilization status
+                                    var rowAcos = parseFloat(rowData.acos) || 0;
+                                    if (isNaN(rowAcos) || rowAcos === 0) {
+                                        rowAcos = 100;
                                     }
-                                } else if (currentUtilizationType === 'under') {
-                                    // Under-utilized SBID calculation rules
-                                    if (ub7 === 0 && ub1 === 0) {
-                                        sbid = 0.50;
+
+                                    var inv = parseFloat(rowData.INV || 0);
+                                    // Determine utilization status
+                                    var isOverUtilized = false;
+                                    var isUnderUtilized = false;
+
+                                    // Check over-utilized first
+                                    if (ub7 > 99 && ub1 > 99) {
+                                        isOverUtilized = true;
+                                    }
+
+                                    // Check under-utilized
+                                    // Remove price >= 20 check to match backend command logic
+                                    if (!isOverUtilized && ub7 < 66 && ub1 < 66 && inv > 0) {
+                                        isUnderUtilized = true;
+                                    }
+
+                                    // Apply SBID logic based on determined status
+                                    if (isOverUtilized) {
+                                        // If L1 CPC > 1.25, then L1CPC * 0.80, else L1CPC * 0.90
+                                        if (l1Cpc > 1.25) {
+                                            sbid = Math.floor(l1Cpc * 0.80 * 100) / 100;
+                                        } else if (l1Cpc > 0) {
+                                            sbid = Math.floor(l1Cpc * 0.90 * 100) / 100;
+                                        } else {
+                                            sbid = 0;
+                                        }
+
+                                        // Price cap removed for PARENT SKUs (no price available)
+                                    } else if (isUnderUtilized) {
+                                        // Check if UB7 and UB1 are both 0%
+                                        if (ub7 === 0 && ub1 === 0) {
+                                            // Price-based SBID removed for PARENT SKUs
+                                            sbid = 0;
+                                        } else {
+                                            // Use L1CPC if available (not 0, not NaN), otherwise use L7CPC
+                                            var cpcToUse = (l1Cpc && !isNaN(l1Cpc) && l1Cpc > 0) ?
+                                                l1Cpc : ((l7Cpc && !isNaN(l7Cpc) && l7Cpc > 0) ?
+                                                    l7Cpc : 0);
+                                            if (cpcToUse > 0) {
+                                                // Ensure numeric comparison
+                                                cpcToUse = parseFloat(cpcToUse);
+                                                if (cpcToUse < 0.10) {
+                                                    sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
+                                                } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
+                                                    sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
+                                                } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
+                                                    sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
+                                                } else {
+                                                    sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
+                                                }
+
+                                                // Price cap removed for PARENT SKUs (no price available)
+                                            } else {
+                                                sbid = 0;
+                                            }
+                                        }
                                     } else {
-                                        var cpcToUse = (l1Cpc && !isNaN(l1Cpc) && l1Cpc > 0) ? l1Cpc : ((l7Cpc && !isNaN(l7Cpc) && l7Cpc > 0) ? l7Cpc : 0);
+                                        // Correctly-utilized: use L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
+                                        if (l1Cpc > 0) {
+                                            sbid = Math.floor(l1Cpc * 0.90 * 100) / 100;
+                                        } else if (l7Cpc > 0) {
+                                            sbid = Math.floor(l7Cpc * 0.90 * 100) / 100;
+                                        } else {
+                                            sbid = 0;
+                                        }
+                                    }
+                                } else if (currentUtilizationType === 'over') {
+                                    // Over-utilized: If L1 CPC > 1.25, then L1CPC * 0.80, else l1_cpc * 0.90, fallback to l7_cpc * 0.90, then 0.50
+                                    if (l1Cpc > 1.25) {
+                                        sbid = Math.floor(l1Cpc * 0.80 * 100) / 100;
+                                    } else if (l1Cpc > 0) {
+                                        sbid = Math.floor(l1Cpc * 0.90 * 100) / 100;
+                                    } else if (l7Cpc > 0) {
+                                        sbid = Math.floor(l7Cpc * 0.90 * 100) / 100;
+                                    } else {
+                                        sbid = 0.50;
+                                    }
+
+                                    // Price cap removed for PARENT SKUs (no price available)
+                                } else if (currentUtilizationType === 'under') {
+                                    // Check if UB7 and UB1 are both 0%
+                                    if (ub7 === 0 && ub1 === 0) {
+                                        // Price-based SBID removed for PARENT SKUs
+                                        sbid = 0;
+                                    } else {
+                                        // Use L1CPC if available (not 0, not NaN), otherwise use L7CPC
+                                        var cpcToUse = (l1Cpc && !isNaN(l1Cpc) && l1Cpc > 0) ?
+                                            l1Cpc : ((l7Cpc && !isNaN(l7Cpc) && l7Cpc > 0) ? l7Cpc :
+                                                0);
                                         if (cpcToUse > 0) {
                                             if (cpcToUse < 0.10) {
                                                 sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
@@ -1790,119 +2204,70 @@
                                             } else {
                                                 sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
                                             }
+
+                                            // Price cap removed for PARENT SKUs (no price available)
                                         } else {
-                                            sbid = 0.50; // Fallback when both CPCs are 0
+                                            sbid = 0;
                                         }
-                                    }
-                                } else if (currentUtilizationType === 'correctly') {
-                                    // Correctly-utilized: SBID = L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
-                                    var cpcToUse = (l1Cpc && !isNaN(l1Cpc) && l1Cpc > 0) ? l1Cpc : ((l7Cpc && !isNaN(l7Cpc) && l7Cpc > 0) ? l7Cpc : 0);
-                                    if (cpcToUse > 0) {
-                                        sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
-                                    } else {
-                                        sbid = 0.50; // Fallback when both CPCs are 0
                                     }
                                 } else {
-                                    // For 'all' type, determine utilization status and apply appropriate rule
-                                    var rowAcos = parseFloat(rowData.acos) || 0;
-                                    if (isNaN(rowAcos) || rowAcos === 0) {
-                                        rowAcos = 100;
-                                    }
-                                    
-                                    // Determine utilization status
-                                    var isOverUtilized = false;
-                                    var isUnderUtilized = false;
-                                    
-                                    // Check over-utilized first (priority 1) - Double condition: both UB7 AND UB1 must be > 99
-                                    if (ub7 > 99 && ub1 > 99) {
-                                        isOverUtilized = true;
-                                    }
-                                    
-                                    // Check under-utilized (priority 2: only if not over-utilized) - Double condition: both UB7 AND UB1 must be < 66
-                                    if (!isOverUtilized && ub7 < 66 && ub1 < 66) {
-                                        isUnderUtilized = true;
-                                    }
-                                    
-                                    // Apply SBID logic based on determined status
-                                    if (isOverUtilized) {
-                                        var cpcToUse = (l1Cpc && !isNaN(l1Cpc) && l1Cpc > 0) ? l1Cpc : ((l7Cpc && !isNaN(l7Cpc) && l7Cpc > 0) ? l7Cpc : 0);
-                                        if (cpcToUse > 1.25) {
-                                            sbid = Math.floor(cpcToUse * 0.80 * 100) / 100;
-                                        } else if (cpcToUse > 0) {
-                                            sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
-                                        } else {
-                                            sbid = 0.50; // Fallback when both CPCs are 0
-                                        }
-                                    } else if (isUnderUtilized) {
-                                        if (ub7 === 0 && ub1 === 0) {
-                                            sbid = 0.50;
-                                        } else {
-                                            var cpcToUse = (l1Cpc && !isNaN(l1Cpc) && l1Cpc > 0) ? l1Cpc : ((l7Cpc && !isNaN(l7Cpc) && l7Cpc > 0) ? l7Cpc : 0);
-                                            if (cpcToUse > 0) {
-                                                if (cpcToUse < 0.10) {
-                                                    sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
-                                                } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
-                                                    sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
-                                                } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
-                                                    sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
-                                                } else {
-                                                    sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
-                                                }
-                                            } else {
-                                                sbid = 0.50; // Fallback when both CPCs are 0
-                                            }
-                                        }
-                                    } else {
-                                        // Correctly-utilized or other
-                                        var cpcToUse = (l1Cpc && !isNaN(l1Cpc) && l1Cpc > 0) ? l1Cpc : ((l7Cpc && !isNaN(l7Cpc) && l7Cpc > 0) ? l7Cpc : 0);
-                                        if (cpcToUse > 0) {
-                                            sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
-                                        } else {
-                                            sbid = 0.50; // Fallback when both CPCs are 0
-                                        }
-                                    }
+                                    sbid = Math.floor(l1Cpc * 0.90 * 100) / 100;
                                 }
-                                
-                                // Check if SBID is 0 (should not happen after fallback, but keep as safety)
+
+                                // Check if SBID is 0
                                 if (sbid === 0) {
                                     return -1; // Special value for sorting (will show as '-')
                                 }
-                                
+
                                 return sbid;
                             }
-                            
+
                             var aSbid = calculateSbid(aData);
                             var bSbid = calculateSbid(bData);
-                            
+
                             return aSbid - bSbid;
                         },
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            
+
                             // Check if NRA (🔴) is selected
                             var nraValue = row.NR ? row.NR.trim() : "";
                             if (nraValue === 'NRA') {
                                 return '-';
                             }
-                            
+
                             var l1_cpc = parseFloat(row.l1_cpc) || 0;
                             var l7_cpc = parseFloat(row.l7_cpc) || 0;
                             var ub7 = 0;
-                            var ub1 = 0;
                             var budget = parseFloat(row.campaignBudgetAmount) || 0;
                             if (budget > 0) {
                                 ub7 = (parseFloat(row.l7_spend) || 0) / (budget * 7) * 100;
-                                ub1 = (parseFloat(row.l1_spend) || 0) / budget * 100;
                             }
-                            
+                            var ub1 = budget > 0 ? (parseFloat(row.l1_spend) || 0) / budget * 100 :
+                                0;
+
+                            // Helper function to get UB color
+                            function getUbColor(ub) {
+                                if (ub >= 66 && ub <= 99) return 'green';
+                                if (ub > 99) return 'pink';
+                                return 'red';
+                            }
+
+                            // Check if UB7 and UB1 colors match
+                            var ub7Color = getUbColor(ub7);
+                            var ub1Color = getUbColor(ub1);
+
+                            if (ub7Color !== ub1Color) {
+                                return '-'; // No SBID suggestion if colors don't match
+                            }
+
                             var sbid = 0;
-                            
-                            // Special rule: If UB7 = 0% and UB1 = 0%, set SBID to 0.50 (ebay3 doesn't have price field)
+
+                            // Special rule: If UB7 = 0% and UB1 = 0%, return 0 (price-based SBID removed for PARENT SKUs)
                             if (ub7 === 0 && ub1 === 0) {
-                                sbid = 0.50;
-                                return sbid.toFixed(2);
+                                return 0.50;
                             }
-                            
+
                             // Rule: If both UB7 and UB1 are above 99%, set SBID as L1_CPC * 0.90
                             if (ub7 > 99 && ub1 > 99) {
                                 if (l1_cpc > 0) {
@@ -1918,91 +2283,53 @@
                                 }
                                 return sbid.toFixed(2);
                             }
-                            
-                            // eBay3 SBID calculation logic
-                            if (currentUtilizationType === 'over') {
-                                // If L1 CPC > 1.25, use L1 CPC * 0.80, otherwise use L1 CPC * 0.90
-                                if (l1_cpc > 1.25) {
-                                    sbid = Math.floor(l1_cpc * 0.80 * 100) / 100;
-                                } else {
-                                sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
-                                }
-                            } else if (currentUtilizationType === 'under') {
-                                // Under-utilized SBID calculation rules (from ebay-utilized, without price logic)
-                                // If UB7 = 0% AND UB1 = 0%, SBID = 0.50
-                                if (ub7 === 0 && ub1 === 0) {
-                                    sbid = 0.50;
-                                } else {
-                                    // Use L1CPC if available (not 0, not NaN), otherwise use L7CPC
-                                    var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ?
-                                        l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ?
-                                            l7_cpc : 0);
-                                    if (cpcToUse > 0) {
-                                        if (cpcToUse < 0.10) {
-                                            sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
-                                        } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
-                                            sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
-                                        } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
-                                            sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
-                                        } else {
-                                            sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
-                                }
-                            } else {
-                                        sbid = 0.50; // Fallback when both CPCs are 0
-                                    }
-                                }
-                            } else if (currentUtilizationType === 'correctly') {
-                                // Correctly-utilized: SBID = L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
-                                var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : (
-                                    (l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
-                                if (cpcToUse > 0) {
-                                    sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
-                                } else {
-                                    sbid = 0.50; // Fallback when both CPCs are 0
-                                }
-                            } else {
-                                // For 'all' type, determine utilization status and apply appropriate rule
+
+                            if (currentUtilizationType === 'all') {
+                                // For total campaigns, determine individual campaign's utilization status
                                 var rowAcos = parseFloat(row.acos) || 0;
                                 if (isNaN(rowAcos) || rowAcos === 0) {
                                     rowAcos = 100;
                                 }
 
-                                // Determine utilization status
+                                // Determine utilization status (same logic as combinedFilter)
                                 var isOverUtilized = false;
                                 var isUnderUtilized = false;
 
-                                // Check over-utilized first (priority 1) - Double condition: both UB7 AND UB1 must be > 99
+                                // Check over-utilized first (priority 1)
                                 if (ub7 > 99 && ub1 > 99) {
                                     isOverUtilized = true;
                                 }
 
-                                // Check under-utilized (priority 2: only if not over-utilized) - Double condition: both UB7 AND UB1 must be < 66
-                                if (!isOverUtilized && ub7 < 66 && ub1 < 66) {
+                                // Check under-utilized (priority 2: only if not over-utilized)
+                                var inv = parseFloat(row.INV || 0);
+                                // Remove price >= 20 check to match backend command logic
+                                if (!isOverUtilized && ub7 < 66 && ub1 < 66 && inv > 0) {
                                     isUnderUtilized = true;
                                 }
 
                                 // Apply SBID logic based on determined status
                                 if (isOverUtilized) {
-                                    // Over-utilized: If L1 CPC > 1.25, use L1 CPC * 0.80, otherwise use L1 CPC * 0.90
-                                    var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ?
-                                        l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ?
-                                            l7_cpc : 0);
-                                    if (cpcToUse > 1.25) {
-                                        sbid = Math.floor(cpcToUse * 0.80 * 100) / 100;
-                                    } else if (cpcToUse > 0) {
-                                        sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
+                                    // If L1 CPC > 1.25, then L1CPC * 0.80, else L1CPC * 0.90
+                                    if (l1_cpc > 1.25) {
+                                        sbid = Math.floor(l1_cpc * 0.80 * 100) / 100;
+                                    } else if (l1_cpc > 0) {
+                                        sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
                                     } else {
-                                        sbid = 0.50; // Fallback when both CPCs are 0
+                                        sbid = 0;
                                     }
+
+                                    // Price cap removed for PARENT SKUs (no price available)
                                 } else if (isUnderUtilized) {
-                                    // Under-utilized: Use the under-utilized rule
+                                    // Check if UB7 and UB1 are both 0%
                                     if (ub7 === 0 && ub1 === 0) {
-                                        sbid = 0.50;
+                                        // Price-based SBID removed for PARENT SKUs
+                                        sbid = 0;
                                     } else {
                                         // Use L1CPC if available (not 0, not NaN), otherwise use L7CPC
                                         var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ?
                                             l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ?
                                                 l7_cpc : 0);
+
                                         if (cpcToUse > 0) {
                                             if (cpcToUse < 0.10) {
                                                 sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
@@ -2013,24 +2340,72 @@
                                             } else {
                                                 sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
                                             }
+
+                                            // Price cap removed for PARENT SKUs (no price available)
                                         } else {
-                                            sbid = 0.50; // Fallback when both CPCs are 0
+                                            sbid = 0;
                                         }
                                     }
                                 } else {
                                     // Correctly-utilized or other: SBID = L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
+                                    if (l1_cpc > 0) {
+                                        sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
+                                    } else if (l7_cpc > 0) {
+                                        sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
+                                    } else {
+                                        sbid = 0;
+                                    }
+                                }
+                            } else if (currentUtilizationType === 'over') {
+                                // Over-utilized: If L1 CPC > 1.25, then L1CPC * 0.80, else l1_cpc * 0.90, fallback to l7_cpc * 0.90, then 0.50
+                                if (l1_cpc > 1.25) {
+                                    sbid = Math.floor(l1_cpc * 0.80 * 100) / 100;
+                                } else if (l1_cpc > 0) {
+                                    sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
+                                } else {
+                                    sbid = 0.50;
+                                }
+
+                                // Price cap removed for PARENT SKUs (no price available)
+                            } else if (currentUtilizationType === 'under') {
+                                // Check if UB7 and UB1 are both 0%
+                                if (ub7 === 0 && ub1 === 0) {
+                                    // Price-based SBID removed for PARENT SKUs
+                                    sbid = 0;
+                                } else {
+                                    // Use L1CPC if available, otherwise use L7CPC
                                     var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ?
                                         l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ?
                                             l7_cpc : 0);
+
                                     if (cpcToUse > 0) {
-                                        sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
+                                        if (cpcToUse < 0.10) {
+                                            sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
+                                        } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
+                                            sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
+                                        } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
+                                            sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
+                                        } else {
+                                            sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
+                                        }
+
+                                    // Price cap removed for PARENT SKUs (no price available)
                                     } else {
-                                        sbid = 0.50; // Fallback when both CPCs are 0
+                                        sbid = 0;
                                     }
+                                }
+                            } else {
+                                // Correctly-utilized: SBID = L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
+                                if (l1_cpc > 0) {
+                                    sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
+                                } else if (l7_cpc > 0) {
+                                    sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
+                                } else {
+                                    sbid = 0;
                                 }
                             }
 
-                            // Check if SBID is 0 (should not happen after fallback, but keep as safety)
+                            // Check if SBID is 0
                             if (sbid === 0) {
                                 return '-';
                             }
@@ -2067,10 +2442,10 @@
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
                             var apprSbid = rowData.apprSbid || '';
-                            
+
                             if (apprSbid && apprSbid !== '' && parseFloat(apprSbid) > 0) {
                                 // Green checkmark circle icon when bid is pushed
-                            return `
+                                return `
                                     <div style="display: flex; justify-content: center; align-items: center;">
                                         <i class="fa-solid fa-circle-check update-bid-icon" style="color: #28a745; font-size: 20px; cursor: default;" title="Bid pushed: ${apprSbid}"></i>
                                 </div>
@@ -2085,35 +2460,37 @@
                             }
                         },
                         cellClick: function(e, cell) {
-                            if (e.target.classList.contains("update-bid-icon") || e.target.closest(".update-bid-icon")) {
+                            if (e.target.classList.contains("update-bid-icon") || e.target.closest(
+                                    ".update-bid-icon")) {
                                 var rowData = cell.getRow().getData();
-                                
+
                                 // Check if bid is already pushed
                                 var apprSbid = rowData.apprSbid || '';
                                 if (apprSbid && apprSbid !== '' && parseFloat(apprSbid) > 0) {
                                     return; // Don't allow re-push
                                 }
-                                
+
                                 // Check if NRA (🔴) is selected
                                 var nraValue = rowData.NR ? rowData.NR.trim() : "";
                                 if (nraValue === 'NRA') {
                                     showToast('error', 'Cannot update bid for NRA campaigns');
                                     return; // Skip update if NRA is selected
                                 }
-                                
+
                                 // Get sbid_m value (saved value)
                                 var sbidM = parseFloat(rowData.sbid_m) || 0;
-                                
+
                                 if (sbidM <= 0) {
-                                    showToast('error', 'SBID M value is required. Please save SBID M first.');
+                                    showToast('error',
+                                        'SBID M value is required. Please save SBID M first.');
                                     return;
-                                                }
-                                
+                                }
+
                                 if (!rowData.campaign_id) {
                                     showToast('error', 'Campaign ID not found');
                                     return;
-                                        }
-                                
+                                }
+
                                 // Use sbid_m value to update eBay site
                                 updateBid(sbidM, rowData.campaign_id, cell);
                             }
@@ -2143,8 +2520,6 @@
                     totalL30Sales = parseFloat(response.total_l30_sales) || 0;
                     totalSkuCountFromBackend = parseFloat(response.total_sku_count) || 0;
                     ebaySkuCountFromBackend = parseFloat(response.ebay_sku_count) || 0;
-                    totalCampaignCountFromBackend = parseFloat(response.total_campaign_count) || 0;
-                    zeroInvCountFromBackend = parseFloat(response.zero_inv_count) || 0;
 
                     // Get L30 totals from backend (L30 report_range data)
                     totalL30ClicksFromBackend = parseInt(response.total_l30_clicks || 0);
@@ -2156,7 +2531,7 @@
                     if (avgAcosEl) {
                         avgAcosEl.textContent = (parseFloat(response.avg_acos) || 0).toFixed(2) + '%';
                     }
-                    
+
                     const avgCvrEl = document.getElementById('avg-cvr');
                     if (avgCvrEl) {
                         avgCvrEl.textContent = (parseFloat(response.avg_cvr) || 0).toFixed(2) + '%';
@@ -2173,35 +2548,6 @@
                         ebaySkuCountEl.textContent = ebaySkuCountFromBackend;
                     }
 
-                    // Update total campaign count from backend
-                    const totalCampaignCountEl = document.getElementById('total-campaign-count');
-                    if (totalCampaignCountEl) {
-                        totalCampaignCountEl.textContent = totalCampaignCountFromBackend;
-                    }
-
-                    // Update zero INV count from backend
-                    const zeroInvCountEl = document.getElementById('zero-inv-count');
-                    if (zeroInvCountEl) {
-                        zeroInvCountEl.textContent = zeroInvCountFromBackend;
-                    }
-                    
-                    // When data is loaded from server, sync editedSbidMValues with loaded data
-                    // This ensures saved values from database are reflected
-                    if (response.data && Array.isArray(response.data)) {
-                        response.data.forEach(function(rowData) {
-                            var uniqueId = (rowData.campaign_id || '') + '_' + (rowData.sku || '');
-                            // If row has sbid_m from database, use it (it's the saved value)
-                            if (rowData.sbid_m !== null && rowData.sbid_m !== undefined && rowData.sbid_m !== '') {
-                                // If edited value matches loaded value, we can clear it (it's already saved)
-                                if (editedSbidMValues[uniqueId] === rowData.sbid_m) {
-                                    delete editedSbidMValues[uniqueId];
-                                }
-                                // If edited value exists but doesn't match, keep it (unsaved edit)
-                                // Otherwise, loaded value from database will be used
-                            }
-                        });
-                    }
-
                     return response.data;
                 }
             });
@@ -2213,25 +2559,23 @@
                     const hasCampaign = data.hasCampaign !== undefined ? data.hasCampaign : (data.campaign_id &&
                         data.campaignName);
                     if (hasCampaign) return false;
-                    // Check if this is a red dot (missing AND not yellow) AND INV > 0
+                    // Check if this is a red dot (missing AND not yellow)
                     let rowNrlForMissing = data.NRL ? data.NRL.trim() : "";
                     let rowNraForMissing = data.NR ? data.NR.trim() : "";
-                    let inv = parseFloat(data.INV || 0);
-                    // Only show as missing (red dot) if neither NRL='NRL' nor NRA='NRA' AND INV > 0
-                    if (rowNrlForMissing === 'NRL' || rowNraForMissing === 'NRA' || inv <= 0) return false;
+                    // Only show as missing (red dot) if neither NRL='NRL' nor NRA='NRA'
+                    if (rowNrlForMissing === 'NRL' || rowNraForMissing === 'NRA') return false;
                 }
 
                 if (showNraMissingOnly) {
                     const hasCampaign = data.hasCampaign !== undefined ? data.hasCampaign : (data.campaign_id &&
                         data.campaignName);
                     if (hasCampaign) return false;
-                    // Show only NRA missing (yellow dots) - if NRA='NRA' OR NRL='NRL' (because NRL='NRL' means NRA should be 'NRA')
+                    // Show only NRA missing (yellow dots)
+                    // If NRL='NRL', NRA should be 'NRA', so show it as NRA missing too
                     let rowNrlForMissing = data.NRL ? data.NRL.trim() : "";
                     let rowNraForMissing = data.NR ? data.NR.trim() : "";
-                    // Show if NRA='NRA' OR NRL='NRL' (because NRL='NRL' means NRA should be 'NRA')
-                    if (rowNraForMissing !== 'NRA' && rowNrlForMissing !== 'NRL') {
-                        return false;
-                    }
+                    // Show if NRL='NRL' OR NRA='NRA' (because NRL='NRL' means NRA should be 'NRA')
+                    if (rowNrlForMissing !== 'NRL' && rowNraForMissing !== 'NRA') return false;
                 }
 
                 if (showNrlMissingOnly) {
@@ -2249,12 +2593,13 @@
                     if (!hasCampaign) return false;
                 }
 
-                // eBay SKU filter - show only SKUs that have campaign
+                // eBay SKU filter - show only SKUs that have campaign or price > 0 (eBay listing exists)
                 if (showEbaySkuOnly) {
                     const hasCampaign = data.hasCampaign !== undefined ? data.hasCampaign : (data.campaign_id &&
                         data.campaignName);
-                    // Show if has campaign
-                    if (!hasCampaign) return false;
+                    const price = parseFloat(data.price || 0);
+                    // Show if has campaign OR has price (eBay listing exists)
+                    if (!hasCampaign && price <= 0) return false;
                 }
 
                 // Global search filter
@@ -2276,12 +2621,12 @@
                     // Show only zero or negative inventory
                     if (inv > 0) return false;
                 } else {
-                    // Inventory filter
-                let invFilterVal = $("#inv-filter").val();
+                    // Inventory filter - Default to INV > 0 (exclude INV = 0 and negative)
+                    let invFilterVal = $("#inv-filter").val();
 
-                    // By default (no filter selected), show all (no filtering)
+                    // By default (no filter selected), show only INV > 0 (exclude INV = 0 and negative)
                     if (!invFilterVal || invFilterVal === '') {
-                        // Show all inventory values
+                        if (inv <= 0) return false;
                     } else if (invFilterVal === "ALL") {
                         // ALL option shows everything (including INV = 0 and negative), so no filtering needed
                     } else if (invFilterVal === "INV_0") {
@@ -2304,8 +2649,8 @@
                     if (rowNra === 'NRA') return false;
                 } else {
                     // NRA filter from dropdown
-                let nraFilterVal = $("#nra-filter").val();
-                if (nraFilterVal) {
+                    let nraFilterVal = $("#nra-filter").val();
+                    if (nraFilterVal) {
                         if (nraFilterVal === 'RA') {
                             // For "RA" filter, include empty/null values too
                             if (rowNra === 'NRA') return false;
@@ -2325,7 +2670,7 @@
                 } else {
                     // NRL filter from dropdown
                     let nrlFilterVal = $("#nrl-filter").val();
-                if (nrlFilterVal) {
+                    if (nrlFilterVal) {
                         if (nrlFilterVal === 'REQ') {
                             // For "REQ" filter, include empty/null values too
                             if (rowNrl === 'NRL') return false;
@@ -2336,10 +2681,48 @@
                     }
                 }
 
+                // SBID M filter
+                let sbidMFilterVal = $("#sbid-m-filter").val();
+                if (sbidMFilterVal && sbidMFilterVal !== '') {
+                    let rowSbidM = data.sbid_m;
+
+                    // Check if sbid_m is blank/null/empty/0
+                    let isBlank = false;
+
+                    // Check for null, undefined, or empty string
+                    if (rowSbidM === null || rowSbidM === undefined || rowSbidM === '') {
+                        isBlank = true;
+                    } else {
+                        // Convert to string and trim
+                        let strValue = String(rowSbidM).trim();
+
+                        // Check for string representations of zero/empty
+                        if (strValue === '' || strValue === '0' || strValue === '0.0' || strValue === '0.00' ||
+                            strValue === '0.000' || strValue === '-') {
+                            isBlank = true;
+                        } else {
+                            // Try parsing as number
+                            let numValue = parseFloat(strValue);
+                            if (isNaN(numValue) || numValue === 0 || numValue <= 0) {
+                                isBlank = true;
+                            }
+                        }
+                    }
+
+                    // Apply filter
+                    if (sbidMFilterVal === 'blank' && !isBlank) {
+                        return false; // Filter out non-blank values
+                    } else if (sbidMFilterVal === 'data' && isBlank) {
+                        return false; // Filter out blank values
+                    }
+                }
+
                 // Exclude missing rows (rows without campaigns) when utilization type is over, under, or correctly
                 // This includes both red dots (missing) and yellow dots (NRA/NRL missing)
-                if (currentUtilizationType === 'over' || currentUtilizationType === 'under' || currentUtilizationType === 'correctly') {
-                    const hasCampaign = data.hasCampaign !== undefined ? data.hasCampaign : (data.campaign_id && data.campaignName);
+                if (currentUtilizationType === 'over' || currentUtilizationType === 'under' ||
+                    currentUtilizationType === 'correctly') {
+                    const hasCampaign = data.hasCampaign !== undefined ? data.hasCampaign : (data.campaign_id &&
+                        data.campaignName);
                     // Check for yellow dots (NRA/NRL missing) - these are also missing rows
                     let rowNrl = data.NRL ? data.NRL.trim() : "";
                     let rowNra = data.NR ? data.NR.trim() : "";
@@ -2349,7 +2732,7 @@
                     }
                 }
 
-                // Apply utilization type filter (ebay3 specific logic)
+                // Apply utilization type filter
                 // Only calculate utilization for rows with campaigns (already checked above)
                 let budget = parseFloat(data.campaignBudgetAmount) || 0;
                 let l7_spend = parseFloat(data.l7_spend || 0);
@@ -2360,16 +2743,76 @@
                 if (currentUtilizationType === 'all') {
                     // All - no utilization filter
                 } else if (currentUtilizationType === 'over') {
-                    // Double condition: both UB7 AND UB1 must be > 99
+                    // Over utilized: ub7 > 99 && ub1 > 99
                     if (!(ub7 > 99 && ub1 > 99)) {
                         return false;
                     }
                 } else if (currentUtilizationType === 'under') {
-                    // Double condition: both UB7 AND UB1 must be < 66
-                    if (!(ub7 < 66 && ub1 < 66)) return false;
+                    // For under utilized, check ub7 < 66 && ub1 < 66 && INV > 0 (matches count logic)
+                    let inv = parseFloat(data.INV || 0);
+                    if (!(ub7 < 66 && ub1 < 66 && inv > 0)) return false;
                 } else if (currentUtilizationType === 'correctly') {
-                    // Double condition: both UB7 AND UB1 must be between 66% and 99% (both green)
+                    // Strict criteria: both UB7 and UB1 must be between 66% and 99% (both green)
                     if (!((ub7 >= 66 && ub7 <= 99) && (ub1 >= 66 && ub1 <= 99))) return false;
+                }
+
+                // Apply all range filters (multiple filters can be active simultaneously)
+                // 1UB% filter
+                if (rangeFilters['1ub'].min !== null || rangeFilters['1ub'].max !== null) {
+                    if (rangeFilters['1ub'].min !== null && ub1 < rangeFilters['1ub'].min) {
+                        return false;
+                    }
+                    if (rangeFilters['1ub'].max !== null && ub1 > rangeFilters['1ub'].max) {
+                        return false;
+                    }
+                }
+
+                // 7UB% filter
+                if (rangeFilters['7ub'].min !== null || rangeFilters['7ub'].max !== null) {
+                    if (rangeFilters['7ub'].min !== null && ub7 < rangeFilters['7ub'].min) {
+                        return false;
+                    }
+                    if (rangeFilters['7ub'].max !== null && ub7 > rangeFilters['7ub'].max) {
+                        return false;
+                    }
+                }
+
+                // LBid filter
+                if (rangeFilters['lbid'].min !== null || rangeFilters['lbid'].max !== null) {
+                    let lbidRaw = data.last_sbid;
+                    let lbidValue = 0;
+                    // Parse LBid, treat empty/0 as 0
+                    if (!lbidRaw || lbidRaw === '' || lbidRaw === '0' || lbidRaw === 0) {
+                        lbidValue = 0;
+                    } else {
+                        lbidValue = parseFloat(lbidRaw);
+                        if (isNaN(lbidValue)) {
+                            lbidValue = 0;
+                        }
+                    }
+
+                    if (rangeFilters['lbid'].min !== null && lbidValue < rangeFilters['lbid'].min) {
+                        return false;
+                    }
+                    if (rangeFilters['lbid'].max !== null && lbidValue > rangeFilters['lbid'].max) {
+                        return false;
+                    }
+                }
+
+                // Acos filter
+                if (rangeFilters['acos'].min !== null || rangeFilters['acos'].max !== null) {
+                    let acosRaw = data.acos;
+                    let acosValue = parseFloat(acosRaw);
+                    if (isNaN(acosValue) || acosValue === 0) {
+                        acosValue = 100; // Treat 0 ACOS as 100%
+                    }
+
+                    if (rangeFilters['acos'].min !== null && acosValue < rangeFilters['acos'].min) {
+                        return false;
+                    }
+                    if (rangeFilters['acos'].max !== null && acosValue > rangeFilters['acos'].max) {
+                        return false;
+                    }
                 }
 
                 return true;
@@ -2387,8 +2830,1056 @@
                 }
                 // Show APR BID column
                 table.showColumn('apr_bid');
+
+                // Add click handler for INV "i" button to toggle L30, DIL%, NRL, NRA columns
+                setTimeout(function() {
+                    var invToggleBtn = document.querySelector('.toggle-inv-cols-btn');
+                    if (invToggleBtn) {
+                        invToggleBtn.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            // Toggle visibility of L30, DIL%, NRL, NRA columns
+                            var l30Col = table.getColumn('L30');
+                            var dilCol = table.getColumn('DIL %');
+                            var nrlCol = table.getColumn('NRL');
+                            var nraCol = table.getColumn('NR');
+
+                            if (l30Col && dilCol && nrlCol && nraCol) {
+                                var isL30Visible = l30Col.isVisible();
+                                // Toggle all columns
+                                if (isL30Visible) {
+                                    l30Col.hide();
+                                    dilCol.hide();
+                                    nrlCol.hide();
+                                    nraCol.hide();
+                                } else {
+                                    l30Col.show();
+                                    dilCol.show();
+                                    nrlCol.show();
+                                    nraCol.show();
+                                }
+                            }
+                        });
+                    }
+                }, 100);
+
+                // Add click handler for toggle metrics button
+                setTimeout(function() {
+                    var acosHeader = document.querySelector(
+                        '.tabulator-col[data-field="acos"] .toggle-metrics-btn');
+                    if (acosHeader) {
+                        acosHeader.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            var clicksVisible = table.getColumn('clicks').isVisible();
+                            var spendVisible = table.getColumn('adFees').isVisible();
+                            var adSoldVisible = table.getColumn('ad_sold').isVisible();
+
+                            if (clicksVisible || spendVisible || adSoldVisible) {
+                                table.hideColumn('clicks');
+                                table.hideColumn('adFees');
+                                table.hideColumn('ad_sold');
+                            } else {
+                                table.showColumn('clicks');
+                                table.showColumn('adFees');
+                                table.showColumn('ad_sold');
+                            }
+                        });
+                    }
+                }, 100);
+
+                // Update counts when data is filtered (debounced)
+                let filterTimeout = null;
+                table.on("dataFiltered", function(filteredRows) {
+                    if (filterTimeout) clearTimeout(filterTimeout);
+                    filterTimeout = setTimeout(function() {
+                        updateButtonCounts();
+                        updateL30Totals();
+                        updatePaginationCount();
+                    }, 300);
+                });
+
+                // Update pagination count on page changes
+                table.on("pageLoaded", function() {
+                    updatePaginationCount();
+                    // Update header checkbox state when page changes
+                    setTimeout(updateHeaderCheckboxState, 50);
+                });
+
+                table.on("dataProcessed", function() {
+                    setTimeout(updatePaginationCount, 100);
+                });
+
+                // Debounced search
+                let searchTimeout = null;
+                $("#global-search").on("keyup", function() {
+                    if (searchTimeout) clearTimeout(searchTimeout);
+                    searchTimeout = setTimeout(function() {
+                        table.setFilter(combinedFilter);
+                    }, 300);
+                });
+
+                $("#status-filter, #inv-filter, #nra-filter, #nrl-filter, #sbid-m-filter").on("change",
+                    function() {
+                        table.setFilter(combinedFilter);
+                        // Update counts when filter changes - use longer timeout to ensure filter is applied
+                        setTimeout(function() {
+                            updateButtonCounts();
+                            updateL30Totals();
+                            updatePaginationCount();
+                        }, 300);
+                    });
+
+                // Multi range filter handlers - apply all filters simultaneously
+                $("#apply-all-range-filters-btn").on("click", function() {
+                    let hasError = false;
+
+                    // Get and validate 1UB% filter
+                    let ub1Min = $("#range-filter-1ub-min").val();
+                    let ub1Max = $("#range-filter-1ub-max").val();
+                    rangeFilters['1ub'].min = ub1Min !== '' ? parseFloat(ub1Min) : null;
+                    rangeFilters['1ub'].max = ub1Max !== '' ? parseFloat(ub1Max) : null;
+                    if (rangeFilters['1ub'].min !== null && rangeFilters['1ub'].max !== null &&
+                        rangeFilters['1ub'].min > rangeFilters['1ub'].max) {
+                        alert('1UB%: Minimum value cannot be greater than maximum value');
+                        hasError = true;
+                    }
+
+                    // Get and validate 7UB% filter
+                    let ub7Min = $("#range-filter-7ub-min").val();
+                    let ub7Max = $("#range-filter-7ub-max").val();
+                    rangeFilters['7ub'].min = ub7Min !== '' ? parseFloat(ub7Min) : null;
+                    rangeFilters['7ub'].max = ub7Max !== '' ? parseFloat(ub7Max) : null;
+                    if (rangeFilters['7ub'].min !== null && rangeFilters['7ub'].max !== null &&
+                        rangeFilters['7ub'].min > rangeFilters['7ub'].max) {
+                        alert('7UB%: Minimum value cannot be greater than maximum value');
+                        hasError = true;
+                    }
+
+                    // Get and validate LBid filter
+                    let lbidMin = $("#range-filter-lbid-min").val();
+                    let lbidMax = $("#range-filter-lbid-max").val();
+                    rangeFilters['lbid'].min = lbidMin !== '' ? parseFloat(lbidMin) : null;
+                    rangeFilters['lbid'].max = lbidMax !== '' ? parseFloat(lbidMax) : null;
+                    if (rangeFilters['lbid'].min !== null && rangeFilters['lbid'].max !== null &&
+                        rangeFilters['lbid'].min > rangeFilters['lbid'].max) {
+                        alert('LBid: Minimum value cannot be greater than maximum value');
+                        hasError = true;
+                    }
+
+                    // Get and validate Acos filter
+                    let acosMin = $("#range-filter-acos-min").val();
+                    let acosMax = $("#range-filter-acos-max").val();
+                    rangeFilters['acos'].min = acosMin !== '' ? parseFloat(acosMin) : null;
+                    rangeFilters['acos'].max = acosMax !== '' ? parseFloat(acosMax) : null;
+                    if (rangeFilters['acos'].min !== null && rangeFilters['acos'].max !== null &&
+                        rangeFilters['acos'].min > rangeFilters['acos'].max) {
+                        alert('Acos: Minimum value cannot be greater than maximum value');
+                        hasError = true;
+                    }
+
+                    if (hasError) {
+                        return;
+                    }
+
+                    // Apply all filters
+                    table.setFilter(combinedFilter);
+                    setTimeout(function() {
+                        updateButtonCounts();
+                        updateL30Totals();
+                        updatePaginationCount();
+                    }, 300);
+                });
+
+                $("#clear-all-range-filters-btn").on("click", function() {
+                    // Clear all filter values
+                    rangeFilters['1ub'].min = null;
+                    rangeFilters['1ub'].max = null;
+                    rangeFilters['7ub'].min = null;
+                    rangeFilters['7ub'].max = null;
+                    rangeFilters['lbid'].min = null;
+                    rangeFilters['lbid'].max = null;
+                    rangeFilters['acos'].min = null;
+                    rangeFilters['acos'].max = null;
+
+                    // Clear all input fields
+                    $("#range-filter-1ub-min").val('');
+                    $("#range-filter-1ub-max").val('');
+                    $("#range-filter-7ub-min").val('');
+                    $("#range-filter-7ub-max").val('');
+                    $("#range-filter-lbid-min").val('');
+                    $("#range-filter-lbid-max").val('');
+                    $("#range-filter-acos-min").val('');
+                    $("#range-filter-acos-max").val('');
+
+                    // Apply cleared filters
+                    table.setFilter(combinedFilter);
+                    setTimeout(function() {
+                        updateButtonCounts();
+                        updateL30Totals();
+                        updatePaginationCount();
+                    }, 300);
+                });
+
+                // Auto-apply filters when input values change (debounced)
+                let rangeFilterTimeout = null;
+
+                function applyRangeFiltersOnChange() {
+                    if (rangeFilterTimeout) clearTimeout(rangeFilterTimeout);
+                    rangeFilterTimeout = setTimeout(function() {
+                        // Update filter values from inputs
+                        let ub1Min = $("#range-filter-1ub-min").val();
+                        let ub1Max = $("#range-filter-1ub-max").val();
+                        rangeFilters['1ub'].min = ub1Min !== '' ? parseFloat(ub1Min) : null;
+                        rangeFilters['1ub'].max = ub1Max !== '' ? parseFloat(ub1Max) : null;
+
+                        let ub7Min = $("#range-filter-7ub-min").val();
+                        let ub7Max = $("#range-filter-7ub-max").val();
+                        rangeFilters['7ub'].min = ub7Min !== '' ? parseFloat(ub7Min) : null;
+                        rangeFilters['7ub'].max = ub7Max !== '' ? parseFloat(ub7Max) : null;
+
+                        let lbidMin = $("#range-filter-lbid-min").val();
+                        let lbidMax = $("#range-filter-lbid-max").val();
+                        rangeFilters['lbid'].min = lbidMin !== '' ? parseFloat(lbidMin) : null;
+                        rangeFilters['lbid'].max = lbidMax !== '' ? parseFloat(lbidMax) : null;
+
+                        let acosMin = $("#range-filter-acos-min").val();
+                        let acosMax = $("#range-filter-acos-max").val();
+                        rangeFilters['acos'].min = acosMin !== '' ? parseFloat(acosMin) : null;
+                        rangeFilters['acos'].max = acosMax !== '' ? parseFloat(acosMax) : null;
+
+                        // Apply filters (skip validation for auto-apply)
+                        table.setFilter(combinedFilter);
+                        setTimeout(function() {
+                            updateButtonCounts();
+                            updateL30Totals();
+                            updatePaginationCount();
+                        }, 300);
+                    }, 500); // 500ms debounce
+                }
+
+                // Add change event listeners to all range filter inputs
+                $("#range-filter-1ub-min, #range-filter-1ub-max, #range-filter-7ub-min, #range-filter-7ub-max, #range-filter-lbid-min, #range-filter-lbid-max, #range-filter-acos-min, #range-filter-acos-max")
+                    .on("input change", function() {
+                        applyRangeFiltersOnChange();
+                    });
+
+                // INC/DEC SBID handlers
+                // Dropdown selection handler
+                $("#inc-dec-dropdown .dropdown-item").on("click", function(e) {
+                    e.preventDefault();
+                    incDecType = $(this).data('type');
+                    var labelText = incDecType === 'value' ? 'Value (e.g., +0.5 or -0.5)' :
+                        'Percentage (e.g., +10 or -10)';
+                    $("#inc-dec-label").text(incDecType === 'value' ? 'Value' : 'Percentage');
+                    $("#inc-dec-input").attr('placeholder', labelText);
+                    $("#inc-dec-btn").text(incDecType === 'value' ? 'INC/DEC (By Value)' :
+                        'INC/DEC (By %)');
+                });
+
+                // Helper function to get L Bid (last_sbid) value for a row - used as base value for INC/DEC
+                function getCurrentSbid(rowData) {
+                    // Use L Bid (last_sbid) as the base value
+                    var lastSbid = rowData.last_sbid;
+
+                    // Check if L Bid is empty, null, 0, or invalid
+                    if (!lastSbid || lastSbid === '' || lastSbid === '0' || lastSbid === 0) {
+                        return null; // No L Bid value available
+                    }
+
+                    var sbidValue = parseFloat(lastSbid);
+                    if (isNaN(sbidValue) || sbidValue <= 0) {
+                        return null;
+                    }
+
+                    return sbidValue;
+                }
+
+                // Apply INC/DEC button handler
+                $("#apply-inc-dec-btn").on("click", function() {
+                    var inputValue = $("#inc-dec-input").val();
+                    if (!inputValue || inputValue === '') {
+                        alert('Please enter a value');
+                        return;
+                    }
+
+                    var incDecValue = parseFloat(inputValue);
+                    if (isNaN(incDecValue)) {
+                        alert('Please enter a valid number');
+                        return;
+                    }
+
+                    // Get only selected rows
+                    var selectedRows = table.getRows('selected');
+                    if (selectedRows.length === 0) {
+                        showToast('warning',
+                            'Please select at least one row to apply increment/decrement');
+                        return;
+                    }
+
+                    // Prepare data for bulk save
+                    var campaignSbidMap = {}; // { campaign_id: new_sbid_m }
+                    var rowsToUpdate = []; // Store rows for later update
+
+                    selectedRows.forEach(function(row) {
+                        var rowData = row.getData();
+                        var campaignId = rowData.campaign_id;
+
+                        // Skip rows without campaign_id
+                        if (!campaignId) {
+                            return;
+                        }
+
+                        // Get L Bid (last_sbid) as base value
+                        var currentLbid = getCurrentSbid(rowData);
+                        if (currentLbid === null || currentLbid === 0) {
+                            return; // Skip rows with no L Bid value
+                        }
+
+                        // Calculate new SBID based on L Bid and INC/DEC type
+                        var newSbid = 0;
+                        if (incDecType === 'value') {
+                            // By value: new = L Bid + input
+                            newSbid = currentLbid + incDecValue;
+                        } else {
+                            // By percentage: new = L Bid * (1 + input/100)
+                            newSbid = currentLbid * (1 + incDecValue / 100);
+                        }
+
+                        // Ensure new SBID is not negative
+                        if (newSbid < 0) {
+                            newSbid = 0;
+                        }
+
+                        // Round to 2 decimal places
+                        newSbid = Math.round(newSbid * 100) / 100;
+
+                        // Store campaign ID and calculated SBID
+                        campaignSbidMap[campaignId] = newSbid;
+                        rowsToUpdate.push({
+                            row: row,
+                            campaignId: campaignId,
+                            newSbid: newSbid
+                        });
+                    });
+
+                    if (Object.keys(campaignSbidMap).length === 0) {
+                        showToast('warning',
+                            'No selected rows with valid L Bid and campaign ID found');
+                        return;
+                    }
+
+                    // Show progress overlay
+                    const overlay = document.getElementById("progress-overlay");
+                    overlay.style.display = "flex";
+
+                    // Prepare campaign IDs and SBID M values arrays
+                    var campaignIds = Object.keys(campaignSbidMap);
+
+                    // Save all calculated values individually for each campaign
+                    var savePromises = [];
+                    var campaignRowMap = {}; // Map campaign ID to row info for easy lookup
+
+                    rowsToUpdate.forEach(function(rowInfo) {
+                        campaignRowMap[rowInfo.campaignId] = rowInfo;
+                    });
+
+                    campaignIds.forEach(function(campaignId) {
+                        var newSbidValue = campaignSbidMap[campaignId];
+                        var savePromise = $.ajax({
+                            url: '/save-ebay3-sbid-m',
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr(
+                                    'content')
+                            },
+                            data: {
+                                campaign_id: campaignId,
+                                sbid_m: newSbidValue
+                            }
+                        }).then(function(response) {
+                            return {
+                                campaignId: campaignId,
+                                response: response,
+                                success: true
+                            };
+                        }).catch(function(error) {
+                            return {
+                                campaignId: campaignId,
+                                error: error,
+                                success: false
+                            };
+                        });
+                        savePromises.push(savePromise);
+                    });
+
+                    // Wait for all saves to complete
+                    Promise.all(savePromises).then(function(results) {
+                        var successCount = 0;
+                        var errorCount = 0;
+
+                        results.forEach(function(result) {
+                            if (result.success && result.response && result.response
+                                .status === 200) {
+                                successCount++;
+                                // Update row data using campaign ID to find the correct row
+                                var rowInfo = campaignRowMap[result.campaignId];
+                                if (rowInfo) {
+                                    var rowData = rowInfo.row.getData();
+                                    var currentData = JSON.parse(JSON.stringify(
+                                        rowData));
+                                    currentData.sbid_m = rowInfo.newSbid;
+                                    currentData.apprSbid =
+                                    ''; // Clear apprSbid when sbid_m is updated
+                                    rowInfo.row.update(currentData);
+                                    setTimeout(function() {
+                                        rowInfo.row.reformat();
+                                    }, 50);
+                                }
+                            } else {
+                                errorCount++;
+                                console.error('Error saving SBID M for campaign:',
+                                    result.campaignId, result.error || result
+                                    .response);
+                            }
+                        });
+
+                        overlay.style.display = "none";
+
+                        if (successCount > 0) {
+                            showToast('success', 'SBID M saved successfully for ' +
+                                successCount + ' campaign(s)');
+                            // Redraw table to ensure all updates are visible
+                            table.redraw(true);
+                        } else {
+                            showToast('error', 'Failed to save SBID M values');
+                        }
+
+                        if (errorCount > 0) {
+                            console.warn('Some campaigns failed to save:', errorCount);
+                        }
+                    }).catch(function(error) {
+                        overlay.style.display = "none";
+                        showToast('error', 'Error saving SBID M values');
+                        console.error('Error in bulk save:', error);
+                    });
+                });
+
+                // Clear INC/DEC button handler
+                $("#clear-inc-dec-btn").on("click", function() {
+                    // Clear input field only - sbid_m values remain in database
+                    $("#inc-dec-input").val('');
+                    showToast('info', 'Input cleared. SBID M values remain saved in database.');
+                });
+
+                // Clear SBID M button handler - clears sbid_m for selected rows
+                // Attach handler using event delegation to ensure it works
+                $(document).on("click", "#clear-sbid-m-btn", function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    console.log('Clear SBID M button clicked');
+
+                    // Check if table is available
+                    if (typeof table === 'undefined' || !table) {
+                        showToast('error', 'Table not initialized yet. Please wait.');
+                        return;
+                    }
+
+                    // Get only selected rows
+                    var selectedRows = table.getRows('selected');
+                    console.log('Selected rows:', selectedRows.length);
+
+                    if (selectedRows.length === 0) {
+                        showToast('warning', 'Please select at least one row to clear SBID M');
+                        return;
+                    }
+
+                    // Confirm before clearing
+                    var confirmClear = confirm('Are you sure you want to clear SBID M for ' +
+                        selectedRows.length + ' selected row(s)?');
+                    if (!confirmClear) {
+                        return;
+                    }
+
+                    // Show progress overlay
+                    const overlay = document.getElementById("progress-overlay");
+                    if (overlay) {
+                        overlay.style.display = "flex";
+                    }
+
+                    // Prepare campaign IDs and rows to update
+                    var campaignIds = [];
+                    var campaignRowMap = {};
+
+                    selectedRows.forEach(function(row) {
+                        var rowData = row.getData();
+                        var campaignId = rowData.campaign_id;
+
+                        // Skip rows without campaign_id
+                        if (!campaignId) {
+                            return;
+                        }
+
+                        campaignIds.push(String(campaignId).trim());
+                        campaignRowMap[campaignId] = row;
+                    });
+
+                    console.log('Campaign IDs to clear:', campaignIds);
+
+                    if (campaignIds.length === 0) {
+                        if (overlay) overlay.style.display = "none";
+                        showToast('warning', 'No selected rows with valid campaign ID found');
+                        return;
+                    }
+
+                    // Since the save endpoint requires sbid_m > 0, we need to clear via direct database update
+                    // Use a custom endpoint or update directly via AJAX to set sbid_m to NULL/empty
+                    $.ajax({
+                        url: '/clear-ebay-sbid-m-bulk',
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                        },
+                        data: {
+                            campaign_ids: campaignIds
+                        },
+                        success: function(response) {
+                            console.log('Clear response:', response);
+                            if (response && response.status === 200) {
+                                var successCount = response.updated_count || campaignIds
+                                    .length;
+
+                                // Update row data - clear sbid_m and apprSbid
+                                campaignIds.forEach(function(campaignId) {
+                                    var row = campaignRowMap[campaignId];
+                                    if (row) {
+                                        var rowData = row.getData();
+                                        var currentData = JSON.parse(JSON
+                                            .stringify(rowData));
+                                        currentData.sbid_m = ''; // Clear sbid_m
+                                        currentData.apprSbid =
+                                        ''; // Clear apprSbid
+                                        row.update(currentData);
+                                        setTimeout(function() {
+                                            row.reformat();
+                                        }, 50);
+                                    }
+                                });
+
+                                if (overlay) overlay.style.display = "none";
+                                showToast('success',
+                                    'SBID M cleared successfully for ' +
+                                    successCount + ' campaign(s)');
+                                table.redraw(true);
+                            } else {
+                                if (overlay) overlay.style.display = "none";
+                                showToast('error', response.message ||
+                                    'Failed to clear SBID M values');
+                            }
+                        },
+                        error: function(xhr) {
+                            console.error('Error clearing SBID M:', xhr);
+                            // If endpoint doesn't exist, update frontend directly
+                            var successCount = 0;
+                            campaignIds.forEach(function(campaignId) {
+                                var row = campaignRowMap[campaignId];
+                                if (row) {
+                                    var rowData = row.getData();
+                                    var currentData = JSON.parse(JSON.stringify(
+                                        rowData));
+                                    currentData.sbid_m =
+                                    ''; // Clear sbid_m in frontend
+                                    currentData.apprSbid = ''; // Clear apprSbid
+                                    row.update(currentData);
+                                    setTimeout(function() {
+                                        row.reformat();
+                                    }, 50);
+                                    successCount++;
+                                }
+                            });
+
+                            if (overlay) overlay.style.display = "none";
+                            showToast('info', 'SBID M cleared in display for ' +
+                                successCount +
+                                ' row(s). Database update requires backend endpoint implementation.'
+                                );
+                            table.redraw(true);
+                        }
+                    });
+                });
+
+                // Initial update of all button counts after data loads
+                setTimeout(function() {
+                    updateButtonCounts();
+                    updatePaginationCount();
+                }, 1000);
             });
 
+            // Function to update pagination count display
+            function updatePaginationCount() {
+                if (typeof table === 'undefined' || !table) {
+                    return;
+                }
+
+                try {
+                    const filteredData = table.getData('active');
+                    const totalRows = filteredData.length;
+                    const pageSize = table.getPageSize();
+                    const currentPage = table.getPage();
+
+                    let startRow = 0;
+                    let endRow = 0;
+
+                    if (totalRows > 0) {
+                        startRow = ((currentPage - 1) * pageSize) + 1;
+                        endRow = Math.min(currentPage * pageSize, totalRows);
+                    }
+
+                    const paginationCountEl = document.getElementById('pagination-count');
+                    if (paginationCountEl) {
+                        if (totalRows === 0) {
+                            paginationCountEl.textContent = 'Showing 0 of 0 rows';
+                        } else {
+                            paginationCountEl.textContent = `Showing ${startRow} to ${endRow} of ${totalRows} rows`;
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error updating pagination count:', e);
+                }
+            }
+
+            // Track selection changes to maintain selection list (including bulk selections)
+            table.on("rowSelectionChanged", function(data, rows) {
+                // Sync the Set with all currently selected rows
+                var allSelectedRows = table.getRows('selected');
+                manuallySelectedRows.clear();
+                allSelectedRows.forEach(function(row) {
+                    var rowData = row.getData();
+                    var campaignId = rowData.campaign_id;
+                    if (campaignId) {
+                        manuallySelectedRows.add(campaignId);
+                    }
+                });
+
+                // Update header checkbox state based on current page rows
+                setTimeout(updateHeaderCheckboxState, 50);
+
+                if (manuallySelectedRows.size > 0) {
+                    document.getElementById("apr-all-sbid-btn").classList.remove("d-none");
+                    document.getElementById("save-all-sbid-m-btn").classList.remove("d-none");
+                } else {
+                    document.getElementById("apr-all-sbid-btn").classList.add("d-none");
+                    document.getElementById("save-all-sbid-m-btn").classList.add("d-none");
+                }
+            });
+
+            document.addEventListener("change", function(e) {
+                if (e.target.classList.contains("editable-select")) {
+                    let sku = e.target.getAttribute("data-sku");
+                    let field = e.target.getAttribute("data-field");
+                    let value = e.target.value;
+
+                    // Update color immediately for NRA/NRL fields
+                    if (field === 'NR' || field === 'NRL') {
+                        // For emoji dropdown, we don't need to change background color
+                        // The emoji itself changes based on selection
+                    }
+
+                    fetch('/update-ebay3-nr-data', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')
+                                    .getAttribute('content')
+                            },
+                            body: JSON.stringify({
+                                sku: sku,
+                                field: field,
+                                value: value
+                            })
+                        })
+                        .then(res => res.json())
+                        .then(data => {
+                            console.log('Update response:', data); // Debug log
+                            // Update table data with response
+                            if (data.success && typeof table !== 'undefined' && table) {
+                                let row = table.searchRows('sku', '=', sku);
+                                if (row.length > 0) {
+                                    // If NRL is set to "NRL", automatically set NRA to "NRA" (only if NRA is not already set)
+                                    if (field === 'NRL' && value === 'NRL') {
+                                        console.log('NRL set to NRL, updating NRA...'); // Debug log
+                                        // Get current row data BEFORE update
+                                        let rowData = row[0].getData();
+                                        let currentNra = rowData.NR ? String(rowData.NR).trim() : '';
+
+                                        // Get NRA value from backend response (backend always sets it to 'NRA' when NRL is 'NRL')
+                                        let backendNra = '';
+                                        if (data.updated_json && data.updated_json.NR) {
+                                            backendNra = String(data.updated_json.NR).trim();
+                                        }
+
+                                        console.log('Current NRA:', currentNra, 'Backend NRA:',
+                                            backendNra); // Debug log
+
+                                        // Always update both NRL and NR when NRL is set to "NRL"
+                                        // Backend always sets NR to "NRA" when NRL is "NRL"
+                                        let updateData = {
+                                            NRL: value,
+                                            NR: backendNra ||
+                                                'NRA' // Use backend value (should be 'NRA') or default to 'NRA'
+                                        };
+
+                                        console.log('Updating row with:', updateData); // Debug log
+
+                                        // Update the row data immediately
+                                        row[0].update(updateData);
+
+                                        // Force update NRA column display immediately
+                                        setTimeout(function() {
+                                            // Reformat the row to update all formatters (especially NRA column)
+                                            row[0].reformat();
+                                        }, 50);
+
+                                        // Second attempt to ensure UI updates
+                                        setTimeout(function() {
+                                            row[0].reformat();
+                                            // Redraw the table to ensure all cells are updated
+                                            if (typeof table !== 'undefined' && table) {
+                                                table.redraw(true);
+                                            }
+                                        }, 200);
+                                    } else {
+                                        // Update the field from backend response
+                                        let updatedData = {};
+                                        if (data.updated_json && data.updated_json[field] !==
+                                            undefined) {
+                                            updatedData[field] = data.updated_json[field];
+                                        } else {
+                                            updatedData[field] = value;
+                                        }
+                                        row[0].update(updatedData);
+                                    }
+                                }
+                            }
+                        })
+                        .catch(err => {
+                            console.error('Error updating field:', err);
+                            // Show error message to user
+                            alert('Error updating field. Please try again.');
+                        });
+                }
+            });
+
+            document.getElementById("apr-all-sbid-btn").addEventListener("click", function() {
+                const overlay = document.getElementById("progress-overlay");
+                overlay.style.display = "flex";
+
+                // Get only actually selected rows - verify selection state
+                var allSelectedRows = table.getRows('selected');
+                var selectedCampaignIds = [];
+                var seenCampaignIds = new Set();
+
+                allSelectedRows.forEach(function(row) {
+                    var rowData = row.getData();
+                    var campaignId = rowData.campaign_id;
+                    if (campaignId && !seenCampaignIds.has(campaignId)) {
+                        selectedCampaignIds.push(campaignId);
+                        seenCampaignIds.add(campaignId);
+                    }
+                });
+
+                console.log('APR ALL: Total rows in table:', table.getRows('all').length);
+                console.log('APR ALL: Selected rows count:', allSelectedRows.length);
+                console.log('APR ALL: Unique selected campaign IDs:', selectedCampaignIds.length);
+
+                if (selectedCampaignIds.length === 0) {
+                    overlay.style.display = "none";
+                    showToast('error', 'Please select at least one campaign');
+                    return;
+                }
+
+                // Get rows for selected campaign IDs
+                var selectedRows = allSelectedRows.filter(function(row) {
+                    var campaignId = row.getData().campaign_id;
+                    return campaignId && selectedCampaignIds.includes(campaignId);
+                });
+
+                var campaignIds = [];
+                var bids = [];
+
+                // Store row and bid mapping for updating apprSbid after success
+                var rowBidMap = [];
+
+                selectedRows.forEach(function(row) {
+                    var rowData = row.getData();
+
+                    // Check if NRA (🔴) is selected
+                    var nraValue = rowData.NR ? rowData.NR.trim() : "";
+                    if (nraValue === 'NRA') {
+                        return; // Skip update if NRA is selected
+                    }
+
+                    // Get sbid_m value (saved value)
+                    var sbidM = parseFloat(rowData.sbid_m) || 0;
+
+                    // Only add if sbid_m exists and is greater than 0
+                    if (sbidM > 0 && rowData.campaign_id) {
+                        campaignIds.push(rowData.campaign_id);
+                        bids.push(sbidM);
+                        // Store row and bid mapping for later update
+                        rowBidMap.push({
+                            row: row,
+                            campaignId: rowData.campaign_id,
+                            bid: sbidM
+                        });
+                    }
+                });
+
+                if (campaignIds.length === 0) {
+                    overlay.style.display = "none";
+                    showToast('error', 'No valid campaigns with SBID M value found');
+                    return;
+                }
+
+                console.log("Campaign IDs:", campaignIds);
+                console.log("Bids:", bids);
+
+                fetch('/update-ebay3-keywords-bid-price', {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')
+                                .getAttribute('content')
+                        },
+                        body: JSON.stringify({
+                            campaign_ids: campaignIds,
+                            bids: bids
+                        })
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.status === 200) {
+                            showToast('success', 'Keywords updated successfully for ' + campaignIds
+                                .length + ' campaign(s)');
+
+                            // Update apprSbid for all successfully updated rows
+                            rowBidMap.forEach(function(item) {
+                                var row = item.row;
+                                var rowData = row.getData();
+
+                                // Update apprSbid with the bid value that was pushed
+                                rowData.apprSbid = item.bid;
+
+                                // Update the row
+                                row.update(rowData);
+
+                                // Reformat to update APR BID column icon
+                                setTimeout(function() {
+                                    row.reformat();
+                                }, 50);
+                            });
+                        } else {
+                            let errorMsg = data.message || "Something went wrong";
+                            if (errorMsg.includes("Premium Ads")) {
+                                showToast('error', 'Error: ' + errorMsg);
+                            } else {
+                                showToast('error', 'Something went wrong: ' + errorMsg);
+                            }
+                        }
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        showToast('error', 'Error updating bids');
+                    })
+                    .finally(() => {
+                        overlay.style.display = "none";
+                    });
+            });
+
+            // Bulk save SBID M for selected campaigns
+            document.getElementById("save-all-sbid-m-btn").addEventListener("click", function() {
+                const overlay = document.getElementById("progress-overlay");
+                overlay.style.display = "flex";
+
+                // Get only actually selected rows - verify selection state
+                var allSelectedRows = table.getRows('selected');
+                var selectedCampaignIds = [];
+                var seenCampaignIds = new Set();
+
+                allSelectedRows.forEach(function(row) {
+                    var rowData = row.getData();
+                    var campaignId = rowData.campaign_id;
+                    if (campaignId && !seenCampaignIds.has(campaignId)) {
+                        selectedCampaignIds.push(campaignId);
+                        seenCampaignIds.add(campaignId);
+                    }
+                });
+
+                console.log('Total rows in table:', table.getRows('all').length);
+                console.log('Selected rows count:', allSelectedRows.length);
+                console.log('Unique selected campaign IDs:', selectedCampaignIds.length);
+                console.log('First 10 campaign IDs:', selectedCampaignIds.slice(0, 10));
+
+                if (selectedCampaignIds.length === 0) {
+                    overlay.style.display = "none";
+                    showToast('error', 'Please select at least one campaign');
+                    return;
+                }
+
+                // Safety check: if too many rows are selected, warn the user
+                if (selectedCampaignIds.length > 100) {
+                    var confirmUpdate = confirm('You have selected ' + selectedCampaignIds.length +
+                        ' campaigns. Are you sure you want to update all of them?');
+                    if (!confirmUpdate) {
+                        overlay.style.display = "none";
+                        return;
+                    }
+                }
+
+                // Get rows for selected campaign IDs
+                var selectedRows = [];
+                selectedCampaignIds.forEach(function(campaignId) {
+                    var rows = table.getRows().filter(function(row) {
+                        return row.getData().campaign_id === campaignId;
+                    });
+                    selectedRows = selectedRows.concat(rows);
+                });
+
+                // Prompt for SBID M value
+                var sbidMValue = prompt('Enter SBID M value for all selected campaigns:');
+                if (!sbidMValue || sbidMValue.trim() === '') {
+                    overlay.style.display = "none";
+                    return;
+                }
+
+                var cleanValue = parseFloat(sbidMValue.replace(/[$\s]/g, '')) || 0;
+                if (cleanValue <= 0) {
+                    overlay.style.display = "none";
+                    showToast('error', 'SBID M must be greater than 0');
+                    return;
+                }
+
+                // Use the tracked campaign IDs directly
+                var campaignIds = selectedCampaignIds.map(function(id) {
+                    return String(id).trim();
+                }).filter(function(id) {
+                    return id !== '' && id !== null && id !== undefined;
+                });
+
+                if (campaignIds.length === 0) {
+                    overlay.style.display = "none";
+                    showToast('error',
+                        'No valid campaigns selected. Please select campaigns with valid campaign IDs.');
+                    return;
+                }
+
+                // Debug: Log how many campaigns are being sent
+                console.log('Sending ' + campaignIds.length + ' campaign IDs for update:', campaignIds);
+
+                $.ajax({
+                    url: '/save-ebay3-sbid-m-bulk',
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    data: {
+                        campaign_ids: campaignIds,
+                        sbid_m: cleanValue
+                    },
+                    success: function(response) {
+                        if (response.status === 200) {
+                            showToast('success', response.message ||
+                                'SBID M saved successfully for ' + response.updated_count +
+                                ' campaign(s)');
+                            // Update the selected rows with the new sbid_m value instead of refreshing entire table
+                            // Clear apprSbid when sbid_m is updated
+                            selectedRows.forEach(function(row) {
+                                var rowData = row.getData();
+                                if (rowData.campaign_id && campaignIds.includes(rowData
+                                        .campaign_id)) {
+                                    // Get current data and create a copy to avoid reference issues
+                                    var currentData = JSON.parse(JSON.stringify(
+                                        rowData));
+
+                                    // Update sbid_m and clear apprSbid so new bid can be pushed
+                                    currentData.sbid_m = cleanValue;
+                                    currentData.apprSbid =
+                                    ''; // Clear apprSbid to allow new bid push
+
+                                    // Update the row with complete data
+                                    row.update(currentData);
+
+                                    // Force redraw of the row to refresh all formatters including APR BID
+                                    setTimeout(function() {
+                                        row.reformat();
+                                    }, 50);
+                                }
+                            });
+                        } else {
+                            showToast('error', response.message || 'Failed to save SBID M');
+                        }
+                    },
+                    error: function(xhr) {
+                        var errorMsg = 'Failed to save SBID M';
+                        if (xhr.responseJSON && xhr.responseJSON.message) {
+                            errorMsg = xhr.responseJSON.message;
+                        }
+                        showToast('error', errorMsg);
+                        console.error('SBID M bulk save error:', xhr);
+                    },
+                    complete: function() {
+                        overlay.style.display = "none";
+                    }
+                });
+            });
+
+            function updateBid(aprBid, campaignId, cell) {
+                const overlay = document.getElementById("progress-overlay");
+                overlay.style.display = "flex";
+
+                fetch('/update-ebay3-keywords-bid-price', {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute(
+                                'content')
+                        },
+                        body: JSON.stringify({
+                            campaign_ids: [campaignId],
+                            bids: [aprBid]
+                        })
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.status === 200) {
+                            showToast('success', 'Keywords updated successfully!');
+
+                            // Update row data with apprSbid value
+                            if (cell) {
+                                var rowData = cell.getRow().getData();
+                                rowData.apprSbid = aprBid;
+                                cell.getRow().update(rowData);
+
+                                // Reformat the cell to show green checkmark
+                                cell.getRow().reformat();
+                            }
+                        } else {
+                            let errorMsg = data.message || "Something went wrong";
+                            if (errorMsg.includes("Premium Ads")) {
+                                showToast('error', 'Error: ' + errorMsg);
+                            } else {
+                                showToast('error', 'Something went wrong: ' + errorMsg);
+                            }
+                        }
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        showToast('error', 'Error updating bid');
+                    })
+                    .finally(() => {
+                        overlay.style.display = "none";
+                    });
+            }
+
+            // Handle SBID M cell edit
             table.on("cellEdited", function(cell) {
                 const field = cell.getField();
                 if (field === "sbid_m") {
@@ -2412,7 +3903,7 @@
                     }
 
                     $.ajax({
-                        url: '/update-ebay3-sbid-m',
+                        url: '/save-ebay3-sbid-m',
                         method: 'POST',
                         headers: {
                             'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
@@ -2427,19 +3918,20 @@
                                 var row = cell.getRow();
                                 // Get current data and create a copy to avoid reference issues
                                 var currentData = JSON.parse(JSON.stringify(row.getData()));
-                                
+
                                 // Update sbid_m and clear apprSbid so new bid can be pushed
                                 currentData.sbid_m = cleanValue;
-                                currentData.apprSbid = ''; // Clear apprSbid to allow new bid push
-                                
+                                currentData.apprSbid =
+                                ''; // Clear apprSbid to allow new bid push
+
                                 // Update the row with complete data
                                 row.update(currentData);
-                                
+
                                 // Force redraw of the row to refresh all formatters including APR BID
                                 setTimeout(function() {
                                     row.reformat();
                                 }, 50);
-                                
+
                                 showToast('success', 'SBID M saved successfully');
                             } else {
                                 showToast('error', response.message || 'Failed to save SBID M');
@@ -2450,997 +3942,22 @@
                             if (xhr.responseJSON && xhr.responseJSON.message) {
                                 errorMsg = xhr.responseJSON.message;
                             } else if (xhr.status === 404) {
-                                errorMsg = 'Campaign not found. Please ensure the campaign exists.';
+                                errorMsg =
+                                    'Campaign not found. Please ensure the campaign exists.';
                             } else if (xhr.status === 500) {
                                 errorMsg = 'Server error. Please try again.';
                             }
                             showToast('error', errorMsg);
-                            // Revert the cell value on error
-                            cell.restoreOldValue();
+                            console.error('SBID M save error:', xhr);
                         }
                     });
                 }
             });
-
-            // Update counts when data is filtered (debounced)
-            let filterTimeout = null;
-            table.on("dataFiltered", function(filteredRows) {
-                if (filterTimeout) clearTimeout(filterTimeout);
-                filterTimeout = setTimeout(function() {
-                    updateButtonCounts();
-                    updateL30Totals();
-                }, 200);
-            });
-
-            // Debounced search
-            let searchTimeout = null;
-            $("#global-search").on("keyup", function() {
-                if (searchTimeout) clearTimeout(searchTimeout);
-                searchTimeout = setTimeout(function() {
-                    table.setFilter(combinedFilter);
-                }, 300);
-            });
-
-            $("#status-filter, #inv-filter, #nra-filter, #nrl-filter").on("change", function() {
-                table.setFilter(combinedFilter);
-                // Update counts when filter changes - use longer timeout to ensure filter is applied
-                setTimeout(function() {
-                    updateButtonCounts();
-                    updateL30Totals();
-                }, 300);
-            });
-
-            // Initial update of all button counts after data loads
-            setTimeout(function() {
-                updateButtonCounts();
-            }, 1000);
-
-            table.on("rowSelectionChanged", function(data, rows) {
-                if (data.length > 0) {
-                    document.getElementById("apr-all-sbid-btn").classList.remove("d-none");
-                    document.getElementById("bulk-update-sbid-m-btn").classList.remove("d-none");
-                } else {
-                    document.getElementById("apr-all-sbid-btn").classList.add("d-none");
-                    document.getElementById("bulk-update-sbid-m-btn").classList.add("d-none");
-                }
-            });
-
-            document.addEventListener("change", function(e) {
-                if (e.target.classList.contains("editable-select")) {
-                    let sku = e.target.getAttribute("data-sku");
-                    let field = e.target.getAttribute("data-field");
-                    let value = e.target.value;
-
-                    // Update color immediately for NRA/NRL fields
-                    if (field === 'NR' || field === 'NRL') {
-                        // For emoji dropdown, we don't need to change background color
-                        // The emoji itself changes based on selection
-                    }
-
-                    fetch('/update-ebay3-nr-data', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')
-                                    .getAttribute('content')
-                        },
-                        body: JSON.stringify({
-                            sku: sku,
-                            field: field,
-                            value: value
-                        })
-                    })
-                    .then(res => res.json())
-                    .then(data => {
-                        // Update table data with response
-                        if (data.success && typeof table !== 'undefined' && table) {
-                            let row = table.searchRows('sku', '=', sku);
-                            if (row.length > 0) {
-                                // If NRL is set to "NRL" (or "NR" from dropdown), automatically set NRA to "NRA"
-                                if (field === 'NRL' && (value === 'NR' || value === 'NRL')) {
-                                    // Get current row data BEFORE update
-                                    let rowData = row[0].getData();
-                                    let currentNra = rowData.NR ? String(rowData.NR).trim() : '';
-                                    
-                                    // Get NRA value from backend response (backend always sets it to 'NRA' when NRL is 'NRL')
-                                    let backendNra = '';
-                                    if (data.updated_json && data.updated_json.NR) {
-                                        backendNra = String(data.updated_json.NR).trim();
-                                    }
-                                    
-                                    // Always update both NRL and NR when NRL is set to "NRL" or "NR"
-                                    // Backend always sets NR to "NRA" when NRL is "NRL"
-                                    let updateData = {
-                                        NRL: value === 'NR' ? 'NRL' : value, // Store as 'NRL' in data
-                                        NR: backendNra || 'NRA' // Use backend value (should be 'NRA') or default to 'NRA'
-                                    };
-                                    
-                                    // Update the row data immediately
-                                    row[0].update(updateData);
-                                    
-                                    // Immediately update NRA cell value
-                                    let nraCell = row[0].getCell('NR');
-                                    if (nraCell) {
-                                        nraCell.setValue('NRA');
-                                    }
-                                    
-                                    // Force immediate row reformat to trigger formatter re-run
-                                    row[0].reformat();
-                                    
-                                    // Directly replace the NRA select dropdown HTML to force visual update
-                                    setTimeout(function() {
-                                        let nraCell = row[0].getCell('NR');
-                                        if (nraCell) {
-                                            let cellElement = nraCell.getElement();
-                                            if (cellElement) {
-                                                let nraSelect = cellElement.querySelector('select[data-field="NR"]');
-                                                if (nraSelect) {
-                                                    // Store the current event listeners by cloning
-                                                    let sku = nraSelect.getAttribute('data-sku');
-                                                    
-                                                    // Replace the select with new HTML that has NRA selected
-                                                    let newSelectHTML = `
-                                                        <select class="form-select form-select-sm editable-select" 
-                                                                data-sku="${sku}" 
-                                                                data-field="NR"
-                                                                style="width: 50px; border: 1px solid gray; padding: 2px; font-size: 20px; text-align: center;">
-                                                            <option value="RA">🟢</option>
-                                                            <option value="NRA" selected>🔴</option>
-                                                            <option value="LATER">🟡</option>
-                                                        </select>
-                                                    `;
-                                                    cellElement.innerHTML = newSelectHTML;
-                                                    
-                                                    // The new select will automatically have the change event listener
-                                                    // because it has the 'editable-select' class
-                                                }
-                                            }
-                                        }
-                                    }, 10);
-                                    
-                                    // Second update with reformat
-                                    setTimeout(function() {
-                                        // Reformat again to ensure formatter runs with updated data
-                                        row[0].reformat();
-                                        
-                                        // Double-check select is set to NRA
-                                        let nraCell = row[0].getCell('NR');
-                                        if (nraCell) {
-                                            let cellElement = nraCell.getElement();
-                                            if (cellElement) {
-                                                let nraSelect = cellElement.querySelector('select[data-field="NR"]');
-                                                if (nraSelect && nraSelect.value !== 'NRA') {
-                                                    nraSelect.value = 'NRA';
-                                                }
-                                            }
-                                        }
-                                    }, 50);
-                                    
-                                    // Final update with table redraw
-                                    setTimeout(function() {
-                                        // One more reformat
-                                        row[0].reformat();
-                                        
-                                        // Redraw entire table
-                                        if (typeof table !== 'undefined' && table) {
-                                            table.redraw(true);
-                                        }
-                                        
-                                        // Final select update check
-                                        let nraCell = row[0].getCell('NR');
-                                        if (nraCell) {
-                                            let cellElement = nraCell.getElement();
-                                            if (cellElement) {
-                                                let nraSelect = cellElement.querySelector('select[data-field="NR"]');
-                                                if (nraSelect && nraSelect.value !== 'NRA') {
-                                                    nraSelect.value = 'NRA';
-                                                }
-                                            }
-                                        }
-                                        
-                                        // Update counts
-                                        updateButtonCounts();
-                                        updateL30Totals();
-                                    }, 150);
-                                } else {
-                                    // Update the field from backend response
-                                    let updatedData = {};
-                                    if (data.updated_json && data.updated_json[field] !== undefined) {
-                                        updatedData[field] = data.updated_json[field];
-                                    } else {
-                                        updatedData[field] = value;
-                                    }
-                                    row[0].update(updatedData);
-                                    
-                                    // If NRL field is updated, reformat the row to update NRA column (which depends on NRL)
-                                    if (field === 'NRL') {
-                                        row[0].reformat();
-                                    }
-                                    
-                                    // Update counts after field update
-                                    if (field === 'NRL' || field === 'NR') {
-                                        setTimeout(function() {
-                                            updateButtonCounts();
-                                            updateL30Totals();
-                                        }, 300);
-                                    }
-                                }
-                            }
-                        }
-                    })
-                    .catch(err => {
-                        console.error('Error updating field:', err);
-                        showToast('error', 'Error updating field. Please try again.');
-                    });
-                }
-                
-                // Handle SBID M input changes
-                if (e.target.classList.contains("sbid-m-input")) {
-                    // Prevent event from bubbling
-                    e.stopPropagation();
-                    
-                    let campaignId = e.target.getAttribute("data-campaign-id");
-                    let uniqueId = e.target.getAttribute("data-unique-id");
-                    let sku = e.target.getAttribute("data-sku");
-                    let newValue = e.target.value;
-                    
-                    if (!campaignId) {
-                        return;
-                    }
-                    
-                    // Get row element and find the corresponding Tabulator row
-                    let rowElement = e.target.closest('.tabulator-row');
-                    if (!rowElement) return;
-                    
-                    // Get row using Tabulator's row component directly from element
-                    let row = table.getRow(rowElement);
-                    if (!row) {
-                        // Fallback: find by position
-                        let rowIndex = Array.from(rowElement.parentNode.children).indexOf(rowElement);
-                        row = table.getRowFromPosition(rowIndex);
-                    }
-                    
-                    if (!row) return;
-                    
-                    let rowData = row.getData();
-                    
-                    // Verify we have the correct row by comparing SKU and campaign_id
-                    let currentUniqueId = (rowData.campaign_id || '') + '_' + (rowData.sku || '');
-                    if (uniqueId !== currentUniqueId) {
-                        console.warn("Row mismatch detected, skipping update. Expected:", uniqueId, "Got:", currentUniqueId);
-                        return;
-                    }
-                    
-                    // Check if NRA (🔴) is selected
-                    let nraValue = rowData.NR ? rowData.NR.trim() : "";
-                    if (nraValue === 'NRA') {
-                        // Restore previous value
-                        let prevValue = editedSbidMValues[uniqueId] !== undefined ? editedSbidMValues[uniqueId] : rowData.sbid_m;
-                        if (prevValue !== null && prevValue !== undefined && prevValue !== '') {
-                            e.target.value = parseFloat(prevValue).toFixed(2);
-                        } else {
-                            e.target.value = '';
-                        }
-                        showToast('error', 'Cannot edit SBID M for NRA campaigns');
-                        return;
-                    }
-                    
-                    let editedValue = null;
-                    let prevValue = editedSbidMValues[uniqueId] !== undefined ? editedSbidMValues[uniqueId] : rowData.sbid_m;
-                    
-                    if (newValue !== null && newValue !== undefined && newValue !== '') {
-                        editedValue = parseFloat(newValue);
-                        if (!isNaN(editedValue) && editedValue >= 0) {
-                            // Round to 2 decimal places
-                            editedValue = Math.round(editedValue * 100) / 100;
-                            e.target.value = editedValue.toFixed(2);
-                        } else {
-                            // Invalid value - restore previous value
-                            if (prevValue !== null && prevValue !== undefined && prevValue !== '') {
-                                e.target.value = parseFloat(prevValue).toFixed(2);
-                            } else {
-                                e.target.value = '';
-                            }
-                            showToast('error', 'Please enter a valid number (>= 0)');
-                            return;
-                        }
-                    }
-                    
-                    // Store edited value immediately to prevent cross-contamination
-                    editedSbidMValues[uniqueId] = editedValue;
-                    
-                    // Save to database
-                    fetch('/update-ebay3-sbid-m', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')
-                                .getAttribute('content')
-                        },
-                        body: JSON.stringify({
-                            campaign_id: campaignId,
-                            sbid_m: editedValue
-                        })
-                    })
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.status === 200) {
-                            showToast('success', 'SBID M saved successfully');
-                            // Success - value already stored in editedSbidMValues
-                            // Clear apprSbid when sbid_m is updated so new bid can be pushed
-                            if (row) {
-                                var currentRowData = row.getData();
-                                currentRowData.apprSbid = ''; // Clear apprSbid to allow new bid push
-                                // Update the row to refresh APR BID column icon
-                                row.update(currentRowData);
-                                setTimeout(function() {
-                                    row.reformat();
-                                }, 50);
-                            }
-                        } else {
-                            // Restore previous value on error
-                            editedSbidMValues[uniqueId] = prevValue;
-                            if (prevValue !== null && prevValue !== undefined && prevValue !== '') {
-                                e.target.value = parseFloat(prevValue).toFixed(2);
-                            } else {
-                                e.target.value = '';
-                            }
-                            showToast('error', data.message || 'Failed to save SBID M');
-                        }
-                    })
-                    .catch(err => {
-                        // Restore previous value on error
-                        editedSbidMValues[uniqueId] = prevValue;
-                        if (prevValue !== null && prevValue !== undefined && prevValue !== '') {
-                            e.target.value = parseFloat(prevValue).toFixed(2);
-                        } else {
-                            e.target.value = '';
-                        }
-                        console.error("Error saving SBID M:", err);
-                    });
-                }
-            });
-            
-            // Handle blur event for SBID M input (when user finishes editing)
-            document.addEventListener("blur", function(e) {
-                if (e.target.classList.contains("sbid-m-input")) {
-                    // Use change event handler logic instead of duplicating
-                    // The change event will handle saving, blur just ensures value is validated
-                    e.stopPropagation();
-                }
-            }, true);
-
-            // Export data button handler
-            document.getElementById("export-data-btn").addEventListener("click", function() {
-                if (typeof table !== 'undefined' && table) {
-                    // Get all data from table
-                    var allData = table.getData('all');
-                    
-                    // Get column definitions
-                    var columns = table.getColumns().filter(function(col) {
-                        var def = col.getDefinition();
-                        return def.field && def.title && def.visible !== false;
-                    });
-                    
-                    // Helper function to calculate SBID (same logic as formatter)
-                    function calculateSbidForExport(row) {
-                        var nraValue = row.NR ? row.NR.trim() : "";
-                        if (nraValue === 'NRA') {
-                            return '-';
-                        }
-                        
-                        var l1_cpc = parseFloat(row.l1_cpc) || 0;
-                        var l7_cpc = parseFloat(row.l7_cpc) || 0;
-                        var budget = parseFloat(row.campaignBudgetAmount) || 0;
-                        var ub7 = 0;
-                        var ub1 = 0;
-                        if (budget > 0) {
-                            ub7 = (parseFloat(row.l7_spend) || 0) / (budget * 7) * 100;
-                            ub1 = (parseFloat(row.l1_spend) || 0) / budget * 100;
-                        }
-                        
-                        var sbid = 0;
-                        
-                        // Special rule: If UB7 = 0% and UB1 = 0%, set SBID to 0.50 (ebay3 doesn't have price field)
-                        if (ub7 === 0 && ub1 === 0) {
-                            return (0.50).toFixed(2);
-                        }
-                        
-                        // Rule: If both UB7 and UB1 are above 99%, set SBID as L1_CPC * 0.90
-                        if (ub7 > 99 && ub1 > 99) {
-                            if (l1_cpc > 0) {
-                                return (Math.floor(l1_cpc * 0.90 * 100) / 100).toFixed(2);
-                            } else if (l7_cpc > 0) {
-                                return (Math.floor(l7_cpc * 0.90 * 100) / 100).toFixed(2);
-                            } else {
-                                return '-';
-                            }
-                        }
-                        
-                        if (currentUtilizationType === 'over') {
-                            var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
-                            if (cpcToUse > 1.25) {
-                                sbid = Math.floor(cpcToUse * 0.80 * 100) / 100;
-                            } else if (cpcToUse > 0) {
-                                sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
-                            } else {
-                                sbid = 0.50;
-                            }
-                        } else if (currentUtilizationType === 'under') {
-                            if (ub7 === 0 && ub1 === 0) {
-                                sbid = 0.50;
-                            } else {
-                                var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
-                                if (cpcToUse > 0) {
-                                    if (cpcToUse < 0.10) {
-                                        sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
-                                    } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
-                                        sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
-                                    } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
-                                        sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
-                                    } else {
-                                        sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
-                                    }
-                                } else {
-                                    sbid = 0.50;
-                                }
-                            }
-                        } else if (currentUtilizationType === 'correctly') {
-                            var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
-                            if (cpcToUse > 0) {
-                                sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
-                            } else {
-                                sbid = 0.50;
-                            }
-                        } else {
-                            // For 'all' type
-                            var rowAcos = parseFloat(row.acos) || 0;
-                            if (isNaN(rowAcos) || rowAcos === 0) {
-                                rowAcos = 100;
-                            }
-                            
-                            var isOverUtilized = false;
-                            var isUnderUtilized = false;
-                            
-                            if (ub7 > 99 && ub1 > 99) {
-                                isOverUtilized = true;
-                            }
-                            
-                            if (!isOverUtilized && ub7 < 66 && ub1 < 66) {
-                                isUnderUtilized = true;
-                            }
-                            
-                            if (isOverUtilized) {
-                                var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
-                                if (cpcToUse > 1.25) {
-                                    sbid = Math.floor(cpcToUse * 0.80 * 100) / 100;
-                                } else if (cpcToUse > 0) {
-                                    sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
-                                } else {
-                                    sbid = 0.50;
-                                }
-                            } else if (isUnderUtilized) {
-                                if (ub7 === 0 && ub1 === 0) {
-                                    sbid = 0.50;
-                                } else {
-                                    var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
-                                    if (cpcToUse > 0) {
-                                        if (cpcToUse < 0.10) {
-                                            sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
-                                        } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
-                                            sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
-                                        } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
-                                            sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
-                                        } else {
-                                            sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
-                                        }
-                                    } else {
-                                        sbid = 0.50;
-                                    }
-                                }
-                            } else {
-                                var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
-                                if (cpcToUse > 0) {
-                                    sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
-                                } else {
-                                    sbid = 0.50;
-                                }
-                            }
-                        }
-                        
-                        return (sbid === 0) ? '-' : sbid.toFixed(2);
-                    }
-                    
-                    // Build CSV content
-                    var csvContent = [];
-                    
-                    // Add headers
-                    var headers = [];
-                    columns.forEach(function(col) {
-                        headers.push(col.getDefinition().title);
-                    });
-                    csvContent.push(headers.join(','));
-                    
-                    // Add data rows
-                    allData.forEach(function(row) {
-                        var rowData = [];
-                        // Pre-calculate SBID and NR values
-                        var calculatedSbid = calculateSbidForExport(row);
-                        var nrValue = row.NR ? row.NR.trim() : '';
-                        var processedNr = nrValue || 'RA';
-                        
-                        columns.forEach(function(col) {
-                            var field = col.getField();
-                            var value;
-                            
-                            // Use calculated values for SBID and NR fields
-                            if (field === 'sbid') {
-                                value = calculatedSbid;
-                            } else if (field === 'NR') {
-                                value = processedNr;
-                            } else if (field === 'sbid_m') {
-                                // Get sbid_m value from row data (should be updated from input)
-                                value = row.sbid_m !== null && row.sbid_m !== undefined ? parseFloat(row.sbid_m).toFixed(2) : '';
-                            } else {
-                                value = row[field];
-                            }
-                            
-                            // Handle special formatting
-                            if (value === null || value === undefined) {
-                                value = '';
-                            } else if (typeof value === 'string' && value.includes(',')) {
-                                value = '"' + value + '"';
-                            }
-                            rowData.push(value);
-                        });
-                        csvContent.push(rowData.join(','));
-                    });
-                    
-                    // Download CSV
-                    var csvString = csvContent.join('\n');
-                    var blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
-                    var link = document.createElement('a');
-                    var url = URL.createObjectURL(blob);
-                    link.setAttribute('href', url);
-                    link.setAttribute('download', 'ebay3-utilized-data.csv');
-                    link.style.visibility = 'hidden';
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                }
-            });
-
-            document.getElementById("apr-all-sbid-btn").addEventListener("click", function() {
-                const overlay = document.getElementById("progress-overlay");
-                overlay.style.display = "flex";
-
-                var filteredData = table.getSelectedRows();
-                var campaignIds = [];
-                var bids = [];
-
-                filteredData.forEach(function(row) {
-                    var rowEl = row.getElement();
-                    if (rowEl && rowEl.offsetParent !== null) {
-                        var rowData = row.getData();
-
-                        // Check if NRA (🔴) is selected
-                        var nraValue = rowData.NR ? rowData.NR.trim() : "";
-                        if (nraValue === 'NRA') {
-                            return; // Skip update if NRA is selected
-                        }
-
-                        // Check if manually edited SBID M exists, use it first (read from input field)
-                        var sbid = 0;
-                        var sbidMInput = rowEl.querySelector('.sbid-m-input');
-                        if (sbidMInput && sbidMInput.value !== null && sbidMInput.value !== undefined && sbidMInput.value !== '') {
-                            var editedSbidM = parseFloat(sbidMInput.value);
-                            if (!isNaN(editedSbidM) && editedSbidM > 0) {
-                                sbid = editedSbidM;
-                                campaignIds.push(rowData.campaign_id);
-                                bids.push(sbid);
-                                return; // Use edited value, skip calculation
-                            }
-                        }
-                        
-                        var l1_cpc = parseFloat(rowData.l1_cpc) || 0;
-                        var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
-                        var budget = parseFloat(rowData.campaignBudgetAmount) || 0;
-                        var ub7 = 0;
-                        var ub1 = 0;
-                        if (budget > 0) {
-                            ub7 = (parseFloat(rowData.l7_spend) || 0) / (budget * 7) * 100;
-                            ub1 = (parseFloat(rowData.l1_spend) || 0) / budget * 100;
-                        }
-                        
-                        // Special rule: If UB7 = 0% and UB1 = 0%, set SBID to 0.50 (ebay3 doesn't have price field)
-                        if (ub7 === 0 && ub1 === 0) {
-                            sbid = 0.50;
-                        } else if (ub7 > 99 && ub1 > 99) {
-                            // Rule: If both UB7 and UB1 are above 99%, set SBID as L1_CPC * 0.90
-                            if (l1_cpc > 0) {
-                                sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
-                            } else if (l7_cpc > 0) {
-                                sbid = Math.floor(l7_cpc * 0.90 * 100) / 100;
-                            } else {
-                                sbid = 0;
-                            }
-                        } else {
-                            // Continue with utilization type checks only if global checks didn't match
-                            if (currentUtilizationType === 'over') {
-                                // If L1 CPC > 1.25, use L1 CPC * 0.80, otherwise use L1 CPC * 0.90
-                                if (l1_cpc > 1.25) {
-                                    sbid = Math.floor(l1_cpc * 0.80 * 100) / 100;
-                                } else {
-                                    sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
-                                }
-                            } else if (currentUtilizationType === 'under') {
-                                // Under-utilized SBID calculation rules (from ebay-utilized, without price logic)
-                                // If UB7 = 0% AND UB1 = 0%, SBID = 0.50
-                                if (ub7 === 0 && ub1 === 0) {
-                                    sbid = 0.50;
-                                } else {
-                                    // Use L1CPC if available (not 0, not NaN), otherwise use L7CPC
-                                    var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : (
-                                        (l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
-                                    if (cpcToUse > 0) {
-                                        if (cpcToUse < 0.10) {
-                                            sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
-                                        } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
-                                            sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
-                                        } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
-                                            sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
-                                        } else {
-                                            sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
-                                        }
-                                    } else {
-                                        sbid = 0.50; // Fallback when both CPCs are 0
-                                    }
-                                }
-                            } else if (currentUtilizationType === 'correctly') {
-                                // Correctly-utilized: SBID = L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
-                                var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : ((
-                                    l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
-                                if (cpcToUse > 0) {
-                                    sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
-                                } else {
-                                    sbid = 0.50; // Fallback when both CPCs are 0
-                                }
-                            } else {
-                                // For 'all' type, determine utilization status and apply appropriate rule
-                                var rowAcos = parseFloat(rowData.acos) || 0;
-                                if (isNaN(rowAcos) || rowAcos === 0) {
-                                    rowAcos = 100;
-                                }
-
-                                // Determine utilization status
-                                var isOverUtilized = false;
-                                var isUnderUtilized = false;
-
-                                // Check over-utilized first (priority 1) - Double condition: both UB7 AND UB1 must be > 99
-                                if (ub7 > 99 && ub1 > 99) {
-                                    isOverUtilized = true;
-                                }
-
-                                // Check under-utilized (priority 2: only if not over-utilized) - Double condition: both UB7 AND UB1 must be < 66
-                                if (!isOverUtilized && ub7 < 66 && ub1 < 66) {
-                                    isUnderUtilized = true;
-                                }
-
-                                // Apply SBID logic based on determined status
-                                if (isOverUtilized) {
-                                    // Over-utilized: If L1 CPC > 1.25, use L1 CPC * 0.80, otherwise use L1 CPC * 0.90
-                                    var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : (
-                                        (l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
-                                    if (cpcToUse > 1.25) {
-                                        sbid = Math.floor(cpcToUse * 0.80 * 100) / 100;
-                                    } else if (cpcToUse > 0) {
-                                        sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
-                                    } else {
-                                        sbid = 0.50; // Fallback when both CPCs are 0
-                                    }
-                                } else if (isUnderUtilized) {
-                                    // Under-utilized: Use the under-utilized rule
-                                    if (ub7 === 0 && ub1 === 0) {
-                                        sbid = 0.50;
-                                    } else {
-                                        // Use L1CPC if available (not 0, not NaN), otherwise use L7CPC
-                                        var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ?
-                                            l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ?
-                                                l7_cpc : 0);
-                                        if (cpcToUse > 0) {
-                                            if (cpcToUse < 0.10) {
-                                                sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
-                                            } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
-                                                sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
-                                            } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
-                                                sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
-                                            } else {
-                                                sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
-                                            }
-                                        } else {
-                                            sbid = 0.50; // Fallback when both CPCs are 0
-                                        }
-                                    }
-                                } else {
-                                    // Correctly-utilized or other: SBID = L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
-                                    var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : (
-                                        (l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
-                                    if (cpcToUse > 0) {
-                                        sbid = Math.floor(cpcToUse * 0.90 * 100) / 100;
-                                    } else {
-                                        sbid = 0.50; // Fallback when both CPCs are 0
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // Only push if we haven't already (sbid_m case already pushed and returned)
-                        if (sbid > 0 && rowData.campaign_id) {
-                            campaignIds.push(rowData.campaign_id);
-                            bids.push(sbid);
-                        }
-                    }
-                });
-
-                // fetch('/update-ebay3-keywords-bid-price', {
-                //     method: 'PUT',
-                //     headers: {
-                //         'Content-Type': 'application/json',
-                //             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')
-                //                 .getAttribute('content')
-                //     },
-                //     body: JSON.stringify({
-                //         campaign_ids: campaignIds,
-                //         bids: bids
-                //     })
-                // })
-                // .then(res => res.json())
-                // .then(data => {
-                //     if (data.status === 200) {
-                //         alert("Keywords updated successfully!");
-                //     } else {
-                //         let errorMsg = data.message || "Something went wrong";
-                //         if (errorMsg.includes("Premium Ads")) {
-                //             alert("Error: " + errorMsg);
-                //         } else {
-                //             alert("Something went wrong: " + errorMsg);
-                //         }
-                //     }
-                // })
-                // .catch(err => {
-                //     console.error(err);
-                //     alert("Error updating bids");
-                // })
-                // .finally(() => {
-                //     overlay.style.display = "none";
-                // });
-            });
-
-            // Bulk Update SBID M for selected campaigns
-            document.getElementById("bulk-update-sbid-m-btn").addEventListener("click", function() {
-                var selectedRows = table.getSelectedRows();
-                
-                if (selectedRows.length === 0) {
-                    alert("Please select at least one campaign to update SBID M.");
-                    return;
-                }
-
-                // Filter out NRA campaigns and collect valid campaign IDs
-                var validCampaigns = [];
-                var nraCampaigns = [];
-                
-                selectedRows.forEach(function(row) {
-                    var rowEl = row.getElement();
-                    if (rowEl && rowEl.offsetParent !== null) {
-                        var rowData = row.getData();
-                        
-                        // Check if NRA (🔴) is selected - skip NRA campaigns
-                        var nraValue = rowData.NR ? rowData.NR.trim() : "";
-                        if (nraValue === 'NRA') {
-                            nraCampaigns.push(rowData.campaign_id || rowData.sku || 'Unknown');
-                            return; // Skip NRA campaigns
-                        }
-                        
-                        if (rowData.campaign_id) {
-                            validCampaigns.push({
-                                campaign_id: rowData.campaign_id,
-                                sku: rowData.sku || '',
-                                row: row
-                            });
-                        }
-                    }
-                });
-
-                if (validCampaigns.length === 0) {
-                    if (nraCampaigns.length > 0) {
-                        alert("Cannot update SBID M for NRA campaigns. Please select non-NRA campaigns.");
-                    } else {
-                        alert("No valid campaigns selected.");
-                    }
-                    return;
-                }
-
-                // Show prompt to enter SBID M value
-                var sbidMInput = prompt(
-                    "Enter SBID M value to apply to " + validCampaigns.length + " selected campaign(s):\n\n" +
-                    (nraCampaigns.length > 0 ? "Note: " + nraCampaigns.length + " NRA campaign(s) will be skipped.\n\n" : "") +
-                    "Enter a number (>= 0) or leave empty to clear:",
-                    ""
-                );
-
-                // If user cancelled, return
-                if (sbidMInput === null) {
-                    return;
-                }
-
-                // Parse and validate SBID M value
-                var sbidMValue = null;
-                if (sbidMInput !== null && sbidMInput !== undefined && sbidMInput.trim() !== '') {
-                    var parsedValue = parseFloat(sbidMInput.trim());
-                    if (isNaN(parsedValue) || parsedValue < 0) {
-                        alert("Please enter a valid number (>= 0) or leave empty to clear.");
-                        return;
-                    }
-                    // Round to 2 decimal places
-                    sbidMValue = Math.round(parsedValue * 100) / 100;
-                }
-
-                // Confirm before updating
-                var confirmMessage = "Are you sure you want to set SBID M = " + 
-                    (sbidMValue !== null ? sbidMValue.toFixed(2) : "empty") + 
-                    " for " + validCampaigns.length + " campaign(s)?";
-                
-                if (!confirm(confirmMessage)) {
-                    return;
-                }
-
-                // Show overlay
-                const overlay = document.getElementById("progress-overlay");
-                overlay.style.display = "flex";
-
-                // Prepare campaign IDs (same value for all campaigns)
-                var campaignIds = [];
-                
-                validCampaigns.forEach(function(campaign) {
-                    campaignIds.push(campaign.campaign_id);
-                    
-                    // Update local editedSbidMValues for immediate UI feedback
-                    var uniqueId = campaign.campaign_id + '_' + campaign.sku;
-                    if (sbidMValue !== null) {
-                        editedSbidMValues[uniqueId] = sbidMValue;
-                    } else {
-                        delete editedSbidMValues[uniqueId];
-                    }
-                });
-
-                // Validate sbidMValue before sending
-                if (sbidMValue === null || sbidMValue === undefined || sbidMValue === '') {
-                    overlay.style.display = "none";
-                    showToast('error', 'SBID M value is required');
-                    return;
-                }
-
-                // Send bulk update request (same format as main eBay)
-                fetch('/bulk-update-ebay3-sbid-m', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                    },
-                    body: JSON.stringify({
-                        campaign_ids: campaignIds,
-                        sbid_m: sbidMValue
-                    })
-                })
-                .then(res => res.json())
-                .then(data => {
-                    overlay.style.display = "none";
-                    if (data.status === 200) {
-                        // Update input fields in UI for immediate feedback
-                        validCampaigns.forEach(function(campaign) {
-                            var rowEl = campaign.row.getElement();
-                            if (rowEl) {
-                                var sbidMInputField = rowEl.querySelector('.sbid-m-input');
-                                if (sbidMInputField) {
-                                    if (sbidMValue !== null) {
-                                        sbidMInputField.value = sbidMValue.toFixed(2);
-                                    } else {
-                                        sbidMInputField.value = '';
-                                    }
-                                }
-                            }
-                        });
-                        
-                        showToast('success', data.message || 'SBID M saved successfully for ' + (data.updated_count || data.total_count || 0) + ' campaign(s)');
-                        
-                        // Update the selected rows with the new sbid_m value and clear apprSbid
-                        validCampaigns.forEach(function(campaign) {
-                            var row = campaign.row;
-                            if (row) {
-                                var rowData = row.getData();
-                                if (rowData.campaign_id && campaignIds.includes(rowData.campaign_id)) {
-                                    // Update sbid_m and clear apprSbid so new bid can be pushed
-                                    rowData.sbid_m = sbidMValue;
-                                    rowData.apprSbid = ''; // Clear apprSbid to allow new bid push
-                                    
-                                    // Update the row
-                                    row.update(rowData);
-                                    
-                                    // Force redraw of the row to refresh all formatters including APR BID
-                                    setTimeout(function() {
-                                        row.reformat();
-                                    }, 50);
-                                }
-                            }
-                        });
-                    } else {
-                        showToast('error', data.message || 'Failed to save SBID M');
-                    }
-                })
-                .catch(err => {
-                    overlay.style.display = "none";
-                    console.error("Error bulk updating SBID M:", err);
-                    showToast('error', 'Error updating SBID M values. Please try again.');
-                });
-            });
-
-            function updateBid(aprBid, campaignId, cell) {
-                const overlay = document.getElementById("progress-overlay");
-                overlay.style.display = "flex";
-
-                fetch('/update-ebay3-keywords-bid-price', {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute(
-                                'content')
-                    },
-                    body: JSON.stringify({
-                        campaign_ids: [campaignId],
-                        bids: [aprBid]
-                    })
-                })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.status === 200) {
-                        showToast('success', 'Keywords updated successfully!');
-                        
-                        // Update row data with apprSbid value
-                        if (cell) {
-                            var rowData = cell.getRow().getData();
-                            rowData.apprSbid = aprBid;
-                            cell.getRow().update(rowData);
-                            
-                            // Reformat the cell to show green checkmark
-                            cell.getRow().reformat();
-                        }
-                    } else {
-                        let errorMsg = data.message || "Something went wrong";
-                        if (errorMsg.includes("Premium Ads")) {
-                            showToast('error', 'Error: ' + errorMsg);
-                        } else {
-                            showToast('error', 'Something went wrong: ' + errorMsg);
-                        }
-                    }
-                })
-                .catch(err => {
-                    console.error(err);
-                    showToast('error', 'Error updating bid');
-                })
-                .finally(() => {
-                    overlay.style.display = "none";
-                });
-            }
 
             // Add click handlers to utilization cards (if they exist)
             document.querySelectorAll('.utilization-card').forEach(card => {
                 card.addEventListener('click', function() {
                     const type = this.getAttribute('data-type');
-                    if (type && (type === '7ub' || type === '7ub-1ub')) {
-                        // For 7UB and 7UB+1UB cards, we don't show charts, just filter
-                        // You can add filter logic here if needed
-                        return;
-                    }
                     showUtilizationChart(type);
                 });
             });
@@ -3451,7 +3968,7 @@
         function showUtilizationChart(type) {
             const chartTitle = document.getElementById('chart-title');
             const modal = new bootstrap.Modal(document.getElementById('utilizationChartModal'));
-            
+
             const titles = {
                 'over': 'Over Utilized Trend (Last 30 Days)',
                 'under': 'Under Utilized Trend (Last 30 Days)',
@@ -3461,13 +3978,13 @@
 
             modal.show();
 
-            fetch('/ebay-3/get-utilization-chart-data?type=' + type)
+            fetch('/ebay/get-utilization-chart-data?type=' + type)
                 .then(res => res.json())
                 .then(data => {
                     if (data.status === 200 && data.data && data.data.length > 0) {
                         const chartData = data.data;
                         const dates = chartData.map(d => d.date);
-                        
+
                         let dataset = [];
                         let label = '';
                         let color = '';
@@ -3491,7 +4008,7 @@
                         }
 
                         const ctx = document.getElementById('utilizationChart').getContext('2d');
-                        
+
                         if (utilizationChartInstance) {
                             utilizationChartInstance.destroy();
                         }
@@ -3547,6 +4064,7 @@
                 .catch(err => console.error('Error loading chart:', err));
         }
 
+        // Toast notification function
         function showToast(type, message) {
             // Create toast container if it doesn't exist
             if (!$('.toast-container').length) {
@@ -3554,14 +4072,14 @@
                     '<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>');
             }
 
-            const toast = $(
-                `<div class="toast align-items-center text-white bg-${type === 'success' ? 'success' : type === 'error' ? 'danger' : 'info'} border-0" role="alert">
+            const toast = $(`
+                <div class="toast align-items-center text-white bg-${type === 'success' ? 'success' : type === 'error' ? 'danger' : 'info'} border-0" role="alert">
                     <div class="d-flex">
                         <div class="toast-body">${message}</div>
                         <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
                     </div>
-                </div>`
-            );
+                </div>
+            `);
             $('.toast-container').append(toast);
             const bsToast = new bootstrap.Toast(toast[0]);
             bsToast.show();
