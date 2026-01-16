@@ -2845,8 +2845,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay-3/over-utilized/campaign-chart', 'getCampaignChartData')->name('ebay3.over.utilized.campaign-chart');
         Route::put('/update-ebay3-keywords-bid-price', 'updateKeywordsBidDynamic');
         Route::post('/update-ebay3-nr-data', 'updateEbay3NrData');
-        Route::post('/update-ebay3-sbid-m', 'updateEbay3SbidM');
-        Route::post('/bulk-update-ebay3-sbid-m', 'bulkUpdateEbay3SbidM');
+        Route::post('/save-ebay3-sbid-m', 'saveEbay3SbidM');
+        Route::post('/save-ebay3-sbid-m-bulk', 'saveEbay3SbidMBulk');
+        Route::post('/clear-ebay3-sbid-m-bulk', 'clearEbay3SbidMBulk');
     });
 
     Route::controller(Ebay2UtilizedAdsController::class)->group(function () {
@@ -2858,8 +2859,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay-2/over-utilized/campaign-chart', 'getCampaignChartData')->name('ebay2.over.utilized.campaign-chart');
         Route::put('/update-ebay2-keywords-bid-price', 'updateKeywordsBidDynamic');
         Route::post('/update-ebay2-nr-data', 'updateEbay2NrData');
-        Route::post('/update-ebay2-sbid-m', 'updateEbay2SbidM');
-        Route::post('/bulk-update-ebay2-sbid-m', 'bulkUpdateEbay2SbidM');
+        Route::post('/save-ebay2-sbid-m', 'saveEbay2SbidM');
+        Route::post('/save-ebay2-sbid-m-bulk', 'saveEbay2SbidMBulk');
+        Route::post('/clear-ebay2-sbid-m-bulk', 'clearEbay2SbidMBulk');
     });
 
     Route::controller(Ebay3KeywordAdsController::class)->group(function () {
