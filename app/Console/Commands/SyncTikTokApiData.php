@@ -184,6 +184,9 @@ class SyncTikTokApiData extends Command
             // Process and store analytics/views
             $this->processAnalytics($data['analytics'] ?? []);
             
+            // Pull views from tiktok_sheet_data table (populated by sync:tiktok-sheet-data command)
+            $this->syncViewsFromSheetData();
+            
             // Process and store reviews/ratings
             $this->processReviews($data['reviews'] ?? []);
 
@@ -314,15 +317,37 @@ class SyncTikTokApiData extends Command
 
         foreach ($analytics as $analytic) {
             try {
-                $productId = $analytic['product_id'] ?? null;
-                $sku = $analytic['sku'] ?? null;
+                // Extract product_id from various possible fields
+                $productId = $analytic['product_id'] 
+                    ?? $analytic['id'] 
+                    ?? $analytic['productId']
+                    ?? $analytic['product']['id'] ?? null;
+                
+                // Extract SKU if available
+                $sku = $analytic['sku'] 
+                    ?? $analytic['seller_sku']
+                    ?? $analytic['product']['sku'] ?? null;
                 
                 if (!$productId && !$sku) {
                     continue;
                 }
 
-                // Extract views
-                $views = $analytic['product_views'] ?? $analytic['views'] ?? 0;
+                // Extract views from various possible fields
+                $views = $analytic['product_views'] 
+                    ?? $analytic['views'] 
+                    ?? $analytic['total_views']
+                    ?? $analytic['view_count']
+                    ?? $analytic['page_views']
+                    ?? $analytic['metrics']['product_views'] 
+                    ?? $analytic['metrics']['views']
+                    ?? $analytic['metrics']['total_views']
+                    ?? $analytic['performance']['product_views']
+                    ?? $analytic['performance']['views']
+                    ?? $analytic['data']['product_views']
+                    ?? $analytic['data']['views'] ?? 0;
+                
+                // Ensure views is an integer
+                $views = (int) $views;
 
                 // Try to find by product_id first, then by SKU
                 $tiktokProduct = null;
@@ -417,6 +442,70 @@ class SyncTikTokApiData extends Command
         }
 
         $this->info("Reviews/Ratings: {$updated} records updated");
+    }
+
+    /**
+     * Sync views from tiktok_sheet_data table (populated by sync:tiktok-sheet-data command)
+     * This is needed because views are not available via API with current version
+     */
+    protected function syncViewsFromSheetData()
+    {
+        $this->info('Syncing views from tiktok_sheet_data table...');
+        
+        try {
+            // Get all TikTok products that have SKUs
+            $tiktokProducts = TikTokProduct::whereNotNull('sku')
+                ->where('sku', '!=', '')
+                ->get();
+            
+            if ($tiktokProducts->isEmpty()) {
+                $this->warn('No TikTok products with SKUs found');
+                return;
+            }
+            
+            $updated = 0;
+            $skus = $tiktokProducts->pluck('sku')->map(function($sku) {
+                return strtoupper(trim($sku));
+            })->toArray();
+            
+            // Get views from tiktok_sheet_data table
+            $sheetData = TiktokSheet::whereIn('sku', $skus)
+                ->whereNotNull('views')
+                ->get()
+                ->keyBy(function($item) {
+                    return strtoupper(trim($item->sku));
+                });
+            
+            if ($sheetData->isEmpty()) {
+                $this->warn('No view data found in tiktok_sheet_data table');
+                $this->info('Note: Run "php artisan sync:tiktok-sheet-data" to import views from Google Sheet');
+                return;
+            }
+            
+            // Update TikTok products with views from sheet data
+            foreach ($tiktokProducts as $tiktokProduct) {
+                $normalizedSku = strtoupper(trim($tiktokProduct->sku));
+                $sheetItem = $sheetData->get($normalizedSku);
+                
+                if ($sheetItem && $sheetItem->views !== null) {
+                    $views = (float)$sheetItem->views;
+                    if ($tiktokProduct->views != $views) {
+                        $tiktokProduct->views = $views;
+                        $tiktokProduct->save();
+                        $updated++;
+                    }
+                }
+            }
+            
+            $this->info("Views: {$updated} records updated from sheet data");
+            
+        } catch (\Exception $e) {
+            $this->error('Error syncing views from sheet data: ' . $e->getMessage());
+            Log::error('TikTok views sync from sheet error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+        }
     }
 
     /**
