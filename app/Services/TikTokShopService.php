@@ -531,6 +531,69 @@ class TikTokShopService
     }
 
     /**
+     * Get product views - extract from product data if available
+     * Note: Analytics API requires version 202405+ which isn't available, so we try to extract from product data
+     */
+    public function getProductViews(array $products): ?array
+    {
+        try {
+            if (empty($products)) {
+                $this->output('warn', 'getProductViews: No products provided');
+                return null;
+            }
+            
+            $this->output('info', 'getProductViews: Attempting to extract view data from ' . count($products) . ' products');
+            
+            $viewsData = [];
+            foreach ($products as $product) {
+                $productId = $product['id'] ?? $product['product_id'] ?? null;
+                if (!$productId) continue;
+                
+                // Try to extract views from various possible fields in product data
+                $views = $product['product_views'] 
+                    ?? $product['views'] 
+                    ?? $product['total_views']
+                    ?? $product['view_count']
+                    ?? $product['page_views']
+                    ?? $product['data']['product_views'] 
+                    ?? $product['data']['views']
+                    ?? $product['data']['total_views']
+                    ?? $product['metrics']['product_views'] 
+                    ?? $product['metrics']['views']
+                    ?? $product['performance']['product_views']
+                    ?? $product['performance']['views']
+                    ?? $product['analytics']['product_views']
+                    ?? $product['analytics']['views']
+                    ?? $product['statistics']['product_views']
+                    ?? $product['statistics']['views'] ?? null;
+                
+                // Also try to get SKU for matching
+                $sku = $product['seller_sku'] 
+                    ?? $product['sku'] 
+                    ?? ($product['skus'][0]['seller_sku'] ?? $product['skus'][0]['sku'] ?? null) ?? null;
+                
+                if ($views !== null) {
+                    $viewsData[] = [
+                        'product_id' => (string)$productId,
+                        'sku' => $sku,
+                        'views' => (int)$views,
+                        'product_views' => (int)$views,
+                    ];
+                }
+            }
+            
+            $this->output('info', "getProductViews: Extracted view data for " . count($viewsData) . " products");
+            
+            $this->lastResponse = ['analytics' => $viewsData];
+            return ['analytics' => $viewsData];
+        } catch (\Exception $e) {
+            $this->output('error', 'getProductViews Exception: ' . $e->getMessage() . ' (Class: ' . get_class($e) . ')');
+            Log::error('TikTok getProductViews failed', ['error' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    /**
      * Get product reviews/ratings - extract from product data since TikTok doesn't expose individual reviews
      * TikTok product data includes review_count and shop_rating/rating fields
      */
@@ -627,58 +690,15 @@ class TikTokShopService
                 $this->output('warn', '⚠ No inventory data retrieved');
             }
             
-            // Analytics: Fetch product analytics including views
-            $this->output('info', 'Step 3: Fetching analytics data (including views)...');
-            $productIds = array_map(function($product) {
-                $id = $product['id'] ?? $product['product_id'] ?? null;
-                return $id ? (string)$id : null;
-            }, array_filter($products, function($product) {
-                return isset($product['id']) || isset($product['product_id']);
-            }));
-            
-            // Remove null values
-            $productIds = array_filter($productIds);
-            
-            if (!empty($productIds)) {
-                // Fetch analytics in batches (API limit is 50 products per call)
-                $allAnalytics = [];
-                $productIdBatches = array_chunk(array_values($productIds), 50);
-                
-                foreach ($productIdBatches as $batchIndex => $batch) {
-                    $this->output('info', "Fetching analytics for batch " . ($batchIndex + 1) . " (" . count($batch) . " products)...");
-                    $analyticsResponse = $this->getProductAnalytics(null, null, $batch);
-                    
-                    if ($analyticsResponse && isset($analyticsResponse['data']['product_performance_list'])) {
-                        $analyticsList = $analyticsResponse['data']['product_performance_list'];
-                        foreach ($analyticsList as $analyticsItem) {
-                            $allAnalytics[] = $analyticsItem;
-                        }
-                    } elseif ($analyticsResponse && isset($analyticsResponse['data']['products'])) {
-                        $analyticsList = $analyticsResponse['data']['products'];
-                        foreach ($analyticsList as $analyticsItem) {
-                            $allAnalytics[] = $analyticsItem;
-                        }
-                    } elseif ($analyticsResponse && isset($analyticsResponse['product_performance_list'])) {
-                        $analyticsList = $analyticsResponse['product_performance_list'];
-                        foreach ($analyticsList as $analyticsItem) {
-                            $allAnalytics[] = $analyticsItem;
-                        }
-                    }
-                    
-                    // Add small delay between batches to avoid rate limiting
-                    if ($batchIndex < count($productIdBatches) - 1) {
-                        usleep(500000); // 0.5 second delay
-                    }
-                }
-                
-                $result['analytics'] = $allAnalytics;
-                if (!empty($allAnalytics)) {
-                    $this->output('info', '✓ Fetched analytics for ' . count($allAnalytics) . ' products');
-                } else {
-                    $this->output('warn', '⚠ No analytics data retrieved');
-                }
+            // Analytics/Views: Try to extract from product data (Analytics API requires version 202405+ which isn't available)
+            $this->output('info', 'Step 3: Attempting to extract view data from product data...');
+            $this->output('warn', 'Note: Analytics API requires API version 202405+ (not available). Trying to extract views from product data if available.');
+            $viewsData = $this->getProductViews($products);
+            if ($viewsData && !empty($viewsData['analytics'])) {
+                $result['analytics'] = $viewsData['analytics'];
+                $this->output('info', '✓ Extracted view data for ' . count($viewsData['analytics']) . ' products');
             } else {
-                $this->output('warn', '⚠ No product IDs available for analytics fetch');
+                $this->output('warn', '⚠ No view data found in product data. Views may need to be updated manually or via other data sources.');
                 $result['analytics'] = [];
             }
             
