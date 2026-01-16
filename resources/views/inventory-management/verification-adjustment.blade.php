@@ -181,6 +181,13 @@
             color: white;
         }
 
+        /* ========== VERIFIED STOCK INPUT ========== */
+        .verified-stock-input {
+            min-width: 100px;
+            width: 100%;
+            max-width: 120px;
+        }
+
         /* ========== TABLE CONTROLS ========== */
         .table-controls {
             position: sticky;
@@ -1672,7 +1679,7 @@
                                         </div>
                                     </th>
                                     <th data-field="price"
-                                        style="vertical-align: middle; white-space: nowrap; padding-right: 4px; width: 80px;">
+                                        style="vertical-align: middle; white-space: nowrap; padding-right: 4px; width: 130px;">
                                         <div class="d-flex flex-column align-items-center">
                                             <div class="d-flex align-items-center">
                                                 VERIFIED STOCK <span class="sort-arrow"></span>
