@@ -50,8 +50,8 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\AutoUpdateAmazonPinkDilPtAds::class,
         \App\Console\Commands\AutoUpdateAmazonPinkDilHlAds::class,
         \App\Console\Commands\EbayOverUtilzBidsAutoUpdate::class,
-        \App\Console\Commands\EbayPinkDilKwBidsAutoUpdate::class,
-        \App\Console\Commands\EbayPriceLessBidsAutoUpdate::class,
+        \App\Console\Commands\Ebay2UtilizedBidsAutoUpdate::class,
+        \App\Console\Commands\Ebay3UtilizedBidsAutoUpdate::class,
         \App\Console\Commands\UpdateEbayOneBudget::class,
         \App\Console\Commands\AutoUpdateAmazonFbaOverKwBids::class,
         \App\Console\Commands\AutoUpdateAmazonFbaUnderKwBids::class,
@@ -356,10 +356,10 @@ class Kernel extends ConsoleKernel
         $schedule->command('ebay:auto-update-under-bids')
             ->dailyAt('12:00')
             ->timezone('Asia/Kolkata');
-        $schedule->command('ebay:auto-update-pink-dil-bids')
+        $schedule->command('ebay2:auto-update-utilized-bids')
             ->dailyAt('12:00')
             ->timezone('Asia/Kolkata');
-        $schedule->command('ebay:auto-update-price-less-bids')
+        $schedule->command('ebay3:auto-update-utilized-bids')
             ->dailyAt('12:00')
             ->timezone('Asia/Kolkata');
         $schedule->command('ebay:update-suggestedbid')

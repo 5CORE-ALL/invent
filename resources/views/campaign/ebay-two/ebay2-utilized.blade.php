@@ -451,8 +451,24 @@
                                         </div>
                                     </div>
 
+                                    <!-- Views Filter -->
+                                    <div class="col-md-2">
+                                        <label class="form-label fw-semibold mb-2"
+                                            style="color: #475569; font-size: 0.8125rem;">
+                                            Views Range
+                                        </label>
+                                        <div class="d-flex gap-2">
+                                            <input type="number" id="range-filter-views-min"
+                                                class="form-control form-control-sm" placeholder="Min" step="1"
+                                                style="border-color: #e2e8f0;">
+                                            <input type="number" id="range-filter-views-max"
+                                                class="form-control form-control-sm" placeholder="Max" step="1"
+                                                style="border-color: #e2e8f0;">
+                                        </div>
+                                    </div>
+
                                     <!-- Action Buttons -->
-                                    <div class="col-md-4 d-flex gap-2 align-items-end">
+                                    <div class="col-md-2 d-flex gap-2 align-items-end">
                                         <button id="apply-all-range-filters-btn" class="btn btn-primary btn-sm flex-fill">
                                             <i class="fa-solid fa-filter me-1"></i>
                                             Apply All Filters
@@ -530,31 +546,33 @@
                     <!-- Campaign Search - Just Above Table -->
                     <div class="row mb-3">
                         <div class="col-12">
-                            <div class="input-group">
-                                <span class="input-group-text bg-white border-end-0"
-                                    style="border-color: #e2e8f0;">
-                                    <i class="fa-solid fa-search" style="color: #94a3b8;"></i>
-                                </span>
-                                <input type="text" id="global-search"
-                                    class="form-control form-control-md border-start-0"
-                                    placeholder="Search by campaign name or SKU..."
-                                    style="border-color: #e2e8f0;">
+                            <div class="d-flex align-items-center gap-3">
+                                <!-- Search Input -->
+                                <div class="flex-grow-1">
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-white border-end-0"
+                                            style="border-color: #e2e8f0;">
+                                            <i class="fa-solid fa-search" style="color: #94a3b8;"></i>
+                                        </span>
+                                        <input type="text" id="global-search"
+                                            class="form-control form-control-md border-start-0"
+                                            placeholder="Search by campaign name or SKU..."
+                                            style="border-color: #e2e8f0;">
+                                    </div>
+                                </div>
+                                <!-- Pagination Count Display - Right Side -->
+                                <div>
+                                    <span id="pagination-count" class="badge badge-light"
+                                    style="font-weight: 500;color: #000000;font-size: 1rem;padding: 8px 12px;">
+                                        Showing 0 of 0 rows
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     </div>
 
                     <!-- Table Section -->
                     <div id="budget-under-table"></div>
-
-                    <!-- Pagination Count Display -->
-                    <div class="mt-2 d-flex justify-content-between align-items-center">
-                        <div>
-                            <span id="pagination-count" class="badge badge-light"
-                                style="color: #475569; font-size: 0.875rem;">
-                                Showing 0 of 0 rows
-                            </span>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
@@ -629,7 +647,8 @@
                 '1ub': { min: null, max: null },
                 '7ub': { min: null, max: null },
                 'lbid': { min: null, max: null },
-                'acos': { min: null, max: null }
+                'acos': { min: null, max: null },
+                'views': { min: null, max: null }
             };
             
             // INC/DEC SBID variables
@@ -2043,29 +2062,8 @@
                                 var ub7Color = getUbColor(ub7);
                                 var ub1Color = getUbColor(ub1);
                                 
-                                // Special rule: If UB7 = 0% and UB1 = 0%, use price-based SBID
-                                if (ub7 === 0 && ub1 === 0) {
-                                    var price = parseFloat(rowData.price || 0);
-                                    // Remove dollar sign if present
-                                    if (typeof rowData.price === 'string' && rowData.price.includes(
-                                            '$')) {
-                                        price = parseFloat(rowData.price.replace(/[^0-9.]/g, '')) ||
-                                            0;
-                                    }
-                                    if (price < 20) {
-                                        return 0.20;
-                                    } else if (price >= 20 && price < 50) {
-                                        return 0.75;
-                                    } else if (price >= 50 && price < 100) {
-                                        return 1.00;
-                                    } else if (price >= 100 && price < 200) {
-                                        return 1.50;
-                                    } else {
-                                        return 2.00;
-                                    }
-                                }
-                                
                                 // Rule: If both UB7 and UB1 are above 99%, set SBID as L1_CPC * 0.90
+                                // Note: Removed special case for ub7 === 0 && ub1 === 0 to allow UB1-based rules to apply
                                 if (ub7 > 99 && ub1 > 99) {
                                     if (l1Cpc > 0) {
                                         return Math.floor(l1Cpc * 0.90 * 100) / 100;
@@ -2121,57 +2119,41 @@
                                             sbid = Math.min(sbid, 0.20);
                                         }
                                     } else if (isUnderUtilized) {
-                                        // Check if UB7 and UB1 are both 0%
-                                        if (ub7 === 0 && ub1 === 0) {
-                                            var price = parseFloat(rowData.price || 0);
-                                            // Remove dollar sign if present
-                                            if (typeof rowData.price === 'string' && rowData.price
-                                                .includes('$')) {
-                                                price = parseFloat(rowData.price.replace(/[^0-9.]/g,
-                                                    '')) || 0;
+                                        // New UB1-based bid increase rules
+                                        // Get base bid from last_sbid, fallback to L1_CPC or L7_CPC if last_sbid is 0
+                                        var lastSbidRaw = rowData.last_sbid;
+                                        var baseBid = 0;
+                                        
+                                        // Parse last_sbid, treat empty/0 as 0
+                                        if (!lastSbidRaw || lastSbidRaw === '' || lastSbidRaw === '0' || lastSbidRaw === 0) {
+                                            baseBid = 0;
+                                        } else {
+                                            baseBid = parseFloat(lastSbidRaw);
+                                            if (isNaN(baseBid)) {
+                                                baseBid = 0;
                                             }
-                                            if (price < 20) {
-                                                sbid = 0.20;
-                                            } else if (price >= 20 && price < 50) {
-                                                sbid = 0.75;
-                                            } else if (price >= 50 && price < 100) {
-                                                sbid = 1.00;
-                                            } else if (price >= 100 && price < 200) {
-                                                sbid = 1.50;
+                                        }
+                                        
+                                        // If last_sbid is 0, use L1_CPC or L7_CPC as fallback
+                                        if (baseBid === 0) {
+                                            baseBid = (l1Cpc && !isNaN(l1Cpc) && l1Cpc > 0) ? l1Cpc : 
+                                                     ((l7Cpc && !isNaN(l7Cpc) && l7Cpc > 0) ? l7Cpc : 0);
+                                        }
+                                        
+                                        if (baseBid > 0) {
+                                            // If UB1 < 33%: increase bid by 0.10
+                                            if (ub1 < 33) {
+                                                sbid = Math.floor((baseBid + 0.10) * 100) / 100;
+                                            }
+                                            // If UB1 is 33% to 66%: increase bid by 10%
+                                            else if (ub1 >= 33 && ub1 < 66) {
+                                                sbid = Math.floor((baseBid * 1.10) * 100) / 100;
                                             } else {
-                                                sbid = 2.00;
+                                                // For UB1 >= 66%, use base bid (no increase)
+                                                sbid = Math.floor(baseBid * 100) / 100;
                                             }
                                         } else {
-                                            // Use L1CPC if available (not 0, not NaN), otherwise use L7CPC
-                                            var cpcToUse = (l1Cpc && !isNaN(l1Cpc) && l1Cpc > 0) ?
-                                                l1Cpc : ((l7Cpc && !isNaN(l7Cpc) && l7Cpc > 0) ?
-                                                    l7Cpc : 0);
-                                            if (cpcToUse > 0) {
-                                                // Ensure numeric comparison
-                                                cpcToUse = parseFloat(cpcToUse);
-                                                if (cpcToUse < 0.10) {
-                                                    sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
-                                                } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
-                                                    sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
-                                                } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
-                                                    sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
-                                                } else {
-                                                    sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
-                                                }
-                                                
-                                                // Price cap: If price < $20, cap SBID at 0.20
-                                                var price = parseFloat(rowData.price || 0);
-                                                if (typeof rowData.price === 'string' && rowData
-                                                    .price.includes('$')) {
-                                                    price = parseFloat(rowData.price.replace(
-                                                        /[^0-9.]/g, '')) || 0;
-                                                }
-                                                if (price < 20) {
-                                                    sbid = Math.min(sbid, 0.20);
-                                                }
-                                            } else {
-                                                sbid = 0;
-                                            }
+                                            sbid = 0;
                                         }
                                     } else {
                                         // Correctly-utilized: use L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
@@ -2206,55 +2188,41 @@
                                         sbid = Math.min(sbid, 0.20);
                                     }
                                 } else if (currentUtilizationType === 'under') {
-                                    // Check if UB7 and UB1 are both 0%
-                                    if (ub7 === 0 && ub1 === 0) {
-                                        var price = parseFloat(rowData.price || 0);
-                                        // Remove dollar sign if present
-                                        if (typeof rowData.price === 'string' && rowData.price
-                                            .includes('$')) {
-                                            price = parseFloat(rowData.price.replace(/[^0-9.]/g,
-                                                '')) || 0;
+                                    // New UB1-based bid increase rules
+                                    // Get base bid from last_sbid, fallback to L1_CPC or L7_CPC if last_sbid is 0
+                                    var lastSbidRaw = rowData.last_sbid;
+                                    var baseBid = 0;
+                                    
+                                    // Parse last_sbid, treat empty/0 as 0
+                                    if (!lastSbidRaw || lastSbidRaw === '' || lastSbidRaw === '0' || lastSbidRaw === 0) {
+                                        baseBid = 0;
+                                    } else {
+                                        baseBid = parseFloat(lastSbidRaw);
+                                        if (isNaN(baseBid)) {
+                                            baseBid = 0;
                                         }
-                                        if (price < 20) {
-                                            sbid = 0.20;
-                                        } else if (price >= 20 && price < 50) {
-                                            sbid = 0.75;
-                                        } else if (price >= 50 && price < 100) {
-                                            sbid = 1.00;
-                                        } else if (price >= 100 && price < 200) {
-                                            sbid = 1.50;
+                                    }
+                                    
+                                    // If last_sbid is 0, use L1_CPC or L7_CPC as fallback
+                                    if (baseBid === 0) {
+                                        baseBid = (l1Cpc && !isNaN(l1Cpc) && l1Cpc > 0) ? l1Cpc : 
+                                                 ((l7Cpc && !isNaN(l7Cpc) && l7Cpc > 0) ? l7Cpc : 0);
+                                    }
+                                    
+                                    if (baseBid > 0) {
+                                        // If UB1 < 33%: increase bid by 0.10
+                                        if (ub1 < 33) {
+                                            sbid = Math.floor((baseBid + 0.10) * 100) / 100;
+                                        }
+                                        // If UB1 is 33% to 66%: increase bid by 10%
+                                        else if (ub1 >= 33 && ub1 < 66) {
+                                            sbid = Math.floor((baseBid * 1.10) * 100) / 100;
                                         } else {
-                                            sbid = 2.00;
+                                            // For UB1 >= 66%, use base bid (no increase)
+                                            sbid = Math.floor(baseBid * 100) / 100;
                                         }
                                     } else {
-                                        // Use L1CPC if available (not 0, not NaN), otherwise use L7CPC
-                                        var cpcToUse = (l1Cpc && !isNaN(l1Cpc) && l1Cpc > 0) ?
-                                            l1Cpc : ((l7Cpc && !isNaN(l7Cpc) && l7Cpc > 0) ? l7Cpc :
-                                                0);
-                                        if (cpcToUse > 0) {
-                                            if (cpcToUse < 0.10) {
-                                                sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
-                                            } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
-                                                sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
-                                            } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
-                                                sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
-                                            } else {
-                                                sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
-                                            }
-                                            
-                                            // Price cap: If price < $20, cap SBID at 0.20
-                                            var price = parseFloat(rowData.price || 0);
-                                            if (typeof rowData.price === 'string' && rowData.price
-                                                .includes('$')) {
-                                                price = parseFloat(rowData.price.replace(/[^0-9.]/g,
-                                                    '')) || 0;
-                                            }
-                                            if (price < 20) {
-                                                sbid = Math.min(sbid, 0.20);
-                                            }
-                                        } else {
-                                            sbid = 0;
-                                        }
+                                        sbid = 0;
                                     }
                                 } else {
                                     sbid = Math.floor(l1Cpc * 0.90 * 100) / 100;
@@ -2309,28 +2277,8 @@
                             
                             var sbid = 0;
                             
-                            // Special rule: If UB7 = 0% and UB1 = 0%, use price-based SBID
-                            if (ub7 === 0 && ub1 === 0) {
-                                var price = parseFloat(row.price || 0);
-                                // Remove dollar sign if present
-                                if (typeof row.price === 'string' && row.price.includes('$')) {
-                                    price = parseFloat(row.price.replace(/[^0-9.]/g, '')) || 0;
-                                }
-                                if (price < 20) {
-                                    sbid = 0.20;
-                                } else if (price >= 20 && price < 50) {
-                                    sbid = 0.75;
-                                } else if (price >= 50 && price < 100) {
-                                    sbid = 1.00;
-                                } else if (price >= 100 && price < 200) {
-                                    sbid = 1.50;
-                                } else {
-                                    sbid = 2.00;
-                                }
-                                return sbid.toFixed(2);
-                            }
-                            
                             // Rule: If both UB7 and UB1 are above 99%, set SBID as L1_CPC * 0.90
+                            // Note: Removed special case for ub7 === 0 && ub1 === 0 to allow UB1-based rules to apply
                             if (ub7 > 99 && ub1 > 99) {
                                 if (l1_cpc > 0) {
                                     sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
@@ -2389,56 +2337,41 @@
                                         sbid = Math.min(sbid, 0.20);
                                     }
                                 } else if (isUnderUtilized) {
-                                    // Check if UB7 and UB1 are both 0%
-                                    if (ub7 === 0 && ub1 === 0) {
-                                        var price = parseFloat(row.price || 0);
-                                        // Remove dollar sign if present
-                                        if (typeof row.price === 'string' && row.price.includes(
-                                            '$')) {
-                                            price = parseFloat(row.price.replace(/[^0-9.]/g, '')) ||
-                                                0;
+                                    // New UB1-based bid increase rules
+                                    // Get base bid from last_sbid, fallback to L1_CPC or L7_CPC if last_sbid is 0
+                                    var lastSbidRaw = row.last_sbid;
+                                    var baseBid = 0;
+                                    
+                                    // Parse last_sbid, treat empty/0 as 0
+                                    if (!lastSbidRaw || lastSbidRaw === '' || lastSbidRaw === '0' || lastSbidRaw === 0) {
+                                        baseBid = 0;
+                                    } else {
+                                        baseBid = parseFloat(lastSbidRaw);
+                                        if (isNaN(baseBid)) {
+                                            baseBid = 0;
                                         }
-                                        if (price < 20) {
-                                            sbid = 0.20;
-                                        } else if (price >= 20 && price < 50) {
-                                            sbid = 0.75;
-                                        } else if (price >= 50 && price < 100) {
-                                            sbid = 1.00;
-                                        } else if (price >= 100 && price < 200) {
-                                            sbid = 1.50;
+                                    }
+                                    
+                                    // If last_sbid is 0, use L1_CPC or L7_CPC as fallback
+                                    if (baseBid === 0) {
+                                        baseBid = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : 
+                                                 ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
+                                    }
+                                    
+                                    if (baseBid > 0) {
+                                        // If UB1 < 33%: increase bid by 0.10
+                                        if (ub1 < 33) {
+                                            sbid = Math.floor((baseBid + 0.10) * 100) / 100;
+                                        }
+                                        // If UB1 is 33% to 66%: increase bid by 10%
+                                        else if (ub1 >= 33 && ub1 < 66) {
+                                            sbid = Math.floor((baseBid * 1.10) * 100) / 100;
                                         } else {
-                                            sbid = 2.00;
+                                            // For UB1 >= 66%, use base bid (no increase)
+                                            sbid = Math.floor(baseBid * 100) / 100;
                                         }
                                     } else {
-                                        // Use L1CPC if available (not 0, not NaN), otherwise use L7CPC
-                                        var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ?
-                                            l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ?
-                                                l7_cpc : 0);
-                                        
-                                        if (cpcToUse > 0) {
-                                            if (cpcToUse < 0.10) {
-                                                sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
-                                            } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
-                                                sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
-                                            } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
-                                                sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
-                                            } else {
-                                                sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
-                                            }
-                                            
-                                            // Price cap: If price < $20, cap SBID at 0.20
-                                            var price = parseFloat(row.price || 0);
-                                            if (typeof row.price === 'string' && row.price.includes(
-                                                    '$')) {
-                                                price = parseFloat(row.price.replace(/[^0-9.]/g,
-                                                    '')) || 0;
-                                            }
-                                            if (price < 20) {
-                                                sbid = Math.min(sbid, 0.20);
-                                            }
-                                        } else {
-                                            sbid = 0;
-                                        }
+                                        sbid = 0;
                                     }
                                 } else {
                                     // Correctly-utilized or other: SBID = L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
@@ -2469,54 +2402,41 @@
                                     sbid = Math.min(sbid, 0.20);
                                 }
                             } else if (currentUtilizationType === 'under') {
-                                // Check if UB7 and UB1 are both 0%
-                                if (ub7 === 0 && ub1 === 0) {
-                                    var price = parseFloat(row.price || 0);
-                                    // Remove dollar sign if present
-                                    if (typeof row.price === 'string' && row.price.includes('$')) {
-                                        price = parseFloat(row.price.replace(/[^0-9.]/g, '')) || 0;
+                                // New UB1-based bid increase rules
+                                // Get base bid from last_sbid, fallback to L1_CPC or L7_CPC if last_sbid is 0
+                                var lastSbidRaw = row.last_sbid;
+                                var baseBid = 0;
+                                
+                                // Parse last_sbid, treat empty/0 as 0
+                                if (!lastSbidRaw || lastSbidRaw === '' || lastSbidRaw === '0' || lastSbidRaw === 0) {
+                                    baseBid = 0;
+                                } else {
+                                    baseBid = parseFloat(lastSbidRaw);
+                                    if (isNaN(baseBid)) {
+                                        baseBid = 0;
                                     }
-                                    if (price < 20) {
-                                        sbid = 0.20;
-                                    } else if (price >= 20 && price < 50) {
-                                        sbid = 0.75;
-                                    } else if (price >= 50 && price < 100) {
-                                        sbid = 1.00;
-                                    } else if (price >= 100 && price < 200) {
-                                        sbid = 1.50;
+                                }
+                                
+                                // If last_sbid is 0, use L1_CPC or L7_CPC as fallback
+                                if (baseBid === 0) {
+                                    baseBid = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ? l1_cpc : 
+                                             ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ? l7_cpc : 0);
+                                }
+                                
+                                if (baseBid > 0) {
+                                    // If UB1 < 33%: increase bid by 0.10
+                                    if (ub1 < 33) {
+                                        sbid = Math.floor((baseBid + 0.10) * 100) / 100;
+                                    }
+                                    // If UB1 is 33% to 66%: increase bid by 10%
+                                    else if (ub1 >= 33 && ub1 < 66) {
+                                        sbid = Math.floor((baseBid * 1.10) * 100) / 100;
                                     } else {
-                                        sbid = 2.00;
+                                        // For UB1 >= 66%, use base bid (no increase)
+                                        sbid = Math.floor(baseBid * 100) / 100;
                                     }
                                 } else {
-                                    // Use L1CPC if available, otherwise use L7CPC
-                                    var cpcToUse = (l1_cpc && !isNaN(l1_cpc) && l1_cpc > 0) ?
-                                        l1_cpc : ((l7_cpc && !isNaN(l7_cpc) && l7_cpc > 0) ?
-                                            l7_cpc : 0);
-                                    
-                                    if (cpcToUse > 0) {
-                                        if (cpcToUse < 0.10) {
-                                            sbid = Math.floor(cpcToUse * 2.00 * 100) / 100;
-                                        } else if (cpcToUse >= 0.10 && cpcToUse <= 0.20) {
-                                            sbid = Math.floor(cpcToUse * 1.50 * 100) / 100;
-                                        } else if (cpcToUse >= 0.21 && cpcToUse <= 0.30) {
-                                            sbid = Math.floor(cpcToUse * 1.25 * 100) / 100;
-                                        } else {
-                                            sbid = Math.floor(cpcToUse * 1.10 * 100) / 100;
-                                        }
-                                        
-                                        // Price cap: If price < $20, cap SBID at 0.20
-                                        var price = parseFloat(row.price || 0);
-                                        if (typeof row.price === 'string' && row.price.includes(
-                                            '$')) {
-                                            price = parseFloat(row.price.replace(/[^0-9.]/g, '')) ||
-                                                0;
-                                        }
-                                        if (price < 20) {
-                                            sbid = Math.min(sbid, 0.20);
-                                        }
-                                    } else {
-                                        sbid = 0;
-                                    }
+                                    sbid = 0;
                                 }
                             } else {
                                 // Correctly-utilized: SBID = L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
@@ -2933,6 +2853,22 @@
                         return false;
                     }
                 }
+                
+                // Views filter
+                if (rangeFilters['views'].min !== null || rangeFilters['views'].max !== null) {
+                    let viewsRaw = data.views;
+                    let viewsValue = parseFloat(viewsRaw) || 0;
+                    if (isNaN(viewsValue)) {
+                        viewsValue = 0;
+                    }
+                    
+                    if (rangeFilters['views'].min !== null && viewsValue < rangeFilters['views'].min) {
+                        return false;
+                    }
+                    if (rangeFilters['views'].max !== null && viewsValue > rangeFilters['views'].max) {
+                        return false;
+                    }
+                }
 
                 return true;
             }
@@ -3090,6 +3026,16 @@
                         hasError = true;
                     }
                     
+                    // Get and validate Views filter
+                    let viewsMin = $("#range-filter-views-min").val();
+                    let viewsMax = $("#range-filter-views-max").val();
+                    rangeFilters['views'].min = viewsMin !== '' ? parseFloat(viewsMin) : null;
+                    rangeFilters['views'].max = viewsMax !== '' ? parseFloat(viewsMax) : null;
+                    if (rangeFilters['views'].min !== null && rangeFilters['views'].max !== null && rangeFilters['views'].min > rangeFilters['views'].max) {
+                        alert('Views: Minimum value cannot be greater than maximum value');
+                        hasError = true;
+                    }
+                    
                     if (hasError) {
                         return;
                     }
@@ -3113,6 +3059,8 @@
                     rangeFilters['lbid'].max = null;
                     rangeFilters['acos'].min = null;
                     rangeFilters['acos'].max = null;
+                    rangeFilters['views'].min = null;
+                    rangeFilters['views'].max = null;
                     
                     // Clear all input fields
                     $("#range-filter-1ub-min").val('');
@@ -3123,6 +3071,8 @@
                     $("#range-filter-lbid-max").val('');
                     $("#range-filter-acos-min").val('');
                     $("#range-filter-acos-max").val('');
+                    $("#range-filter-views-min").val('');
+                    $("#range-filter-views-max").val('');
                     
                     // Apply cleared filters
                     table.setFilter(combinedFilter);
@@ -3159,6 +3109,11 @@
                         rangeFilters['acos'].min = acosMin !== '' ? parseFloat(acosMin) : null;
                         rangeFilters['acos'].max = acosMax !== '' ? parseFloat(acosMax) : null;
                         
+                        let viewsMin = $("#range-filter-views-min").val();
+                        let viewsMax = $("#range-filter-views-max").val();
+                        rangeFilters['views'].min = viewsMin !== '' ? parseFloat(viewsMin) : null;
+                        rangeFilters['views'].max = viewsMax !== '' ? parseFloat(viewsMax) : null;
+                        
                         // Apply filters (skip validation for auto-apply)
                         table.setFilter(combinedFilter);
                         setTimeout(function() {
@@ -3170,7 +3125,7 @@
                 }
                 
                 // Add change event listeners to all range filter inputs
-                $("#range-filter-1ub-min, #range-filter-1ub-max, #range-filter-7ub-min, #range-filter-7ub-max, #range-filter-lbid-min, #range-filter-lbid-max, #range-filter-acos-min, #range-filter-acos-max").on("input change", function() {
+                $("#range-filter-1ub-min, #range-filter-1ub-max, #range-filter-7ub-min, #range-filter-7ub-max, #range-filter-lbid-min, #range-filter-lbid-max, #range-filter-acos-min, #range-filter-acos-max, #range-filter-views-min, #range-filter-views-max").on("input change", function() {
                     applyRangeFiltersOnChange();
                 });
                 
