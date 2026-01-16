@@ -442,6 +442,24 @@
             display: inline-block;
         }
 
+        /* Ensure select-all checkbox is clickable */
+        #select-all-checkbox {
+            pointer-events: auto !important;
+            z-index: 1000 !important;
+            position: relative;
+            cursor: pointer;
+        }
+
+        th[data-field="bulk-select"] {
+            pointer-events: auto !important;
+            position: relative;
+            z-index: 1000 !important;
+        }
+
+        th[data-field="bulk-select"] * {
+            pointer-events: auto !important;
+        }
+
         /* ========== ACTIVITY LOG FILTER BAR ========== */
         .activity-log-filter-bar {
             border-radius: 0;
@@ -2493,7 +2511,7 @@
                                     AVAILABLE_TO_SELL: item.AVAILABLE_TO_SELL || 0,
                                     VERIFIED_STOCK: item.verified_stock || '', // User input
                                     TO_ADJUST: item.to_adjust || '', // Auto-calculated
-                                    REASON: item.reason || '', // Dropdown
+                                    REASON: item.reason || 'Count', // Dropdown - default to "Count"
                                     REMARK: item.REMARKS || item.remarks || '', // Remark field
                                     APPROVED: item.APPROVED === true, // Checkbox state
                                     APPROVED_BY:  item.approved_by || '',
@@ -2524,6 +2542,17 @@
                             // Show all products from product_master, including those without Shopify data
                             // Default: Show all items
                             filteredData = [...tableData];
+
+                            // Sort by INV in increasing order by default
+                            filteredData.sort((a, b) => {
+                                const valA = parseFloat(a.INV) || 0;
+                                const valB = parseFloat(b.INV) || 0;
+                                return valA - valB; // Increasing order
+                            });
+
+                            // Set default sort state to INV ascending
+                            currentSort.field = 'INV';
+                            currentSort.direction = 1;
 
                             renderTable(filteredData);
                            
@@ -2792,8 +2821,9 @@
                     $row.append($('<td>').addClass('to-adjust').text(toAdjust));
 
                     // Parse comma-separated reasons - take first value for single select
+                    // Default to "Count" if no reason is set
                     const reasonStr = item.REASON || '';
-                    const selectedReason = reasonStr ? reasonStr.split(',').map(r => r.trim())[0] : '';
+                    const selectedReason = reasonStr ? reasonStr.split(',').map(r => r.trim())[0] : 'Count';
 
                     $row.append($('<td>').html(`
                         <select class="form-control reason-select" data-sku="${item.SKU}" data-index="${rowIndex}">
@@ -2804,7 +2834,6 @@
                             <option value="Damaged" ${selectedReason === 'Damaged' ? 'selected' : ''}>Damaged</option>
                             <option value="Theft or Loss" ${selectedReason === 'Theft or Loss' ? 'selected' : ''}>Theft or Loss</option>
                             <option value="Promotion" ${selectedReason === 'Promotion' ? 'selected' : ''}>Promotion</option>
-                            <option value="Suspense" ${selectedReason === 'Suspense' ? 'selected' : ''}>Suspense</option>
                             <option value="Unknown" ${selectedReason === 'Unknown' ? 'selected' : ''}>Unknown</option>
                             <option value="Adjustment" ${selectedReason === 'Adjustment' ? 'selected' : ''}>Adjustment</option>
                             <option value="Combo" ${selectedReason === 'Combo' ? 'selected' : ''}>Combo</option>
@@ -2813,13 +2842,10 @@
                         </select>
                     `));
 
-                    // REMARK column - contains both hide checkbox and remarks input
+                    // REMARK column - contains remarks input only
                     // Field should be blank (not showing latest remark) per requirement
                     $row.append(`<td>
-                        <div class="d-flex align-items-center gap-2">
-                            <input type="checkbox" class="form-check-input hide-row-checkbox" data-sku="${item.SKU}" ${item.IS_HIDE ? 'checked' : ''} style="margin-right: 5px;">
-                            <input type="text" class="form-control remarks-input" data-sku="${item.SKU}" value="" style="flex: 1;" placeholder="Enter remark...">
-                        </div>
+                        <input type="text" class="form-control remarks-input" data-sku="${item.SKU}" value="" placeholder="Enter remark...">
                     </td>`);
 
                     $row.append($('<td>').html(`
@@ -3491,6 +3517,7 @@
                                             <th>Verified</th>
                                             <th>To Adjust</th>
                                             <th>Reason</th>
+                                            <th>Remarks</th>
                                             <th>Approved By</th>
                                             <th>Approved</th>
                                         </tr>
@@ -3504,6 +3531,7 @@
                                         <td>${entry.verified_stock}</td>
                                         <td>${entry.to_adjust}</td>
                                         <td>${entry.reason}</td>
+                                        <td>${entry.remarks || '-'}</td>
                                         <td>${entry.approved_by}</td>
                                         <td>${entry.approved_at}</td>
                                     </tr>`;
@@ -3633,6 +3661,7 @@
                                             <th>Verified</th>
                                             <th>To Adjust</th>
                                             <th>Reason</th>
+                                            <th>Remarks</th>
                                             <th>Approved By</th>
                                             <th>Approved</th>
                                         </tr>
@@ -3646,6 +3675,7 @@
                                     <td>${entry.verified_stock || '-'}</td>
                                     <td>${entry.to_adjust || '-'}</td>
                                     <td>${entry.reason || '-'}</td>
+                                    <td>${entry.remarks || '-'}</td>
                                     <td>${entry.approved_by || '-'}</td>
                                     <td>${entry.approved_at || '-'}</td>
                                 </tr>`;
@@ -3664,19 +3694,6 @@
             }
 
             //  call after click hide checkbox
-            $(document).on('change', '.hide-row-checkbox', function () {
-                const sku = $(this).data('sku');
-                const $row = $(this).closest('tr');
-
-                $.post('/row-hide-toggle', {
-                    sku: sku,
-                    _token: $('meta[name="csrf-token"]').attr('content')
-                }, function (res) {
-                    if (res.success) {
-                    $row.remove();
-                    }
-                });
-            });
 
             // Step 5: Button to open hidden modal
             $('#viewHiddenRows').on('click', function () {

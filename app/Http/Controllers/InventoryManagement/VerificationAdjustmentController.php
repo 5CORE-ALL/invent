@@ -1580,8 +1580,11 @@ class VerificationAdjustmentController extends Controller
                     'to_adjust' => $item->to_adjust,
                     'on_hand' => $item->on_hand,
                     'reason' => $item->reason,
+                    'remarks' => $item->remarks,
                     'approved_by' => $item->approved_by,
-                    'approved_at' => Carbon::parse($item->created_at)->timezone('America/New_York')->format('d M Y, h:i A'),
+                    'approved_at' => $item->approved_at 
+                        ? Carbon::parse($item->approved_at)->timezone('America/New_York')->format('d M Y, h:i A')
+                        : '-',
                 ];
             });
 
