@@ -173,6 +173,14 @@ class ChannelMasterController extends Controller
         ]);
     }
 
+    /**
+     * Display All Marketplace Master view (Tabulator-based)
+     */
+    public function allMarketplaceMaster(Request $request)
+    {
+        return view('channels.all-marketplace-master');
+    }
+
 
     public function getViewChannelData(Request $request)
     {
@@ -195,6 +203,9 @@ class ChannelMasterController extends Controller
         if ($channels->isEmpty()) {
             return response()->json(['status' => 404, 'message' => 'No active channel found']);
         }
+
+        // Get clicks data from adv_masters_data table
+        $advMastersData = \App\Models\ADVMastersData::all()->keyBy('channel');
 
         $finalData = [];
 
@@ -279,6 +290,15 @@ class ChannelMasterController extends Controller
                 if (!empty($data['data'])) {
                     $row = array_merge($row, $data['data'][0]);
                 }
+            }
+
+            // Add clicks data from adv_masters_data if available
+            $channelKey = strtoupper($channel);
+            if (isset($advMastersData[$channelKey])) {
+                $advData = $advMastersData[$channelKey];
+                $row['clicks'] = $advData->clicks ?? 0;
+            } else {
+                $row['clicks'] = 0;
             }
 
             $finalData[] = $row;
