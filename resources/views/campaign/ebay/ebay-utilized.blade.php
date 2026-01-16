@@ -209,14 +209,14 @@
     <div class="row">
         <div class="col-12">
             <div class="card shadow-sm" style="border: 1px solid rgba(0, 0, 0, 0.05);">
-                <div class="card-body py-4">
-                    <div class="mb-4">
+                <div class="card-body py-3">
+                    <div class="mb-3">
                         <!-- Filters and Stats Section -->
                         <div class="card border-0 shadow-sm mb-4" style="border: 1px solid rgba(0, 0, 0, 0.05) !important;">
                             <div class="card-body p-4">
-                                <!-- Type Filter and Count Cards Row -->
-                                <div class="row g-4 align-items-end mb-3 pb-3 border-bottom">
-                                    <div class="col-md-3">
+                                <!-- Filters Row: Utilization Type, Status, Inventory, NRA, NRL, SBID M -->
+                                <div class="row g-3 align-items-end mb-3">
+                                    <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2"
                                             style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-filter me-1" style="color: #64748b;"></i>Utilization Type
@@ -228,171 +228,30 @@
                                             <option value="correctly">Correctly Utilized</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-9">
-                                        <label class="form-label fw-semibold mb-2 d-block"
-                                            style="color: #475569; font-size: 0.8125rem;">
-                                            <i class="fa-solid fa-chart-line me-1" style="color: #64748b;"></i>Statistics
-                                        </label>
-                                        <div class="d-flex gap-3 flex-wrap align-items-center">
-                                            <div class="badge-count-item"
-                                                style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Total
-                                                    SKU</span>
-                                                <span class="fw-bold" id="total-sku-count"
-                                                    style="font-size: 1.1rem;">0</span>
-                                    </div>
-                                            <div class="badge-count-item ebay-sku-card" id="ebay-sku-card"
-                                                style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
-                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Ebay
-                                                    SKU</span>
-                                                <span class="fw-bold" id="ebay-sku-count"
-                                                    style="font-size: 1.1rem;">0</span>
-                                    </div>
-                                            <div class="badge-count-item total-campaign-card" id="total-campaign-card"
-                                                style="background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
-                                                <span
-                                                    style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Campaign</span>
-                                                <span class="fw-bold" id="total-campaign-count"
-                                                    style="font-size: 1.1rem;">0</span>
-                                    </div>
-                                            <div class="badge-count-item missing-campaign-card" id="missing-campaign-card"
-                                                style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
-                                                <span
-                                                    style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Missing</span>
-                                                <span class="fw-bold" id="missing-campaign-count"
-                                                    style="font-size: 1.1rem;">0</span>
-                                    </div>
-                                            <div class="badge-count-item nra-missing-card" id="nra-missing-card"
-                                                style="background: linear-gradient(135deg, #ffc107 0%, #ffb300 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
-                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">NRA
-                                                    MISSING</span>
-                                                <span class="fw-bold" id="nra-missing-count"
-                                                    style="font-size: 1.1rem;">0</span>
-                                    </div>
-                                            <div class="badge-count-item zero-inv-card" id="zero-inv-card"
-                                                style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
-                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Zero
-                                                    INV</span>
-                                                <span class="fw-bold" id="zero-inv-count"
-                                                    style="font-size: 1.1rem;">0</span>
-                                    </div>
-                                            <div class="badge-count-item nra-card" id="nra-card"
-                                                style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
-                                                <span
-                                                    style="font-size: 0.75rem; display: block; margin-bottom: 2px;">NRA</span>
-                                                <span class="fw-bold" id="nra-count" style="font-size: 1.1rem;">0</span>
-                                    </div>
-                                            <div class="badge-count-item nrl-missing-card" id="nrl-missing-card"
-                                                style="background: linear-gradient(135deg, #ffc107 0%, #ffb300 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
-                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">NRL
-                                                    MISSING</span>
-                                                <span class="fw-bold" id="nrl-missing-count"
-                                                    style="font-size: 1.1rem;">0</span>
-                                    </div>
-                                            <div class="badge-count-item nrl-card" id="nrl-card"
-                                                style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
-                                                <span
-                                                    style="font-size: 0.75rem; display: block; margin-bottom: 2px;">NRL</span>
-                                                <span class="fw-bold" id="nrl-count" style="font-size: 1.1rem;">0</span>
-                                    </div>
-                                            <div class="badge-count-item ra-card" id="ra-card"
-                                                style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
-                                                <span
-                                                    style="font-size: 0.75rem; display: block; margin-bottom: 2px;">RA</span>
-                                                <span class="fw-bold" id="ra-count" style="font-size: 1.1rem;">0</span>
-                                    </div>
-                                            <div class="badge-count-item utilization-card" data-type="7ub"
-                                                style="background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
-                                                <span
-                                                    style="font-size: 0.75rem; display: block; margin-bottom: 2px;">7UB</span>
-                                                <span class="fw-bold" id="7ub-count" style="font-size: 1.1rem;">0</span>
-                                    </div>
-                                            <div class="badge-count-item utilization-card" data-type="7ub-1ub"
-                                                style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
-                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">7UB +
-                                                    1UB</span>
-                                                <span class="fw-bold" id="7ub-1ub-count"
-                                                    style="font-size: 1.1rem;">0</span>
-                                </div>
-                                            <div class="badge-count-item"
-                                                style="background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">L30
-                                                    CLICKS</span>
-                                                <span class="fw-bold" id="l30-total-clicks"
-                                                    style="font-size: 1.1rem;">0</span>
-                                </div>
-                                            <div class="badge-count-item"
-                                                style="background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">L30
-                                                    SPEND</span>
-                                                <span class="fw-bold" id="l30-total-spend"
-                                                    style="font-size: 1.1rem;">0</span>
-                                </div>
-                                            <div class="badge-count-item"
-                                                style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">L30
-                                                    AD SOLD</span>
-                                                <span class="fw-bold" id="l30-total-ad-sold"
-                                                    style="font-size: 1.1rem;">0</span>
-                                </div>
-                                            <div class="badge-count-item"
-                                                style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">AVG
-                                                    ACOS</span>
-                                                <span class="fw-bold" id="avg-acos" style="font-size: 1.1rem;">0</span>
-                                </div>
-                                            <div class="badge-count-item"
-                                                style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">AVG
-                                                    CVR</span>
-                                                <span class="fw-bold" id="avg-cvr" style="font-size: 1.1rem;">0</span>
-                                </div>
-                            </div>
-                            </div>
-                        </div>
-
-                                <!-- Search and Filter Controls Row -->
-                                <div class="row align-items-end">
-                            <div class="col-md-3">
-                                        <label class="form-label fw-semibold mb-2"
-                                            style="color: #475569; font-size: 0.8125rem;">
-                                            <i class="fa-solid fa-search me-1" style="color: #64748b;"></i>Search Campaign
-                                        </label>
-                                        <div class="input-group">
-                                            <span class="input-group-text bg-white border-end-0"
-                                                style="border-color: #e2e8f0;">
-                                                <i class="fa-solid fa-search" style="color: #94a3b8;"></i>
-                                    </span>
-                                            <input type="text" id="global-search"
-                                                class="form-control form-control-md border-start-0"
-                                                placeholder="Search by campaign name or SKU..."
-                                                style="border-color: #e2e8f0;">
-                                </div>
-                            </div>
-                            <div class="col-md-2">
+                                    <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2"
                                             style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-toggle-on me-1" style="color: #64748b;"></i>Status
                                         </label>
                                         <select id="status-filter" class="form-select form-select-md">
-                                    <option value="">All Status</option>
-                                    <option value="RUNNING">Running</option>
-                                    <option value="PAUSED">Paused</option>
-                                    <option value="ENDED">Ended</option>
-                                </select>
-                            </div>
+                                            <option value="">All Status</option>
+                                            <option value="RUNNING">Running</option>
+                                            <option value="PAUSED">Paused</option>
+                                            <option value="ENDED">Ended</option>
+                                        </select>
+                                    </div>
                                     <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2"
                                             style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-boxes me-1" style="color: #64748b;"></i>Inventory
                                         </label>
                                         <select id="inv-filter" class="form-select form-select-md">
-                                    <option value="">All Inventory</option>
-                                            <option value="ALL">ALL</option>
+                                            <option value="">All Inventory</option>
+                                            <option value="ALL" >ALL</option>
                                             <option value="INV_0">0 INV</option>
                                             <option value="OTHERS" selected>OTHERS</option>
-                                </select>
-                            </div>
+                                        </select>
+                                    </div>
                                     <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2"
                                             style="color: #475569; font-size: 0.8125rem;">
@@ -400,11 +259,11 @@
                                         </label>
                                         <select id="nra-filter" class="form-select form-select-md">
                                             <option value="">All NRA</option>
-                                    <option value="NRA">NRA</option>
-                                    <option value="RA">RA</option>
+                                            <option value="NRA">NRA</option>
+                                            <option value="RA">RA</option>
                                             <option value="LATER">LATER</option>
-                                </select>
-                            </div>
+                                        </select>
+                                    </div>
                                     <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2"
                                             style="color: #475569; font-size: 0.8125rem;">
@@ -412,10 +271,10 @@
                                         </label>
                                         <select id="nrl-filter" class="form-select form-select-md">
                                             <option value="">All NRL</option>
-                                    <option value="NRL">NRL</option>
-                                    <option value="REQ">REQ</option>
-                                </select>
-                            </div>
+                                            <option value="NRL">NRL</option>
+                                            <option value="REQ">REQ</option>
+                                        </select>
+                                    </div>
                                     <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2"
                                             style="color: #475569; font-size: 0.8125rem;">
@@ -428,114 +287,216 @@
                                         </select>
                                     </div>
                                 </div>
-                                
-                                <!-- Multi Range Filter Section -->
-                                <div class="row g-3 align-items-end mb-3 pt-3 border-top">
-                                    <div class="col-12 mb-2">
-                                        <label class="form-label fw-semibold mb-2"
+
+                                <!-- Count Badges Row -->
+                                <div class="row pb-3 border-bottom">
+                                    <div class="col-12">
+                                        <label class="form-label fw-semibold mb-2 d-block"
                                             style="color: #475569; font-size: 0.8125rem;">
-                                            <i class="fa-solid fa-filter me-1" style="color: #64748b;"></i>Range Filters
+                                            <i class="fa-solid fa-chart-line me-1" style="color: #64748b;"></i>Statistics
                                         </label>
+                                        <div class="d-flex gap-2 flex-wrap align-items-center">
+                                            <span class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">Total SKU:</span>
+                                                <span class="fw-bold" id="total-sku-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item ebay-sku-card" id="ebay-sku-card"
+                                                style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">Ebay SKU:</span>
+                                                <span class="fw-bold" id="ebay-sku-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item total-campaign-card" id="total-campaign-card"
+                                                style="background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">Campaign:</span>
+                                                <span class="fw-bold" id="total-campaign-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item missing-campaign-card" id="missing-campaign-card"
+                                                style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">Missing:</span>
+                                                <span class="fw-bold" id="missing-campaign-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item nra-missing-card" id="nra-missing-card"
+                                                style="background: linear-gradient(135deg, #ffc107 0%, #ffb300 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">NRA MISSING:</span>
+                                                <span class="fw-bold" id="nra-missing-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item zero-inv-card" id="zero-inv-card"
+                                                style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">Zero INV:</span>
+                                                <span class="fw-bold" id="zero-inv-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item nra-card" id="nra-card"
+                                                style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">NRA:</span>
+                                                <span class="fw-bold" id="nra-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item nrl-missing-card" id="nrl-missing-card"
+                                                style="background: linear-gradient(135deg, #ffc107 0%, #ffb300 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">NRL MISSING:</span>
+                                                <span class="fw-bold" id="nrl-missing-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item nrl-card" id="nrl-card"
+                                                style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">NRL:</span>
+                                                <span class="fw-bold" id="nrl-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item ra-card" id="ra-card"
+                                                style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">RA:</span>
+                                                <span class="fw-bold" id="ra-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item utilization-card" data-type="7ub"
+                                                style="background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">7UB:</span>
+                                                <span class="fw-bold" id="7ub-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item utilization-card" data-type="7ub-1ub"
+                                                style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">7UB+1UB:</span>
+                                                <span class="fw-bold" id="7ub-1ub-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">L30 CLICKS:</span>
+                                                <span class="fw-bold" id="l30-total-clicks" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">L30 SPEND:</span>
+                                                <span class="fw-bold" id="l30-total-spend" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">L30 AD SOLD:</span>
+                                                <span class="fw-bold" id="l30-total-ad-sold" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">AVG ACOS:</span>
+                                                <span class="fw-bold" id="avg-acos" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">AVG CVR:</span>
+                                                <span class="fw-bold" id="avg-cvr" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                        </div>
                                     </div>
-                                    
+                                </div>
+
+                                <!-- Multi Range Filter Section -->
+                                <div class="row g-3 align-items-end pt-2">
                                     <!-- 1UB% Filter -->
-                                    <div class="col-md-3">
+                                    <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2"
                                             style="color: #475569; font-size: 0.8125rem;">
                                             1UB% Range
                                         </label>
                                         <div class="d-flex gap-2">
-                                            <input type="number" id="range-filter-1ub-min" class="form-control form-control-sm" 
-                                                placeholder="Min" step="0.01" style="border-color: #e2e8f0;">
-                                            <input type="number" id="range-filter-1ub-max" class="form-control form-control-sm" 
-                                                placeholder="Max" step="0.01" style="border-color: #e2e8f0;">
+                                            <input type="number" id="range-filter-1ub-min"
+                                                class="form-control form-control-sm" placeholder="Min" step="0.01"
+                                                style="border-color: #e2e8f0;">
+                                            <input type="number" id="range-filter-1ub-max"
+                                                class="form-control form-control-sm" placeholder="Max" step="0.01"
+                                                style="border-color: #e2e8f0;">
                                         </div>
                                     </div>
-                                    
+
                                     <!-- 7UB% Filter -->
-                                    <div class="col-md-3">
+                                    <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2"
                                             style="color: #475569; font-size: 0.8125rem;">
                                             7UB% Range
                                         </label>
                                         <div class="d-flex gap-2">
-                                            <input type="number" id="range-filter-7ub-min" class="form-control form-control-sm" 
-                                                placeholder="Min" step="0.01" style="border-color: #e2e8f0;">
-                                            <input type="number" id="range-filter-7ub-max" class="form-control form-control-sm" 
-                                                placeholder="Max" step="0.01" style="border-color: #e2e8f0;">
+                                            <input type="number" id="range-filter-7ub-min"
+                                                class="form-control form-control-sm" placeholder="Min" step="0.01"
+                                                style="border-color: #e2e8f0;">
+                                            <input type="number" id="range-filter-7ub-max"
+                                                class="form-control form-control-sm" placeholder="Max" step="0.01"
+                                                style="border-color: #e2e8f0;">
                                         </div>
                                     </div>
-                                    
+
                                     <!-- LBid Filter -->
-                                    <div class="col-md-3">
+                                    <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2"
                                             style="color: #475569; font-size: 0.8125rem;">
                                             LBid Range
                                         </label>
                                         <div class="d-flex gap-2">
-                                            <input type="number" id="range-filter-lbid-min" class="form-control form-control-sm" 
-                                                placeholder="Min" step="0.01" style="border-color: #e2e8f0;">
-                                            <input type="number" id="range-filter-lbid-max" class="form-control form-control-sm" 
-                                                placeholder="Max" step="0.01" style="border-color: #e2e8f0;">
+                                            <input type="number" id="range-filter-lbid-min"
+                                                class="form-control form-control-sm" placeholder="Min" step="0.01"
+                                                style="border-color: #e2e8f0;">
+                                            <input type="number" id="range-filter-lbid-max"
+                                                class="form-control form-control-sm" placeholder="Max" step="0.01"
+                                                style="border-color: #e2e8f0;">
                                         </div>
                                     </div>
-                                    
+
                                     <!-- Acos Filter -->
-                                    <div class="col-md-3">
+                                    <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2"
                                             style="color: #475569; font-size: 0.8125rem;">
                                             Acos Range
                                         </label>
                                         <div class="d-flex gap-2">
-                                            <input type="number" id="range-filter-acos-min" class="form-control form-control-sm" 
-                                                placeholder="Min" step="0.01" style="border-color: #e2e8f0;">
-                                            <input type="number" id="range-filter-acos-max" class="form-control form-control-sm" 
-                                                placeholder="Max" step="0.01" style="border-color: #e2e8f0;">
+                                            <input type="number" id="range-filter-acos-min"
+                                                class="form-control form-control-sm" placeholder="Min" step="0.01"
+                                                style="border-color: #e2e8f0;">
+                                            <input type="number" id="range-filter-acos-max"
+                                                class="form-control form-control-sm" placeholder="Max" step="0.01"
+                                                style="border-color: #e2e8f0;">
                                         </div>
                                     </div>
-                                    
+
                                     <!-- Action Buttons -->
-                                    <div class="col-12 d-flex gap-2 align-items-end mt-2">
-                                        <button id="apply-all-range-filters-btn" class="btn btn-primary btn-sm">
+                                    <div class="col-md-4 d-flex gap-2 align-items-end">
+                                        <button id="apply-all-range-filters-btn" class="btn btn-primary btn-sm flex-fill">
                                             <i class="fa-solid fa-filter me-1"></i>
                                             Apply All Filters
                                         </button>
-                                        <button id="clear-all-range-filters-btn" class="btn btn-secondary btn-sm">
+                                        <button id="clear-all-range-filters-btn" class="btn btn-secondary btn-sm flex-fill">
                                             <i class="fa-solid fa-times me-1"></i>
                                             Clear All
                                         </button>
                                     </div>
                                 </div>
-                                
-                                <!-- INC/DEC SBID Section -->
-                                <div class="row g-3 align-items-end mb-3 pt-3 border-top">
-                                    <div class="col-md-3">
+
+                                <!-- INC/DEC SBID Section and Action Buttons -->
+                                <div class="row g-3 align-items-end pt-3 border-top">
+                                    <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2"
                                             style="color: #475569; font-size: 0.8125rem;">
-                                            <i class="fa-solid fa-calculator me-1" style="color: #64748b;"></i>INC/DEC SBID
+                                            <i class="fa-solid fa-calculator me-1" style="color: #64748b;"></i>INC/DEC
+                                            SBID
                                         </label>
                                         <div class="btn-group w-100" role="group">
-                                            <button type="button" id="inc-dec-btn" class="btn btn-warning btn-sm dropdown-toggle" 
-                                                    data-bs-toggle="dropdown" aria-expanded="false">
+                                            <button type="button" id="inc-dec-btn"
+                                                class="btn btn-warning btn-sm dropdown-toggle" data-bs-toggle="dropdown"
+                                                aria-expanded="false">
                                                 <i class="fa-solid fa-plus-minus me-1"></i>
                                                 INC/DEC (By Value)
                                             </button>
                                             <ul class="dropdown-menu" id="inc-dec-dropdown">
-                                                <li><a class="dropdown-item" href="#" data-type="value">By Value</a></li>
-                                                <li><a class="dropdown-item" href="#" data-type="percentage">By Percentage</a></li>
+                                                <li><a class="dropdown-item" href="#" data-type="value">By
+                                                        Value</a></li>
+                                                <li><a class="dropdown-item" href="#" data-type="percentage">By
+                                                        Percentage</a></li>
                                             </ul>
                                         </div>
                                     </div>
-                                    <div class="col-md-3">
+                                    <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2"
                                             style="color: #475569; font-size: 0.8125rem;">
                                             <span id="inc-dec-label">Value/Percentage</span>
                                         </label>
-                                        <input type="number" id="inc-dec-input" class="form-control form-control-md" 
-                                            placeholder="Enter value (e.g., +0.5 or -0.5)" step="0.01" 
+                                        <input type="number" id="inc-dec-input" class="form-control form-control-md"
+                                            placeholder="Enter value (e.g., +0.5 or -0.5)" step="0.01"
                                             style="border-color: #e2e8f0;">
                                     </div>
-                                    <div class="col-md-3 d-flex gap-2 align-items-end">
+                                    <div class="col-md-2 d-flex gap-2 align-items-end">
                                         <button id="apply-inc-dec-btn" class="btn btn-success btn-sm flex-fill">
                                             <i class="fa-solid fa-check me-1"></i>
                                             Apply
@@ -545,34 +506,46 @@
                                             Clear Input
                                         </button>
                                     </div>
-                                    <div class="col-md-3 d-flex align-items-end">
+                                    <div class="col-md-2 d-flex align-items-end">
                                         <button id="clear-sbid-m-btn" class="btn btn-danger btn-sm w-100">
                                             <i class="fa-solid fa-trash me-1"></i>
                                             Clear SBID M (Selected)
                                         </button>
                                     </div>
-                                </div>
-                                
-                                <!-- Action Buttons Row -->
-                                <div class="row">
-                                    <div class="col-md-12 d-flex gap-2 align-items-end mt-2">
+                                    <div class="col-md-4 d-flex gap-2 align-items-end">
                                         <button id="apr-all-sbid-btn" class="btn btn-info btn-sm flex-fill d-none">
-                                                <i class="fa-solid fa-check-double me-1"></i>
-                                                APR ALL SBID
-                                            </button>
+                                            <i class="fa-solid fa-check-double me-1"></i>
+                                            APR ALL SBID
+                                        </button>
                                         <button id="save-all-sbid-m-btn" class="btn btn-success btn-sm flex-fill d-none">
                                             <i class="fa-solid fa-save me-1"></i>
                                             SAVE ALL SBID M
                                         </button>
-                    </div>
+                                    </div>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Campaign Search - Just Above Table -->
+                    <div class="row mb-3">
+                        <div class="col-12">
+                            <div class="input-group">
+                                <span class="input-group-text bg-white border-end-0"
+                                    style="border-color: #e2e8f0;">
+                                    <i class="fa-solid fa-search" style="color: #94a3b8;"></i>
+                                </span>
+                                <input type="text" id="global-search"
+                                    class="form-control form-control-md border-start-0"
+                                    placeholder="Search by campaign name or SKU..."
+                                    style="border-color: #e2e8f0;">
                             </div>
                         </div>
                     </div>
 
                     <!-- Table Section -->
                     <div id="budget-under-table"></div>
-                    
+
                     <!-- Pagination Count Display -->
                     <div class="mt-2 d-flex justify-content-between align-items-center">
                         <div>
