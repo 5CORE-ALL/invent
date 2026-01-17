@@ -740,10 +740,7 @@
                             </a>
                             <div class="collapse" id="activeChannelMasyer">
                                 <ul class="side-nav-third-level">
-                                    <li>
-                                        <a href="{{ route('channel.master', ['channels', 'channel-masters']) }}"
-                                            target="_blank">Active Channels</a>
-                                    </li>
+                                
                                     <li>
                                         <a href="{{ route('all.marketplace.master') }}">Active Channels</a>
                                     </li>
@@ -753,6 +750,11 @@
                                     </li> --}}
                                     <li>
                                         <a href="{{ route('channel.adv.master') }}">ADV Masters</a>
+                                    </li>
+
+                                    <li>
+                                        <a href="{{ route('channel.master', ['channels', 'channel-masters']) }}"
+                                            target="_blank">Dummy Channel for testing</a>
                                     </li>
                                     <!-- End Nikhil Code  -->
                                     <li>
