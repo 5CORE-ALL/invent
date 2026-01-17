@@ -80,6 +80,7 @@
                     <select id="gpft-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">GPFT%</option>
+                        <option value="negative">Negative (&lt;0%)</option>
                         <option value="0-5">0-5%</option>
                         <option value="5-10">5-10%</option>
                         <option value="10-15">10-15%</option>
@@ -2718,6 +2719,7 @@
                     table.addFilter(function(data) {
                         const gpft = parseFloat(data['GPFT%']) || 0;
                         
+                        if (gpftFilter === 'negative') return gpft < 0;
                         if (gpftFilter === '0-5') return gpft >= 0 && gpft <= 5;
                         if (gpftFilter === '5-10') return gpft > 5 && gpft <= 10;
                         if (gpftFilter === '10-15') return gpft > 10 && gpft <= 15;
