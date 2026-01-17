@@ -689,7 +689,7 @@
                 
                 // Update badge appearance
                 if (missingAmazonFilterActive) {
-                    $(this).removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
+                    $(this).removeClass('bg-warning').addClass('bg-info').css('color', 'black');
                     // Turn off map filters
                     mapFilterActive = 'all';
                     $('.map-filter-badge').each(function() {
@@ -701,7 +701,7 @@
                         }
                     });
                 } else {
-                    $(this).removeClass('bg-danger').addClass('bg-warning').css('color', 'black');
+                    $(this).removeClass('bg-info').addClass('bg-warning').css('color', 'black');
                 }
                 
                 // Re-apply filters

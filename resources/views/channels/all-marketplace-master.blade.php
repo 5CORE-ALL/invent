@@ -217,6 +217,12 @@
                         <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;">
                             Total Clicks: <span id="total-clicks">0</span>
                         </span>
+                        <span class="badge bg-success fs-6 p-2" style="color: white; font-weight: bold;">
+                             Map: <span id="total-map">0</span>
+                        </span>
+                        <span class="badge bg-danger fs-6 p-2" style="color: white; font-weight: bold;">
+                             Missing: <span id="total-miss">0</span>
+                        </span>
                     </div>
                 </div>
             </div>
@@ -483,50 +489,6 @@
                             }
                         }
                     },
-                      {
-                        title: "Miss",
-                        field: "Miss",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
-                            let style = '';
-                            
-                            if (value === 0) { 
-                                style = 'color:#28a745;'; // Green text
-                            } else if (value <= 20) { 
-                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;'; // Yellow bg with black text
-                            } else if (value <= 50) { 
-                                style = 'color:#ff6f00;'; // Dark Orange text
-                            } else { 
-                                style = 'color:#a00211;'; // Red text
-                            }
-                            
-                            return `<span style="${style}font-weight:600;">${value}</span>`;
-                        }
-                    },
-                    {
-                        title: "Map",
-                        field: "Map",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
-                            let style = '';
-                            
-                            if (value === 0) { 
-                                style = 'color:#28a745;'; // Green text
-                            } else if (value <= 20) { 
-                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;'; // Yellow bg with black text
-                            } else if (value <= 50) { 
-                                style = 'color:#ff6f00;'; // Dark Orange text
-                            } else { 
-                                style = 'color:#a00211;'; // Red text
-                            }
-                            
-                            return `<span style="${style}font-weight:600;">${value}</span>`;
-                        }
-                    },
                     {
                         title: "Sheet",
                         field: "sheet_link",
@@ -654,6 +616,60 @@
                             }
                             
                             return `<span style="${style}font-weight:600;">${value.toFixed(0)}%</span>`;
+                        }
+                    },
+                    {
+                        title: "Missing",
+                        field: "Miss",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            let style = '';
+                            
+                            if (value === 0) { 
+                                style = 'color:#28a745;'; // Green text
+                            } else if (value <= 20) { 
+                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;'; // Yellow bg with black text
+                            } else if (value <= 50) { 
+                                style = 'color:#ff6f00;'; // Dark Orange text
+                            } else { 
+                                style = 'color:#a00211;'; // Red text
+                            }
+                            
+                            return `<span style="${style}font-weight:600;">${value}</span>`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "Map",
+                        field: "Map",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            let style = '';
+                            
+                            if (value === 0) { 
+                                style = 'color:#28a745;'; // Green text
+                            } else if (value <= 20) { 
+                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;'; // Yellow bg with black text
+                            } else if (value <= 50) { 
+                                style = 'color:#ff6f00;'; // Dark Orange text
+                            } else { 
+                                style = 'color:#a00211;'; // Red text
+                            }
+                            
+                            return `<span style="${style}font-weight:600;">${value}</span>`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
                         }
                     },
                     {
@@ -984,6 +1000,8 @@
                 let totalPft = 0;
                 let totalCogs = 0;
                 let totalAdSpend = 0;
+                let totalMap = 0;
+                let totalMiss = 0;
                 let gprofitSum = 0;
                 let groiSum = 0;
                 let npftSum = 0;
@@ -1000,6 +1018,8 @@
                     const npft = parseNumber(row['N PFT'] || 0);
                     const nroi = parseNumber(row['N ROI'] || 0);
                     const cogs = parseNumber(row['cogs'] || 0);
+                    const mapCount = parseNumber(row['Map'] || 0);
+                    const missCount = parseNumber(row['Miss'] || 0);
                     
                     // Ad spend - handle Walmart, Temu, and Shopify B2C separately to avoid double counting
                     const kwSpent = parseNumber(row['KW Spent'] || 0);
@@ -1021,6 +1041,8 @@
                     totalClicks += clicks;
                     totalAdSpend += adSpend;
                     totalCogs += cogs;
+                    totalMap += mapCount;
+                    totalMiss += missCount;
                     
                     // Calculate profit amount from percentage
                     const profitAmount = (gprofitPercent / 100) * l30Sales;
@@ -1059,6 +1081,8 @@
                 $('#total-ad-spend').text('$' + Math.round(totalAdSpend).toLocaleString('en-US'));
                 $('#avg-npft').text(avgNpft.toFixed(1) + '%');
                 $('#avg-nroi').text(avgNroi.toFixed(1) + '%');
+                $('#total-map').text(Math.round(totalMap).toLocaleString('en-US'));
+                $('#total-miss').text(Math.round(totalMiss).toLocaleString('en-US'));
             }
 
             // Channel Search

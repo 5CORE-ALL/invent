@@ -3323,9 +3323,13 @@ class OverallAmazonController extends Controller
             $totalSalesAmt = 0;
             $totalLpAmt = 0;
             $totalAmazonInv = 0;
+            $totalAmazonInvAmz = 0;
             $totalAmazonL30 = 0;
             $totalViews = 0;
             $totalWeightedPrice = 0;
+            $mapCount = 0;
+            $nmapCount = 0;
+            $missingAmazonCount = 0;
             
             // Loop through each row (EXACT JavaScript forEach logic)
             foreach ($validProducts as $row) {
@@ -3335,6 +3339,12 @@ class OverallAmazonController extends Controller
                 $totalSalesAmt += floatval($row['T_Sale_l30'] ?? 0);
                 $totalLpAmt += floatval($row['LP_productmaster'] ?? 0) * floatval($row['A_L30'] ?? 0);
                 $totalAmazonInv += floatval($row['INV'] ?? 0);
+                
+                // Handle INV_AMZ - only sum if numeric
+                $invAmz = $row['INV_AMZ'] ?? 0;
+                if (is_numeric($invAmz)) {
+                    $totalAmazonInvAmz += floatval($invAmz);
+                }
                 
                 $aL30 = floatval($row['A_L30'] ?? 0);
                 $totalAmazonL30 += $aL30;
@@ -3351,6 +3361,28 @@ class OverallAmazonController extends Controller
                 $lmpPrice = floatval($row['lmp_price'] ?? 0);
                 if ($lmpPrice > 0 && $price > $lmpPrice) {
                     $prcGtLmpCount++;
+                }
+                
+                // Count Missing Amazon and Map/N Map (same logic as frontend)
+                $inv = floatval($row['INV'] ?? 0);
+                $nrValue = $row['NR'] ?? '';
+                $isMissingAmazon = $row['is_missing_amazon'] ?? false;
+                
+                if ($inv > 0 && $nrValue === 'REQ') {
+                    if ($isMissingAmazon) {
+                        // SKU doesn't exist in amazon_datsheets
+                        $missingAmazonCount++;
+                    } else {
+                        // SKU exists in amazon_datsheets, check inventory sync
+                        $invAmzNum = floatval($row['INV_AMZ'] ?? 0);
+                        $invDifference = abs($inv - $invAmzNum);
+                        
+                        if ($invDifference == 0) {
+                            $mapCount++; // Perfect match
+                        } else {
+                            $nmapCount++; // Inventory mismatch
+                        }
+                    }
                 }
                 
                 // Weighted price calculation
@@ -3384,6 +3416,11 @@ class OverallAmazonController extends Controller
                 'zero_sold_count' => $zeroSoldCount,
                 'prc_gt_lmp_count' => $prcGtLmpCount,
                 
+                // Map and Missing Counts (NEW)
+                'map_count' => $mapCount,
+                'nmap_count' => $nmapCount,
+                'missing_amazon_count' => $missingAmazonCount,
+                
                 // Financial Totals
                 'total_spend_l30' => round($totalSpendL30, 2), // From product-level data
                 'total_pft_amt' => round($totalPftAmt, 2),
@@ -3398,6 +3435,7 @@ class OverallAmazonController extends Controller
                 
                 // Inventory
                 'total_amazon_inv' => round($totalAmazonInv, 2),
+                'total_amazon_inv_amz' => round($totalAmazonInvAmz, 2),
                 'total_amazon_l30' => round($totalAmazonL30, 2),
                 'total_views' => $totalViews,
                 

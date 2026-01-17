@@ -148,7 +148,11 @@ class ChannelMasterController extends Controller
             $mapCount = $summaryData->summary_data['map_count'] 
                      ?? $summaryData->summary_data['mapping_count'] 
                      ?? 0;
-            $missCount = $summaryData->summary_data['missing_count'] ?? 0;
+            
+            // Check for both 'missing_count' and 'missing_amazon_count' field names
+            $missCount = $summaryData->summary_data['missing_count'] 
+                      ?? $summaryData->summary_data['missing_amazon_count']
+                      ?? 0;
         }
         
         return ['map' => $mapCount, 'miss' => $missCount];
@@ -5116,6 +5120,8 @@ class ChannelMasterController extends Controller
                     // Counts
                     'missing_listing' => intval($row['Missing Listing'] ?? 0),
                     'stock_mapping' => intval($row['Stock Mapping'] ?? 0),
+                    'map_count' => intval($row['Map'] ?? 0),
+                    'miss_count' => intval($row['Miss'] ?? 0),
                     'nr_count' => intval($row['NR'] ?? 0),
                     'listed_count' => intval($row['listed_count'] ?? 0),
                     
