@@ -1,7 +1,9 @@
 @extends('layouts.vertical', ['title' => 'Amazon Competitor Search', 'mode' => 'light'])
 
 @section('css')
-<link href="{{ URL::asset('build/assets/app-C9T8gcC6.css') }}" rel="stylesheet" type="text/css" />
+<link href="{{ URL::asset('build/assets/app-C9T8gcC6.css') }}" rel="stylesheet" type="text/type" />
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
 <style>
     .search-container {
         background: #fff;
@@ -10,86 +12,112 @@
         box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     }
     
-    .result-card {
+    .product-card {
         border: 1px solid #e0e0e0;
-        border-radius: 8px;
-        padding: 15px;
-        margin-bottom: 15px;
-        display: flex;
-        align-items: flex-start;
-        transition: all 0.3s ease;
-    }
-    
-    .result-card:hover {
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        transform: translateY(-2px);
-    }
-    
-    .result-image {
-        width: 100px;
-        height: 100px;
-        object-fit: contain;
-        margin-right: 20px;
-        border: 1px solid #e0e0e0;
-        border-radius: 4px;
-        padding: 5px;
+        border-radius: 6px;
         background: #fff;
-    }
-    
-    .result-content {
-        flex: 1;
-    }
-    
-    .result-title {
-        font-weight: 600;
-        color: #0066c0;
-        margin-bottom: 8px;
-        font-size: 16px;
-        line-height: 1.4;
-    }
-    
-    .result-meta {
+        transition: all 0.2s ease;
+        height: 100%;
         display: flex;
-        gap: 20px;
-        margin-top: 10px;
-        flex-wrap: wrap;
+        flex-direction: column;
+        position: relative;
+        overflow: hidden;
     }
     
-    .meta-item {
+    .product-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        transform: translateY(-2px);
+        border-color: #0066c0;
+    }
+    
+    .product-checkbox {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        width: 20px;
+        height: 20px;
+        cursor: pointer;
+        z-index: 10;
+    }
+    
+    .product-image-container {
+        position: relative;
+        padding: 10px;
+        background: #fafafa;
+        text-align: center;
+        height: 140px;
         display: flex;
         align-items: center;
+        justify-content: center;
+    }
+    
+    .product-image {
+        max-width: 100%;
+        max-height: 120px;
+        object-fit: contain;
+        cursor: pointer;
+        transition: transform 0.2s ease;
+    }
+    
+    .product-image:hover {
+        transform: scale(1.05);
+    }
+    
+    .product-body {
+        padding: 10px;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .product-title {
+        font-weight: 500;
+        color: #0066c0;
+        margin-bottom: 8px;
+        font-size: 13px;
+        line-height: 1.3;
+        height: 50px;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-decoration: none;
+        cursor: pointer;
+    }
+    
+    .product-title:hover {
+        text-decoration: underline;
+        color: #004d99;
+    }
+    
+    .product-meta {
+        display: flex;
+        flex-wrap: wrap;
         gap: 5px;
-        color: #555;
+        margin-bottom: 8px;
+    }
+    
+    .meta-badge {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 3px;
+        font-size: 11px;
+        font-weight: 600;
+    }
+    
+    .price-badge {
+        background: #FFF3E0;
+        color: #E65100;
         font-size: 14px;
-    }
-    
-    .price {
-        color: #B12704;
         font-weight: 700;
-        font-size: 18px;
-    }
-    
-    .rating {
-        color: #FF9900;
-        font-weight: 600;
-    }
-    
-    .position-badge {
-        background: #f0f0f0;
-        padding: 4px 12px;
-        border-radius: 20px;
-        font-size: 12px;
-        font-weight: 600;
+        padding: 4px 10px;
     }
     
     .asin-badge {
         background: #E8F5E9;
         color: #2E7D32;
-        padding: 4px 12px;
-        border-radius: 4px;
-        font-size: 13px;
-        font-weight: 600;
         font-family: monospace;
+        font-size: 10px;
     }
     
     .search-history {
@@ -228,7 +256,35 @@
                     
                     <div class="stats-container mb-4" id="statsContainer"></div>
                     
-                    <div id="resultsContent"></div>
+                    <div class="mb-4" id="bulkActionsContainer" style="display: none;">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <div class="row align-items-center g-3">
+                                    <div class="col-auto">
+                                        <div class="form-check">
+                                            <input type="checkbox" class="form-check-input" id="selectAllCheckbox" style="width: 22px; height: 22px; cursor: pointer;">
+                                            <label class="form-check-label ms-2 fw-bold" for="selectAllCheckbox">
+                                                Select All
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label for="bulkSkuSelect" class="form-label mb-1 fw-bold">Bulk SKU Assignment:</label>
+                                        <select class="form-select select2-bulk-sku" id="bulkSkuSelect">
+                                            <option value="">Select SKU for all checked products</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-auto ms-auto">
+                                        <button type="button" class="btn btn-success btn-lg" id="saveCompetitorsBtn">
+                                            <i class="mdi mdi-content-save me-2"></i>Save Selected Competitors
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row g-3" id="resultsContent"></div>
                 </div>
             </div>
         </div>
@@ -237,8 +293,32 @@
 @endsection
 
 @section('script')
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
 $(document).ready(function() {
+    let availableSkus = [];
+    
+    // Initialize Select2 for bulk SKU dropdown
+    function initializeSelect2() {
+        // Destroy existing Select2 instance to avoid duplicates
+        try {
+            $('.select2-bulk-sku').select2('destroy');
+        } catch(e) {
+            // Ignore if not initialized
+        }
+        
+        // Initialize bulk SKU dropdown
+        $('.select2-bulk-sku').select2({
+            theme: 'bootstrap-5',
+            placeholder: 'Select SKU for all checked products',
+            allowClear: true,
+            width: '100%'
+        });
+    }
+    
+    // Load SKUs on page load
+    loadSkus();
+    
     // Search form submission
     $('#searchForm').on('submit', function(e) {
         e.preventDefault();
@@ -257,6 +337,22 @@ $(document).ready(function() {
     // Load history button
     $('#loadHistoryBtn').on('click', function() {
         loadSearchHistory();
+    });
+    
+    // Save competitors button
+    $('#saveCompetitorsBtn').on('click', function() {
+        saveSelectedCompetitors();
+    });
+    
+    // Select all checkbox
+    $('#selectAllCheckbox').on('change', function() {
+        const isChecked = $(this).prop('checked');
+        $('.competitor-checkbox').prop('checked', isChecked);
+    });
+    
+    // Bulk SKU dropdown - no need to set individual dropdowns since we removed them
+    $('#bulkSkuSelect').on('change', function() {
+        // SKU will be applied to all checked items on save
     });
     
     // Perform search
@@ -344,24 +440,58 @@ $(document).ready(function() {
         
         if (results.length === 0) {
             html = '<p class="text-muted">No results found for this query.</p>';
+            $('#bulkActionsContainer').hide();
         } else {
+            $('#bulkActionsContainer').show();
+            
+            // Populate bulk SKU dropdown
+            let bulkSkuOptions = '<option value="">Select SKU for all checked rows</option>';
+            availableSkus.forEach(function(sku) {
+                bulkSkuOptions += `<option value="${sku}">${sku}</option>`;
+            });
+            $('#bulkSkuSelect').html(bulkSkuOptions);
+            
+            // Reset select all checkbox
+            $('#selectAllCheckbox').prop('checked', false);
+            
             results.forEach(function(item) {
                 const price = item.price ? `$${parseFloat(item.price).toFixed(2)}` : 'N/A';
-                const rating = item.rating ? `${parseFloat(item.rating).toFixed(1)} ★` : 'N/A';
-                const reviews = item.reviews ? `${item.reviews.toLocaleString()} reviews` : '';
                 const image = item.image || 'https://via.placeholder.com/100';
                 
+                const productLink = `https://www.amazon.com/dp/${item.asin}`;
+                const priceValue = item.price || 0;
+                
                 html += `
-                    <div class="result-card">
-                        <img src="${image}" alt="${item.title || 'Product'}" class="result-image">
-                        <div class="result-content">
-                            <div class="result-title">${item.title || 'No title'}</div>
-                            <div class="result-meta">
-                                <span class="asin-badge">${item.asin}</span>
-                                <span class="position-badge">Position: #${item.position}</span>
-                                <span class="meta-item price">${price}</span>
-                                <span class="meta-item rating">${rating}</span>
-                                ${reviews ? `<span class="meta-item">${reviews}</span>` : ''}
+                    <div class="col-xl-3 col-lg-4 col-md-6 col-sm-12 mb-3">
+                        <div class="product-card">
+                            <input type="checkbox" class="competitor-checkbox product-checkbox form-check-input" 
+                                   data-asin="${item.asin}" 
+                                   data-marketplace="${item.marketplace}"
+                                   data-title="${(item.title || '').replace(/"/g, '&quot;')}"
+                                   data-price="${priceValue}"
+                                   data-link="${productLink}">
+                            
+                            <div class="product-image-container">
+                                <img src="${image}" 
+                                     alt="${item.title || 'Product'}" 
+                                     class="product-image"
+                                     onclick="window.open('${productLink}', '_blank')">
+                            </div>
+                            
+                            <div class="product-body">
+                                <a href="${productLink}" 
+                                   target="_blank" 
+                                   class="product-title text-decoration-none">
+                                    ${item.title || 'No title'}
+                                </a>
+                                
+                                <div class="product-meta">
+                                    <span class="meta-badge price-badge">${price}</span>
+                                </div>
+                                
+                                <div class="product-meta">
+                                    <span class="meta-badge asin-badge">${item.asin}</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -371,6 +501,11 @@ $(document).ready(function() {
         
         $('#resultsContent').html(html);
         $('#resultsContainer').show();
+        
+        // Initialize Select2 after rendering
+        setTimeout(function() {
+            initializeSelect2();
+        }, 100);
     }
     
     // Load search history
@@ -392,6 +527,87 @@ $(document).ready(function() {
             },
             error: function() {
                 alert('Failed to load search history');
+            }
+        });
+    }
+    
+    // Load SKUs from server
+    function loadSkus() {
+        $.ajax({
+            url: '/repricer/amazon-search/skus',
+            method: 'GET',
+            success: function(response) {
+                if (response.success) {
+                    availableSkus = response.data || [];
+                    console.log('Loaded ' + availableSkus.length + ' SKUs');
+                }
+            },
+            error: function() {
+                console.error('Failed to load SKUs');
+            }
+        });
+    }
+    
+    // Save selected competitors
+    function saveSelectedCompetitors() {
+        // Get bulk SKU
+        const bulkSku = $('#bulkSkuSelect').val();
+        
+        if (!bulkSku) {
+            alert('Please select a SKU from the Bulk SKU dropdown');
+            return;
+        }
+        
+        const competitors = [];
+        
+        $('.competitor-checkbox:checked').each(function() {
+            const checkbox = $(this);
+            const asin = checkbox.data('asin');
+            const marketplace = checkbox.data('marketplace');
+            const productTitle = checkbox.data('title');
+            const productLink = checkbox.data('link');
+            const price = checkbox.data('price');
+            
+            competitors.push({
+                asin: asin,
+                sku: bulkSku, // Use bulk SKU for all checked items
+                marketplace: marketplace,
+                product_title: productTitle,
+                product_link: productLink,
+                price: price
+            });
+        });
+        
+        if (competitors.length === 0) {
+            alert('Please select at least one competitor (check the boxes)');
+            return;
+        }
+        
+        // Confirm before saving
+        if (!confirm(`Save ${competitors.length} competitor mapping(s)?`)) {
+            return;
+        }
+        
+        $.ajax({
+            url: '/repricer/amazon-search/store-competitors',
+            method: 'POST',
+            data: {
+                competitors: competitors,
+                _token: '{{ csrf_token() }}'
+            },
+            success: function(response) {
+                if (response.success) {
+                    alert(response.message);
+                    // Uncheck saved items
+                    $('.competitor-checkbox:checked').prop('checked', false);
+                } else {
+                    alert('Error: ' + (response.message || 'Failed to save competitors'));
+                }
+            },
+            error: function(xhr) {
+                const errorMsg = xhr.responseJSON?.message || 'Failed to save competitors';
+                alert('Error: ' + errorMsg);
+                console.error('Save Error:', xhr.responseJSON || xhr.responseText);
             }
         });
     }
