@@ -136,6 +136,15 @@
                         <option value="zero">0 Sold</option>
                     </select>
 
+                    <!-- Views Range Filter -->
+                    <input type="number" id="views-min" class="form-control form-control-sm" 
+                        placeholder="Min Views" min="0" style="width: 100px; display: inline-block;">
+                    <input type="number" id="views-max" class="form-control form-control-sm" 
+                        placeholder="Max Views" min="0" style="width: 100px; display: inline-block;">
+                    <button id="clear-views-filter" class="btn btn-sm btn-outline-secondary" title="Clear Views Filter">
+                        <i class="fas fa-times"></i>
+                    </button>
+
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
                         <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button"
@@ -2663,6 +2672,8 @@
                 const parentFilter = $('#parent-filter').val();
                 const statusFilter = $('#status-filter').val();
                 const soldFilter = $('#sold-filter').val();
+                const viewsMin = parseFloat($('#views-min').val()) || null;
+                const viewsMax = parseFloat($('#views-max').val()) || null;
 
                 table.clearFilter(true);
 
@@ -2785,6 +2796,27 @@
                     });
                 }
 
+                // Views Range Filter (based on Sess30)
+                if (viewsMin !== null || viewsMax !== null) {
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return false;
+                        
+                        const views = parseFloat(data.Sess30) || 0;
+                        
+                        // Apply min filter
+                        if (viewsMin !== null && views < viewsMin) {
+                            return false;
+                        }
+                        
+                        // Apply max filter
+                        if (viewsMax !== null && views > viewsMax) {
+                            return false;
+                        }
+                        
+                        return true;
+                    });
+                }
+
                 // Price filter (Prc > LMP)
                 if (priceFilterActive) {
                     table.addFilter(function(data) {
@@ -2844,6 +2876,18 @@
             }
 
             $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter').on('change', function() {
+                applyFilters();
+            });
+
+            // Views range filter input handlers
+            $('#views-min, #views-max').on('keyup change', function() {
+                applyFilters();
+            });
+
+            // Clear views filter button
+            $('#clear-views-filter').on('click', function() {
+                $('#views-min').val('');
+                $('#views-max').val('');
                 applyFilters();
             });
 
