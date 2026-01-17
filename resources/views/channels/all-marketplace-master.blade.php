@@ -331,13 +331,14 @@
                                     <th>Date</th>
                                     <th class="text-end">L30 Sales</th>
                                     <th class="text-end">L30 Orders</th>
+                                    <th class="text-end">Clicks</th>
                                     <th class="text-end">Gprofit%</th>
                                     <th class="text-end">NPFT%</th>
                                 </tr>
                             </thead>
                             <tbody id="historyTableBody">
                                 <tr>
-                                    <td colspan="5" class="text-center">Loading...</td>
+                                    <td colspan="6" class="text-center">Loading...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -526,23 +527,6 @@
                             return `<span style="${style}font-weight:600;">${value}</span>`;
                         }
                     },
-                     {
-                        title: "Clicks",
-                        field: "clicks",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
-                            if (value === 0) return '-';
-                            return `<span style="font-weight:600;">${value.toLocaleString('en-US')}</span>`;
-                        },
-                        bottomCalc: "sum",
-                        bottomCalcFormatter: function(cell) {
-                            const value = cell.getValue();
-                            return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
-                        }
-                    },
-                  
                     {
                         title: "Sheet",
                         field: "sheet_link",
@@ -568,6 +552,45 @@
                         bottomCalcFormatter: function(cell) {
                             const value = cell.getValue();
                             return `<strong>$${parseNumber(value).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "Growth",
+                        field: "Growth",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const l30Sales = parseNumber(rowData['L30 Sales']);
+                            const achieved = parseNumber(rowData['base']);
+                            const growthPercent = achieved > 0 ? ((l30Sales - achieved) / achieved) * 100 : 0;
+                            
+                            let style = '';
+                            if (growthPercent < 0) { 
+                                style = 'color:#a00211;'; // Red text
+                            } else if (growthPercent === 0) { 
+                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;'; // Yellow bg with black text
+                            } else { 
+                                style = 'color:#28a745;'; // Green text
+                            }
+                            
+                            return `<span style="${style}font-weight:600;">${growthPercent < 0 ? '' : '+'}${growthPercent.toFixed(0)}%</span>`;
+                        }
+                    },
+                    {
+                        title: "Clicks",
+                        field: "clicks",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            if (value === 0) return '-';
+                            return `<span style="font-weight:600;">${value.toLocaleString('en-US')}</span>`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
                         }
                     },
                     {
@@ -846,30 +869,6 @@
                             return `<span>${value.toLocaleString('en-US')}</span>`;
                         }
                     },
-                    {
-                        title: "Growth",
-                        field: "Growth",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const l30Sales = parseNumber(rowData['L30 Sales']);
-                            const achieved = parseNumber(rowData['base']);
-                            const growthPercent = achieved > 0 ? ((l30Sales - achieved) / achieved) * 100 : 0;
-                            
-                            let style = '';
-                            if (growthPercent < 0) { 
-                                style = 'color:#a00211;'; // Red text
-                            } else if (growthPercent === 0) { 
-                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;'; // Yellow bg with black text
-                            } else { 
-                                style = 'color:#28a745;'; // Green text
-                            }
-                            
-                            return `<span style="${style}font-weight:600;">${growthPercent < 0 ? '' : '+'}${growthPercent.toFixed(0)}%</span>`;
-                        }
-                    },
-                   
                     {
                         title: "Action",
                         field: "_action",
@@ -1281,11 +1280,13 @@
                 data.forEach(row => {
                     const summaryData = row.summary_data || {};
                     const npft = parseNumber(summaryData.gprofit_percent || 0) - parseNumber(summaryData.tcos_percent || 0);
+                    const clicks = parseNumber(summaryData.clicks || 0);
                     html += `
                         <tr>
                             <td>${formatDate(row.snapshot_date)}</td>
                             <td class="text-end">$${parseNumber(summaryData.l30_sales).toLocaleString()}</td>
                             <td class="text-end">${parseNumber(summaryData.l30_orders).toLocaleString()}</td>
+                            <td class="text-end">${clicks > 0 ? clicks.toLocaleString() : '-'}</td>
                             <td class="text-end">${parseNumber(summaryData.gprofit_percent).toFixed(1)}%</td>
                             <td class="text-end">${npft.toFixed(1)}%</td>
                         </tr>
@@ -1293,7 +1294,7 @@
                 });
                 
                 if (html === '') {
-                    html = '<tr><td colspan="5" class="text-center">No data available</td></tr>';
+                    html = '<tr><td colspan="6" class="text-center">No data available</td></tr>';
                 }
                 
                 $('#historyTableBody').html(html);
@@ -1354,7 +1355,7 @@
 
                 // Prepare data for Google Charts
                 const chartData = [
-                    ['Date', 'L30 Sales', 'L30 Orders', 'Gprofit%', 'NPFT%']
+                    ['Date', 'L30 Sales', 'L30 Orders', 'Clicks', 'Gprofit%', 'NPFT%']
                 ];
 
                 const reversedData = [...data].reverse();
@@ -1362,11 +1363,13 @@
                 reversedData.forEach(row => {
                     const summaryData = row.summary_data || {};
                     const npft = toNum(summaryData.gprofit_percent || 0) - toNum(summaryData.tcos_percent || 0);
+                    const clicks = toNum(summaryData.clicks || 0);
                     
                     chartData.push([
                         formatDate(row.snapshot_date),
                         toNum(summaryData.l30_sales),
                         toNum(summaryData.l30_orders),
+                        clicks,
                         toNum(summaryData.gprofit_percent),
                         npft
                     ]);
@@ -1375,6 +1378,7 @@
                 // Calculate min/max for dynamic axis scaling
                 let minSales = Infinity, maxSales = -Infinity;
                 let minOrders = Infinity, maxOrders = -Infinity;
+                let minClicks = Infinity, maxClicks = -Infinity;
                 let minGprofit = Infinity, maxGprofit = -Infinity;
                 let minNPFT = Infinity, maxNPFT = -Infinity;
 
@@ -1382,13 +1386,16 @@
                     const row = chartData[i];
                     const sales = row[1];
                     const orders = row[2];
-                    const gprofit = row[3];
-                    const npft = row[4];
+                    const clicks = row[3];
+                    const gprofit = row[4];
+                    const npft = row[5];
 
                     if (sales < minSales) minSales = sales;
                     if (sales > maxSales) maxSales = sales;
                     if (orders < minOrders) minOrders = orders;
                     if (orders > maxOrders) maxOrders = orders;
+                    if (clicks < minClicks) minClicks = clicks;
+                    if (clicks > maxClicks) maxClicks = clicks;
                     if (gprofit < minGprofit) minGprofit = gprofit;
                     if (gprofit > maxGprofit) maxGprofit = gprofit;
                     if (npft < minNPFT) minNPFT = npft;
@@ -1396,8 +1403,8 @@
                 }
 
                 // Calculate combined min/max for axes with 15% buffer
-                const leftMin = Math.min(minSales, minOrders);
-                const leftMax = Math.max(maxSales, maxOrders);
+                const leftMin = Math.min(minSales, minOrders, minClicks);
+                const leftMax = Math.max(maxSales, maxOrders, maxClicks);
                 const leftRange = leftMax - leftMin;
                 const leftAxisMin = Math.max(0, leftMin - (leftRange * 0.15));
                 const leftAxisMax = leftMax + (leftRange * 0.15);
@@ -1461,6 +1468,14 @@
                                 visibleInLegend: true
                             },
                             2: { 
+                                color: '#9c27b0',
+                                lineWidth: 3,
+                                pointSize: 6,
+                                pointShape: 'circle',
+                                targetAxisIndex: 0,
+                                visibleInLegend: true
+                            },
+                            3: { 
                                 color: '#e53935',
                                 lineWidth: 3,
                                 pointSize: 6,
@@ -1468,7 +1483,7 @@
                                 targetAxisIndex: 1,
                                 visibleInLegend: true
                             },
-                            3: { 
+                            4: { 
                                 color: '#43a047',
                                 lineWidth: 3,
                                 pointSize: 6,
@@ -1479,7 +1494,7 @@
                         },
                         vAxes: {
                             0: { 
-                                title: 'Sales & Orders',
+                                title: 'Sales, Orders & Clicks',
                                 titleTextStyle: { 
                                     color: '#1e88e5', 
                                     fontSize: 14, 

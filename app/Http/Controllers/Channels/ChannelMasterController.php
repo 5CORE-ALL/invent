@@ -5102,6 +5102,7 @@ class ChannelMasterController extends Controller
                     'l60_orders' => floatval($row['L60 Orders'] ?? 0),
                     'l30_orders' => floatval($row['L30 Orders'] ?? 0),
                     'growth' => floatval($row['Growth'] ?? 0),
+                    'clicks' => intval($row['clicks'] ?? 0),
                     
                     // Profit & ROI Metrics
                     'gprofit_percent' => $gprofitPercent,
