@@ -389,18 +389,136 @@
                                     </div>
                                     <div class="col-md-1 d-flex gap-2">
                                         <div class="w-50">
-                                            <button id="apr-all-sbid-btn" class="btn btn-info btn-sm w-100 d-none">
-                                                <i class="fa-solid fa-check-double me-1"></i>
-                                                APR ALL SBID
-                                            </button>
-                                        </div>
-                                        <div class="w-50">
                                             <button id="apr-all-sbgt-btn" class="btn btn-warning btn-sm w-100 d-none">
                                                 <i class="fa-solid fa-check-double me-1"></i>
                                                 APR ALL SBGT
                                             </button>
                                         </div>
                                     </div>
+                                </div>
+
+                                <!-- Multi-Range Filter Row -->
+                                <div class="row align-items-end g-2 mt-3 pt-3 border-top">
+                                    <div class="col-12">
+                                        <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
+                                            <i class="fa-solid fa-sliders me-1" style="color: #64748b;"></i>Range Filters
+                                        </label>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.75rem;">1UB (%)</label>
+                                        <div class="d-flex gap-2 align-items-center">
+                                            <input type="number" id="1ub-min" class="form-control form-control-sm" placeholder="Min" step="0.1" style="font-size: 0.8rem;">
+                                            <span style="color: #64748b; font-size: 0.8rem;">-</span>
+                                            <input type="number" id="1ub-max" class="form-control form-control-sm" placeholder="Max" step="0.1" style="font-size: 0.8rem;">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.75rem;">7UB (%)</label>
+                                        <div class="d-flex gap-2 align-items-center">
+                                            <input type="number" id="7ub-min" class="form-control form-control-sm" placeholder="Min" step="0.1" style="font-size: 0.8rem;">
+                                            <span style="color: #64748b; font-size: 0.8rem;">-</span>
+                                            <input type="number" id="7ub-max" class="form-control form-control-sm" placeholder="Max" step="0.1" style="font-size: 0.8rem;">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.75rem;">Lbid ($)</label>
+                                        <div class="d-flex gap-2 align-items-center">
+                                            <input type="number" id="lbid-min" class="form-control form-control-sm" placeholder="Min" step="0.01" style="font-size: 0.8rem;">
+                                            <span style="color: #64748b; font-size: 0.8rem;">-</span>
+                                            <input type="number" id="lbid-max" class="form-control form-control-sm" placeholder="Max" step="0.01" style="font-size: 0.8rem;">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.75rem;">ACOS (%)</label>
+                                        <div class="d-flex gap-2 align-items-center">
+                                            <input type="number" id="acos-min" class="form-control form-control-sm" placeholder="Min" step="0.1" style="font-size: 0.8rem;">
+                                            <span style="color: #64748b; font-size: 0.8rem;">-</span>
+                                            <input type="number" id="acos-max" class="form-control form-control-sm" placeholder="Max" step="0.1" style="font-size: 0.8rem;">
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- INC/DEC SBID Section and Action Buttons -->
+                                <div class="row g-3 align-items-end pt-3 border-top">
+                                    <div class="col-md-2">
+                                        <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
+                                            <i class="fa-solid fa-calculator me-1" style="color: #64748b;"></i>INC/DEC SBID
+                                        </label>
+                                        <div class="btn-group w-100" role="group">
+                                            <button type="button" id="inc-dec-btn"
+                                                class="btn btn-warning btn-sm dropdown-toggle" data-bs-toggle="dropdown"
+                                                aria-expanded="false">
+                                                <i class="fa-solid fa-plus-minus me-1"></i>
+                                                INC/DEC (By Value)
+                                            </button>
+                                            <ul class="dropdown-menu" id="inc-dec-dropdown">
+                                                <li><a class="dropdown-item" href="#" data-type="value">By Value</a></li>
+                                                <li><a class="dropdown-item" href="#" data-type="percentage">By Percentage</a></li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
+                                            <span id="inc-dec-label">Value/Percentage</span>
+                                        </label>
+                                        <input type="number" id="inc-dec-input" class="form-control form-control-md"
+                                            placeholder="Enter value (e.g., +0.5 or -0.5)" step="0.01"
+                                            style="border-color: #e2e8f0;">
+                                    </div>
+                                    <div class="col-md-2 d-flex gap-2 align-items-end">
+                                        <button id="apply-inc-dec-btn" class="btn btn-success btn-sm flex-fill">
+                                            <i class="fa-solid fa-check me-1"></i>
+                                            Apply
+                                        </button>
+                                        <button id="clear-inc-dec-btn" class="btn btn-secondary btn-sm flex-fill">
+                                            <i class="fa-solid fa-times me-1"></i>
+                                            Clear Input
+                                        </button>
+                                    </div>
+                                    <div class="col-md-2 d-flex align-items-end">
+                                        <button id="clear-sbid-m-btn" class="btn btn-danger btn-sm w-100">
+                                            <i class="fa-solid fa-trash me-1"></i>
+                                            Clear SBID M (Selected)
+                                        </button>
+                                    </div>
+                                    <div class="col-md-4 d-flex gap-2 align-items-end">
+                                        <button id="apr-all-sbid-btn" class="btn btn-info btn-sm flex-fill d-none">
+                                                <i class="fa-solid fa-check-double me-1"></i>
+                                            APR ALL SBID
+                                        </button>
+                                        <button id="save-all-sbid-m-btn" class="btn btn-success btn-sm flex-fill d-none">
+                                            <i class="fa-solid fa-save me-1"></i>
+                                            SAVE ALL SBID M
+                                            </button>
+                                        </div>
+                                    </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Campaign Search - Just Above Table -->
+                    <div class="row mb-3">
+                        <div class="col-12">
+                            <div class="d-flex align-items-center gap-3">
+                                <!-- Search Input -->
+                                <div class="flex-grow-1">
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-white border-end-0"
+                                            style="border-color: #e2e8f0;">
+                                            <i class="fa-solid fa-search" style="color: #94a3b8;"></i>
+                                        </span>
+                                        <input type="text" id="global-search-table"
+                                            class="form-control form-control-md border-start-0"
+                                            placeholder="Search by campaign name or SKU..."
+                                            style="border-color: #e2e8f0;">
+                                    </div>
+                                </div>
+                                <!-- Pagination Count Display - Right Side -->
+                                <div>
+                                    <span id="pagination-count" class="badge badge-light"
+                                    style="font-weight: 500;color: #000000;font-size: 1rem;padding: 8px 12px;">
+                                        Showing 0 of 0 rows
+                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -516,6 +634,9 @@
                     // Apply all filters except utilization type filter
                     // Global search filter
                     let searchVal = $("#global-search").val()?.toLowerCase() || "";
+                let tableSearchVal = $("#global-search-table").val()?.toLowerCase() || "";
+                // Combine both search values
+                searchVal = searchVal || tableSearchVal;
                     if (searchVal && !(row.campaignName?.toLowerCase().includes(searchVal)) && !(row.sku?.toLowerCase().includes(searchVal))) {
                         return;
                     }
@@ -652,6 +773,9 @@
                     
                     let inv = parseFloat(row.INV || 0);
                     let searchVal = $("#global-search").val()?.toLowerCase() || "";
+                let tableSearchVal = $("#global-search-table").val()?.toLowerCase() || "";
+                // Combine both search values
+                searchVal = searchVal || tableSearchVal;
                     if (searchVal && !(row.campaignName?.toLowerCase().includes(searchVal)) && !(row.sku?.toLowerCase().includes(searchVal))) return;
                     
                     let statusVal = $("#status-filter").val();
@@ -776,6 +900,9 @@
                     // Apply same filters as above (except price slab filter)
                     let inv = parseFloat(row.INV || 0);
                     let searchVal = $("#global-search").val()?.toLowerCase() || "";
+                let tableSearchVal = $("#global-search-table").val()?.toLowerCase() || "";
+                // Combine both search values
+                searchVal = searchVal || tableSearchVal;
                     if (searchVal && !(row.campaignName?.toLowerCase().includes(searchVal)) && !(row.sku?.toLowerCase().includes(searchVal))) return;
                     
                     let statusVal = $("#status-filter").val();
@@ -843,6 +970,9 @@
                     // Apply same filters as above (except rating filter)
                     let inv = parseFloat(row.INV || 0);
                     let searchVal = $("#global-search").val()?.toLowerCase() || "";
+                let tableSearchVal = $("#global-search-table").val()?.toLowerCase() || "";
+                // Combine both search values
+                searchVal = searchVal || tableSearchVal;
                     if (searchVal && !(row.campaignName?.toLowerCase().includes(searchVal)) && !(row.sku?.toLowerCase().includes(searchVal))) return;
                     
                     let statusVal = $("#status-filter").val();
@@ -1145,6 +1275,9 @@
                 resizableColumns: true,
                 height: "700px",             
                 virtualDom: true,
+                pagination: "local",
+                paginationSize: 100,
+                paginationSizeSelector: [25, 50, 100, 200, 500],
                 rowFormatter: function(row) {
                     const data = row.getData();
                     const sku = data["sku"] || '';
@@ -1784,67 +1917,22 @@
                     {
                         title: "SBGT",
                         field: "sbgt",
-                        formatter: function(cell) {
-                            var row = cell.getRow().getData();
-                            var acos = parseFloat(row.acos || 0);
-                            var price = parseFloat(row.price || 0);
-                            var spend = parseFloat(row.l30_spend || 0);
-                            var aL30 = parseFloat(row.A_L30 || 0);
-                            var sbgtAcos, sbgtPrice;
+                        mutator: function (value, data) {
+                            var acos = parseFloat(data.acos || 0);
+                            var price = parseFloat(data.price || 0);
+                            var sbgt;
 
-                            // Special condition: price < $10 and A_L30 = 0 → $1 budget (SBGT = 1)
-                            if (price < 10 && aL30 === 0) {
-                                var sbgt = 1;
-                                return `<div class="text-center"><span class="fw-bold sbgt-value">${sbgt}</span></div>`;
-                            }
-
-                            // Special condition: if spend = 0 and acos = 0%, keep budget at $3 (SBGT = 3)
-                            if (spend === 0 && acos === 0) {
-                                var sbgt = 3;
-                                return `<div class="text-center"><span class="fw-bold sbgt-value">${sbgt}</span></div>`;
-                            }
-
-                            // Special condition: price 10-20 → $1 budget (SBGT = 1)
-                            if (price >= 10 && price <= 20) {
-                                var sbgt = 1;
-                                return `<div class="text-center"><span class="fw-bold sbgt-value">${sbgt}</span></div>`;
-                            }
-
-                            // Calculate ACOS-based SBGT
-                            // ACOS 0-5%: sbgt = 6
-                            // ACOS 5-10%: sbgt = 5
-                            // ACOS 10-15%: sbgt = 4
-                            // ACOS 15-20%: sbgt = 3
-                            // ACOS 20-25%: sbgt = 2
-                            // ACOS > 25%: sbgt = 1
-                            if (acos < 5) {
-                                sbgtAcos = 6;
-                            } else if (acos < 10) {
-                                sbgtAcos = 5;
-                            } else if (acos < 15) {
-                                sbgtAcos = 4;
-                            } else if (acos < 20) {
-                                sbgtAcos = 3;
-                            } else if (acos < 25) {
-                                sbgtAcos = 2;
+                            // Rule: If ACOS > 20%, budget = $1
+                            if (acos > 20) {
+                                sbgt = 1;
                             } else {
-                                sbgtAcos = 1;
+                                sbgt = Math.ceil(price * 0.10);
+                                if (sbgt < 1) sbgt = 1;
                             }
 
-                            // Calculate Price-based SBGT
-                            if (price > 100) {
-                                sbgtPrice = 5;
-                            } else if (price >= 50 && price <= 100) {
-                                sbgtPrice = 3;
-                            } else {
-                                sbgtPrice = 0; // No price-based SBGT for price < 50
-                            }
+                            return sbgt; // ✅ sets row.sbgt
+                        }
 
-                            // Return whichever is higher
-                            var sbgt = Math.max(sbgtAcos, sbgtPrice);
-
-                            return `<div class="text-center"><span class="fw-bold sbgt-value">${sbgt}</span></div>`;
-                        },
                     },
                     {
                         title: "ACOS",
@@ -2268,7 +2356,6 @@
                         title: "APR BID",
                         field: "apr_bid",
                         hozAlign: "center",
-                        width: 100,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var sbidM = parseFloat(row.sbid_m) || 0;
@@ -2439,6 +2526,12 @@
                     if (totalSkuCountEl) {
                         totalSkuCountEl.textContent = totalSkuCountFromBackend;
                     }
+                    // Update pagination count after data is loaded
+                    setTimeout(function() {
+                        if (typeof updatePaginationCount === 'function') {
+                            updatePaginationCount();
+                        }
+                    }, 200);
                     return response.data;
                 }
             });
@@ -2495,19 +2588,22 @@
                     if (campaignStatus !== 'ENABLED') return false;
                     
                     if (currentUtilizationType === 'over') {
-                        // Over-utilized: ub7 > 99 && ub1 > 99
-                        if (!(ub7 > 99 && ub1 > 99)) return false;
-                    } else if (currentUtilizationType === 'under') {
-                        // Under-utilized: ub7 < 66
-                        if (!(ub7 < 66 && ub1 < 66)) return false;
-                    } else if (currentUtilizationType === 'correctly') {
-                        // Correctly-utilized: ub7 >= 66 && ub7 <= 99
-                        if (!(ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99)) return false;
+                    // Over-utilized: ub7 > 99 && ub1 > 99
+                    if (!(ub7 > 99 && ub1 > 99)) return false;
+                } else if (currentUtilizationType === 'under') {
+                    // Under-utilized: ub7 < 66
+                    if (!(ub7 < 66 && ub1 < 66)) return false;
+                } else if (currentUtilizationType === 'correctly') {
+                    // Correctly-utilized: ub7 >= 66 && ub7 <= 99
+                    if (!(ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99)) return false;
                     }
                 }
 
                 // Global search filter
                 let searchVal = $("#global-search").val()?.toLowerCase() || "";
+                let tableSearchVal = $("#global-search-table").val()?.toLowerCase() || "";
+                // Combine both search values
+                searchVal = searchVal || tableSearchVal;
                 if (searchVal && !(data.campaignName?.toLowerCase().includes(searchVal)) && !(data.sku?.toLowerCase().includes(searchVal))) {
                     return false;
                 }
@@ -2520,49 +2616,61 @@
                         if (!hasCampaign) return false;
                     }
                     if (data.campaignStatus !== statusVal) {
-                        return false;
+                    return false;
                     }
                 }
 
-                // SBGT filter (computed from ACOS using same mapping as display)
-                let sbgtFilterVal = $("#sbgt-filter").val();
-                if (sbgtFilterVal) {
-                    // Special filter for ACOS > 35% AND SPEND > 10
-                    if (sbgtFilterVal === 'acos35spend10') {
+                // ACOS filter (sbgt-filter dropdown)
+                let acosFilterVal = $("#sbgt-filter").val();
+                if (acosFilterVal) {
                         let acosVal = parseFloat(data.acos || 0);
+                    if (isNaN(acosVal)) acosVal = 0;
+                    
+                    // Special filter for ACOS > 35% AND SPEND > 10
+                    if (acosFilterVal === 'acos35spend10') {
                         let spendVal = parseFloat(data.l30_spend || 0);
                         // Show only items where ACOS > 35% AND spend > 10
-                        if (acosVal <= 35 || spendVal <= 10 || isNaN(acosVal) || isNaN(spendVal)) {
+                        if (acosVal <= 35 || spendVal <= 10 || isNaN(spendVal)) {
                             return false;
                         }
                     } else {
-                        let acosVal = parseFloat(data.acos || 0);
-                        // Exclude ACOS = 0 (which displays as 100%) from all SBGT filters
-                        if (acosVal === 0 || isNaN(acosVal)) {
-                            return false;
+                        // Map dropdown values to ACOS ranges
+                        // value="8" → ACOS < 5%
+                        // value="7" → ACOS 5-9%
+                        // value="6" → ACOS 10-14%
+                        // value="5" → ACOS 15-19%
+                        // value="4" → ACOS 20-24%
+                        // value="3" → ACOS 25-29%
+                        // value="2" → ACOS 30-34%
+                        // value="1" → ACOS ≥ 35%
+                        let match = false;
+                        if (acosFilterVal === '8') {
+                            // ACOS < 5%
+                            if (acosVal >= 0 && acosVal < 5) match = true;
+                        } else if (acosFilterVal === '7') {
+                            // ACOS 5-9%
+                            if (acosVal >= 5 && acosVal < 10) match = true;
+                        } else if (acosFilterVal === '6') {
+                            // ACOS 10-14%
+                            if (acosVal >= 10 && acosVal < 15) match = true;
+                        } else if (acosFilterVal === '5') {
+                            // ACOS 15-19%
+                            if (acosVal >= 15 && acosVal < 20) match = true;
+                        } else if (acosFilterVal === '4') {
+                            // ACOS 20-24%
+                            if (acosVal >= 20 && acosVal < 25) match = true;
+                        } else if (acosFilterVal === '3') {
+                            // ACOS 25-29%
+                            if (acosVal >= 25 && acosVal < 30) match = true;
+                        } else if (acosFilterVal === '2') {
+                            // ACOS 30-34%
+                            if (acosVal >= 30 && acosVal < 35) match = true;
+                        } else if (acosFilterVal === '1') {
+                            // ACOS ≥ 35%
+                            if (acosVal >= 35) match = true;
                         }
-                        let rowSbgt;
-                        // ACOS 0-5%: sbgt = 6
-                        // ACOS 5-10%: sbgt = 5
-                        // ACOS 10-15%: sbgt = 4
-                        // ACOS 15-20%: sbgt = 3
-                        // ACOS 20-25%: sbgt = 2
-                        // ACOS > 25%: sbgt = 1
-                        if (acosVal < 5) {
-                            rowSbgt = '6';
-                        } else if (acosVal < 10) {
-                            rowSbgt = '5';
-                        } else if (acosVal < 15) {
-                            rowSbgt = '4';
-                        } else if (acosVal < 20) {
-                            rowSbgt = '3';
-                        } else if (acosVal < 25) {
-                            rowSbgt = '2';
-                        } else {
-                            rowSbgt = '1';
-                        }
-
-                        if (rowSbgt !== sbgtFilterVal) return false;
+                        
+                        if (!match) return false;
                     }
                 }
 
@@ -2648,6 +2756,53 @@
                     } else if (ratingFilterVal === 'gte4.5') {
                         if (rating < 4.5) return false;
                     }
+                }
+
+                // Apply multi-range filters
+                // 1UB range filter
+                let ub1Min = $("#1ub-min").val();
+                let ub1Max = $("#1ub-max").val();
+                if (ub1Min || ub1Max) {
+                    let budget = parseFloat(data.campaignBudgetAmount) || 0;
+                    let l1_spend = parseFloat(data.l1_spend || 0);
+                    let ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
+                    
+                    if (ub1Min && ub1 < parseFloat(ub1Min)) return false;
+                    if (ub1Max && ub1 > parseFloat(ub1Max)) return false;
+                }
+
+                // 7UB range filter
+                let ub7Min = $("#7ub-min").val();
+                let ub7Max = $("#7ub-max").val();
+                if (ub7Min || ub7Max) {
+                    let budget = parseFloat(data.campaignBudgetAmount) || 0;
+                    let l7_spend = parseFloat(data.l7_spend || 0);
+                    let ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
+                    
+                    if (ub7Min && ub7 < parseFloat(ub7Min)) return false;
+                    if (ub7Max && ub7 > parseFloat(ub7Max)) return false;
+                }
+
+                // Lbid range filter (using last_sbid)
+                let lbidMin = $("#lbid-min").val();
+                let lbidMax = $("#lbid-max").val();
+                if (lbidMin || lbidMax) {
+                    let lastSbid = parseFloat(data.last_sbid || 0);
+                    if (isNaN(lastSbid)) lastSbid = 0;
+                    
+                    if (lbidMin && lastSbid < parseFloat(lbidMin)) return false;
+                    if (lbidMax && lastSbid > parseFloat(lbidMax)) return false;
+                }
+
+                // ACOS range filter
+                let acosMin = $("#acos-min").val();
+                let acosMax = $("#acos-max").val();
+                if (acosMin || acosMax) {
+                    let acos = parseFloat(data.acos || 0);
+                    if (isNaN(acos)) acos = 0;
+                    
+                    if (acosMin && acos < parseFloat(acosMin)) return false;
+                    if (acosMax && acos > parseFloat(acosMax)) return false;
                 }
 
                 return true;
@@ -2923,13 +3078,32 @@
                     }, 200);
                 });
 
-                // Debounced search
+                // Debounced search for filters section
                 let searchTimeout = null;
                 $("#global-search").on("keyup", function() {
                     if (searchTimeout) clearTimeout(searchTimeout);
                     searchTimeout = setTimeout(function() {
                         table.setFilter(combinedFilter);
                     }, 300);
+                });
+
+                // Debounced search for table search section
+                let tableSearchTimeout = null;
+                $("#global-search-table").on("keyup", function() {
+                    if (tableSearchTimeout) clearTimeout(tableSearchTimeout);
+                    tableSearchTimeout = setTimeout(function() {
+                        table.setFilter(combinedFilter);
+                        updatePaginationCount();
+                    }, 300);
+                });
+
+                // Range filter event listeners
+                $("#1ub-min, #1ub-max, #7ub-min, #7ub-max, #lbid-min, #lbid-max, #acos-min, #acos-max").on("input", function() {
+                    if (typeof table !== 'undefined' && table) {
+                        table.setFilter(combinedFilter);
+                        table.redraw(true);
+                        updateButtonCounts();
+                    }
                 });
 
                 $("#status-filter, #inv-filter, #nra-filter, #sbgt-filter, #price-slab-filter, #rating-filter").on("change", function() {
@@ -2940,17 +3114,579 @@
                     }, 300);
                 });
 
+                // INC/DEC SBID variables
+                let incDecType = 'value'; // 'value' or 'percentage'
+                
+                // INC/DEC SBID handlers
+                // Dropdown selection handler
+                $("#inc-dec-dropdown .dropdown-item").on("click", function(e) {
+                    e.preventDefault();
+                    incDecType = $(this).data('type');
+                    var labelText = incDecType === 'value' ? 'Value (e.g., +0.5 or -0.5)' : 'Percentage (e.g., +10 or -10)';
+                    $("#inc-dec-label").text(incDecType === 'value' ? 'Value' : 'Percentage');
+                    $("#inc-dec-input").attr('placeholder', labelText);
+                    $("#inc-dec-btn").text(incDecType === 'value' ? 'INC/DEC (By Value)' : 'INC/DEC (By %)');
+                });
+                
+                // Helper function to get Last SBID (last_sbid) value for a row - used as base value for INC/DEC
+                function getCurrentSbid(rowData) {
+                    // Use Last SBID (last_sbid) as the base value
+                    var lastSbid = rowData.last_sbid;
+                    
+                    // Check if Last SBID is empty, null, 0, or invalid
+                    if (!lastSbid || lastSbid === '' || lastSbid === '0' || lastSbid === 0) {
+                        return null; // No Last SBID value available
+                    }
+                    
+                    var sbidValue = parseFloat(lastSbid);
+                    if (isNaN(sbidValue) || sbidValue <= 0) {
+                        return null;
+                    }
+                    
+                    return sbidValue;
+                }
+                
+                // Apply INC/DEC button handler
+                $("#apply-inc-dec-btn").on("click", function() {
+                    var inputValue = $("#inc-dec-input").val();
+                    if (!inputValue || inputValue === '') {
+                        alert('Please enter a value');
+                        return;
+                    }
+                    
+                    var incDecValue = parseFloat(inputValue);
+                    if (isNaN(incDecValue)) {
+                        alert('Please enter a valid number');
+                        return;
+                    }
+                    
+                    // Get only selected rows
+                    var selectedRows = table.getRows('selected');
+                    if (selectedRows.length === 0) {
+                        showToast('warning', 'Please select at least one row to apply increment/decrement');
+                        return;
+                    }
+                    
+                    // Prepare data for bulk save
+                    var campaignSbidMap = {}; // { campaign_id: new_sbid_m }
+                    var rowsToUpdate = []; // Store rows for later update
+                    
+                    selectedRows.forEach(function(row) {
+                        var rowData = row.getData();
+                        var campaignId = rowData.campaign_id;
+                        var campaignType = 'KW'; // KW for this file
+                        
+                        // Skip rows without campaign_id
+                        if (!campaignId) {
+                            return;
+                        }
+                        
+                        // Get Last SBID (last_sbid) as base value
+                        var currentLbid = getCurrentSbid(rowData);
+                        if (currentLbid === null || currentLbid === 0) {
+                            return; // Skip rows with no Last SBID value
+                        }
+                        
+                        // Calculate new SBID based on Last SBID and INC/DEC type
+                        var newSbid = 0;
+                        if (incDecType === 'value') {
+                            // By value: new = Last SBID + input
+                            newSbid = currentLbid + incDecValue;
+                        } else {
+                            // By percentage: new = Last SBID * (1 + input/100)
+                            newSbid = currentLbid * (1 + incDecValue / 100);
+                        }
+                        
+                        // Ensure new SBID is not negative
+                        if (newSbid < 0) {
+                            newSbid = 0;
+                        }
+                        
+                        // Round to 2 decimal places
+                        newSbid = Math.round(newSbid * 100) / 100;
+                        
+                        // Store campaign ID and calculated SBID
+                        campaignSbidMap[campaignId] = newSbid;
+                        rowsToUpdate.push({ row: row, campaignId: campaignId, newSbid: newSbid, campaignType: campaignType });
+                    });
+                    
+                    if (Object.keys(campaignSbidMap).length === 0) {
+                        showToast('warning', 'No selected rows with valid Last SBID and campaign ID found');
+                        return;
+                    }
+                    
+                    // Show progress overlay if available
+                    const overlay = document.getElementById("progress-overlay");
+                    if (overlay) {
+                        overlay.style.display = "flex";
+                    }
+                    
+                    // Prepare campaign IDs and SBID M values arrays
+                    var campaignIds = Object.keys(campaignSbidMap);
+                    
+                    // Save all calculated values individually for each campaign
+                    var savePromises = [];
+                    var campaignRowMap = {}; // Map campaign ID to row info for easy lookup
+                    
+                    rowsToUpdate.forEach(function(rowInfo) {
+                        campaignRowMap[rowInfo.campaignId] = rowInfo;
+                    });
+                    
+                    campaignIds.forEach(function(campaignId) {
+                        var newSbidValue = campaignSbidMap[campaignId];
+                        var rowInfo = campaignRowMap[campaignId];
+                        var savePromise = $.ajax({
+                            url: '/save-amazon-sbid-m',
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                            },
+                            data: {
+                                campaign_id: campaignId,
+                                sbid_m: newSbidValue,
+                                campaign_type: rowInfo.campaignType
+                            }
+                        }).then(function(response) {
+                            return { campaignId: campaignId, response: response, success: true };
+                        }).catch(function(error) {
+                            return { campaignId: campaignId, error: error, success: false };
+                        });
+                        savePromises.push(savePromise);
+                    });
+                    
+                    // Wait for all saves to complete
+                    Promise.all(savePromises).then(function(results) {
+                        var successCount = 0;
+                        var errorCount = 0;
+                        
+                        results.forEach(function(result) {
+                            if (result.success && result.response && result.response.status === 200) {
+                                successCount++;
+                                // Update row data using campaign ID to find the correct row
+                                var rowInfo = campaignRowMap[result.campaignId];
+                                if (rowInfo) {
+                                    var rowData = rowInfo.row.getData();
+                                    var currentData = JSON.parse(JSON.stringify(rowData));
+                                    currentData.sbid_m = rowInfo.newSbid;
+                                    // Clear any approval status when sbid_m is updated
+                                    if (currentData.sbid === currentData.sbid_m) {
+                                        // If sbid equals sbid_m, keep approval status
+                                    } else {
+                                        // Clear approval status
+                                        currentData.sbid = currentData.sbid_m;
+                                    }
+                                    rowInfo.row.update(currentData);
+                                    setTimeout(function() {
+                                        rowInfo.row.reformat();
+                                    }, 50);
+                                }
+                            } else {
+                                errorCount++;
+                                console.error('Error saving SBID M for campaign:', result.campaignId, result.error || result.response);
+                            }
+                        });
+                        
+                        if (overlay) {
+                            overlay.style.display = "none";
+                        }
+                        
+                        if (successCount > 0) {
+                            showToast('success', 'SBID M saved successfully for ' + successCount + ' campaign(s)');
+                            // Redraw table to ensure all updates are visible
+                            table.redraw(true);
+                        } else {
+                            showToast('error', 'Failed to save SBID M values');
+                        }
+                        
+                        if (errorCount > 0) {
+                            console.warn('Some campaigns failed to save:', errorCount);
+                        }
+                    }).catch(function(error) {
+                        if (overlay) {
+                            overlay.style.display = "none";
+                        }
+                        showToast('error', 'Error saving SBID M values');
+                        console.error('Error in bulk save:', error);
+                    });
+                });
+                
+                // Clear INC/DEC button handler
+                $("#clear-inc-dec-btn").on("click", function() {
+                    // Clear input field only - sbid_m values remain in database
+                    $("#inc-dec-input").val('');
+                    showToast('info', 'Input cleared. SBID M values remain saved in database.');
+                });
+                
+                // Clear SBID M button handler - clears sbid_m for selected rows
+                $(document).on("click", "#clear-sbid-m-btn", function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    // Get only selected rows
+                    var selectedRows = table.getRows('selected');
+                    if (selectedRows.length === 0) {
+                        showToast('warning', 'Please select at least one row to clear SBID M');
+                        return;
+                    }
+                    
+                    // Confirm before clearing
+                    var confirmClear = confirm('Are you sure you want to clear SBID M for ' + selectedRows.length + ' selected row(s)?');
+                    if (!confirmClear) {
+                        return;
+                    }
+                    
+                    // Prepare campaign IDs
+                    var campaignIds = [];
+                    var campaignRowMap = {};
+                    
+                    selectedRows.forEach(function(row) {
+                        var rowData = row.getData();
+                        var campaignId = rowData.campaign_id;
+                        
+                        if (campaignId) {
+                            campaignIds.push(String(campaignId).trim());
+                            campaignRowMap[campaignId] = row;
+                        }
+                    });
+                    
+                    if (campaignIds.length === 0) {
+                        showToast('warning', 'No selected rows with valid campaign ID found');
+                        return;
+                    }
+                    
+                    // Clear sbid_m by setting to empty string - will need backend endpoint or handle in frontend
+                    // For now, update frontend directly and show message
+                    campaignIds.forEach(function(campaignId) {
+                        var row = campaignRowMap[campaignId];
+                        if (row) {
+                            var rowData = row.getData();
+                            var currentData = JSON.parse(JSON.stringify(rowData));
+                            currentData.sbid_m = ''; // Clear sbid_m
+                            row.update(currentData);
+                            setTimeout(function() {
+                                row.reformat();
+                            }, 50);
+                        }
+                    });
+                    
+                    showToast('info', 'SBID M cleared in display for ' + campaignIds.length + ' row(s). Database update requires backend endpoint implementation.');
+                    table.redraw(true);
+                });
+                
+                // APR ALL SBID button handler
+                document.getElementById("apr-all-sbid-btn").addEventListener("click", function() {
+                    const overlay = document.getElementById("progress-overlay");
+                    if (overlay) {
+                        overlay.style.display = "flex";
+                    }
+
+                    // Get only actually selected rows
+                    var allSelectedRows = table.getRows('selected');
+                    var selectedCampaignIds = [];
+                    var seenCampaignIds = new Set();
+                    
+                    allSelectedRows.forEach(function(row) {
+                        var rowData = row.getData();
+                        var campaignId = rowData.campaign_id;
+                        if (campaignId && !seenCampaignIds.has(campaignId)) {
+                            selectedCampaignIds.push(campaignId);
+                            seenCampaignIds.add(campaignId);
+                        }
+                    });
+
+                    if (selectedCampaignIds.length === 0) {
+                        if (overlay) overlay.style.display = "none";
+                        showToast('error', 'Please select at least one campaign');
+                        return;
+                    }
+                    
+                    // Get rows for selected campaign IDs
+                    var selectedRows = allSelectedRows.filter(function(row) {
+                        var campaignId = row.getData().campaign_id;
+                        return campaignId && selectedCampaignIds.includes(campaignId);
+                    });
+
+                    var campaignIds = [];
+                    var bids = [];
+                    var rowBidMap = [];
+
+                    selectedRows.forEach(function(row) {
+                        var rowData = row.getData();
+                        var sbidM = parseFloat(rowData.sbid_m) || 0;
+                        
+                        if (sbidM > 0 && rowData.campaign_id) {
+                            campaignIds.push(rowData.campaign_id);
+                            bids.push(sbidM);
+                            rowBidMap.push({
+                                row: row,
+                                campaignId: rowData.campaign_id,
+                                bid: sbidM
+                            });
+                        }
+                    });
+
+                    if (campaignIds.length === 0) {
+                        if (overlay) overlay.style.display = "none";
+                        showToast('error', 'No valid campaigns with SBID M value found');
+                        return;
+                    }
+
+                    // Approve all bids
+                    var approvePromises = [];
+                    rowBidMap.forEach(function(item) {
+                        var approvePromise = $.ajax({
+                            url: '/approve-amazon-sbid',
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                            },
+                            data: {
+                                campaign_id: item.campaignId,
+                                sbid_m: item.bid,
+                                campaign_type: 'KW'
+                            }
+                        }).then(function(response) {
+                            return { campaignId: item.campaignId, response: response, success: true, item: item };
+                        }).catch(function(error) {
+                            return { campaignId: item.campaignId, error: error, success: false, item: item };
+                        });
+                        approvePromises.push(approvePromise);
+                    });
+                    
+                    Promise.all(approvePromises).then(function(results) {
+                        var successCount = 0;
+                        var errorCount = 0;
+                        
+                        results.forEach(function(result) {
+                            if (result.success && result.response && result.response.status === 200) {
+                                successCount++;
+                                // Update row data
+                                var item = result.item;
+                                var rowData = item.row.getData();
+                                var currentData = JSON.parse(JSON.stringify(rowData));
+                                currentData.sbid = item.bid;
+                                currentData.sbid_m = item.bid;
+                                item.row.update(currentData);
+                                setTimeout(function() {
+                                    item.row.reformat();
+                                }, 50);
+                            } else {
+                                errorCount++;
+                                console.error('Error approving SBID for campaign:', result.campaignId, result.error || result.response);
+                            }
+                        });
+                        
+                        if (overlay) overlay.style.display = "none";
+                        
+                        if (successCount > 0) {
+                            showToast('success', 'SBID approved successfully for ' + successCount + ' campaign(s)');
+                            table.redraw(true);
+                        } else {
+                            showToast('error', 'Failed to approve SBID values');
+                        }
+                        
+                        if (errorCount > 0) {
+                            console.warn('Some campaigns failed to approve:', errorCount);
+                        }
+                    }).catch(function(error) {
+                        if (overlay) overlay.style.display = "none";
+                        showToast('error', 'Error approving SBID values');
+                        console.error('Error in bulk approve:', error);
+                    });
+                });
+                
+                // SAVE ALL SBID M button handler
+                document.getElementById("save-all-sbid-m-btn").addEventListener("click", function() {
+                    const overlay = document.getElementById("progress-overlay");
+                    if (overlay) {
+                        overlay.style.display = "flex";
+                    }
+
+                    // Get only actually selected rows
+                    var allSelectedRows = table.getRows('selected');
+                    var selectedCampaignIds = [];
+                    var seenCampaignIds = new Set();
+                    
+                    allSelectedRows.forEach(function(row) {
+                        var rowData = row.getData();
+                        var campaignId = rowData.campaign_id;
+                        if (campaignId && !seenCampaignIds.has(campaignId)) {
+                            selectedCampaignIds.push(campaignId);
+                            seenCampaignIds.add(campaignId);
+                        }
+                    });
+
+                    if (selectedCampaignIds.length === 0) {
+                        if (overlay) overlay.style.display = "none";
+                        showToast('error', 'Please select at least one campaign');
+                        return;
+                    }
+                    
+                    // Prompt for SBID M value
+                    var sbidMValue = prompt('Enter SBID M value for all selected campaigns:');
+                    if (!sbidMValue || sbidMValue.trim() === '') {
+                        if (overlay) overlay.style.display = "none";
+                        return;
+                    }
+
+                    var cleanValue = parseFloat(sbidMValue.replace(/[$\s]/g, '')) || 0;
+                    if (cleanValue <= 0) {
+                        if (overlay) overlay.style.display = "none";
+                        showToast('error', 'SBID M must be greater than 0');
+                        return;
+                    }
+                    
+                    // Save all campaigns
+                    var savePromises = [];
+                    selectedCampaignIds.forEach(function(campaignId) {
+                        var savePromise = $.ajax({
+                            url: '/save-amazon-sbid-m',
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                            },
+                            data: {
+                                campaign_id: campaignId,
+                                sbid_m: cleanValue,
+                                campaign_type: 'KW'
+                            }
+                        }).then(function(response) {
+                            return { campaignId: campaignId, response: response, success: true };
+                        }).catch(function(error) {
+                            return { campaignId: campaignId, error: error, success: false };
+                        });
+                        savePromises.push(savePromise);
+                    });
+                    
+                    Promise.all(savePromises).then(function(results) {
+                        var successCount = 0;
+                        var errorCount = 0;
+                        
+                        results.forEach(function(result) {
+                            if (result.success && result.response && result.response.status === 200) {
+                                successCount++;
+                                // Update row data
+                                var rows = table.getRows().filter(function(row) {
+                                    return row.getData().campaign_id === result.campaignId;
+                                });
+                                rows.forEach(function(row) {
+                                    var rowData = row.getData();
+                                    var currentData = JSON.parse(JSON.stringify(rowData));
+                                    currentData.sbid_m = cleanValue;
+                                    row.update(currentData);
+                                    setTimeout(function() {
+                                        row.reformat();
+                                    }, 50);
+                                });
+                            } else {
+                                errorCount++;
+                                console.error('Error saving SBID M for campaign:', result.campaignId, result.error || result.response);
+                            }
+                        });
+                        
+                        if (overlay) overlay.style.display = "none";
+                        
+                        if (successCount > 0) {
+                            showToast('success', 'SBID M saved successfully for ' + successCount + ' campaign(s)');
+                            table.redraw(true);
+                        } else {
+                            showToast('error', 'Failed to save SBID M values');
+                        }
+                        
+                        if (errorCount > 0) {
+                            console.warn('Some campaigns failed to save:', errorCount);
+                        }
+                    }).catch(function(error) {
+                        if (overlay) overlay.style.display = "none";
+                        showToast('error', 'Error saving SBID M values');
+                        console.error('Error in bulk save:', error);
+                    });
+                });
+
                 // Initial update of all button counts after data loads
                 setTimeout(function() {
                     updateButtonCounts();
+                    updatePaginationCount();
                 }, 1000);
+                
+                // Also call updatePaginationCount immediately after table is built
+                updatePaginationCount();
             });
 
             table.on("rowSelectionChanged", function(data, rows) {
-                // Keep APR ALL SBID and APR ALL SBGT buttons hidden
+                // Show/hide APR ALL SBID and SAVE ALL SBID M buttons based on selection
+                if (data.length > 0) {
+                    document.getElementById("apr-all-sbid-btn").classList.remove("d-none");
+                    document.getElementById("save-all-sbid-m-btn").classList.remove("d-none");
+                } else {
                 document.getElementById("apr-all-sbid-btn").classList.add("d-none");
-                document.getElementById("apr-all-sbgt-btn").classList.add("d-none");
+                    document.getElementById("save-all-sbid-m-btn").classList.add("d-none");
+                }
             });
+
+            // Update pagination count on page changes
+            table.on("pageLoaded", function(page) {
+                updatePaginationCount();
+            });
+
+            table.on("pageSizeChanged", function(pageSize) {
+                setTimeout(updatePaginationCount, 100);
+            });
+
+            table.on("dataLoaded", function(data) {
+                setTimeout(updatePaginationCount, 100);
+            });
+
+            table.on("dataFiltered", function(filteredRows) {
+                setTimeout(updatePaginationCount, 100);
+            });
+
+            table.on("dataProcessed", function() {
+                setTimeout(updatePaginationCount, 100);
+            });
+
+            // Function to update pagination count display
+            function updatePaginationCount() {
+                try {
+                    if (typeof table === 'undefined' || !table) {
+                        console.warn('Table not defined in updatePaginationCount');
+                        return;
+                    }
+                    
+                    // Calculate actual filtered count to match pagination
+                    const filteredData = table.getData('active');
+                    if (!filteredData || filteredData.length === undefined) {
+                        console.warn('No filtered data available');
+                        return;
+                    }
+                    
+                    const totalRows = filteredData.length;
+                    const pageSize = table.getPageSize() || 100;
+                    const currentPage = table.getPage() || 1;
+                    
+                    let startRow = 0;
+                    let endRow = 0;
+                    
+                    if (totalRows > 0) {
+                        startRow = ((currentPage - 1) * pageSize) + 1;
+                        endRow = Math.min(currentPage * pageSize, totalRows);
+                    }
+                    
+                    const paginationCountEl = document.getElementById('pagination-count');
+                    if (paginationCountEl) {
+                        if (totalRows === 0) {
+                            paginationCountEl.textContent = 'Showing 0 of 0 rows';
+                        } else {
+                            paginationCountEl.textContent = `Showing ${startRow} to ${endRow} of ${totalRows} rows`;
+                        }
+                        console.log('Pagination count updated:', startRow, endRow, totalRows);
+                    } else {
+                        console.warn('Pagination count element not found');
+                    }
+                } catch (e) {
+                    console.error('Error updating pagination count:', e);
+                }
+            }
 
             document.addEventListener("change", function(e) {
                 if (e.target.classList.contains("editable-select")) {
@@ -3026,87 +3762,6 @@
                         }
                     });
                 }
-            });
-
-            document.getElementById("apr-all-sbid-btn").addEventListener("click", function() {
-                const overlay = document.getElementById("progress-overlay");
-                overlay.style.display = "flex";
-
-                var filteredData = table.getSelectedRows();
-                var campaignIds = [];
-                var bids = [];
-
-                filteredData.forEach(function(row) {
-                    var rowEl = row.getElement();
-                    if (rowEl && rowEl.offsetParent !== null) {
-                        var rowData = row.getData();
-                        var l1_cpc = parseFloat(rowData.l1_cpc) || 0;
-                        var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
-                        var budget = parseFloat(rowData.campaignBudgetAmount) || 0;
-                        var ub7 = 0;
-                        if (budget > 0) {
-                            ub7 = (parseFloat(rowData.l7_spend) || 0) / (budget * 7) * 100;
-                        }
-                        
-                        var sbid = '';
-                        if (currentUtilizationType === 'over') {
-                            if (l7_cpc === 0) {
-                                sbid = 0.75;
-                            } else {
-                                sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
-                            }
-                        } else if (currentUtilizationType === 'under') {
-                            if (ub7 < 70) {
-                                if (ub7 < 10 || l7_cpc === 0 || l1_cpc === 0) {
-                                    sbid = 0.75;
-                                } else {
-                                    sbid = Math.floor((l1_cpc * 1.10) * 100) / 100;
-                                }
-                            } else {
-                                sbid = '';
-                            }
-                        } else {
-                            sbid = '';
-                        }
-
-                        if (sbid !== '') {
-                            campaignIds.push(rowData.campaign_id);
-                            bids.push(sbid);
-                        }
-                    }
-                });
-
-                fetch('/update-keywords-bid-price', {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                    },
-                    body: JSON.stringify({
-                        campaign_ids: campaignIds,
-                        bids: bids
-                    })
-                })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.status === 200) {
-                        alert("Keywords updated successfully!");
-                    } else {
-                        let errorMsg = data.message || "Something went wrong";
-                        if (errorMsg.includes("Premium Ads")) {
-                            alert("Error: " + errorMsg);
-                        } else {
-                            alert("Something went wrong: " + errorMsg);
-                        }
-                    }
-                })
-                .catch(err => {
-                    console.error(err);
-                    alert("Error updating bids");
-                })
-                .finally(() => {
-                    overlay.style.display = "none";
-                });
             });
 
             // Batch APR SBGT handler
