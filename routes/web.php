@@ -570,6 +570,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/stock-balance-store', [StockBalanceController::class, 'store'])->name('stock.balance.store');
     Route::get('/stock-balance-data-list', [StockBalanceController::class, 'list']);
     Route::get('/stock-balance-inventory-data', [StockBalanceController::class, 'getInventoryData']);
+    Route::post('/stock-balance-update-action', [StockBalanceController::class, 'updateAction']);
+    Route::get('/stock-balance-get-relationships', [StockBalanceController::class, 'getRelationships']);
+    Route::post('/stock-balance-add-relationships', [StockBalanceController::class, 'addRelationships']);
+    Route::post('/stock-balance-delete-relationship', [StockBalanceController::class, 'deleteRelationship']);
+    Route::get('/stock-balance-get-skus-autocomplete', [StockBalanceController::class, 'getSkusForAutocomplete']);
 
     //channel Movement Analysis
     Route::get('/channel-movement-analysis', [ChannelMovementAnalysisController::class, 'index'])->name('channel.movement.analysis');
