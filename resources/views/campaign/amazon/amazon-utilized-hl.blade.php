@@ -426,67 +426,51 @@
                                     </div>
                                 </div>
 
-                                <!-- Search and Filter Controls Row -->
+                                <!-- Filters Row -->
                                 <div class="row align-items-end g-2">
-                                    <div class="col-md-3">
-                                        <label class="form-label fw-semibold mb-2"
-                                            style="color: #475569; font-size: 0.8125rem;">
-                                            <i class="fa-solid fa-search me-1" style="color: #64748b;"></i>Search Campaign
-                                        </label>
-                                        <div class="input-group">
-                                            <span class="input-group-text bg-white border-end-0"
-                                                style="border-color: #e2e8f0;">
-                                                <i class="fa-solid fa-search" style="color: #94a3b8;"></i>
-                                            </span>
-                                            <input type="text" id="global-search"
-                                                class="form-control form-control-md border-start-0"
-                                                placeholder="Search by campaign name or SKU..."
-                                                style="border-color: #e2e8f0;">
-                                        </div>
-                                    </div>
-                                    <div class="col-md-1">
+                                    <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2"
                                             style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-toggle-on me-1" style="color: #64748b;"></i>Status
                                         </label>
                                         <select id="status-filter" class="form-select form-select-md">
-                                            <option value="">All Status</option>
+                                            <option value="">All</option>
                                             <option value="ENABLED">Enabled</option>
                                             <option value="PAUSED">Paused</option>
                                             <option value="ENDED">Ended</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-1">
+                                    <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2"
                                             style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-boxes me-1" style="color: #64748b;"></i>Inventory
                                         </label>
                                         <select id="inv-filter" class="form-select form-select-md">
-                                            <option value="" selected>All Inventory</option>
+                                            <option value="" selected>All</option>
                                             <option value="ALL">ALL</option>
                                             <option value="INV_0">0 INV</option>
                                             <option value="OTHERS">OTHERS</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-1">
+                                    <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2"
                                             style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-tags me-1" style="color: #64748b;"></i>NRA
                                         </label>
                                         <select id="nra-filter" class="form-select form-select-md">
-                                            <option value="">All NRA</option>
+                                            <option value="">All</option>
                                             <option value="NRA">NRA</option>
                                             <option value="RA">RA</option>
                                             <option value="LATER">LATER</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-1">
+                                    <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2"
                                             style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-star me-1" style="color: #64748b;"></i>Rating
                                         </label>
                                         <select id="rating-filter" class="form-select form-select-md">
-                                            <option value="">All Ratings</option>
+                                            <option value="">All</option>
                                             <option value="lt3">&lt; 3</option>
                                             <option value="3-3.5">3 - 3.5</option>
                                             <option value="4-4.5">4 - 4.5</option>
@@ -496,33 +480,25 @@
                                     <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2"
                                             style="color: #475569; font-size: 0.8125rem;">
-                                            <i class="fa-solid fa-bullseye me-1" style="color: #64748b;"></i>ACOS Filter
+                                            <i class="fa-solid fa-filter me-1" style="color: #64748b;"></i>ACOS
                                         </label>
                                         <select id="sbgt-filter" class="form-select form-select-md">
-                                            <option value="">All ACOS</option>
-                                            <option value="8">ACOS &lt; 5%</option>
-                                            <option value="7">ACOS 5-9%</option>
-                                            <option value="6">ACOS 10-14%</option>
-                                            <option value="5">ACOS 15-19%</option>
-                                            <option value="4">ACOS 20-24%</option>
-                                            <option value="3">ACOS 25-29%</option>
-                                            <option value="2">ACOS 30-34%</option>
-                                            <option value="1">ACOS ≥ 35%</option>
-                                            <option value="acos35spend10">ACOS>35% and SPEND >10</option>
+                                            <option value="">All</option>
+                                            <option value="8">&lt; 5%</option>
+                                            <option value="7">5-9%</option>
+                                            <option value="6">10-14%</option>
+                                            <option value="5">15-19%</option>
+                                            <option value="4">20-24%</option>
+                                            <option value="3">25-29%</option>
+                                            <option value="2">30-34%</option>
+                                            <option value="1">≥ 35%</option>
+                                            <option value="acos35spend10">&gt;35% &amp; SPEND &gt;10</option>
                                         </select>
-                                    </div>
-                                    <div class="col-md-3">
-                                        <!-- Empty space for alignment -->
                                     </div>
                                 </div>
                                 
                                 <!-- Multi-Range Filter Row -->
                                 <div class="row align-items-end g-2 mt-3 pt-3 border-top">
-                                    <div class="col-12">
-                                        <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
-                                            <i class="fa-solid fa-sliders me-1" style="color: #64748b;"></i>Range Filters
-                                        </label>
-                                    </div>
                                     <div class="col-md-3">
                                         <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.75rem;">1UB (%)</label>
                                         <div class="d-flex gap-2 align-items-center">
@@ -1078,46 +1054,19 @@
                         sbgtSelect.options[9].text = `ACOS>35% and SPEND >10 (${acos35Spend10Count})`;
                     }
                     
-                    // Count ratings
+                    // Count ratings - HL uses PARENT SKUs (same approach as ACOS counting)
                     let ratingLt3 = 0, rating3_35 = 0, rating4_45 = 0, ratingGte45 = 0;
                     
-                    allData.forEach(function(row) {
-                        const sku = row.sku || '';
-                        const isValidSku = sku && !sku.toUpperCase().includes('PARENT');
-                        if (!isValidSku) return;
+                    console.log('HL Rating Count Debug - Starting rating count...');
+                    console.log('HL Rating Count Debug - processedSkusForValidCount size:', processedSkusForValidCount.size);
+                    
+                    // Iterate over filtered parent SKUs only (same as ACOS counting)
+                    processedSkusForValidCount.forEach(function(parentSku) {
+                        const row = allData.find(r => r.sku === parentSku);
+                        if (!row) return;
                         
                         let rating = parseFloat(row.ratings || 0);
                         if (isNaN(rating) || rating <= 0) return;
-                        
-                        // Apply same filters as above (except rating filter)
-                        let inv = parseFloat(row.INV || 0);
-                        let searchVal = $("#global-search").val()?.toLowerCase() || "";
-                let tableSearchVal = $("#global-search-table").val()?.toLowerCase() || "";
-                // Combine both search values
-                searchVal = searchVal || tableSearchVal;
-                        if (searchVal && !(row.campaignName?.toLowerCase().includes(searchVal)) && !(row.sku?.toLowerCase().includes(searchVal))) return;
-                        
-                        let statusVal = $("#status-filter").val();
-                        if (statusVal && row.campaignStatus !== statusVal) return;
-                        
-                        let invFilterVal = $("#inv-filter").val();
-                        if (!invFilterVal || invFilterVal === '') {
-                            if (inv <= 0) return;
-                        } else if (invFilterVal === "INV_0") {
-                            if (inv !== 0) return;
-                        } else if (invFilterVal === "OTHERS") {
-                            if (inv <= 0) return;
-                        }
-                        
-                        let nraFilterVal = $("#nra-filter").val();
-                        if (nraFilterVal) {
-                            let rowNra = row.NRA ? row.NRA.trim() : "";
-                            if (nraFilterVal === 'RA') {
-                                if (rowNra === 'NRA') return;
-                            } else {
-                                if (rowNra !== nraFilterVal) return;
-                            }
-                        }
                         
                         // Count by rating range
                         if (rating < 3) {
@@ -1131,6 +1080,14 @@
                         }
                     });
                     
+                    console.log('HL Rating Count Debug - Counts:', {
+                        lt3: ratingLt3,
+                        '3-3.5': rating3_35,
+                        '4-4.5': rating4_45,
+                        'gte4.5': ratingGte45,
+                        total: ratingLt3 + rating3_35 + rating4_45 + ratingGte45
+                    });
+                    
                     // Update rating filter dropdown with counts
                     const ratingSelect = document.getElementById('rating-filter');
                     if (ratingSelect) {
@@ -1140,6 +1097,9 @@
                         ratingSelect.options[2].text = `3 - 3.5 (${rating3_35})`;
                         ratingSelect.options[3].text = `4 - 4.5 (${rating4_45})`;
                         ratingSelect.options[4].text = `≥ 4.5 (${ratingGte45})`;
+                        console.log('HL Rating Count Debug - Dropdown updated successfully');
+                    } else {
+                        console.error('HL Rating Count Debug - ERROR: rating-filter element not found!');
                     }
                 }, 150);
             }
@@ -2581,9 +2541,14 @@
                         totalSkuCountEl.textContent = totalSkuCountFromBackend;
                     }
                     // Force update counts after data loads to use backend count
+                    // Use multiple timeouts to ensure counts are updated after table is fully rendered
                     setTimeout(function() {
                         updateButtonCounts();
                     }, 500);
+                    // Additional call after longer delay to ensure rating counts are updated
+                    setTimeout(function() {
+                        updateButtonCounts();
+                    }, 1000);
                     // Update pagination count after data is loaded
                     setTimeout(function() {
                         if (typeof updatePaginationCount === 'function') {
@@ -3498,6 +3463,10 @@
 
             table.on("dataLoaded", function(data) {
                 setTimeout(updatePaginationCount, 100);
+                // Update counts including rating counts after data is loaded
+                setTimeout(function() {
+                    updateButtonCounts();
+                }, 300);
             });
 
             table.on("dataFiltered", function(filteredRows) {

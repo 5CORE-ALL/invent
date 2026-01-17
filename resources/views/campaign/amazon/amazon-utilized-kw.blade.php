@@ -296,49 +296,36 @@
                                     </div>
                                 </div>
 
-                                <!-- Search and Filter Controls Row -->
+                                <!-- Filters Row -->
                                 <div class="row align-items-end g-2">
-                                    <div class="col-md-3">
-                                        <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
-                                            <i class="fa-solid fa-search me-1" style="color: #64748b;"></i>Search Campaign
-                                        </label>
-                                        <div class="input-group">
-                                            <span class="input-group-text bg-white border-end-0" style="border-color: #e2e8f0;">
-                                                <i class="fa-solid fa-search" style="color: #94a3b8;"></i>
-                                            </span>
-                                            <input type="text" id="global-search" class="form-control form-control-md border-start-0" 
-                                                   placeholder="Search by campaign name or SKU..."
-                                                   style="border-color: #e2e8f0;">
-                                        </div>
-                                    </div>
-                                    <div class="col-md-1">
+                                    <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-toggle-on me-1" style="color: #64748b;"></i>Status
                                         </label>
                                         <select id="status-filter" class="form-select form-select-md">
-                                            <option value="">All Status</option>
+                                            <option value="">All</option>
                                             <option value="ENABLED">Enabled</option>
                                             <option value="PAUSED">Paused</option>
                                             <option value="ENDED">Ended</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-1">
+                                    <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-boxes me-1" style="color: #64748b;"></i>Inventory
                                         </label>
                                         <select id="inv-filter" class="form-select form-select-md">
-                                            <option value="">All Inventory</option>
+                                            <option value="">All</option>
                                             <option value="ALL">ALL</option>
                                             <option value="INV_0">0 INV</option>
                                             <option value="OTHERS" selected>OTHERS</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-1">
+                                    <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-tags me-1" style="color: #64748b;"></i>NRA
                                         </label>
                                         <select id="nra-filter" class="form-select form-select-md">
-                                            <option value="">All NRA</option>
+                                            <option value="">All</option>
                                             <option value="NRA">NRA</option>
                                             <option value="RA">RA</option>
                                             <option value="LATER">LATER</option>
@@ -349,7 +336,7 @@
                                             <i class="fa-solid fa-dollar-sign me-1" style="color: #64748b;"></i>Price
                                         </label>
                                         <select id="price-slab-filter" class="form-select form-select-md">
-                                            <option value="">All Prices</option>
+                                            <option value="">All</option>
                                             <option value="lt10">&lt; $10</option>
                                             <option value="10-20">$10 - $20</option>
                                             <option value="20-30">$20 - $30</option>
@@ -358,12 +345,12 @@
                                             <option value="gt100">&gt; $100</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-1">
+                                    <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-star me-1" style="color: #64748b;"></i>Rating
                                         </label>
                                         <select id="rating-filter" class="form-select form-select-md">
-                                            <option value="">All Ratings</option>
+                                            <option value="">All</option>
                                             <option value="lt3">&lt; 3</option>
                                             <option value="3-3.5">3 - 3.5</option>
                                             <option value="4-4.5">4 - 4.5</option>
@@ -372,19 +359,19 @@
                                     </div>
                                     <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
-                                            <i class="fa-solid fa-filter me-1" style="color: #64748b;"></i>ACOS Filter
+                                            <i class="fa-solid fa-filter me-1" style="color: #64748b;"></i>ACOS
                                         </label>
                                         <select id="sbgt-filter" class="form-select form-select-md">
-                                            <option value="">All ACOS</option>
-                                            <option value="8">ACOS &lt; 5%</option>
-                                            <option value="7">ACOS 5-9%</option>
-                                            <option value="6">ACOS 10-14%</option>
-                                            <option value="5">ACOS 15-19%</option>
-                                            <option value="4">ACOS 20-24%</option>
-                                            <option value="3">ACOS 25-29%</option>
-                                            <option value="2">ACOS 30-34%</option>
-                                            <option value="1">ACOS ≥ 35%</option>
-                                            <option value="acos35spend10">ACOS>35% and SPEND >10</option>
+                                            <option value="">All</option>
+                                            <option value="8">&lt; 5%</option>
+                                            <option value="7">5-9%</option>
+                                            <option value="6">10-14%</option>
+                                            <option value="5">15-19%</option>
+                                            <option value="4">20-24%</option>
+                                            <option value="3">25-29%</option>
+                                            <option value="2">30-34%</option>
+                                            <option value="1">≥ 35%</option>
+                                            <option value="acos35spend10">&gt;35% &amp; SPEND &gt;10</option>
                                         </select>
                                     </div>
                                     <div class="col-md-1 d-flex gap-2">

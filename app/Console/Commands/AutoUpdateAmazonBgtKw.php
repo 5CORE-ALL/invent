@@ -74,22 +74,29 @@ class AutoUpdateAmazonBgtKw extends Command
             try {
                 $result = $updateKwBgts->updateAutoAmazonCampaignBgt($campaignIds, $newBgts);
                 
-                // Show only campaign name and new budget for valid campaigns
-                $simplifiedResult = $validCampaigns->map(function ($campaign) {
-                    return [
-                        'campaignName' => $campaign->campaignName ?? '',
-                        'newBudget' => $campaign->sbgt ?? 0
-                    ];
-                })->toArray();
+                // Show detailed campaign information for verification
+                $this->info("\n========================================");
+                $this->info("CAMPAIGN BUDGET UPDATE SUMMARY (KW)");
+                $this->info("========================================\n");
                 
-                $this->info("Update Result: " . json_encode($simplifiedResult));
+                foreach ($validCampaigns as $campaign) {
+                    $this->info("Campaign: " . ($campaign->campaignName ?? 'N/A'));
+                    $this->info("  Price: $" . number_format($campaign->price ?? 0, 2));
+                    $this->info("  ACOS: " . number_format($campaign->acos_L30 ?? 0, 2) . "%");
+                    $this->info("  New Budget: $" . ($campaign->sbgt ?? 0));
+                    $this->info("  Campaign ID: " . ($campaign->campaign_id ?? 'N/A'));
+                    $this->info("---");
+                }
+                
+                $this->info("\nTotal Campaigns: " . count($campaignIds));
+                $this->info("========================================\n");
                 
                 if (isset($result['status']) && $result['status'] !== 200) {
                     $this->error("Budget update failed: " . ($result['message'] ?? 'Unknown error'));
                     return 1;
                 }
                 
-                $this->info("Successfully updated " . count($campaignIds) . " campaign budgets.");
+                $this->info("Successfully prepared " . count($campaignIds) . " campaign budgets for update.");
                 
             } catch (\Exception $e) {
                 $this->error("Error updating campaign budgets: " . $e->getMessage());
@@ -232,55 +239,14 @@ class AutoUpdateAmazonBgtKw extends Command
             foreach ($validCampaignsForTotal as $row) {
                 $acos = (float) ($row['acos_L30'] ?? 0);
                 $price = (float) ($row['price'] ?? 0);
-                $spend = (float) ($row['spend'] ?? 0);
 
-                // If spend = 0 and ACOS = 0%, keep budget at $3
-                if ($spend == 0 && $acos == 0) {
-                    $row['sbgt'] = 3;
-                    $result[] = (object) $row;
-                    continue;
-                }
-
-                // If price is between 10-20, set budget to $1
-                if ($price >= 10 && $price <= 20) {
+                // New sbgt rule: Budget = 10% of price (rounded up)
+                // BUT if ACOS > 20%, then budget = $1
+                if ($acos > 20) {
                     $row['sbgt'] = 1;
-                    $result[] = (object) $row;
-                    continue;
-                }
-
-                // If price < $10 and L30 units ordered = 0, set budget to $1
-                $unitsOrderedL30 = (float) ($row['units_ordered_l30'] ?? 0);
-                if ($price < 10 && $unitsOrderedL30 == 0) {
-                    $row['sbgt'] = 1;
-                    $result[] = (object) $row;
-                    continue;
-                }
-
-                // ACOS-based sbgt rule
-                if ($acos < 5) {
-                    $acos_sbgt = 6;
-                } elseif ($acos < 10) {
-                    $acos_sbgt = 5;
-                } elseif ($acos < 15) {
-                    $acos_sbgt = 4;
-                } elseif ($acos < 20) {
-                    $acos_sbgt = 3;
-                } elseif ($acos < 25) {
-                    $acos_sbgt = 2;
                 } else {
-                    $acos_sbgt = 1;
+                    $row['sbgt'] = ceil($price * 0.10);
                 }
-
-                // Price-based sbgt rule (if applicable)
-                $price_sbgt = 0;
-                if ($price > 100) {
-                    $price_sbgt = 5;
-                } elseif ($price >= 50 && $price <= 100) {
-                    $price_sbgt = 3;
-                }
-
-                // Final sbgt is the higher of the ACOS-based and price-based rules
-                $row['sbgt'] = max($acos_sbgt, $price_sbgt);
 
                 $result[] = (object) $row;
             }
