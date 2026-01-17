@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'All Marketplace Master', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Active Channel', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -482,6 +482,28 @@
                             }
                         }
                     },
+                      {
+                        title: "Miss",
+                        field: "Miss",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            let style = '';
+                            
+                            if (value === 0) { 
+                                style = 'color:#28a745;'; // Green text
+                            } else if (value <= 20) { 
+                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;'; // Yellow bg with black text
+                            } else if (value <= 50) { 
+                                style = 'color:#ff6f00;'; // Dark Orange text
+                            } else { 
+                                style = 'color:#a00211;'; // Red text
+                            }
+                            
+                            return `<span style="${style}font-weight:600;">${value}</span>`;
+                        }
+                    },
                     {
                         title: "Map",
                         field: "Map",
@@ -504,28 +526,23 @@
                             return `<span style="${style}font-weight:600;">${value}</span>`;
                         }
                     },
-                    {
-                        title: "Miss",
-                        field: "Miss",
+                     {
+                        title: "Clicks",
+                        field: "clicks",
                         hozAlign: "center",
                         sorter: "number",
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
-                            let style = '';
-                            
-                            if (value === 0) { 
-                                style = 'color:#28a745;'; // Green text
-                            } else if (value <= 20) { 
-                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;'; // Yellow bg with black text
-                            } else if (value <= 50) { 
-                                style = 'color:#ff6f00;'; // Dark Orange text
-                            } else { 
-                                style = 'color:#a00211;'; // Red text
-                            }
-                            
-                            return `<span style="${style}font-weight:600;">${value}</span>`;
+                            if (value === 0) return '-';
+                            return `<span style="font-weight:600;">${value.toLocaleString('en-US')}</span>`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
                         }
                     },
+                  
                     {
                         title: "Sheet",
                         field: "sheet_link",
@@ -569,22 +586,7 @@
                             return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
                         }
                     },
-                    {
-                        title: "Clicks",
-                        field: "clicks",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
-                            if (value === 0) return '-';
-                            return `<span style="font-weight:600;">${value.toLocaleString('en-US')}</span>`;
-                        },
-                        bottomCalc: "sum",
-                        bottomCalcFormatter: function(cell) {
-                            const value = cell.getValue();
-                            return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
-                        }
-                    },
+                   
                     {
                         title: "Gprofit%",
                         field: "Gprofit%",
