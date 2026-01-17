@@ -223,6 +223,9 @@
                         <span class="badge bg-warning fs-6 p-2" style="color: black; font-weight: bold;">
                              Map: <span id="total-map">0</span>
                         </span>
+                        <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">
+                             NMap: <span id="total-nmap">0</span>
+                        </span>
                         <span class="badge bg-danger fs-6 p-2" style="color: white; font-weight: bold;">
                              Missing: <span id="total-miss">0</span>
                         </span>
@@ -536,6 +539,38 @@
                             const style = 'color:black;font-weight:600;';
                             
                             return `<span style="${style}">${value}</span>`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "NMap",
+                        field: "NMap",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            
+                            // Badge with color coding based on value
+                            let bg = '', color = 'white';
+                            if (value === 0) { 
+                                bg = '#00ff00'; 
+                                color = 'black'; 
+                            } else if (value <= 50) { 
+                                bg = '#ffff00'; 
+                                color = 'black'; 
+                            } else if (value <= 100) { 
+                                bg = '#ffa500'; 
+                            } else { 
+                                bg = '#ff0000'; 
+                            }
+                            
+                            const badgeStyle = `background:${bg};color:${color};padding:4px 10px;border-radius:6px;font-weight:bold;font-size:11px;display:inline-block;min-width:35px;text-align:center;`;
+                            
+                            return `<span style="${badgeStyle}">${value}</span>`;
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -1022,6 +1057,7 @@
                 let totalAdSpend = 0;
                 let totalMap = 0;
                 let totalMiss = 0;
+                let totalNMap = 0;
                 let gprofitSum = 0;
                 let groiSum = 0;
                 let npftSum = 0;
@@ -1041,6 +1077,7 @@
                     const cogs = parseNumber(row['cogs'] || 0);
                     const mapCount = parseNumber(row['Map'] || 0);
                     const missCount = parseNumber(row['Miss'] || 0);
+                    const nmapCount = parseNumber(row['NMap'] || 0);
                     
                     // Ad spend - handle Walmart, Temu, and Shopify B2C separately to avoid double counting
                     const kwSpent = parseNumber(row['KW Spent'] || 0);
@@ -1065,6 +1102,7 @@
                     totalCogs += cogs;
                     totalMap += mapCount;
                     totalMiss += missCount;
+                    totalNMap += nmapCount;
                     
                     // Calculate profit amount from percentage
                     const profitAmount = (gprofitPercent / 100) * l30Sales;
@@ -1105,6 +1143,7 @@
                 $('#avg-npft').text(avgNpft.toFixed(1) + '%');
                 $('#avg-nroi').text(avgNroi.toFixed(1) + '%');
                 $('#total-map').text(Math.round(totalMap).toLocaleString('en-US'));
+                $('#total-nmap').text(Math.round(totalNMap).toLocaleString('en-US'));
                 $('#total-miss').text(Math.round(totalMiss).toLocaleString('en-US'));
             }
 

@@ -131,7 +131,7 @@ class ChannelMasterController extends Controller
     }
 
     /**
-     * Get Map and Miss counts from amazon_channel_summary_data table
+     * Get Map, Miss, and NMap counts from amazon_channel_summary_data table
      * This is a generic helper that works for all channels
      */
     private function getMapAndMissCounts($channelName)
@@ -142,6 +142,7 @@ class ChannelMasterController extends Controller
         
         $mapCount = 0;
         $missCount = 0;
+        $nmapCount = 0;
         
         if ($summaryData && $summaryData->summary_data) {
             // Check for 'map_count', 'mapping_count', or 'mapped_count' field names
@@ -154,9 +155,23 @@ class ChannelMasterController extends Controller
             $missCount = $summaryData->summary_data['missing_count'] 
                       ?? $summaryData->summary_data['missing_amazon_count']
                       ?? 0;
+            
+            // Get nmap_count directly from summary data (check multiple possible field names)
+            $nmapCount = $summaryData->summary_data['nmap_count']
+                      ?? $summaryData->summary_data['not_mapped_count']
+                      ?? $summaryData->summary_data['not_map_count']
+                      ?? $summaryData->summary_data['nmapping_count']
+                      ?? $summaryData->summary_data['inv_stock_count']  // eBay 3
+                      ?? $summaryData->summary_data['inv_r_stock_count']  // Reverb
+                      ?? $summaryData->summary_data['inv_tt_stock_count']  // TikTok
+                      ?? 0;
         }
         
-        return ['map' => $mapCount, 'miss' => $missCount];
+        return [
+            'map' => $mapCount, 
+            'miss' => $missCount,
+            'nmap' => $nmapCount
+        ];
     }
 
     /**
@@ -532,6 +547,7 @@ class ChannelMasterController extends Controller
             'cogs'       => round($totalCogs, 2),
             'Map'        => $mapMissCounts['map'],
             'Miss'       => $mapMissCounts['miss'],
+            'NMap'       => $mapMissCounts['nmap'],
         ];
 
         return response()->json([
@@ -730,6 +746,7 @@ class ChannelMasterController extends Controller
             'cogs'       => round($totalCogs, 2),
             'Map'        => $mapMissCounts['map'],
             'Miss'       => $mapMissCounts['miss'],
+            'NMap'       => $mapMissCounts['nmap'],
         ];
 
         return response()->json([
@@ -864,6 +881,7 @@ class ChannelMasterController extends Controller
             'cogs'       => round($totalCogs, 2),
             'Map'        => $mapMissCounts['map'],
             'Miss'       => $mapMissCounts['miss'],
+            'NMap'       => $mapMissCounts['nmap'],
         ];
 
         return response()->json([
@@ -1018,6 +1036,7 @@ class ChannelMasterController extends Controller
             'cogs'       => round($totalCogs, 2),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
+            'NMap' => $mapMissCounts['nmap'],
         ];
 
         return response()->json([
@@ -1131,6 +1150,7 @@ class ChannelMasterController extends Controller
             'cogs'       => round($totalCogs, 2),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
+            'NMap' => $mapMissCounts['nmap'],
         ];
 
         return response()->json([
@@ -1293,6 +1313,7 @@ class ChannelMasterController extends Controller
             'cogs'       => round($totalCogs, 2),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
+            'NMap' => $mapMissCounts['nmap'],
         ];
 
         return response()->json([
@@ -1409,6 +1430,7 @@ class ChannelMasterController extends Controller
             'cogs'       => round($totalCogs, 2),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
+            'NMap' => $mapMissCounts['nmap'],
         ];
 
         return response()->json([
@@ -1516,6 +1538,7 @@ class ChannelMasterController extends Controller
             'cogs'       => round($totalCogs, 2),
             'Map'        => $mapMissCounts['map'],
             'Miss'       => $mapMissCounts['miss'],
+            'NMap'       => $mapMissCounts['nmap'],
         ];
 
         return response()->json([
@@ -1812,6 +1835,7 @@ class ChannelMasterController extends Controller
             'cogs'       => round($totalCogs, 2),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
+            'NMap' => $mapMissCounts['nmap'],
         ];
         
         return response()->json([
@@ -1916,6 +1940,7 @@ class ChannelMasterController extends Controller
             'cogs'       => round($totalCogs, 2),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
+            'NMap' => $mapMissCounts['nmap'],
         ];
 
         return response()->json([
@@ -2026,6 +2051,7 @@ class ChannelMasterController extends Controller
             'cogs'       => round($totalCogs, 2),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
+            'NMap' => $mapMissCounts['nmap'],
         ];
 
         return response()->json([
@@ -2196,6 +2222,7 @@ class ChannelMasterController extends Controller
             'cogs'       => round($totalCogs, 2),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
+            'NMap' => $mapMissCounts['nmap'],
         ];
 
         return response()->json([
@@ -2364,6 +2391,7 @@ class ChannelMasterController extends Controller
             'cogs'       => round($totalCogs, 2),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
+            'NMap' => $mapMissCounts['nmap'],
         ];
 
         return response()->json([
@@ -2526,6 +2554,7 @@ class ChannelMasterController extends Controller
             'cogs'       => round($totalCogs, 2),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
+            'NMap' => $mapMissCounts['nmap'],
         ];
 
         return response()->json([
@@ -2593,6 +2622,7 @@ class ChannelMasterController extends Controller
             'cogs'       => round($totalCogs, 2),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
+            'NMap' => $mapMissCounts['nmap'],
         ];
 
         return response()->json([
@@ -3045,6 +3075,7 @@ class ChannelMasterController extends Controller
             'cogs'       => round($totalCogs, 2),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
+            'NMap' => $mapMissCounts['nmap'],
         ];
 
         return response()->json([
@@ -3152,6 +3183,7 @@ class ChannelMasterController extends Controller
             'cogs'       => round($totalCogs, 2),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
+            'NMap' => $mapMissCounts['nmap'],
         ];
 
         return response()->json([
@@ -3262,6 +3294,7 @@ class ChannelMasterController extends Controller
             'cogs'       => round($totalCogs, 2),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
+            'NMap' => $mapMissCounts['nmap'],
         ];
 
         return response()->json([
@@ -3368,6 +3401,7 @@ class ChannelMasterController extends Controller
             'cogs'       => round($totalCogs, 2),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
+            'NMap' => $mapMissCounts['nmap'],
         ];
 
         return response()->json([
@@ -3535,6 +3569,7 @@ class ChannelMasterController extends Controller
             'cogs'       => round($totalCogs, 2),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
+            'NMap' => $mapMissCounts['nmap'],
         ];
 
         return response()->json([
@@ -3702,6 +3737,7 @@ class ChannelMasterController extends Controller
             'cogs'       => round($totalCogs, 2),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
+            'NMap' => $mapMissCounts['nmap'],
         ];
 
         return response()->json([
@@ -3834,6 +3870,7 @@ class ChannelMasterController extends Controller
             'cogs'       => round($totalCogs, 2),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
+            'NMap' => $mapMissCounts['nmap'],
         ];
 
         return response()->json([
@@ -3966,6 +4003,7 @@ class ChannelMasterController extends Controller
             'cogs'       => round($totalCogs, 2),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
+            'NMap' => $mapMissCounts['nmap'],
         ];
 
         return response()->json([
@@ -4044,6 +4082,7 @@ class ChannelMasterController extends Controller
             'cogs'       => round($totalCogs, 2),
             'Map'        => $mapMissCounts['map'],
             'Miss'       => $mapMissCounts['miss'],
+            'NMap'       => $mapMissCounts['nmap'],
         ];
 
         return response()->json([
@@ -4158,6 +4197,7 @@ class ChannelMasterController extends Controller
             'cogs'       => round($totalCogs, 2),
             'Map' => $mapMissCounts['map'],
             'Miss' => $mapMissCounts['miss'],
+            'NMap' => $mapMissCounts['nmap'],
         ];
 
         return response()->json([
@@ -5248,6 +5288,7 @@ class ChannelMasterController extends Controller
                     'stock_mapping' => intval($row['Stock Mapping'] ?? 0),
                     'map_count' => intval($row['Map'] ?? 0),
                     'miss_count' => intval($row['Miss'] ?? 0),
+                    'nmap_count' => intval($row['NMap'] ?? 0),
                     'nr_count' => intval($row['NR'] ?? 0),
                     'listed_count' => intval($row['listed_count'] ?? 0),
                     

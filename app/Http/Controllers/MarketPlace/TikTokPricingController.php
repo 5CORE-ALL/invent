@@ -614,7 +614,8 @@ class TikTokPricingController extends Controller
                 'zero_sold_count' => $zeroSoldCount,
                 'missing_count' => $missingCount,
                 'map_count' => $mapCount,
-                'inv_tt_stock_count' => $invTTStockCount,
+                'nmap_count' => $invTTStockCount,  // Not mapped (inventory mismatch)
+                'inv_tt_stock_count' => $invTTStockCount,  // Keep for backward compatibility
                 
                 // Financial Totals
                 'total_pft' => round($totalPft, 2),

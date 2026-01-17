@@ -2602,6 +2602,20 @@
                             return `<span style="background:${bg};color:${color};padding:2px 6px;border-radius:4px;">${n}</span>`;
                         }
                     },
+                    // NMap column (Not Mapped)
+                    {
+                        data: 'NMap',
+                        render: function (v, type) {
+                            const n = toNum(v);
+                            if (type === 'sort' || type === 'type') return n;
+                            let bg = '', color = 'white';
+                            if (n === 0) { bg = '#00ff00'; color = 'black'; } // Green: all mapped
+                            else if (n <= 50) { bg = '#ffff00'; color = 'black'; } // Yellow: 1-50
+                            else if (n <= 100) { bg = '#ffa500'; } // Orange: 51-100
+                            else { bg = '#ff0000'; } // Red: above 100
+                            return `<span class="badge" style="background:${bg};color:${color};padding:4px 8px;border-radius:6px;font-weight:bold;font-size:11px;">${n}</span>`;
+                        }
+                    },
                     {
                         data: null,
                         render: function (v, t, row) {
@@ -2729,6 +2743,7 @@
                                     'Achieved': toNum(pick(item, ['base', 'Base'], 0), 0),
                                     'Map': toNum(pick(item, ['Map', 'map', 'map_count'], 0), 0),
                                     'Miss': toNum(pick(item, ['Miss', 'miss', 'missing_count'], 0), 0),
+                                    'NMap': toNum(pick(item, ['NMap', 'nmap', 'nmap_count'], 0), 0),
                                 };
                             });
 

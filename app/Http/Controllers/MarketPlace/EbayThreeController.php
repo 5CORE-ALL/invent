@@ -1793,7 +1793,8 @@ class EbayThreeController extends Controller
                 'zero_sold_count' => $zeroSoldCount,
                 'missing_count' => $missingCount,
                 'map_count' => $mapCount,
-                'inv_stock_count' => $invStockCount,
+                'nmap_count' => $invStockCount,  // Not mapped (inventory mismatch)
+                'inv_stock_count' => $invStockCount,  // Keep for backward compatibility
                 'less_amz_count' => $lessAmzCount,
                 'more_amz_count' => $moreAmzCount,
                 

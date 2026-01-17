@@ -96,7 +96,6 @@
                         <option value="1-2">1-2%</option>
                         <option value="2-3">2-3%</option>
                         <option value="3-4">3-4%</option>
-                        <option value="0-4">0-4%</option>
                         <option value="4-7">4-7%</option>
                         <option value="7-10">7-10%</option>
                         <option value="10plus">10%+</option>
@@ -2740,7 +2739,6 @@
                         if (cvrFilter === '1-2') return cvr > 1 && cvr <= 2;
                         if (cvrFilter === '2-3') return cvr > 2 && cvr <= 3;
                         if (cvrFilter === '3-4') return cvr > 3 && cvr <= 4;
-                        if (cvrFilter === '0-4') return cvr >= 0 && cvr <= 4;
                         if (cvrFilter === '4-7') return cvr > 4 && cvr <= 7;
                         if (cvrFilter === '7-10') return cvr > 7 && cvr <= 10;
                         if (cvrFilter === '10plus') return cvr > 10;

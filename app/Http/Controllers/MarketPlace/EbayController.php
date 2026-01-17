@@ -2132,7 +2132,8 @@ class EbayController extends Controller
                 'zero_sold_count' => $zeroSoldCount,
                 'missing_count' => $missingCount,
                 'map_count' => $mapCount,
-                'not_map_count' => $notMapCount,
+                'nmap_count' => $notMapCount,  // Renamed from not_map_count for consistency
+                'not_map_count' => $notMapCount,  // Keep for backward compatibility
                 'less_amz_count' => $lessAmzCount,
                 'more_amz_count' => $moreAmzCount,
                 'prc_gt_lmp_count' => $prcGtLmpCount,
