@@ -144,9 +144,10 @@ class ChannelMasterController extends Controller
         $missCount = 0;
         
         if ($summaryData && $summaryData->summary_data) {
-            // Check for both 'map_count' and 'mapping_count' field names
+            // Check for 'map_count', 'mapping_count', or 'mapped_count' field names
             $mapCount = $summaryData->summary_data['map_count'] 
-                     ?? $summaryData->summary_data['mapping_count'] 
+                     ?? $summaryData->summary_data['mapping_count']
+                     ?? $summaryData->summary_data['mapped_count']
                      ?? 0;
             
             // Check for both 'missing_count' and 'missing_amazon_count' field names
