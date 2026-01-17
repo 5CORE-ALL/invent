@@ -93,4 +93,8 @@ return [
         'api_base' => env('TIKTOK_API_BASE', 'https://open-api.tiktokglobalshop.com'),
         'shop_id' => env('TIKTOK_SHOP_ID'),
     ],
+
+    'serpapi' => [
+        'key' => env('SERPAPI_KEY'),
+    ],
 ];

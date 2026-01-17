@@ -2994,6 +2994,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(TiktokAdsController::class)->group(function () {
         Route::get('/tiktok/ads', 'index')->name('tiktokshop.ads');
     });
+    Route::prefix('repricer/amazon-search')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Repricer\AmazonSearchController::class, 'index']);
+        Route::post('/search', [\App\Http\Controllers\Repricer\AmazonSearchController::class, 'search']);
+        Route::get('/history', [\App\Http\Controllers\Repricer\AmazonSearchController::class, 'getSearchHistory']);
+        Route::get('/results', [\App\Http\Controllers\Repricer\AmazonSearchController::class, 'getResults']);
+    });
 
     Route::get('/facebook-image-ads', [FacebookAdsController::class, 'facebookImageAds'])->name('facebook.image.ads');
     Route::get('/facebook-image-ads-data', [FacebookAdsController::class, 'facebookImageAdsData'])->name('facebook.image.ads.data');
@@ -3069,6 +3075,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('{first}/{second}/{third}', [RoutingController::class, 'thirdLevel'])->name('third');
     Route::post('/ebay-product-price-update', [EbayDataUpdateController::class, 'updatePrice'])->name('ebay_product_price_update');
 
+    // Amazon Competitor Search Routes
+   
     Route::get('{any}', [RoutingController::class, 'root'])->name('any');
 
 
