@@ -108,7 +108,7 @@ class Kernel extends ConsoleKernel
             }
         })->everyFiveMinutes()->name('clear-laravel-log');
 
-
+$schedule->command('amazon:sync-inventory')->everySixHours();
         // All commands running every 5 minutes
         $schedule->command('shopify:save-daily-inventory')
             ->everyFiveMinutes()

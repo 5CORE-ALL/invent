@@ -134,7 +134,10 @@
                                 </ul>
                             </div>
                             <button id="show-all-columns-btn" type="button" class="btn btn-sm btn-outline-secondary me-2">
-                                <i class="fa fa-eye"></i> Show All
+                                <i class="fa fa-eye"></i> Show All Columns
+                            </button>
+                            <button id="reset-all-filters-btn" type="button" class="btn btn-sm btn-warning me-2">
+                                <i class="fa fa-filter-circle-xmark"></i> Show All Data
                             </button>
                             <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal"
                                 data-bs-target="#importModal">
@@ -1740,7 +1743,10 @@
                     }
 
                     if (nrlFbaFilter !== 'all') {
+                        console.log('Applying NRL FBA filter:', nrlFbaFilter);
                         table.addFilter('NRL_FBA', '=', nrlFbaFilter);
+                    } else {
+                        console.log('NRL FBA filter is "all" - not applying filter');
                     }
 
                     if (suggSendFilter !== 'all') {
@@ -1801,6 +1807,8 @@
                 });
 
                 $('#nrl-fba-filter').on('change', function() {
+                    const selectedValue = $(this).val();
+                    console.log('NRL FBA Filter changed to:', selectedValue);
                     applyFilters();
                     updateSuggSendBadge();
                 });
@@ -1808,6 +1816,21 @@
                 $('#sugg-send-filter').on('change', function() {
                     applyFilters();
                     updateSuggSendBadge();
+                });
+
+                // Reset All Filters button - shows ALL data
+                $('#reset-all-filters-btn').on('click', function() {
+                    console.log('Reset All Filters clicked - showing ALL data');
+                    $('#inventory-filter').val('all');
+                    $('#parent-filter').val('show');
+                    $('#pft-filter').val('all');
+                    $('#nrl-fba-filter').val('all');
+                    $('#sugg-send-filter').val('all');
+                    $('#sku-search').val('');
+                    skuSearch = '';
+                    applyFilters();
+                    updateSuggSendBadge();
+                    showToast('All filters reset - showing all data', 'info');
                 });
 
                 // Apply filters on initial load (to hide parents by default)
@@ -1920,8 +1943,8 @@
                 }
 
                 function applyColumnVisibilityFromServer() {
-                    // Columns that should always be hidden by default (Pft% related columns and CTN columns)
-                    const alwaysHiddenColumns = ["ROI%", "S_Price", "SPft%", "SROI%", "lmp_1", "Length", "Width", "Height", "Quantity_in_each_box", "GW_CTN", "Shipping_Amount"];
+                    // Columns that should be hidden by default on initial load (but can be shown via "Show All")
+                    const defaultHiddenColumns = ["ROI%", "S_Price", "SPft%", "SROI%", "lmp_1", "Length", "Width", "Height", "Quantity_in_each_box", "GW_CTN", "Shipping_Amount"];
 
                     fetch('/fba-dispatch-column-visibility', {
                             method: 'GET',
@@ -1934,8 +1957,8 @@
                             table.getColumns().forEach(col => {
                                 const def = col.getDefinition();
                                 if (def.field) {
-                                    // Force hide Pft% related columns (ignore saved preferences)
-                                    if (alwaysHiddenColumns.includes(def.field)) {
+                                    // Hide columns that should be hidden by default on initial load
+                                    if (defaultHiddenColumns.includes(def.field)) {
                                         col.hide();
                                     } else if (savedVisibility[def.field] !== undefined) {
                                         // Apply saved preferences for other columns
@@ -1957,20 +1980,19 @@
                     buildColumnDropdown();
                 }, 500);
 
-                // Show All Columns button
+                // Show All Columns button - now shows ALL columns including S_Price, SPft%, etc.
                 document.getElementById("show-all-columns-btn").addEventListener("click", function() {
-                    // Columns that should always be hidden (Pft% related columns and CTN columns)
-                    const alwaysHiddenColumns = ["ROI%", "S_Price", "SPft%", "SROI%", "lmp_1", "Length", "Width", "Height", "Quantity_in_each_box", "GW_CTN", "Shipping_Amount"];
-
+                    console.log('Show All Columns clicked - showing ALL columns');
+                    
                     table.getColumns().forEach(col => {
                         const def = col.getDefinition();
-                        // Don't show Pft% related columns even when "Show All" is clicked
-                        if (def.field && !alwaysHiddenColumns.includes(def.field)) {
-                            col.show();
+                        if (def.field) {
+                            col.show(); // Show ALL columns, no exceptions
                         }
                     });
                     buildColumnDropdown();
                     saveColumnVisibilityToServer();
+                    showToast('All columns are now visible', 'info');
                 });
 
                 // Toggle column from dropdown
