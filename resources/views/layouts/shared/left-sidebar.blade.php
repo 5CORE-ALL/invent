@@ -1672,6 +1672,36 @@
                 </a>
             </li>
 
+            {{-- LMP's Master --}}
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#lmpsMaster" aria-expanded="false"
+                    aria-controls="lmpsMaster" class="side-nav-link">
+                    <i class="ri-price-tag-3-line"></i>
+                    <span>LMP's Master</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="lmpsMaster">
+                    <ul class="side-nav-second-level">
+                        <li class="side-nav-item">
+                            <a data-bs-toggle="collapse" href="#amazonLmps" aria-expanded="false"
+                                aria-controls="amazonLmps">
+                                <span>Amazon LMP's</span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <div class="collapse" id="amazonLmps">
+                                <ul class="side-nav-third-level">
+                                    <li>
+                                        <a href="{{ url('/repricer/amazon-search') }}" class="{{ request()->is('repricer/amazon-search*') ? 'active' : '' }}">
+                                            Amazon Competitors
+                                        </a>
+                                    </li>
+                                </ul>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#sidebarLayouts" aria-expanded="false"
                     aria-controls="sidebarLayouts" class="side-nav-link">

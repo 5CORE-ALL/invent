@@ -4,9 +4,13 @@ namespace App\Http\Controllers\Repricer;
 
 use App\Http\Controllers\Controller;
 use App\Models\AmazonCompetitorAsin;
+use App\Models\AmazonSkuCompetitor;
+use App\Models\AmazonDatasheet;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class AmazonSearchController extends Controller
 {
@@ -60,7 +64,7 @@ class AmazonSearchController extends Controller
 
                 if (!$response->successful()) {
                     // Log the error response for debugging
-                    \Log::error('SerpApi Error Response', [
+                    Log::error('SerpApi Error Response', [
                         'status' => $response->status(),
                         'body' => $response->body(),
                     ]);
@@ -157,7 +161,7 @@ class AmazonSearchController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            \Log::error('SerpApi Exception', [
+            Log::error('SerpApi Exception', [
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
@@ -228,5 +232,99 @@ class AmazonSearchController extends Controller
             'total_results' => $results->count(),
             'data' => $results
         ]);
+    }
+
+    /**
+     * Get SKUs for dropdown
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getSkus()
+    {
+        // Get unique SKUs from amazon_datsheets
+        $skus = AmazonDatasheet::select('sku')
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '')
+            ->distinct()
+            ->orderBy('sku', 'asc')
+            ->limit(1000)
+            ->pluck('sku');
+
+        return response()->json([
+            'success' => true,
+            'data' => $skus
+        ]);
+    }
+
+    /**
+     * Store selected competitors mapped to SKUs
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function storeCompetitors(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'competitors' => 'required|array',
+            'competitors.*.asin' => 'required|string',
+            'competitors.*.sku' => 'required|string',
+            'competitors.*.marketplace' => 'nullable|string',
+            'competitors.*.product_title' => 'nullable|string',
+            'competitors.*.product_link' => 'nullable|string',
+            'competitors.*.price' => 'nullable|numeric',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $competitors = $request->input('competitors');
+        $created = 0;
+        $updated = 0;
+
+        try {
+            foreach ($competitors as $competitor) {
+                $result = AmazonSkuCompetitor::updateOrCreate(
+                    [
+                        'sku' => $competitor['sku'],
+                        'asin' => $competitor['asin'],
+                    ],
+                    [
+                        'marketplace' => $competitor['marketplace'] ?? 'amazon',
+                        'product_title' => $competitor['product_title'] ?? null,
+                        'product_link' => $competitor['product_link'] ?? null,
+                        'price' => $competitor['price'] ?? null,
+                    ]
+                );
+
+                if ($result->wasRecentlyCreated) {
+                    $created++;
+                } else {
+                    $updated++;
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => "Created {$created} new mappings, updated {$updated} existing mappings",
+                'created' => $created,
+                'updated' => $updated
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Store Competitors Error', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error storing competitor mappings',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 }
