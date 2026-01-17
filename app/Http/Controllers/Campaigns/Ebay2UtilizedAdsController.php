@@ -1097,7 +1097,19 @@ class Ebay2UtilizedAdsController extends Controller
             }
         }
 
-        // Add last_sbid, sbid_m, and apprSbid to campaignMap
+        // Fetch pink_dil_paused_at from L30 records
+        $pinkDilPausedMap = [];
+        $pinkDilPausedReports = Ebay2PriorityReport::where('report_range', 'L30')
+            ->whereNotNull('pink_dil_paused_at')
+            ->get();
+        
+        foreach ($pinkDilPausedReports as $report) {
+            if (!empty($report->campaign_id)) {
+                $pinkDilPausedMap[$report->campaign_id] = $report->pink_dil_paused_at ? $report->pink_dil_paused_at->toDateTimeString() : null;
+            }
+        }
+
+        // Add last_sbid, sbid_m, apprSbid, and pink_dil_paused_at to campaignMap
         foreach ($campaignMap as $key => $row) {
             $campaignId = $row['campaign_id'] ?? '';
             if (!empty($campaignId)) {
@@ -1118,10 +1130,17 @@ class Ebay2UtilizedAdsController extends Controller
                 } else {
                     $campaignMap[$key]['apprSbid'] = '';
                 }
+                
+                if (isset($pinkDilPausedMap[$campaignId])) {
+                    $campaignMap[$key]['pink_dil_paused_at'] = $pinkDilPausedMap[$campaignId];
+                } else {
+                    $campaignMap[$key]['pink_dil_paused_at'] = null;
+                }
             } else {
                 $campaignMap[$key]['last_sbid'] = '';
                 $campaignMap[$key]['sbid_m'] = '';
                 $campaignMap[$key]['apprSbid'] = '';
+                $campaignMap[$key]['pink_dil_paused_at'] = null;
             }
         }
 
@@ -1733,22 +1752,9 @@ class Ebay2UtilizedAdsController extends Controller
             // Calculate SBID using the same logic as blade file
             $sbid = 0;
             
-            // Special rule: If UB7 = 0% and UB1 = 0%, use price-based SBID
-            if ($ub7 == 0 && $ub1 == 0) {
-                if ($price < 20) {
-                    $sbid = 0.20;
-                } elseif ($price >= 20 && $price < 50) {
-                    $sbid = 0.75;
-                } elseif ($price >= 50 && $price < 100) {
-                    $sbid = 1.00;
-                } elseif ($price >= 100 && $price < 200) {
-                    $sbid = 1.50;
-                } else {
-                    $sbid = 2.00;
-                }
-            } 
             // Rule: If both UB7 and UB1 are above 99%, set SBID as L1_CPC * 0.90
-            elseif ($ub7 > 99 && $ub1 > 99) {
+            // Note: Removed special case for ub7 === 0 && ub1 === 0 to allow UB1-based rules to apply (matching view file)
+            if ($ub7 > 99 && $ub1 > 99) {
                 if ($l1Cpc > 0) {
                     $sbid = floor($l1Cpc * 0.90 * 100) / 100;
                 } elseif ($l7Cpc > 0) {
@@ -1790,42 +1796,40 @@ class Ebay2UtilizedAdsController extends Controller
                         $sbid = min($sbid, 0.20);
                     }
                 } elseif ($isUnderUtilized) {
-                    // Check if UB7 and UB1 are both 0% (already handled above, but keep for consistency)
-                    if ($ub7 == 0 && $ub1 == 0) {
-                        if ($price < 20) {
-                            $sbid = 0.20;
-                        } elseif ($price >= 20 && $price < 50) {
-                            $sbid = 0.75;
-                        } elseif ($price >= 50 && $price < 100) {
-                            $sbid = 1.00;
-                        } elseif ($price >= 100 && $price < 200) {
-                            $sbid = 1.50;
+                    // New UB1-based bid increase rules (matching view file logic exactly)
+                    // Get base bid from last_sbid, fallback to L1_CPC or L7_CPC if last_sbid is 0
+                    $lastSbidRaw = isset($row->last_sbid) ? $row->last_sbid : '';
+                    $baseBid = 0;
+                    
+                    // Parse last_sbid, treat empty/0 as 0 (exact match with view file)
+                    if (empty($lastSbidRaw) || $lastSbidRaw === '' || $lastSbidRaw === '0' || $lastSbidRaw === 0) {
+                        $baseBid = 0;
+                    } else {
+                        $baseBid = floatval($lastSbidRaw);
+                        if (is_nan($baseBid)) {
+                            $baseBid = 0;
+                        }
+                    }
+                    
+                    // If last_sbid is 0, use L1_CPC or L7_CPC as fallback (exact match with view file)
+                    if ($baseBid === 0) {
+                        $baseBid = ($l1Cpc && !is_nan($l1Cpc) && $l1Cpc > 0) ? $l1Cpc : (($l7Cpc && !is_nan($l7Cpc) && $l7Cpc > 0) ? $l7Cpc : 0);
+                    }
+                    
+                    if ($baseBid > 0) {
+                        // If UB1 < 33%: increase bid by 0.10
+                        if ($ub1 < 33) {
+                            $sbid = floor(($baseBid + 0.10) * 100) / 100;
+                        }
+                        // If UB1 is 33% to 66%: increase bid by 10%
+                        elseif ($ub1 >= 33 && $ub1 < 66) {
+                            $sbid = floor(($baseBid * 1.10) * 100) / 100;
                         } else {
-                            $sbid = 2.00;
+                            // For UB1 >= 66%, use base bid (no increase)
+                            $sbid = floor($baseBid * 100) / 100;
                         }
                     } else {
-                        // Use L1CPC if available (not 0, not NaN), otherwise use L7CPC
-                        $cpcToUse = ($l1Cpc && !is_nan($l1Cpc) && $l1Cpc > 0) ? $l1Cpc : (($l7Cpc && !is_nan($l7Cpc) && $l7Cpc > 0) ? $l7Cpc : 0);
-                        if ($cpcToUse > 0) {
-                            // Ensure numeric comparison
-                            $cpcToUse = floatval($cpcToUse);
-                            if ($cpcToUse < 0.10) {
-                                $sbid = floor($cpcToUse * 2.00 * 100) / 100;
-                            } elseif ($cpcToUse >= 0.10 && $cpcToUse <= 0.20) {
-                                $sbid = floor($cpcToUse * 1.50 * 100) / 100;
-                            } elseif ($cpcToUse >= 0.21 && $cpcToUse <= 0.30) {
-                                $sbid = floor($cpcToUse * 1.25 * 100) / 100;
-                            } else {
-                                $sbid = floor($cpcToUse * 1.10 * 100) / 100;
-                            }
-                            
-                            // Price cap: If price < $20, cap SBID at 0.20
-                            if ($price < 20) {
-                                $sbid = min($sbid, 0.20);
-                            }
-                        } else {
-                            $sbid = 0;
-                        }
+                        $sbid = 0;
                     }
                 } else {
                     // Correctly-utilized: use L1_CPC * 0.90, fallback to L7_CPC if L1_CPC is 0
@@ -1868,7 +1872,7 @@ class Ebay2UtilizedAdsController extends Controller
                 
                 // Single query to update all records - only for yesterday's date (Y-m-d format)
                 // Save to last_sbid column for tracking purposes
-                // Only update if last_sbid is NULL (not already saved) to avoid duplicate saves
+                // Always update with new calculated SBID value (removed NULL check to allow recalculation)
                 // report_range should be the date in Y-m-d format (not L1, L7, L30)
                 DB::statement("
                     UPDATE ebay_2_priority_reports 
@@ -1877,7 +1881,6 @@ class Ebay2UtilizedAdsController extends Controller
                     AND report_range = ?
                     AND report_range NOT IN ('L7', 'L1', 'L30')
                     AND campaignStatus = 'RUNNING'
-                    AND (last_sbid IS NULL OR last_sbid = '')
                 ", array_merge($bindings, $campaignIds, [$yesterday]));
             }
         }

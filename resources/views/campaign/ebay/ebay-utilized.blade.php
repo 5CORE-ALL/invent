@@ -381,6 +381,12 @@
                                                 <span style="font-size: 0.7rem; margin-right: 4px;">AVG CVR:</span>
                                                 <span class="fw-bold" id="avg-cvr" style="font-size: 1.1rem; color: black;">0</span>
                                             </span>
+                                            <span class="badge-count-item paused-campaigns-card" id="paused-campaigns-card"
+                                                style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;"
+                                                title="Click to view paused campaigns">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">PINK DIL PAUSED:</span>
+                                                <span class="fw-bold" id="paused-campaigns-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
                                         </div>
                                     </div>
                                 </div>
@@ -618,6 +624,7 @@
             </div>
         </div>
     </div>
+
 @endsection
 
 @section('script')
@@ -636,11 +643,13 @@
             let showNrlOnly = false; // Filter for NRL only
             let showRaOnly = false; // Filter for RA only
             let showEbaySkuOnly = false; // Filter for eBay SKUs only
+            let showPinkDilPausedOnly = false; // Filter for Pink DIL paused campaigns only
             let totalACOSValue = 0;
             let totalL30Spend = 0;
             let totalL30Sales = 0;
             let totalSkuCountFromBackend = 0; // Store total SKU count from backend
             let ebaySkuCountFromBackend = 0; // Store eBay SKU count from backend
+            let pausedCampaignsData = null; // Store paused campaigns data from backend
             
             // Multi range filter variables - allows multiple filters simultaneously
             let rangeFilters = {
@@ -1108,6 +1117,9 @@
                     // Reset eBay SKU filter
                     showEbaySkuOnly = false;
                     document.getElementById('ebay-sku-card').style.boxShadow = '';
+                    // Reset Pink DIL Paused filter
+                    showPinkDilPausedOnly = false;
+                    document.getElementById('paused-campaigns-card').style.boxShadow = '';
                     this.style.boxShadow = '0 4px 12px rgba(6, 182, 212, 0.5)';
                 } else {
                     this.style.boxShadow = '';
@@ -1151,6 +1163,9 @@
                     // Reset eBay SKU filter
                     showEbaySkuOnly = false;
                     document.getElementById('ebay-sku-card').style.boxShadow = '';
+                    // Reset Pink DIL Paused filter
+                    showPinkDilPausedOnly = false;
+                    document.getElementById('paused-campaigns-card').style.boxShadow = '';
                     this.style.boxShadow = '0 4px 12px rgba(220, 53, 69, 0.5)';
                 } else {
                     this.style.boxShadow = '';
@@ -1194,6 +1209,9 @@
                     // Reset eBay SKU filter
                     showEbaySkuOnly = false;
                     document.getElementById('ebay-sku-card').style.boxShadow = '';
+                    // Reset Pink DIL Paused filter
+                    showPinkDilPausedOnly = false;
+                    document.getElementById('paused-campaigns-card').style.boxShadow = '';
                     this.style.boxShadow = '0 4px 12px rgba(255, 193, 7, 0.5)';
                 } else {
                     this.style.boxShadow = '';
@@ -1237,6 +1255,9 @@
                     // Reset eBay SKU filter
                     showEbaySkuOnly = false;
                     document.getElementById('ebay-sku-card').style.boxShadow = '';
+                    // Reset Pink DIL Paused filter
+                    showPinkDilPausedOnly = false;
+                    document.getElementById('paused-campaigns-card').style.boxShadow = '';
                     this.style.boxShadow = '0 4px 12px rgba(245, 158, 11, 0.5)';
                 } else {
                     this.style.boxShadow = '';
@@ -1281,6 +1302,9 @@
                     // Reset eBay SKU filter
                     showEbaySkuOnly = false;
                     document.getElementById('ebay-sku-card').style.boxShadow = '';
+                    // Reset Pink DIL Paused filter
+                    showPinkDilPausedOnly = false;
+                    document.getElementById('paused-campaigns-card').style.boxShadow = '';
                     this.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.5)';
                 } else {
                     this.style.boxShadow = '';
@@ -1324,6 +1348,9 @@
                     // Reset eBay SKU filter
                     showEbaySkuOnly = false;
                     document.getElementById('ebay-sku-card').style.boxShadow = '';
+                    // Reset Pink DIL Paused filter
+                    showPinkDilPausedOnly = false;
+                    document.getElementById('paused-campaigns-card').style.boxShadow = '';
                     this.style.boxShadow = '0 4px 12px rgba(255, 193, 7, 0.5)';
                 } else {
                     this.style.boxShadow = '';
@@ -1368,6 +1395,9 @@
                     // Reset eBay SKU filter
                     showEbaySkuOnly = false;
                     document.getElementById('ebay-sku-card').style.boxShadow = '';
+                    // Reset Pink DIL Paused filter
+                    showPinkDilPausedOnly = false;
+                    document.getElementById('paused-campaigns-card').style.boxShadow = '';
                     this.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.5)';
                 } else {
                     this.style.boxShadow = '';
@@ -1412,6 +1442,9 @@
                     // Reset eBay SKU filter
                     showEbaySkuOnly = false;
                     document.getElementById('ebay-sku-card').style.boxShadow = '';
+                    // Reset Pink DIL Paused filter
+                    showPinkDilPausedOnly = false;
+                    document.getElementById('paused-campaigns-card').style.boxShadow = '';
                     this.style.boxShadow = '0 4px 12px rgba(34, 197, 94, 0.5)';
                 } else {
                     this.style.boxShadow = '';
@@ -1421,6 +1454,50 @@
                     table.setFilter(combinedFilter);
                     table.redraw(true);
                     updateButtonCounts();
+                    setTimeout(updatePaginationCount, 100);
+                }
+            });
+
+            // Paused campaigns card click handler - filter table instead of showing modal
+            document.getElementById('paused-campaigns-card').addEventListener('click', function() {
+                showPinkDilPausedOnly = !showPinkDilPausedOnly;
+                if (showPinkDilPausedOnly) {
+                    // Reset dropdown to "All" when showing paused only
+                    document.getElementById('utilization-type-select').value = 'all';
+                    currentUtilizationType = 'all';
+                    // Show SBID column when showing all
+                    if (typeof table !== 'undefined' && table) {
+                        table.showColumn('sbid');
+                    }
+                    // Reset other filters
+                    showMissingOnly = false;
+                    document.getElementById('missing-campaign-card').style.boxShadow = '';
+                    showNraMissingOnly = false;
+                    document.getElementById('nra-missing-card').style.boxShadow = '';
+                    showNrlMissingOnly = false;
+                    document.getElementById('nrl-missing-card').style.boxShadow = '';
+                    showZeroInvOnly = false;
+                    document.getElementById('zero-inv-card').style.boxShadow = '';
+                    showCampaignOnly = false;
+                    document.getElementById('total-campaign-card').style.boxShadow = '';
+                    showNraOnly = false;
+                    document.getElementById('nra-card').style.boxShadow = '';
+                    showRaOnly = false;
+                    document.getElementById('ra-card').style.boxShadow = '';
+                    showNrlOnly = false;
+                    document.getElementById('nrl-card').style.boxShadow = '';
+                    showEbaySkuOnly = false;
+                    document.getElementById('ebay-sku-card').style.boxShadow = '';
+                    this.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.5)';
+                } else {
+                    this.style.boxShadow = '';
+                }
+
+                if (typeof table !== 'undefined' && table) {
+                    table.setFilter(combinedFilter);
+                    table.redraw(true);
+                    updateButtonCounts();
+                    updateL30Totals();
                     setTimeout(updatePaginationCount, 100);
                 }
             });
@@ -1456,6 +1533,9 @@
                     // Reset RA filter
                     showRaOnly = false;
                     document.getElementById('ra-card').style.boxShadow = '';
+                    // Reset Pink DIL Paused filter
+                    showPinkDilPausedOnly = false;
+                    document.getElementById('paused-campaigns-card').style.boxShadow = '';
                     this.style.boxShadow = '0 4px 12px rgba(139, 92, 246, 0.5)';
                 } else {
                     this.style.boxShadow = '';
@@ -2551,6 +2631,7 @@
                     totalL30Sales = parseFloat(response.total_l30_sales) || 0;
                     totalSkuCountFromBackend = parseFloat(response.total_sku_count) || 0;
                     ebaySkuCountFromBackend = parseFloat(response.ebay_sku_count) || 0;
+                    pausedCampaignsData = response.pause_stats || null;
 
                     // Get L30 totals from backend (L30 report_range data)
                     totalL30ClicksFromBackend = parseInt(response.total_l30_clicks || 0);
@@ -2577,6 +2658,15 @@
                     const ebaySkuCountEl = document.getElementById('ebay-sku-count');
                     if (ebaySkuCountEl) {
                         ebaySkuCountEl.textContent = ebaySkuCountFromBackend;
+                    }
+
+                    // Update paused campaigns count
+                    if (pausedCampaignsData) {
+                        const pausedCount = pausedCampaignsData.count || 0;
+                        const pausedCountEl = document.getElementById('paused-campaigns-count');
+                        if (pausedCountEl) {
+                            pausedCountEl.textContent = pausedCount;
+                        }
                     }
                     
                     return response.data;
@@ -2631,6 +2721,12 @@
                     const price = parseFloat(data.price || 0);
                     // Show if has campaign OR has price (eBay listing exists)
                     if (!hasCampaign && price <= 0) return false;
+                }
+
+                // Pink DIL Paused filter - show only campaigns that were paused by pink DIL cron
+                if (showPinkDilPausedOnly) {
+                    const pinkDilPausedAt = data.pink_dil_paused_at;
+                    if (!pinkDilPausedAt) return false; // Show only if pink_dil_paused_at is not null/empty
                 }
 
                 // Global search filter

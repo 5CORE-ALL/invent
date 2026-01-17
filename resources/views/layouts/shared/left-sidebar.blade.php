@@ -1768,13 +1768,13 @@
                                  
 
 
-                                    <li>
+                                    {{-- <li>
                                         <a href="{{ route('amazon.ad-running.list') }}">Amz FBM Ad Running</a>
-                                    </li>
+                                    </li> --}}
                                     {{-- <li>
                                         <a href="{{ route('amazon.campaign.reports') }}">Amazon Ads Report</a>
                                     </li> --}}
-                                    <li>
+                                    {{-- <li>
                                         <a data-bs-toggle="collapse" href="#amazonAdsReport" aria-expanded="false"
                                             aria-controls="amazonAdsReport">
                                             <span>Amz FBM Ads Report</span>
@@ -1793,8 +1793,8 @@
                                                 </li>
                                             </ul>
                                         </div>
-                                    </li>
-                                    <li>
+                                    </li> --}}
+                                    {{-- <li>
                                         <a data-bs-toggle="collapse" href="#amazonACOS" aria-expanded="false"
                                             aria-controls="amazonACOS">
                                             <span>Amz FBM ACOS Control</span>
@@ -1816,8 +1816,8 @@
                                                 </li>
                                             </ul>
                                         </div>
-                                    </li>
-                                    <li>
+                                    </li> --}}
+                                    {{-- <li>
                                         <a data-bs-toggle="collapse" href="#amazonPinkDilAds" aria-expanded="false"
                                             aria-controls="amazonPinkDilAds">
                                             <span>Amz FBM Pink Dil Ads</span>
@@ -1839,11 +1839,11 @@
                                                 </li>
                                             </ul>
                                         </div>
-                                    </li>
+                                    </li> --}}
                                     <li>
                                         <a data-bs-toggle="collapse" href="#amazonBudget" aria-expanded="false"
                                             aria-controls="amazonBudget">
-                                            <span>Amz FBM Budget</span>
+                                            <span>Amz FBM Utilized's</span>
                                             <span class="menu-arrow"></span>
                                         </a>
                                         <div class="collapse" id="amazonBudget">
@@ -1860,7 +1860,7 @@
                                                     <a href="{{ route('amazon.utilized.hl') }}">Amazon HL
                                                         Utilized's</a>
                                                 </li>
-                                                <li>
+                                                {{-- <li>
                                                     <a href=" {{ route('amazon-sp.amz-utilized-bgt-kw') }} "> >
                                                         UTILIZED BGT KW</a>
                                                 </li>
@@ -1895,11 +1895,11 @@
                                                 <li>
                                                     <a href="{{ route('amazon.amz-correctly-utilized-bgt-pt') }}">CORRECTLY
                                                         UTILIZED PT</a>
-                                                </li>
+                                                </li> --}}
                                             </ul>
                                         </div>
                                     </li>
-                                    <li>
+                                    {{-- <li>
                                         <a data-bs-toggle="collapse" href="#amazonCpc" aria-expanded="false"
                                             aria-controls="amazonCpc">
                                             <span>Amz FBM CPC 0</span>
@@ -1915,11 +1915,11 @@
                                                 </li>
                                             </ul>
                                         </div>
-                                    </li>
+                                    </li> --}}
                                     <li>
                                         <a data-bs-toggle="collapse" href="#amazonFbaBudget" aria-expanded="false"
                                             aria-controls="amazonFbaBudget">
-                                            <span>Amz FBA Budget</span>
+                                            <span>Amz FBA Utilized's</span>
                                             <span class="menu-arrow"></span>
                                         </a>
                                         <div class="collapse" id="amazonFbaBudget">
@@ -1930,7 +1930,7 @@
                                                 <li>
                                                     <a href="{{ route('amazon.fba.utilized.pt') }}">Utilized PT</a>
                                                 </li>
-                                                <li>
+                                                {{-- <li>
                                                     <a href=" {{ route('amazon.fba.over.kw.ads') }} ">Over Util. BGT
                                                         KW</a>
                                                 </li>
@@ -1953,11 +1953,11 @@
                                                 <li>
                                                     <a href="{{ route('amazon.fba.correct.pt.ads') }}">Correctly
                                                         Utilized PT</a>
-                                                </li>
+                                                </li> --}}
                                             </ul>
                                         </div>
                                     </li>
-                                    <li>
+                                    {{-- <li>
                                         <a data-bs-toggle="collapse" href="#amazonFbaACOS" aria-expanded="false"
                                             aria-controls="amazonFbaACOS">
                                             <span>Amazon FBA ACOS</span>
@@ -1975,7 +1975,7 @@
                                                 </li>
                                             </ul>
                                         </div>
-                                    </li>
+                                    </li> --}}
                                     <li>
                                         <a href="{{ route('amazon.missing.ads') }}">Amz FBM Missing Ads</a>
                                     </li>
@@ -2531,7 +2531,7 @@
                                     </li>
 
                                     
-                                    <li>
+                                    {{-- <li>
                                         <a data-bs-toggle="collapse" href="#ebay3AcosSubmenu"
                                             aria-expanded="false" aria-controls="ebay3AcosSubmenu">
                                             <span>Ebay 3 ACOS Control</span>
@@ -2565,14 +2565,14 @@
                                                 </li>
                                             </ul>
                                         </div>
-                                    </li>
-                                    <li>
+                                    </li> --}}
+                                    {{-- <li>
                                         <a href="{{ route('ebay3.pink.dil.ads') }}">Ebay 3 Pink Dil Ads</a>
-                                    </li>
+                                    </li> --}}
                                     <li>
                                         <a href="{{ route('ebay3.utilized') }}">Ebay 3 Utilized's</a>
                                     </li>
-                                    <li>
+                                    {{-- <li>
                                         <a href="{{ route('ebay3.over.utilized') }}">Ebay 3 OVER UTIL.</a>
                                     </li>
                                     <li>
@@ -2580,11 +2580,11 @@
                                     </li>
                                     <li>
                                         <a href="{{ route('ebay3.correctly.utilized') }}">Ebay 3 CORRECTLY UTIL.</a>
-                                    </li>
+                                    </li> --}}
                                     <li>
                                         <a href="{{ route('ebay3.pmt.ads') }}">Ebay 3 PMT Ads</a>
                                     </li>
-                                    <li>
+                                    {{-- <li>
                                         <a href="{{ route('ebay3.keywords.ads') }}">Ebay 3 Keywords Ads</a>
                                     </li>
                                     <li>
@@ -2593,7 +2593,7 @@
                                     </li>
                                     <li>
                                         <a href="{{ route('ebay3.running.ads') }}">Ebay 3 Running Ads</a>
-                                    </li>
+                                    </li> --}}
                                     <li>
                                         <a href="{{ route('ebay3.missing.ads') }}">Ebay 3 Missing Ads</a>
                                     </li>

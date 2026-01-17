@@ -3983,14 +3983,13 @@ class AmazonSpBudgetController extends Controller
                 
                 // Single query to update all records - only for yesterday's date (Y-m-d format)
                 // Save to last_sbid column for tracking purposes
-                // Only update if last_sbid is NULL (not already saved) to avoid duplicate saves
+                // Always update with new calculated SBID value (removed NULL check to allow recalculation)
                 DB::statement("
                     UPDATE amazon_sp_campaign_reports 
                     SET last_sbid = CASE campaign_id {$caseSql} END
                     WHERE campaign_id IN ({$placeholders})
                     AND report_date_range = ?
                     AND ad_type = 'SPONSORED_PRODUCTS'
-                    AND (last_sbid IS NULL OR last_sbid = '')
                 ", array_merge($bindings, $campaignIds, [$yesterday]));
             }
         }
@@ -4015,14 +4014,13 @@ class AmazonSpBudgetController extends Controller
                 
                 // Single query to update all records - only for yesterday's date (Y-m-d format)
                 // Save to last_sbid column for tracking purposes
-                // Only update if last_sbid is NULL (not already saved) to avoid duplicate saves
+                // Always update with new calculated SBID value (removed NULL check to allow recalculation)
                 DB::statement("
                     UPDATE amazon_sb_campaign_reports 
                     SET last_sbid = CASE campaign_id {$caseSql} END
                     WHERE campaign_id IN ({$placeholders})
                     AND report_date_range = ?
                     AND ad_type = 'SPONSORED_BRANDS'
-                    AND (last_sbid IS NULL OR last_sbid = '')
                 ", array_merge($bindings, $campaignIds, [$yesterday]));
             }
         }

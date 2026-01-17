@@ -15,6 +15,7 @@ class EbayPriorityReport extends Model
         'campaign_name',
         'campaignBudgetAmount',
         'campaignStatus',
+        'pink_dil_paused_at',
         'cpc_impressions',
         'cpc_clicks',
         'cpc_attributed_sales',
@@ -31,5 +32,9 @@ class EbayPriorityReport extends Model
         'apprSbid',
         'cpc_ad_fees_payout_currency',
         'channels',
+    ];
+
+    protected $casts = [
+        'pink_dil_paused_at' => 'datetime',
     ];
 }

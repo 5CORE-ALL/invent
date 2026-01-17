@@ -53,6 +53,9 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\Ebay2UtilizedBidsAutoUpdate::class,
         \App\Console\Commands\Ebay3UtilizedBidsAutoUpdate::class,
         \App\Console\Commands\Ebay2PauseAdsAuto::class,
+        \App\Console\Commands\Ebay1PausePinkDilKwAds::class,
+        \App\Console\Commands\Ebay2PausePinkDilKwAds::class,
+        \App\Console\Commands\Ebay3PausePinkDilKwAds::class,
         \App\Console\Commands\UpdateEbayOneBudget::class,
         \App\Console\Commands\AutoUpdateAmazonFbaOverKwBids::class,
         \App\Console\Commands\AutoUpdateAmazonFbaUnderKwBids::class,
@@ -364,6 +367,17 @@ $schedule->command('amazon:sync-inventory')->everySixHours();
             ->dailyAt('12:00')
             ->timezone('Asia/Kolkata');
         $schedule->command('ebay2:auto-pause-ads')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata');
+        $schedule->command('ebay1:auto-pause-pink-dil-kw-ads')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata');
+        
+        $schedule->command('ebay2:auto-pause-pink-dil-kw-ads')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata');
+        
+        $schedule->command('ebay3:auto-pause-pink-dil-kw-ads')
             ->dailyAt('12:00')
             ->timezone('Asia/Kolkata');
         $schedule->command('ebay:update-suggestedbid')
