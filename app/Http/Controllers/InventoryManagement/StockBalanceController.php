@@ -14,6 +14,7 @@ use Carbon\Carbon;
 use App\Models\StockBalance;
 use App\Http\Controllers\ApiController;
 use App\Models\ShopifySku;
+use App\Models\SkuRelationship;
 use Illuminate\Support\Facades\DB;
 
 
@@ -561,10 +562,33 @@ class StockBalanceController extends Controller
         // Fetch Shopify data from local DB (shopify_skus)
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(fn($item) => $normalizeSku($item->sku));
 
+        // Fetch inventory action data
+        // Get all inventory records and normalize their SKUs for matching
+        // Since there might be multiple records per SKU, get the latest one for each normalized SKU
+        $allInventoryActions = Inventory::all();
+        $inventoryActions = collect();
+        
+        foreach ($allInventoryActions as $inv) {
+            $normalizedInvSku = $normalizeSku($inv->sku);
+            // Only include if this normalized SKU is in our list
+            if (in_array($normalizedInvSku, $skus)) {
+                // If we already have this normalized SKU, keep the one with the latest update
+                if (!$inventoryActions->has($normalizedInvSku)) {
+                    $inventoryActions[$normalizedInvSku] = $inv;
+                } else {
+                    $existing = $inventoryActions[$normalizedInvSku];
+                    if ($inv->updated_at > $existing->updated_at) {
+                        $inventoryActions[$normalizedInvSku] = $inv;
+                    }
+                }
+            }
+        }
+
         // Merge everything
-        $data = $productMasterData->map(function ($item) use ($shopifyData, $normalizeSku) {
+        $data = $productMasterData->map(function ($item) use ($shopifyData, $inventoryActions, $normalizeSku) {
             $sku = $normalizeSku($item->sku ?? '');
             $shopify = $shopifyData[$sku] ?? null;
+            $inventory = $inventoryActions[$sku] ?? null;
 
             $inv = $shopify->inv ?? 0;
             $l30 = $shopify->quantity ?? 0;
@@ -586,6 +610,7 @@ class StockBalanceController extends Controller
                 'INV' => $inv,
                 'SOLD' => $l30,
                 'DIL' => $dil,
+                'ACTION' => $inventory->action ?? null,
             ];
         })->filter(function ($item) {
             // Filter out items with no SKU
@@ -595,6 +620,251 @@ class StockBalanceController extends Controller
         return response()->json([
             'message' => 'Data fetched successfully',
             'data' => $data->values(),
+            'status' => 200
+        ]);
+    }
+
+    /**
+     * Update action for a SKU
+     */
+    public function updateAction(Request $request)
+    {
+        $request->validate([
+            'sku' => 'required|string',
+            'action' => 'nullable|string|in:NRB,RB',
+        ]);
+
+        try {
+            // Normalize SKU to match the same normalization used in getInventoryData
+            $normalizeSku = function ($sku) {
+                $sku = strtoupper(trim($sku));
+                $sku = preg_replace('/\s+/u', ' ', $sku);
+                $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
+                return $sku;
+            };
+
+            $sku = $normalizeSku($request->sku);
+            $action = $request->action;
+
+            // Find or create inventory record - use the normalized SKU
+            // Since SKU is not unique anymore, we need to update all records with this SKU or get the latest one
+            $inventory = Inventory::where('sku', $sku)->first();
+            
+            if (!$inventory) {
+                // Create new record if it doesn't exist
+                $inventory = new Inventory();
+                $inventory->sku = $sku;
+            }
+            
+            $inventory->action = $action;
+            $inventory->save();
+
+            Log::info("Action updated successfully", [
+                'sku' => $sku,
+                'action' => $action
+            ]);
+
+            return response()->json([
+                'message' => 'Action updated successfully',
+                'status' => 200
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Failed to update action: " . $e->getMessage(), [
+                'sku' => $request->sku ?? 'N/A',
+                'action' => $request->action ?? 'N/A',
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'error' => 'Error updating action',
+                'details' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get relationships for a SKU
+     */
+    public function getRelationships(Request $request)
+    {
+        $request->validate([
+            'sku' => 'required|string',
+        ]);
+
+        try {
+            $normalizeSku = function ($sku) {
+                $sku = strtoupper(trim($sku));
+                $sku = preg_replace('/\s+/u', ' ', $sku);
+                $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
+                return $sku;
+            };
+
+            $sku = $normalizeSku($request->sku);
+
+            $relationships = SkuRelationship::where('source_sku', $sku)
+                ->pluck('related_sku')
+                ->toArray();
+
+            return response()->json([
+                'message' => 'Relationships fetched successfully',
+                'data' => $relationships,
+                'status' => 200
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Failed to get relationships: " . $e->getMessage(), [
+                'sku' => $request->sku ?? 'N/A',
+            ]);
+            
+            return response()->json([
+                'error' => 'Error fetching relationships',
+                'details' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Add relationships for a SKU
+     */
+    public function addRelationships(Request $request)
+    {
+        $request->validate([
+            'source_sku' => 'required|string',
+            'related_skus' => 'required|array',
+            'related_skus.*' => 'required|string',
+        ]);
+
+        try {
+            $normalizeSku = function ($sku) {
+                $sku = strtoupper(trim($sku));
+                $sku = preg_replace('/\s+/u', ' ', $sku);
+                $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
+                return $sku;
+            };
+
+            $sourceSku = $normalizeSku($request->source_sku);
+            $relatedSkus = array_map($normalizeSku, $request->related_skus);
+
+            // Remove duplicates and the source SKU itself
+            $relatedSkus = array_unique($relatedSkus);
+            $relatedSkus = array_filter($relatedSkus, function($sku) use ($sourceSku) {
+                return $sku !== $sourceSku;
+            });
+
+            $added = 0;
+            foreach ($relatedSkus as $relatedSku) {
+                try {
+                    SkuRelationship::firstOrCreate([
+                        'source_sku' => $sourceSku,
+                        'related_sku' => $relatedSku,
+                    ]);
+                    $added++;
+                } catch (\Exception $e) {
+                    // Skip if duplicate or other error
+                    Log::warning("Failed to add relationship", [
+                        'source_sku' => $sourceSku,
+                        'related_sku' => $relatedSku,
+                        'error' => $e->getMessage()
+                    ]);
+                }
+            }
+
+            return response()->json([
+                'message' => "Successfully added {$added} relationship(s)",
+                'status' => 200
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Failed to add relationships: " . $e->getMessage(), [
+                'source_sku' => $request->source_sku ?? 'N/A',
+            ]);
+            
+            return response()->json([
+                'error' => 'Error adding relationships',
+                'details' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete a relationship
+     */
+    public function deleteRelationship(Request $request)
+    {
+        $request->validate([
+            'source_sku' => 'required|string',
+            'related_sku' => 'required|string',
+        ]);
+
+        try {
+            $normalizeSku = function ($sku) {
+                $sku = strtoupper(trim($sku));
+                $sku = preg_replace('/\s+/u', ' ', $sku);
+                $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
+                return $sku;
+            };
+
+            $sourceSku = $normalizeSku($request->source_sku);
+            $relatedSku = $normalizeSku($request->related_sku);
+
+            $deleted = SkuRelationship::where('source_sku', $sourceSku)
+                ->where('related_sku', $relatedSku)
+                ->delete();
+
+            return response()->json([
+                'message' => 'Relationship deleted successfully',
+                'status' => 200
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Failed to delete relationship: " . $e->getMessage(), [
+                'source_sku' => $request->source_sku ?? 'N/A',
+                'related_sku' => $request->related_sku ?? 'N/A',
+            ]);
+            
+            return response()->json([
+                'error' => 'Error deleting relationship',
+                'details' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get all SKUs for autocomplete
+     */
+    public function getSkusForAutocomplete(Request $request)
+    {
+        // Accept both 'search' and 'term' parameters (Select2 uses 'term')
+        $search = $request->get('search', $request->get('term', ''));
+        
+        $normalizeSku = function ($sku) {
+            $sku = strtoupper(trim($sku));
+            $sku = preg_replace('/\s+/u', ' ', $sku);
+            $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
+            return $sku;
+        };
+
+        $query = ProductMaster::select('sku')
+            ->whereNotNull('sku')
+            ->where('sku', '!=', '');
+
+        if ($search) {
+            $normalizedSearch = $normalizeSku($search);
+            $query->whereRaw("UPPER(TRIM(REPLACE(REPLACE(sku, '\n', ' '), '\r', ' '))) LIKE ?", ['%' . $normalizedSearch . '%']);
+        }
+
+        $skus = $query->distinct()
+            ->orderBy('sku', 'asc')
+            ->limit(100)
+            ->pluck('sku')
+            ->map(function($sku) use ($normalizeSku) {
+                return [
+                    'id' => $sku,
+                    'text' => $sku,
+                    'normalized' => $normalizeSku($sku)
+                ];
+            })
+            ->values();
+
+        return response()->json([
+            'results' => $skus,
             'status' => 200
         ]);
     }

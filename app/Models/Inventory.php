@@ -32,6 +32,7 @@ class Inventory extends Model
         'is_verified',
         'verified_by',
         'is_doubtful',
+        'action',
     ];
 
     public function warehouse()

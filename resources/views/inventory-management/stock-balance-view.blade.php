@@ -262,6 +262,64 @@
             color: white;
         }
 
+        /* Action dropdown styling */
+        /* Action column width */
+        #inventoryDataTable th:last-child,
+        #inventoryDataTable td:last-child {
+            min-width: 120px;
+            width: 120px;
+        }
+
+        .action-select {
+            font-size: 14px;
+            min-width: 120px !important;
+            width: 120px !important;
+        }
+
+        .action-select option[value="NRB"] {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        .action-select option[value="RB"] {
+            background-color: #28a745;
+            color: white;
+        }
+
+        .action-select option[value=""] {
+            background-color: #ffffff;
+            color: #212529;
+        }
+
+        /* Style selected option background */
+        .action-select[data-action="NRB"] {
+            background-color: #dc3545 !important;
+            color: white !important;
+        }
+
+        .action-select[data-action="RB"] {
+            background-color: #28a745 !important;
+            color: white !important;
+        }
+
+        #filterNRB.active, #filterRB.active {
+            opacity: 0.8 !important;
+            transform: scale(0.95);
+        }
+
+        /* Action filter buttons - match form-control size */
+        #filterNRB, #filterRB, #showAllAction {
+            font-size: 20px !important;
+            line-height: 1.5;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            height: calc(1.5em + 0.75rem + 2px) !important;
+            min-height: calc(1.5em + 0.75rem + 2px) !important;
+            padding: 0.5rem 1rem !important;
+            font-weight: 500;
+        }
+
 
         /* Two column layout adjustments */
         .col-md-6 {
@@ -413,6 +471,33 @@
                         </div>
                     </div>
 
+                    <!-- Relationship Modal -->
+                    <div id="relationshipModal" class="modal fade" tabindex="-1">
+                        <div class="modal-dialog modal-lg">
+                            <div class="modal-content">
+                                <div class="modal-header bg-primary text-white">
+                                    <h5 class="modal-title">Add Relationship</h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="mb-3">
+                                        <label for="relationshipSkuInput" class="form-label fw-bold">Enter SKUs</label>
+                                        <textarea id="relationshipSkuInput" class="form-control" rows="4" placeholder="Enter SKUs (one per line or comma-separated)"></textarea>
+                                        <small class="text-muted">Enter multiple SKUs, one per line or separated by commas</small>
+                                    </div>
+                                    <div id="existingRelationships" style="display: none;">
+                                        <h6 class="fw-bold">Existing Relationships:</h6>
+                                        <div id="relationshipsList" class="list-group mb-3"></div>
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                    <button type="button" id="addRelationshipBtn" class="btn btn-primary">Add Relationship</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- History and Inventory Buttons -->
                     <div class="row mb-3">
                         <div class="col-12 d-flex align-items-center">
@@ -455,6 +540,24 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="col-md-6">
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <label class="form-label fw-bold">Filter by Action</label>
+                                    <div class="d-flex gap-2 align-items-center">
+                                        <button type="button" id="filterNRB" class="btn form-control" style="background-color: #dc3545; color: white; border: none; max-width: 100px; font-size: 20px; padding: 0.5rem 1rem;">
+                                            NRB
+                                        </button>
+                                        <button type="button" id="filterRB" class="btn form-control" style="background-color: #28a745; color: white; border: none; max-width: 100px; font-size: 20px; padding: 0.5rem 1rem;">
+                                            RB
+                                        </button>
+                                        <button type="button" id="showAllAction" class="btn btn-secondary form-control" style="max-width: 150px; font-size: 20px; padding: 0.5rem 1rem;">
+                                            Show All
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Two Column Layout -->
@@ -471,6 +574,8 @@
                                             <th class="sortable" data-column="inv">INV <span class="sort-icon">↕</span></th>
                                             <th class="sortable" data-column="sold">SOLD <span class="sort-icon">↕</span></th>
                                             <th class="sortable" data-column="dil">DIL% <span class="sort-icon">↕</span></th>
+                                            <th>R</th>
+                                            <th>ACTION</th>
                                         </tr>
                                     </thead>
                                     <tbody id="inventory-data-table-body">
@@ -791,6 +896,7 @@
                 let uniqueParents = [];
                 let isNavigationActive = false;
                 let filteredInventoryData = [];
+                let currentActionFilter = null; // null, 'NRB', or 'RB'
 
                 // Sorting System
                 let currentSortColumn = null;
@@ -930,8 +1036,15 @@
                         dataToRender = sortData(dataToRender, currentSortColumn, currentSortDirection);
                     }
 
+                    // Apply action filter
+                    if (currentActionFilter) {
+                        dataToRender = dataToRender.filter(item => {
+                            return item.ACTION === currentActionFilter;
+                        });
+                    }
+
                     if (dataToRender.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="6" class="text-center">No records found</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="8" class="text-center">No records found</td></tr>';
                         return;
                     }
 
@@ -1032,6 +1145,199 @@
                             dilCell.innerHTML = `<span class="dil-percent-value ${dilClass}">${dilPercent}%</span>`;
                         }
                         row.appendChild(dilCell);
+
+                        // R (Relationship) column
+                        const rCell = document.createElement('td');
+                        rCell.style.textAlign = 'center';
+                        rCell.style.verticalAlign = 'middle';
+                        
+                        const rButtonContainer = document.createElement('div');
+                        rButtonContainer.style.display = 'flex';
+                        rButtonContainer.style.gap = '5px';
+                        rButtonContainer.style.justifyContent = 'center';
+                        rButtonContainer.style.alignItems = 'center';
+                        
+                        // Add Relationship button (circle R button)
+                        const addRBtn = document.createElement('button');
+                        addRBtn.type = 'button';
+                        addRBtn.className = 'btn btn-sm btn-primary rounded-circle';
+                        addRBtn.innerHTML = 'R';
+                        addRBtn.style.width = '30px';
+                        addRBtn.style.height = '30px';
+                        addRBtn.style.padding = '0';
+                        addRBtn.style.fontSize = '12px';
+                        addRBtn.style.fontWeight = 'bold';
+                        addRBtn.setAttribute('data-sku', item.SKU || '');
+                        addRBtn.title = 'Add Relationship';
+                        addRBtn.addEventListener('click', function() {
+                            const sku = this.getAttribute('data-sku');
+                            openRelationshipModal(sku, 'add');
+                        });
+                        rButtonContainer.appendChild(addRBtn);
+                        
+                        // View Relationships button (eye icon)
+                        const viewRBtn = document.createElement('button');
+                        viewRBtn.type = 'button';
+                        viewRBtn.className = 'btn btn-sm btn-info';
+                        viewRBtn.innerHTML = '<i class="fas fa-eye"></i>';
+                        viewRBtn.style.width = '30px';
+                        viewRBtn.style.height = '30px';
+                        viewRBtn.style.padding = '0';
+                        viewRBtn.style.display = 'none'; // Initially hidden, shown if relationships exist
+                        viewRBtn.setAttribute('data-sku', item.SKU || '');
+                        viewRBtn.title = 'View Relationships';
+                        viewRBtn.addEventListener('click', function() {
+                            const sku = this.getAttribute('data-sku');
+                            openRelationshipModal(sku, 'view');
+                        });
+                        rButtonContainer.appendChild(viewRBtn);
+                        
+                        // Delete Relationships button
+                        const deleteRBtn = document.createElement('button');
+                        deleteRBtn.type = 'button';
+                        deleteRBtn.className = 'btn btn-sm btn-danger';
+                        deleteRBtn.innerHTML = '<i class="fas fa-trash"></i>';
+                        deleteRBtn.style.width = '30px';
+                        deleteRBtn.style.height = '30px';
+                        deleteRBtn.style.padding = '0';
+                        deleteRBtn.style.display = 'none'; // Initially hidden
+                        deleteRBtn.setAttribute('data-sku', item.SKU || '');
+                        deleteRBtn.title = 'Delete Relationships';
+                        deleteRBtn.addEventListener('click', function() {
+                            const sku = this.getAttribute('data-sku');
+                            if (confirm('Are you sure you want to delete all relationships for ' + sku + '?')) {
+                                deleteAllRelationships(sku, viewRBtn, deleteRBtn);
+                            }
+                        });
+                        rButtonContainer.appendChild(deleteRBtn);
+                        
+                        // Check if relationships exist for this SKU (we'll load this async)
+                        checkRelationshipsExist(item.SKU || '', viewRBtn, deleteRBtn);
+                        
+                        rCell.appendChild(rButtonContainer);
+                        row.appendChild(rCell);
+
+                        // ACTION
+                        const actionCell = document.createElement('td');
+                        const actionSelect = document.createElement('select');
+                        actionSelect.className = 'form-select form-select-sm action-select';
+                        actionSelect.setAttribute('data-sku', item.SKU || '');
+                        actionSelect.style.minWidth = '120px';
+                        actionSelect.style.width = '120px';
+                        
+                        // Add empty option
+                        const emptyOption = document.createElement('option');
+                        emptyOption.value = '';
+                        emptyOption.textContent = '--';
+                        emptyOption.style.backgroundColor = '#ffffff';
+                        emptyOption.style.color = '#212529';
+                        actionSelect.appendChild(emptyOption);
+                        
+                        // Add NRB option
+                        const nrbOption = document.createElement('option');
+                        nrbOption.value = 'NRB';
+                        nrbOption.textContent = 'NRB';
+                        nrbOption.style.backgroundColor = '#dc3545';
+                        nrbOption.style.color = 'white';
+                        if (item.ACTION === 'NRB') {
+                            nrbOption.selected = true;
+                            actionSelect.setAttribute('data-action', 'NRB');
+                        }
+                        actionSelect.appendChild(nrbOption);
+                        
+                        // Add RB option
+                        const rbOption = document.createElement('option');
+                        rbOption.value = 'RB';
+                        rbOption.textContent = 'RB';
+                        rbOption.style.backgroundColor = '#28a745';
+                        rbOption.style.color = 'white';
+                        if (item.ACTION === 'RB') {
+                            rbOption.selected = true;
+                            actionSelect.setAttribute('data-action', 'RB');
+                        }
+                        actionSelect.appendChild(rbOption);
+                        
+                        // Style the select based on selected value
+                        if (item.ACTION === 'NRB') {
+                            actionSelect.style.backgroundColor = '#dc3545';
+                            actionSelect.style.color = 'white';
+                            actionSelect.style.fontWeight = 'bold';
+                        } else if (item.ACTION === 'RB') {
+                            actionSelect.style.backgroundColor = '#28a745';
+                            actionSelect.style.color = 'white';
+                            actionSelect.style.fontWeight = 'bold';
+                        } else {
+                            actionSelect.style.backgroundColor = '#ffffff';
+                            actionSelect.style.color = '#212529';
+                        }
+                        
+                        // Add change event handler
+                        actionSelect.addEventListener('change', function() {
+                            const sku = this.getAttribute('data-sku');
+                            const action = this.value;
+                            
+                            // Update styling with background colors
+                            if (action === 'NRB') {
+                                this.style.backgroundColor = '#dc3545';
+                                this.style.color = 'white';
+                                this.style.fontWeight = 'bold';
+                                this.setAttribute('data-action', 'NRB');
+                            } else if (action === 'RB') {
+                                this.style.backgroundColor = '#28a745';
+                                this.style.color = 'white';
+                                this.style.fontWeight = 'bold';
+                                this.setAttribute('data-action', 'RB');
+                            } else {
+                                this.style.backgroundColor = '#ffffff';
+                                this.style.color = '#212529';
+                                this.style.fontWeight = '';
+                                this.removeAttribute('data-action');
+                            }
+                            
+                            // Save to database
+                            $.ajax({
+                                url: '/stock-balance-update-action',
+                                method: 'POST',
+                                headers: {
+                                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                                    'Content-Type': 'application/json'
+                                },
+                                data: JSON.stringify({
+                                    sku: sku,
+                                    action: action || null
+                                }),
+                                success: function(response) {
+                                    // Update the item in inventoryData
+                                    const itemIndex = inventoryData.findIndex(i => i.SKU === sku);
+                                    if (itemIndex !== -1) {
+                                        inventoryData[itemIndex].ACTION = action || null;
+                                    }
+                                },
+                                error: function(xhr) {
+                                    console.error('Error updating action:', xhr);
+                                    alert('Failed to update action. Please try again.');
+                                    // Revert the select with proper background color
+                                    const oldAction = item.ACTION || '';
+                                    actionSelect.value = oldAction;
+                                    if (oldAction === 'NRB') {
+                                        actionSelect.style.backgroundColor = '#dc3545';
+                                        actionSelect.style.color = 'white';
+                                        actionSelect.setAttribute('data-action', 'NRB');
+                                    } else if (oldAction === 'RB') {
+                                        actionSelect.style.backgroundColor = '#28a745';
+                                        actionSelect.style.color = 'white';
+                                        actionSelect.setAttribute('data-action', 'RB');
+                                    } else {
+                                        actionSelect.style.backgroundColor = '#ffffff';
+                                        actionSelect.style.color = '#212529';
+                                        actionSelect.removeAttribute('data-action');
+                                    }
+                                }
+                            });
+                        });
+                        
+                        actionCell.appendChild(actionSelect);
+                        row.appendChild(actionCell);
 
                         tbody.appendChild(row);
                     });
@@ -1180,6 +1486,33 @@
                         renderInventoryTable(inventoryData);
                     }
                 }, 300));
+
+                // Action filter handlers
+                $('#filterNRB').on('click', function() {
+                    currentActionFilter = 'NRB';
+                    $(this).addClass('active').css('opacity', '0.8');
+                    $('#filterRB').removeClass('active').css('opacity', '1');
+                    if (inventoryDataLoaded) {
+                        renderInventoryTable(inventoryData);
+                    }
+                });
+
+                $('#filterRB').on('click', function() {
+                    currentActionFilter = 'RB';
+                    $(this).addClass('active').css('opacity', '0.8');
+                    $('#filterNRB').removeClass('active').css('opacity', '1');
+                    if (inventoryDataLoaded) {
+                        renderInventoryTable(inventoryData);
+                    }
+                });
+
+                $('#showAllAction').on('click', function() {
+                    currentActionFilter = null;
+                    $('#filterNRB, #filterRB').removeClass('active').css('opacity', '1');
+                    if (inventoryDataLoaded) {
+                        renderInventoryTable(inventoryData);
+                    }
+                });
 
                 $('#toggleInventoryBtn').on('click', function() {
                     const tableContainer = $('#inventoryTableContainer');
@@ -2134,6 +2467,251 @@
 
             initializeTable();
         });
+
+        // Relationship Management Functions
+        let currentRelationshipSku = null;
+        let relationshipModalMode = 'add'; // 'add' or 'view'
+
+        // Open relationship modal
+        function openRelationshipModal(sku, mode) {
+            currentRelationshipSku = sku;
+            relationshipModalMode = mode || 'add';
+            
+            const modalElement = document.getElementById('relationshipModal');
+            const modal = new bootstrap.Modal(modalElement);
+            const modalTitle = document.querySelector('#relationshipModal .modal-title');
+            const addBtn = document.getElementById('addRelationshipBtn');
+            const skuInput = $('#relationshipSkuInput');
+            
+            if (mode === 'view') {
+                modalTitle.textContent = 'View Relationships';
+                addBtn.style.display = 'none';
+                skuInput.prop('disabled', true);
+            } else {
+                modalTitle.textContent = 'Add Relationship';
+                addBtn.style.display = 'block';
+                skuInput.prop('disabled', false);
+            }
+            
+            // Clear previous input
+            skuInput.val('');
+            
+            // Load existing relationships
+            loadExistingRelationships(sku);
+            
+            modal.show();
+        }
+
+        // Load existing relationships
+        function loadExistingRelationships(sku) {
+            $.ajax({
+                url: '/stock-balance-get-relationships',
+                method: 'GET',
+                data: { sku: sku },
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                success: function(response) {
+                    const relationshipsList = $('#relationshipsList');
+                    const existingDiv = $('#existingRelationships');
+                    
+                    if (response.data && response.data.length > 0) {
+                        existingDiv.show();
+                        relationshipsList.empty();
+                        
+                        response.data.forEach(function(relatedSku) {
+                            const listItem = $(`
+                                <div class="list-group-item d-flex justify-content-between align-items-center">
+                                    <span>${relatedSku}</span>
+                                    <button type="button" class="btn btn-sm btn-danger delete-relationship-item" data-related-sku="${relatedSku}">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                            `);
+                            
+                            listItem.find('.delete-relationship-item').on('click', function() {
+                                const relatedSku = $(this).attr('data-related-sku');
+                                deleteRelationship(currentRelationshipSku, relatedSku, listItem);
+                            });
+                            
+                            relationshipsList.append(listItem);
+                        });
+                    } else {
+                        existingDiv.hide();
+                    }
+                },
+                error: function(xhr) {
+                    console.error('Error loading relationships:', xhr);
+                }
+            });
+        }
+
+        // Add relationships
+        $('#addRelationshipBtn').on('click', function() {
+            const inputValue = $('#relationshipSkuInput').val().trim();
+            
+            if (!inputValue) {
+                alert('Please enter at least one SKU');
+                return;
+            }
+            
+            // Parse SKUs from input (support both comma-separated and newline-separated)
+            let skus = inputValue.split(/[,\n\r]+/)
+                .map(function(sku) {
+                    return sku.trim();
+                })
+                .filter(function(sku) {
+                    return sku.length > 0;
+                });
+            
+            if (skus.length === 0) {
+                alert('Please enter at least one valid SKU');
+                return;
+            }
+            
+            $.ajax({
+                url: '/stock-balance-add-relationships',
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                    'Content-Type': 'application/json'
+                },
+                data: JSON.stringify({
+                    source_sku: currentRelationshipSku,
+                    related_skus: skus
+                }),
+                success: function(response) {
+                    alert(response.message || 'Relationships added successfully');
+                    // Reload relationships list
+                    loadExistingRelationships(currentRelationshipSku);
+                    // Clear input
+                    $('#relationshipSkuInput').val('');
+                    // Refresh the table to update button visibility
+                    if (inventoryDataLoaded) {
+                        renderInventoryTable(inventoryData);
+                    }
+                },
+                error: function(xhr) {
+                    const errorMsg = xhr.responseJSON?.details || xhr.responseJSON?.error || 'Failed to add relationships';
+                    alert('Error: ' + errorMsg);
+                }
+            });
+        });
+
+        // Delete single relationship
+        function deleteRelationship(sourceSku, relatedSku, listItemElement) {
+            if (!confirm('Are you sure you want to delete this relationship?')) {
+                return;
+            }
+            
+            $.ajax({
+                url: '/stock-balance-delete-relationship',
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                    'Content-Type': 'application/json'
+                },
+                data: JSON.stringify({
+                    source_sku: sourceSku,
+                    related_sku: relatedSku
+                }),
+                success: function(response) {
+                    if (listItemElement) {
+                        listItemElement.remove();
+                        // Hide existing relationships div if no more relationships
+                        if ($('#relationshipsList').children().length === 0) {
+                            $('#existingRelationships').hide();
+                        }
+                    }
+                    // Refresh the table to update button visibility
+                    if (inventoryDataLoaded) {
+                        renderInventoryTable(inventoryData);
+                    }
+                },
+                error: function(xhr) {
+                    const errorMsg = xhr.responseJSON?.details || xhr.responseJSON?.error || 'Failed to delete relationship';
+                    alert('Error: ' + errorMsg);
+                }
+            });
+        }
+
+        // Delete all relationships
+        function deleteAllRelationships(sku, viewBtn, deleteBtn) {
+            $.ajax({
+                url: '/stock-balance-get-relationships',
+                method: 'GET',
+                data: { sku: sku },
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                success: function(response) {
+                    if (response.data && response.data.length > 0) {
+                        let deletedCount = 0;
+                        let totalCount = response.data.length;
+                        
+                        response.data.forEach(function(relatedSku) {
+                            $.ajax({
+                                url: '/stock-balance-delete-relationship',
+                                method: 'POST',
+                                headers: {
+                                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                                    'Content-Type': 'application/json'
+                                },
+                                data: JSON.stringify({
+                                    source_sku: sku,
+                                    related_sku: relatedSku
+                                }),
+                                success: function() {
+                                    deletedCount++;
+                                    if (deletedCount === totalCount) {
+                                        alert('All relationships deleted successfully');
+                                        if (viewBtn) viewBtn.style.display = 'none';
+                                        if (deleteBtn) deleteBtn.style.display = 'none';
+                                        if (inventoryDataLoaded) {
+                                            renderInventoryTable(inventoryData);
+                                        }
+                                    }
+                                },
+                                error: function(xhr) {
+                                    console.error('Error deleting relationship:', xhr);
+                                }
+                            });
+                        });
+                    }
+                },
+                error: function(xhr) {
+                    console.error('Error loading relationships:', xhr);
+                }
+            });
+        }
+
+        // Check if relationships exist for a SKU
+        function checkRelationshipsExist(sku, viewBtn, deleteBtn) {
+            if (!sku) return;
+            
+            $.ajax({
+                url: '/stock-balance-get-relationships',
+                method: 'GET',
+                data: { sku: sku },
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                success: function(response) {
+                    if (response.data && response.data.length > 0) {
+                        if (viewBtn) viewBtn.style.display = 'inline-block';
+                        if (deleteBtn) deleteBtn.style.display = 'inline-block';
+                    } else {
+                        if (viewBtn) viewBtn.style.display = 'none';
+                        if (deleteBtn) deleteBtn.style.display = 'none';
+                    }
+                },
+                error: function(xhr) {
+                    console.error('Error checking relationships:', xhr);
+                }
+            });
+        }
+
+        // Note: Select2 will be initialized when the modal opens
     </script>
 
 @endsection
