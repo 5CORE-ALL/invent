@@ -308,6 +308,11 @@
                             <label for="editTarget" class="form-label">Target</label>
                             <input type="number" class="form-control" id="editTarget" step="0.01">
                         </div>
+                        <div class="mb-3">
+                            <label for="editMissingLink" class="form-label">Missing Link</label>
+                            <input type="url" class="form-control" id="editMissingLink" placeholder="https://...">
+                            <small class="text-muted">This link will open when clicking the Missing column</small>
+                        </div>
                     </form>
                 </div>
                 <div class="modal-footer">
@@ -490,6 +495,68 @@
                         }
                     },
                     {
+                        title: "Missing",
+                        field: "Miss",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const missingLink = rowData['missing_link'] || '';
+                            
+                            let style = '';
+                            
+                            if (value === 0) { 
+                                style = 'color:#28a745;'; // Green text
+                            } else if (value <= 20) { 
+                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;'; // Yellow bg with black text
+                            } else if (value <= 50) { 
+                                style = 'color:#ff6f00;'; // Dark Orange text
+                            } else { 
+                                style = 'color:#a00211;'; // Red text
+                            }
+                            
+                            // Make clickable if missing_link exists
+                            if (missingLink && value > 0) {
+                                return `<a href="${missingLink}" target="_blank" style="${style}font-weight:600;text-decoration:none;cursor:pointer;" title="Click to view missing items details">${value}</a>`;
+                            }
+                            
+                            return `<span style="${style}font-weight:600;">${value}</span>`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "Map",
+                        field: "Map",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            let style = '';
+                            
+                            if (value === 0) { 
+                                style = 'color:#28a745;'; // Green text
+                            } else if (value <= 20) { 
+                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;'; // Yellow bg with black text
+                            } else if (value <= 50) { 
+                                style = 'color:#ff6f00;'; // Dark Orange text
+                            } else { 
+                                style = 'color:#a00211;'; // Red text
+                            }
+                            
+                            return `<span style="${style}font-weight:600;">${value}</span>`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
                         title: "Sheet",
                         field: "sheet_link",
                         hozAlign: "center",
@@ -618,60 +685,7 @@
                             return `<span style="${style}font-weight:600;">${value.toFixed(0)}%</span>`;
                         }
                     },
-                    {
-                        title: "Missing",
-                        field: "Miss",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
-                            let style = '';
-                            
-                            if (value === 0) { 
-                                style = 'color:#28a745;'; // Green text
-                            } else if (value <= 20) { 
-                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;'; // Yellow bg with black text
-                            } else if (value <= 50) { 
-                                style = 'color:#ff6f00;'; // Dark Orange text
-                            } else { 
-                                style = 'color:#a00211;'; // Red text
-                            }
-                            
-                            return `<span style="${style}font-weight:600;">${value}</span>`;
-                        },
-                        bottomCalc: "sum",
-                        bottomCalcFormatter: function(cell) {
-                            const value = cell.getValue();
-                            return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
-                        }
-                    },
-                    {
-                        title: "Map",
-                        field: "Map",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
-                            let style = '';
-                            
-                            if (value === 0) { 
-                                style = 'color:#28a745;'; // Green text
-                            } else if (value <= 20) { 
-                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;'; // Yellow bg with black text
-                            } else if (value <= 50) { 
-                                style = 'color:#ff6f00;'; // Dark Orange text
-                            } else { 
-                                style = 'color:#a00211;'; // Red text
-                            }
-                            
-                            return `<span style="${style}font-weight:600;">${value}</span>`;
-                        },
-                        bottomCalc: "sum",
-                        bottomCalcFormatter: function(cell) {
-                            const value = cell.getValue();
-                            return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
-                        }
-                    },
+                   
                     {
                         title: "Ads%",
                         field: "Ads%",
@@ -928,19 +942,21 @@
                                 try {
                                     const rowData = JSON.parse(rowDataStr);
                                     
-                                    const channel = rowData['Channel '] || rowData['Channel'] || '';
-                                    const sheetUrl = rowData['sheet_link'] || '';
-                                    const type = rowData['type'] || '';
-                                    const base = rowData['base'] || 0;
-                                    const target = rowData['target'] || 0;
-                                    
-                                    // Populate modal
-                                    $('#editChannelName').val(channel);
-                                    $('#editChannelUrl').val(sheetUrl);
-                                    $('#editType').val(type);
-                                    $('#editBase').val(base);
-                                    $('#editTarget').val(target);
-                                    $('#originalChannel').val(channel);
+                    const channel = rowData['Channel '] || rowData['Channel'] || '';
+                    const sheetUrl = rowData['sheet_link'] || '';
+                    const type = rowData['type'] || '';
+                    const base = rowData['base'] || 0;
+                    const target = rowData['target'] || 0;
+                    const missingLink = rowData['missing_link'] || '';
+                    
+                    // Populate modal
+                    $('#editChannelName').val(channel);
+                    $('#editChannelUrl').val(sheetUrl);
+                    $('#editType').val(type);
+                    $('#editBase').val(base);
+                    $('#editTarget').val(target);
+                    $('#editMissingLink').val(missingLink);
+                    $('#originalChannel').val(channel);
                                     
                                     // Open modal
                                     const modalElement = document.getElementById('editChannelModal');
@@ -1201,6 +1217,7 @@
                     const type = rowData['type'] || '';
                     const base = rowData['base'] || 0;
                     const target = rowData['target'] || 0;
+                    const missingLink = rowData['missing_link'] || '';
                     
                     // Populate modal fields
                     $('#editChannelName').val(channel);
@@ -1208,6 +1225,7 @@
                     $('#editType').val(type);
                     $('#editBase').val(base);
                     $('#editTarget').val(target);
+                    $('#editMissingLink').val(missingLink);
                     $('#originalChannel').val(channel);
                     
                     // Show modal using Bootstrap 5 API
@@ -1656,6 +1674,7 @@
                 const type = $('#editType').val();
                 const base = $('#editBase').val().trim();
                 const target = $('#editTarget').val().trim();
+                const missingLink = $('#editMissingLink').val().trim();
                 const originalChannel = $('#originalChannel').val().trim();
 
                 if (!channel || !sheetUrl) {
@@ -1672,6 +1691,7 @@
                         type: type,
                         base: base,
                         target: target,
+                        missing_link: missingLink,
                         original_channel: originalChannel,
                         _token: $('meta[name="csrf-token"]').attr('content')
                     },

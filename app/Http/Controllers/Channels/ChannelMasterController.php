@@ -191,12 +191,15 @@ class ChannelMasterController extends Controller
         // Fetch both channel and sheet_link from ChannelMaster
         $columns = ['channel', 'sheet_link', 'channel_percentage', 'type'];
         
-        // Check if 'base' and 'target' columns exist before adding them
+        // Check if 'base', 'target', and 'missing_link' columns exist before adding them
         if (Schema::hasColumn('channel_master', 'base')) {
             $columns[] = 'base';
         }
         if (Schema::hasColumn('channel_master', 'target')) {
             $columns[] = 'target';
+        }
+        if (Schema::hasColumn('channel_master', 'missing_link')) {
+            $columns[] = 'missing_link';
         }
         
         $channels = ChannelMaster::where('status', 'Active')
@@ -278,6 +281,7 @@ class ChannelMasterController extends Controller
                 'channel_percentage' => $channelRow->channel_percentage ?? '',
                 'base' => $channelRow->base ?? 0,
                 'target' => $channelRow->target ?? 0,
+                'missing_link' => $channelRow->missing_link ?? '',
                 // '0 Sold SKU Count' => 0,
                 // 'Sold SKU Count'   => 0,
                 // 'Brand Registry'   => '',
@@ -4143,6 +4147,7 @@ class ChannelMasterController extends Controller
         $channelPercentage = $request->input('channel_percentage');
         $base = $request->input('base');
         $target = $request->input('target');
+        $missingLink = $request->input('missing_link');
 
         $channel = ChannelMaster::where('channel', $originalChannel)->first();
 
@@ -4156,6 +4161,12 @@ class ChannelMasterController extends Controller
         $channel->channel_percentage = $channelPercentage;
         $channel->base = $base;
         $channel->target = $target;
+        
+        // Save missing_link if column exists
+        if (Schema::hasColumn('channel_master', 'missing_link')) {
+            $channel->missing_link = $missingLink;
+        }
+        
         $channel->save();
 
         MarketplacePercentage::updateOrCreate(
