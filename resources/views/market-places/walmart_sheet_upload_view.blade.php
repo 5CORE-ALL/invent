@@ -146,6 +146,12 @@
             color: #1e2125;
             background-color: #e9ecef;
         }
+
+        /* Badge filter styling - Simple like eBay */
+        .badge.fs-6.p-2 {
+            cursor: pointer;
+            user-select: none;
+        }
     </style>
 @endsection
 
@@ -294,15 +300,15 @@
                         <!-- Walmart Metrics -->
                         <span class="badge bg-primary fs-6 p-2" id="total-products-badge" style="color: black; font-weight: bold;">Total Products: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: black; font-weight: bold;">Total Quantity: 0</span>
-                        <!-- Clickable Filter Badges -->
-                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer; transition: all 0.3s;" title="Click to filter: 0 Sold items">0 Sold: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="more-than-zero-sold-badge" style="color: white; font-weight: bold; cursor: pointer; transition: all 0.3s;" title="Click to filter: >0 Sold items">&gt;0 Sold: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer; transition: all 0.3s;" title="Click to filter: Missing items">Missing: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="map-count-badge" style="color: white; font-weight: bold; cursor: pointer; transition: all 0.3s;" title="Click to filter: Mapped items">Map: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="nmap-count-badge" style="color: white; font-weight: bold; cursor: pointer; transition: all 0.3s;" title="Click to filter: Not mapped items">Nmap: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="gt-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: W Price > Amazon">&gt; AMZ: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="lt-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: W Price < Amazon">&lt; AMZ: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="bb-issue-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: BB Issue items">BB Issue: 0</span>
+                        <!-- Clickable Filter Badges (Dark style like eBay) -->
+                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: 0 Sold items (INV>0)">0 Sold: 0</span>
+                        <span class="badge fs-6 p-2" id="more-than-zero-sold-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter: >0 Sold items (INV>0)">&gt;0 Sold: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: Missing items (INV>0)">Missing: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="map-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: Mapped items (INV>0)">Map: 0</span>
+                        <span class="badge bg-warning fs-6 p-2" id="nmap-count-badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter: Not mapped items (INV>0)">Nmap: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="lt-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: W Price < Amazon (INV>0)">&lt; AMZ: 0</span>
+                        <span class="badge fs-6 p-2" id="gt-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter: W Price > Amazon (INV>0)">&gt; AMZ: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="bb-issue-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: BB Issue items (W<A)">BB Issue: 0</span>
                         
                         <!-- Financial Metrics -->
                         <span class="badge bg-warning fs-6 p-2" id="total-spend-badge" style="color: black; font-weight: bold;">Total SPEND L30: $0.00</span>
@@ -1982,22 +1988,27 @@
             updateSummary();
         });
 
-        // Apply filters
+        // Apply filters - ALL filters work together (additive)
         function applyFilters() {
             const inventoryFilter = $('#inventory-filter').val();
             const gpftFilter = $('#gpft-filter').val();
             const cvrFilter = $('#cvr-filter').val();
             const bbIssueFilter = $('#bb-issue-filter').val();
-            const missingFilter = $('#missing-filter').val();
             const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
+            const rlNrlFilter = $('#rl-nrl-filter').val();
             const skuSearch = $('#sku-search').val();
 
+            // Clear all filters first
             table.clearFilter();
 
+            // SKU Search (always first)
             if (skuSearch) {
                 table.setFilter("sku", "like", skuSearch);
             }
 
+            // === DROPDOWN FILTERS ===
+            
+            // Inventory Filter
             if (inventoryFilter !== 'all') {
                 table.addFilter(function(data) {
                     const inv = parseFloat(data.INV) || 0;
@@ -2007,6 +2018,7 @@
                 });
             }
 
+            // GPFT Filter
             if (gpftFilter !== 'all') {
                 table.addFilter(function(data) {
                     const gpft = parseFloat(data.gpft) || 0;
@@ -2023,6 +2035,7 @@
                 });
             }
 
+            // CVR Filter
             if (cvrFilter !== 'all') {
                 table.addFilter(function(data) {
                     const wl30 = parseInt(data['total_qty']) || 0;
@@ -2042,6 +2055,7 @@
                 });
             }
 
+            // BB Issue Dropdown Filter
             if (bbIssueFilter !== 'all') {
                 table.addFilter(function(data) {
                     const wPrice = parseFloat(data.w_price) || 0;
@@ -2054,71 +2068,14 @@
                 });
             }
 
-            // Badge-based filters (clickable badges)
-            if (zeroSoldFilterActive) {
-                table.addFilter(function(data) {
-                    const qty = parseInt(data['total_qty']) || 0;
-                    return qty === 0;
-                });
-            }
-            
-            if (moreThanZeroSoldFilterActive) {
-                table.addFilter(function(data) {
-                    const qty = parseInt(data['total_qty']) || 0;
-                    return qty > 0;
-                });
-            }
-            
-            if (missingFilterActive) {
-                table.addFilter(function(data) {
-                    return data.missing === 'M';
-                });
-            }
-            
-            if (mapFilterActive) {
-                table.addFilter(function(data) {
-                    return data.map_status === 'Map';
-                });
-            }
-            
-            if (nmapFilterActive) {
-                table.addFilter(function(data) {
-                    return data.map_status === 'Nmap';
-                });
-            }
-            
-            if (gtAmzFilterActive) {
-                table.addFilter(function(data) {
-                    const wPriceVal = parseFloat(data['w_price']) || 0;
-                    const aPriceVal = parseFloat(data['a_price']) || 0;
-                    return wPriceVal > 0 && aPriceVal > 0 && wPriceVal > aPriceVal;
-                });
-            }
-            
-            if (ltAmzFilterActive) {
-                table.addFilter(function(data) {
-                    const wPriceVal = parseFloat(data['w_price']) || 0;
-                    const aPriceVal = parseFloat(data['a_price']) || 0;
-                    return wPriceVal > 0 && aPriceVal > 0 && wPriceVal < aPriceVal;
-                });
-            }
-            
-            // RL/NRL dropdown filter
-            const rlNrlFilter = $('#rl-nrl-filter').val();
+            // RL/NRL Dropdown Filter
             if (rlNrlFilter !== 'all') {
                 table.addFilter(function(data) {
                     return data.rl_nrl === rlNrlFilter;
                 });
             }
-            
-            if (bbIssueFilterActive) {
-                table.addFilter(function(data) {
-                    const wPriceVal = parseFloat(data.w_price) || 0;
-                    const aPriceVal = parseFloat(data.a_price) || 0;
-                    return wPriceVal > 0 && aPriceVal > 0 && wPriceVal < aPriceVal;
-                });
-            }
 
+            // DIL Filter
             if (dilFilter !== 'all') {
                 table.addFilter(function(data) {
                     const inv = parseFloat(data['INV']) || 0;
@@ -2134,6 +2091,73 @@
                 });
             }
 
+            // === BADGE FILTERS (CLICKABLE) - All work together ===
+            
+            // 0 Sold Filter (mutually exclusive with >0 Sold)
+            if (zeroSoldFilterActive) {
+                table.addFilter(function(data) {
+                    const qty = parseInt(data['total_qty']) || 0;
+                    return qty === 0;
+                });
+            }
+            
+            // >0 Sold Filter (mutually exclusive with 0 Sold)
+            if (moreThanZeroSoldFilterActive) {
+                table.addFilter(function(data) {
+                    const qty = parseInt(data['total_qty']) || 0;
+                    return qty > 0;
+                });
+            }
+            
+            // Missing Filter (works with all other filters)
+            if (missingFilterActive) {
+                table.addFilter(function(data) {
+                    return data.missing === 'M';
+                });
+            }
+            
+            // Map Filter (mutually exclusive with Nmap, works with Missing)
+            if (mapFilterActive) {
+                table.addFilter(function(data) {
+                    return data.map_status === 'Map';
+                });
+            }
+            
+            // Nmap Filter (mutually exclusive with Map, works with Missing)
+            if (nmapFilterActive) {
+                table.addFilter(function(data) {
+                    return data.map_status === 'Nmap';
+                });
+            }
+            
+            // > AMZ Filter (mutually exclusive with < AMZ)
+            if (gtAmzFilterActive) {
+                table.addFilter(function(data) {
+                    const wPriceVal = parseFloat(data['w_price']) || 0;
+                    const aPriceVal = parseFloat(data['a_price']) || 0;
+                    return wPriceVal > 0 && aPriceVal > 0 && wPriceVal > aPriceVal;
+                });
+            }
+            
+            // < AMZ Filter (mutually exclusive with > AMZ)
+            if (ltAmzFilterActive) {
+                table.addFilter(function(data) {
+                    const wPriceVal = parseFloat(data['w_price']) || 0;
+                    const aPriceVal = parseFloat(data['a_price']) || 0;
+                    return wPriceVal > 0 && aPriceVal > 0 && wPriceVal < aPriceVal;
+                });
+            }
+            
+            // BB Issue Badge Filter (works with all other filters)
+            if (bbIssueFilterActive) {
+                table.addFilter(function(data) {
+                    const wPriceVal = parseFloat(data.w_price) || 0;
+                    const aPriceVal = parseFloat(data.a_price) || 0;
+                    return wPriceVal > 0 && aPriceVal > 0 && wPriceVal < aPriceVal;
+                });
+            }
+
+            // Update UI
             updateSummary();
             updateSelectAllCheckbox();
         }
@@ -2142,133 +2166,61 @@
             applyFilters();
         });
         
-        // Badge filter click handlers - All filters can work together
+        // Badge filter click handlers - EXACT eBay pattern
+        
+        // 0 Sold vs >0 Sold (mutually exclusive)
         $('#zero-sold-count-badge').on('click', function() {
             zeroSoldFilterActive = !zeroSoldFilterActive;
-            // Only deactivate opposite filter (0 Sold and >0 Sold are mutually exclusive)
-            if (zeroSoldFilterActive) {
-                moreThanZeroSoldFilterActive = false;
-            }
+            moreThanZeroSoldFilterActive = false;
             applyFilters();
-            updateBadgeStyles();
         });
         
         $('#more-than-zero-sold-badge').on('click', function() {
             moreThanZeroSoldFilterActive = !moreThanZeroSoldFilterActive;
-            // Only deactivate opposite filter
-            if (moreThanZeroSoldFilterActive) {
-                zeroSoldFilterActive = false;
-            }
+            zeroSoldFilterActive = false;
             applyFilters();
-            updateBadgeStyles();
         });
         
+        // Missing/Map/Nmap (mutually exclusive with each other, like eBay)
         $('#missing-count-badge').on('click', function() {
             missingFilterActive = !missingFilterActive;
-            // Can work together with other filters now
+            mapFilterActive = false;
+            nmapFilterActive = false;
             applyFilters();
-            updateBadgeStyles();
         });
         
         $('#map-count-badge').on('click', function() {
             mapFilterActive = !mapFilterActive;
-            // Can work together with other filters now
+            missingFilterActive = false;
+            nmapFilterActive = false;
             applyFilters();
-            updateBadgeStyles();
         });
         
         $('#nmap-count-badge').on('click', function() {
             nmapFilterActive = !nmapFilterActive;
-            // Can work together with other filters now
+            mapFilterActive = false;
+            missingFilterActive = false;
             applyFilters();
-            updateBadgeStyles();
+        });
+        
+        // < AMZ vs > AMZ (mutually exclusive)
+        $('#lt-amz-badge').on('click', function() {
+            ltAmzFilterActive = !ltAmzFilterActive;
+            gtAmzFilterActive = false;
+            applyFilters();
         });
         
         $('#gt-amz-badge').on('click', function() {
             gtAmzFilterActive = !gtAmzFilterActive;
-            // Only deactivate opposite filter (> AMZ and < AMZ are mutually exclusive)
-            if (gtAmzFilterActive) {
-                ltAmzFilterActive = false;
-            }
+            ltAmzFilterActive = false;
             applyFilters();
-            updateBadgeStyles();
         });
         
-        $('#lt-amz-badge').on('click', function() {
-            ltAmzFilterActive = !ltAmzFilterActive;
-            // Only deactivate opposite filter
-            if (ltAmzFilterActive) {
-                gtAmzFilterActive = false;
-            }
-            applyFilters();
-            updateBadgeStyles();
-        });
-        
+        // BB Issue (works with all)
         $('#bb-issue-count-badge').on('click', function() {
             bbIssueFilterActive = !bbIssueFilterActive;
-            // Can work together with other filters
             applyFilters();
-            updateBadgeStyles();
         });
-        
-        // Function to update badge visual states (without outline)
-        function updateBadgeStyles() {
-            // 0 Sold badge
-            if (zeroSoldFilterActive) {
-                $('#zero-sold-count-badge').css('opacity', '1');
-            } else {
-                $('#zero-sold-count-badge').css('opacity', '0.8');
-            }
-            
-            // >0 Sold badge
-            if (moreThanZeroSoldFilterActive) {
-                $('#more-than-zero-sold-badge').css('opacity', '1');
-            } else {
-                $('#more-than-zero-sold-badge').css('opacity', '0.8');
-            }
-            
-            // Missing badge
-            if (missingFilterActive) {
-                $('#missing-count-badge').css('opacity', '1');
-            } else {
-                $('#missing-count-badge').css('opacity', '0.8');
-            }
-            
-            // Map badge
-            if (mapFilterActive) {
-                $('#map-count-badge').css('opacity', '1');
-            } else {
-                $('#map-count-badge').css('opacity', '0.8');
-            }
-            
-            // Nmap badge
-            if (nmapFilterActive) {
-                $('#nmap-count-badge').css('opacity', '1');
-            } else {
-                $('#nmap-count-badge').css('opacity', '0.8');
-            }
-            
-            // > AMZ badge
-            if (gtAmzFilterActive) {
-                $('#gt-amz-badge').css('opacity', '1');
-            } else {
-                $('#gt-amz-badge').css('opacity', '0.8');
-            }
-            
-            // < AMZ badge
-            if (ltAmzFilterActive) {
-                $('#lt-amz-badge').css('opacity', '1');
-            } else {
-                $('#lt-amz-badge').css('opacity', '0.8');
-            }
-            
-            // BB Issue badge
-            if (bbIssueFilterActive) {
-                $('#bb-issue-count-badge').css('opacity', '1');
-            } else {
-                $('#bb-issue-count-badge').css('opacity', '0.8');
-            }
-        }
 
         // Initialize dropdown functionality (Amazon-style)
         $(document).on('click', '.manual-dropdown-container .btn', function(e) {
@@ -2472,7 +2424,6 @@
         table.on('dataLoaded', function() {
             applyFilters();
             updateSummary();
-            updateBadgeStyles(); // Apply default badge styles
         });
 
         table.on('renderComplete', function() {

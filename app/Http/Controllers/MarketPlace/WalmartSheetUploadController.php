@@ -638,11 +638,222 @@ class WalmartSheetUploadController extends Controller
                 $data[] = $row;
             }
 
+            // Auto-save daily summary in background (non-blocking)
+            $this->saveDailySummaryIfNeeded($data);
+
             return response()->json($data);
         } catch (\Exception $e) {
             Log::error('Error fetching combined Walmart data: ' . $e->getMessage());
             Log::error('Stack trace: ' . $e->getTraceAsString());
             return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Auto-save daily Walmart summary snapshot (channel-wise)
+     * Matches Amazon/Temu logic exactly
+     */
+    private function saveDailySummaryIfNeeded($products)
+    {
+        try {
+            $today = now('America/Los_Angeles')->toDateString();
+            
+            // Filter: inventory > 0 && rl_nrl === 'RL' (matching frontend logic)
+            $filteredData = collect($products)->filter(function($p) {
+                $invCheck = floatval($p['INV'] ?? 0) > 0;
+                $rlCheck = ($p['rl_nrl'] ?? '') === 'RL';
+                
+                return $invCheck && $rlCheck;
+            });
+            
+            if ($filteredData->isEmpty()) {
+                return; // No valid products
+            }
+            
+            // Initialize counters
+            $totalProducts = $filteredData->count();
+            $totalQuantity = 0;
+            $totalPriceWeighted = 0;
+            $totalQty = 0;
+            $totalRevenue = 0;
+            $totalGpftAmt = 0; // Gross profit before ads
+            $totalPftAmt = 0; // Net profit after ads
+            $totalCogs = 0;
+            $totalGpft = 0;
+            $totalGroi = 0;
+            $totalAds = 0;
+            $totalPft = 0;
+            $totalRoi = 0;
+            $totalCvr = 0;
+            $totalDil = 0;
+            $totalSpend = 0;
+            $totalViews = 0;
+            $totalWalmartL30 = 0;
+            $cvrCount = 0;
+            $dilCount = 0;
+            $zeroSoldCount = 0;
+            $missingCount = 0;
+            $mappedCount = 0;
+            $notMappedCount = 0;
+            $lessAmzCount = 0;
+            $moreAmzCount = 0;
+            $bbIssueCount = 0;
+            
+            // Loop through each row
+            foreach ($filteredData as $row) {
+                $qty = intval($row['total_qty'] ?? 0);
+                $price = floatval($row['sprice'] ?? 0);
+                $totalQuantity += $qty;
+                $totalPriceWeighted += $price * $qty;
+                $totalQty += $qty;
+                
+                // Revenue from orders
+                $revenue = floatval($row['total_revenue'] ?? 0);
+                $totalRevenue += $revenue;
+                
+                // Profit amounts
+                $gpftAmt = floatval($row['gpft_amount'] ?? 0);
+                $pftAmt = floatval($row['pft_amount'] ?? 0);
+                $totalGpftAmt += $gpftAmt;
+                $totalPftAmt += $pftAmt;
+                
+                // COGS
+                $cogs = floatval($row['cogs'] ?? 0);
+                $totalCogs += $cogs;
+                
+                // Percentage metrics (for averaging)
+                $totalGpft += floatval($row['gpft'] ?? 0);
+                $totalGroi += floatval($row['groi'] ?? 0);
+                $totalAds += floatval($row['ads_percent'] ?? 0);
+                $totalPft += floatval($row['pft'] ?? 0);
+                $totalRoi += floatval($row['roi'] ?? 0);
+                
+                // CVR% (only count non-zero values)
+                $cvr = floatval($row['cvr_percent'] ?? 0);
+                if ($cvr > 0) {
+                    $totalCvr += $cvr;
+                    $cvrCount++;
+                }
+                
+                // DIL% (only count non-zero values)
+                $inv = floatval($row['INV'] ?? 0);
+                $ovl30 = floatval($row['L30'] ?? 0);
+                if ($inv > 0) {
+                    $dil = ($ovl30 / $inv) * 100;
+                    $totalDil += $dil;
+                    $dilCount++;
+                }
+                
+                // Ad spend and views
+                $totalSpend += floatval($row['spend'] ?? 0);
+                $totalViews += intval($row['page_views'] ?? 0);
+                $totalWalmartL30 += $qty;
+                
+                // Zero sold count
+                if ($qty == 0) {
+                    $zeroSoldCount++;
+                }
+                
+                // Missing
+                if (($row['missing'] ?? '') === 'M') {
+                    $missingCount++;
+                }
+                
+                // Mapped/Not Mapped
+                $mapStatus = $row['map_status'] ?? '';
+                if ($mapStatus === 'Map') {
+                    $mappedCount++;
+                } elseif ($mapStatus === 'Nmap') {
+                    $notMappedCount++;
+                }
+                
+                // Compare Walmart Price with Amazon Price
+                $wPrice = floatval($row['w_price'] ?? 0);
+                $aPrice = floatval($row['a_price'] ?? 0);
+                if ($aPrice > 0 && $wPrice > 0) {
+                    if ($wPrice < $aPrice) {
+                        $lessAmzCount++;
+                        $bbIssueCount++; // BB Issue = W Price < A Price
+                    } elseif ($wPrice > $aPrice) {
+                        $moreAmzCount++;
+                    }
+                }
+            }
+            
+            // Calculate averages
+            $avgPrice = $totalQty > 0 ? $totalPriceWeighted / $totalQty : 0;
+            $avgGpft = $totalProducts > 0 ? $totalGpft / $totalProducts : 0;
+            $avgGroi = $totalProducts > 0 ? $totalGroi / $totalProducts : 0;
+            $avgAds = $totalProducts > 0 ? $totalAds / $totalProducts : 0;
+            $avgPft = $totalProducts > 0 ? $totalPft / $totalProducts : 0;
+            $avgRoi = $totalProducts > 0 ? $totalRoi / $totalProducts : 0;
+            $avgCvr = $cvrCount > 0 ? $totalCvr / $cvrCount : 0;
+            $avgDil = $dilCount > 0 ? $totalDil / $dilCount : 0;
+            
+            // Store ALL metrics in JSON (flexible!)
+            $summaryData = [
+                // Counts
+                'total_products' => $totalProducts,
+                'zero_sold_count' => $zeroSoldCount,
+                'missing_count' => $missingCount,
+                'mapped_count' => $mappedCount, // Use 'mapped_count' for consistency with Temu
+                'not_mapped_count' => $notMappedCount,
+                'less_amz_count' => $lessAmzCount,
+                'more_amz_count' => $moreAmzCount,
+                'bb_issue_count' => $bbIssueCount,
+                
+                // Totals
+                'total_quantity' => $totalQuantity,
+                'total_revenue' => round($totalRevenue, 2),
+                'total_gpft_amt' => round($totalGpftAmt, 2),
+                'total_pft_amt' => round($totalPftAmt, 2),
+                'total_cogs' => round($totalCogs, 2),
+                'total_spend' => round($totalSpend, 2),
+                'total_views' => $totalViews,
+                'total_walmart_l30' => $totalWalmartL30,
+                
+                // Averages
+                'avg_price' => round($avgPrice, 2),
+                'avg_gpft' => round($avgGpft, 2),
+                'avg_groi' => round($avgGroi, 2),
+                'avg_ads' => round($avgAds, 2),
+                'avg_pft' => round($avgPft, 2),
+                'avg_roi' => round($avgRoi, 2),
+                'avg_cvr' => round($avgCvr, 2),
+                'avg_dil' => round($avgDil, 2),
+                
+                // Metadata
+                'total_products_count' => count($products),
+                'calculated_at' => now()->toDateTimeString(),
+                
+                // Active Filters
+                'filters_applied' => [
+                    'inventory' => 'gt0',  // INV > 0
+                    'rl_nrl' => 'RL',      // RL only
+                ],
+            ];
+            
+            // Save or update as JSON (channel-wise)
+            \App\Models\AmazonChannelSummary::updateOrCreate(
+                [
+                    'channel' => 'walmart',
+                    'snapshot_date' => $today
+                ],
+                [
+                    'summary_data' => $summaryData,
+                    'notes' => 'Auto-saved daily snapshot (INV > 0, RL only)',
+                ]
+            );
+            
+            Log::info("Daily Walmart summary snapshot saved for {$today}", [
+                'product_count' => $totalProducts,
+                'zero_sold_count' => $zeroSoldCount,
+                'mapped_count' => $mappedCount,
+            ]);
+            
+        } catch (\Exception $e) {
+            // Don't break the main response if summary save fails
+            Log::error('Error saving daily Walmart summary: ' . $e->getMessage());
         }
     }
 
