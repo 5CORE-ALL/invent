@@ -346,6 +346,12 @@
                                                 <span style="font-size: 0.7rem; margin-right: 4px;">RA:</span>
                                                 <span class="fw-bold" id="ra-count" style="font-size: 1.1rem; color: black;">0</span>
                                             </span>
+                                            <span class="badge-count-item paused-campaigns-card" id="paused-campaigns-card"
+                                                style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;"
+                                                title="Click to view paused campaigns">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">PINK DIL PAUSED:</span>
+                                                <span class="fw-bold" id="paused-campaigns-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
                                             <span class="badge-count-item utilization-card" data-type="7ub"
                                                 style="background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;">
                                                 <span style="font-size: 0.7rem; margin-right: 4px;">7UB:</span>
@@ -636,6 +642,7 @@
             let showNrlOnly = false; // Filter for NRL only
             let showRaOnly = false; // Filter for RA only
             let showEbaySkuOnly = false; // Filter for eBay SKUs only
+            let showPinkDilPausedOnly = false; // Filter for Pink DIL paused campaigns only
             let totalACOSValue = 0;
             let totalL30Spend = 0;
             let totalL30Sales = 0;
@@ -705,6 +712,7 @@
                 let ub7Count = 0; // Count 7UB
                 let ub7Ub1Count = 0; // Count 7UB + 1UB
                 let ebaySkuCount = 0; // Count eBay SKUs (SKUs with campaigns) after filters
+                let pausedCampaignsCount = 0; // Count paused campaigns
 
                 // Track processed SKUs to avoid counting duplicates
                 const processedSkusForNra = new Set(); // Track SKUs for NRA/RA counting
@@ -936,6 +944,11 @@
                             ub7Ub1Count++;
                         }
                     }
+
+                    // Count paused campaigns (campaigns with pink_dil_paused_at)
+                    if (hasCampaign && row.pink_dil_paused_at) {
+                        pausedCampaignsCount++;
+                    }
                 });
 
                 // Update missing campaign count
@@ -978,6 +991,12 @@
                 const raCountEl = document.getElementById('ra-count');
                 if (raCountEl) {
                     raCountEl.textContent = raCount;
+                }
+
+                // Update paused campaigns count
+                const pausedCampaignsCountEl = document.getElementById('paused-campaigns-count');
+                if (pausedCampaignsCountEl) {
+                    pausedCampaignsCountEl.textContent = pausedCampaignsCount;
                 }
 
                 // Update zero INV count
@@ -1189,6 +1208,9 @@
                     // Reset eBay SKU filter
                     showEbaySkuOnly = false;
                     document.getElementById('ebay-sku-card').style.boxShadow = '';
+                    // Reset Pink DIL Paused filter
+                    showPinkDilPausedOnly = false;
+                    document.getElementById('paused-campaigns-card').style.boxShadow = '';
                     this.style.boxShadow = '0 4px 12px rgba(220, 53, 69, 0.5)';
                 } else {
                     this.style.boxShadow = '';
@@ -1232,6 +1254,9 @@
                     // Reset eBay SKU filter
                     showEbaySkuOnly = false;
                     document.getElementById('ebay-sku-card').style.boxShadow = '';
+                    // Reset Pink DIL Paused filter
+                    showPinkDilPausedOnly = false;
+                    document.getElementById('paused-campaigns-card').style.boxShadow = '';
                     this.style.boxShadow = '0 4px 12px rgba(255, 193, 7, 0.5)';
                 } else {
                     this.style.boxShadow = '';
@@ -1494,7 +1519,53 @@
                     // Reset RA filter
                     showRaOnly = false;
                     document.getElementById('ra-card').style.boxShadow = '';
+                    // Reset Pink DIL Paused filter
+                    showPinkDilPausedOnly = false;
+                    document.getElementById('paused-campaigns-card').style.boxShadow = '';
                     this.style.boxShadow = '0 4px 12px rgba(139, 92, 246, 0.5)';
+                } else {
+                    this.style.boxShadow = '';
+                }
+
+                if (typeof table !== 'undefined' && table) {
+                    table.setFilter(combinedFilter);
+                    table.redraw(true);
+                    updateButtonCounts();
+                    setTimeout(updatePaginationCount, 100);
+                }
+            });
+
+            // Paused campaigns card click handler - filter table instead of showing modal
+            document.getElementById('paused-campaigns-card').addEventListener('click', function() {
+                showPinkDilPausedOnly = !showPinkDilPausedOnly;
+                if (showPinkDilPausedOnly) {
+                    // Reset dropdown to "All" when showing paused only
+                    document.getElementById('utilization-type-select').value = 'all';
+                    currentUtilizationType = 'all';
+                    // Show SBID column when showing all
+                    if (typeof table !== 'undefined' && table) {
+                        table.showColumn('sbid');
+                    }
+                    // Reset other filters
+                    showMissingOnly = false;
+                    document.getElementById('missing-campaign-card').style.boxShadow = '';
+                    showNraMissingOnly = false;
+                    document.getElementById('nra-missing-card').style.boxShadow = '';
+                    showNrlMissingOnly = false;
+                    document.getElementById('nrl-missing-card').style.boxShadow = '';
+                    showCampaignOnly = false;
+                    document.getElementById('total-campaign-card').style.boxShadow = '';
+                    showZeroInvOnly = false;
+                    document.getElementById('zero-inv-card').style.boxShadow = '';
+                    showNraOnly = false;
+                    document.getElementById('nra-card').style.boxShadow = '';
+                    showNrlOnly = false;
+                    document.getElementById('nrl-card').style.boxShadow = '';
+                    showRaOnly = false;
+                    document.getElementById('ra-card').style.boxShadow = '';
+                    showEbaySkuOnly = false;
+                    document.getElementById('ebay-sku-card').style.boxShadow = '';
+                    this.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.5)';
                 } else {
                     this.style.boxShadow = '';
                 }
@@ -2649,6 +2720,12 @@
                     const price = parseFloat(data.price || 0);
                     // Show if has campaign OR has price (eBay listing exists)
                     if (!hasCampaign && price <= 0) return false;
+                }
+
+                // Pink DIL Paused filter - show only campaigns that were paused by pink DIL cron
+                if (showPinkDilPausedOnly) {
+                    const pinkDilPausedAt = data.pink_dil_paused_at;
+                    if (!pinkDilPausedAt) return false; // Show only if pink_dil_paused_at is not null/empty
                 }
 
                 // Global search filter
