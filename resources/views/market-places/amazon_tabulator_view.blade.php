@@ -80,6 +80,14 @@
                     <select id="gpft-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">GPFT%</option>
+                        <option value="0-5">0-5%</option>
+                        <option value="5-10">5-10%</option>
+                        <option value="10-15">10-15%</option>
+                        <option value="15-20">15-20%</option>
+                        <option value="20-25">20-25%</option>
+                        <option value="25-30">25-30%</option>
+                        <option value="30-35">30-35%</option>
+                        <option value="35-40">35-40%</option>
                         <option value="40plus">40%+</option>
                     </select>
 
@@ -137,6 +145,11 @@
                     </select>
 
                     <!-- Views Range Filter -->
+                    <select id="views-column-select" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="Sess30" selected>View L30</option>
+                        <option value="Sess7">View L7</option>
+                    </select>
                     <input type="number" id="views-min" class="form-control form-control-sm" 
                         placeholder="Min Views" min="0" style="width: 100px; display: inline-block;">
                     <input type="number" id="views-max" class="form-control form-control-sm" 
@@ -144,6 +157,9 @@
                     <button id="clear-views-filter" class="btn btn-sm btn-outline-secondary" title="Clear Views Filter">
                         <i class="fas fa-times"></i>
                     </button>
+                    <span class="badge bg-primary fs-6 p-2" id="views-filter-count-badge" style="color: white; font-weight: bold; display: none;">
+                        Filtered: <span id="views-filter-count">0</span>
+                    </span>
 
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
@@ -2674,6 +2690,7 @@
                 const soldFilter = $('#sold-filter').val();
                 const viewsMin = parseFloat($('#views-min').val()) || null;
                 const viewsMax = parseFloat($('#views-max').val()) || null;
+                const viewsColumn = $('#views-column-select').val() || 'Sess30';
 
                 table.clearFilter(true);
 
@@ -2700,7 +2717,17 @@
                 if (gpftFilter !== 'all') {
                     table.addFilter(function(data) {
                         const gpft = parseFloat(data['GPFT%']) || 0;
-                        if (gpftFilter === '40plus') return gpft >= 40;
+                        
+                        if (gpftFilter === '0-5') return gpft >= 0 && gpft <= 5;
+                        if (gpftFilter === '5-10') return gpft > 5 && gpft <= 10;
+                        if (gpftFilter === '10-15') return gpft > 10 && gpft <= 15;
+                        if (gpftFilter === '15-20') return gpft > 15 && gpft <= 20;
+                        if (gpftFilter === '20-25') return gpft > 20 && gpft <= 25;
+                        if (gpftFilter === '25-30') return gpft > 25 && gpft <= 30;
+                        if (gpftFilter === '30-35') return gpft > 30 && gpft <= 35;
+                        if (gpftFilter === '35-40') return gpft > 35 && gpft <= 40;
+                        if (gpftFilter === '40plus') return gpft > 40;
+                        
                         return true;
                     });
                 }
@@ -2796,12 +2823,12 @@
                     });
                 }
 
-                // Views Range Filter (based on Sess30)
+                // Views Range Filter (based on selected column: Sess30 or Sess7)
                 if (viewsMin !== null || viewsMax !== null) {
                     table.addFilter(function(data) {
                         if (data.is_parent_summary) return false;
                         
-                        const views = parseFloat(data.Sess30) || 0;
+                        const views = parseFloat(data[viewsColumn]) || 0;
                         
                         // Apply min filter
                         if (viewsMin !== null && views < viewsMin) {
@@ -2816,6 +2843,9 @@
                         return true;
                     });
                 }
+
+                // Update views filter badge
+                updateViewsFilterBadge();
 
                 // Price filter (Prc > LMP)
                 if (priceFilterActive) {
@@ -2880,7 +2910,7 @@
             });
 
             // Views range filter input handlers
-            $('#views-min, #views-max').on('keyup change', function() {
+            $('#views-min, #views-max, #views-column-select').on('keyup change', function() {
                 applyFilters();
             });
 
@@ -2890,6 +2920,29 @@
                 $('#views-max').val('');
                 applyFilters();
             });
+
+            // Function to update views filter badge
+            function updateViewsFilterBadge() {
+                const viewsMin = parseFloat($('#views-min').val()) || null;
+                const viewsMax = parseFloat($('#views-max').val()) || null;
+                
+                // Only show badge if filter is active
+                if (viewsMin !== null || viewsMax !== null) {
+                    const data = table.getData("active");
+                    let filteredCount = 0;
+                    
+                    data.forEach(row => {
+                        if (!row['is_parent_summary']) {
+                            filteredCount++;
+                        }
+                    });
+                    
+                    $('#views-filter-count').text(filteredCount.toLocaleString());
+                    $('#views-filter-count-badge').show();
+                } else {
+                    $('#views-filter-count-badge').hide();
+                }
+            }
 
             // Update PFT% and ROI% calc values (only for INV > 0)
             function updateCalcValues() {
