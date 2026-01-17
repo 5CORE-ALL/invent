@@ -199,6 +199,9 @@
                         <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;">
                             L30 Orders: <span id="total-l30-orders">0</span>
                         </span>
+                        <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">
+                            Total Qty: <span id="total-qty">0</span>
+                        </span>
                         <span class="badge bg-warning fs-6 p-2" style="color: black; font-weight: bold;">
                             Avg Gprofit%: <span id="avg-gprofit">0%</span>
                         </span>
@@ -217,7 +220,7 @@
                         <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;">
                             Total Clicks: <span id="total-clicks">0</span>
                         </span>
-                        <span class="badge bg-success fs-6 p-2" style="color: white; font-weight: bold;">
+                        <span class="badge bg-warning fs-6 p-2" style="color: black; font-weight: bold;">
                              Map: <span id="total-map">0</span>
                         </span>
                         <span class="badge bg-danger fs-6 p-2" style="color: white; font-weight: bold;">
@@ -342,6 +345,7 @@
                                     <th>Date</th>
                                     <th class="text-end">L30 Sales</th>
                                     <th class="text-end">L30 Orders</th>
+                                    <th class="text-end">Total Qty</th>
                                     <th class="text-end">Clicks</th>
                                     <th class="text-end">Gprofit%</th>
                                     <th class="text-end">NPFT%</th>
@@ -349,7 +353,7 @@
                             </thead>
                             <tbody id="historyTableBody">
                                 <tr>
-                                    <td colspan="6" class="text-center">Loading...</td>
+                                    <td colspan="7" class="text-center">Loading...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -504,24 +508,15 @@
                             const rowData = cell.getRow().getData();
                             const missingLink = rowData['missing_link'] || '';
                             
-                            let style = '';
-                            
-                            if (value === 0) { 
-                                style = 'color:#28a745;'; // Green text
-                            } else if (value <= 20) { 
-                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;'; // Yellow bg with black text
-                            } else if (value <= 50) { 
-                                style = 'color:#ff6f00;'; // Dark Orange text
-                            } else { 
-                                style = 'color:#a00211;'; // Red text
-                            }
+                            // Simple black text - no background colors
+                            const style = 'color:black;font-weight:600;';
                             
                             // Make clickable if missing_link exists
                             if (missingLink && value > 0) {
-                                return `<a href="${missingLink}" target="_blank" style="${style}font-weight:600;text-decoration:none;cursor:pointer;" title="Click to view missing items details">${value}</a>`;
+                                return `<a href="${missingLink}" target="_blank" style="${style}text-decoration:none;cursor:pointer;" title="Click to view missing items details">${value}</a>`;
                             }
                             
-                            return `<span style="${style}font-weight:600;">${value}</span>`;
+                            return `<span style="${style}">${value}</span>`;
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -536,19 +531,11 @@
                         sorter: "number",
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
-                            let style = '';
                             
-                            if (value === 0) { 
-                                style = 'color:#28a745;'; // Green text
-                            } else if (value <= 20) { 
-                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;'; // Yellow bg with black text
-                            } else if (value <= 50) { 
-                                style = 'color:#ff6f00;'; // Dark Orange text
-                            } else { 
-                                style = 'color:#a00211;'; // Red text
-                            }
+                            // Simple black text - no background colors
+                            const style = 'color:black;font-weight:600;';
                             
-                            return `<span style="${style}font-weight:600;">${value}</span>`;
+                            return `<span style="${style}">${value}</span>`;
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -628,6 +615,22 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            return `<span>${value.toLocaleString('en-US')}</span>`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "Qty",
+                        field: "Qty",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 90,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             return `<span>${value.toLocaleString('en-US')}</span>`;
@@ -1012,6 +1015,7 @@
                 let totalChannels = data.length;
                 let totalL30Sales = 0;
                 let totalL30Orders = 0;
+                let totalQty = 0;
                 let totalClicks = 0;
                 let totalPft = 0;
                 let totalCogs = 0;
@@ -1028,6 +1032,7 @@
                     const channel = (row['Channel '] || '').trim().toLowerCase();
                     const l30Sales = parseNumber(row['L30 Sales'] || 0);
                     const l30Orders = parseNumber(row['L30 Orders'] || 0);
+                    const qty = parseNumber(row['Qty'] || 0);
                     const clicks = parseNumber(row['clicks'] || 0);
                     const gprofitPercent = parseNumber(row['Gprofit%'] || 0);
                     const groi = parseNumber(row['G Roi'] || 0);
@@ -1054,6 +1059,7 @@
                     
                     totalL30Sales += l30Sales;
                     totalL30Orders += l30Orders;
+                    totalQty += qty;
                     totalClicks += clicks;
                     totalAdSpend += adSpend;
                     totalCogs += cogs;
@@ -1091,6 +1097,7 @@
                 $('#total-channels').text(totalChannels);
                 $('#total-l30-sales').text('$' + Math.round(totalL30Sales).toLocaleString('en-US'));
                 $('#total-l30-orders').text(Math.round(totalL30Orders).toLocaleString('en-US'));
+                $('#total-qty').text(Math.round(totalQty).toLocaleString('en-US'));
                 $('#total-clicks').text(Math.round(totalClicks).toLocaleString('en-US'));
                 $('#avg-gprofit').text(avgGprofit.toFixed(1) + '%');
                 $('#avg-groi').text(avgGroi.toFixed(1) + '%');
@@ -1323,11 +1330,14 @@
                     const summaryData = row.summary_data || {};
                     const npft = parseNumber(summaryData.gprofit_percent || 0) - parseNumber(summaryData.tcos_percent || 0);
                     const clicks = parseNumber(summaryData.clicks || 0);
+                    const totalQty = parseNumber(summaryData.total_quantity || 0);
+                    
                     html += `
                         <tr>
                             <td>${formatDate(row.snapshot_date)}</td>
                             <td class="text-end">$${parseNumber(summaryData.l30_sales).toLocaleString()}</td>
                             <td class="text-end">${parseNumber(summaryData.l30_orders).toLocaleString()}</td>
+                            <td class="text-end">${totalQty > 0 ? totalQty.toLocaleString() : '-'}</td>
                             <td class="text-end">${clicks > 0 ? clicks.toLocaleString() : '-'}</td>
                             <td class="text-end">${parseNumber(summaryData.gprofit_percent).toFixed(1)}%</td>
                             <td class="text-end">${npft.toFixed(1)}%</td>
@@ -1336,7 +1346,7 @@
                 });
                 
                 if (html === '') {
-                    html = '<tr><td colspan="6" class="text-center">No data available</td></tr>';
+                    html = '<tr><td colspan="7" class="text-center">No data available</td></tr>';
                 }
                 
                 $('#historyTableBody').html(html);
@@ -1397,7 +1407,7 @@
 
                 // Prepare data for Google Charts
                 const chartData = [
-                    ['Date', 'L30 Sales', 'L30 Orders', 'Clicks', 'Gprofit%', 'NPFT%']
+                    ['Date', 'L30 Sales', 'L30 Orders', 'Total Qty', 'Clicks', 'Gprofit%', 'NPFT%']
                 ];
 
                 const reversedData = [...data].reverse();
@@ -1406,11 +1416,13 @@
                     const summaryData = row.summary_data || {};
                     const npft = toNum(summaryData.gprofit_percent || 0) - toNum(summaryData.tcos_percent || 0);
                     const clicks = toNum(summaryData.clicks || 0);
+                    const totalQty = toNum(summaryData.total_quantity || 0);
                     
                     chartData.push([
                         formatDate(row.snapshot_date),
                         toNum(summaryData.l30_sales),
                         toNum(summaryData.l30_orders),
+                        totalQty,
                         clicks,
                         toNum(summaryData.gprofit_percent),
                         npft
@@ -1420,6 +1432,7 @@
                 // Calculate min/max for dynamic axis scaling
                 let minSales = Infinity, maxSales = -Infinity;
                 let minOrders = Infinity, maxOrders = -Infinity;
+                let minQty = Infinity, maxQty = -Infinity;
                 let minClicks = Infinity, maxClicks = -Infinity;
                 let minGprofit = Infinity, maxGprofit = -Infinity;
                 let minNPFT = Infinity, maxNPFT = -Infinity;
@@ -1428,14 +1441,17 @@
                     const row = chartData[i];
                     const sales = row[1];
                     const orders = row[2];
-                    const clicks = row[3];
-                    const gprofit = row[4];
-                    const npft = row[5];
+                    const qty = row[3];
+                    const clicks = row[4];
+                    const gprofit = row[5];
+                    const npft = row[6];
 
                     if (sales < minSales) minSales = sales;
                     if (sales > maxSales) maxSales = sales;
                     if (orders < minOrders) minOrders = orders;
                     if (orders > maxOrders) maxOrders = orders;
+                    if (qty < minQty) minQty = qty;
+                    if (qty > maxQty) maxQty = qty;
                     if (clicks < minClicks) minClicks = clicks;
                     if (clicks > maxClicks) maxClicks = clicks;
                     if (gprofit < minGprofit) minGprofit = gprofit;
@@ -1445,8 +1461,8 @@
                 }
 
                 // Calculate combined min/max for axes with 15% buffer
-                const leftMin = Math.min(minSales, minOrders, minClicks);
-                const leftMax = Math.max(maxSales, maxOrders, maxClicks);
+                const leftMin = Math.min(minSales, minOrders, minQty, minClicks);
+                const leftMax = Math.max(maxSales, maxOrders, maxQty, maxClicks);
                 const leftRange = leftMax - leftMin;
                 const leftAxisMin = Math.max(0, leftMin - (leftRange * 0.15));
                 const leftAxisMax = leftMax + (leftRange * 0.15);
@@ -1510,7 +1526,7 @@
                                 visibleInLegend: true
                             },
                             2: { 
-                                color: '#9c27b0',
+                                color: '#00bcd4',
                                 lineWidth: 3,
                                 pointSize: 6,
                                 pointShape: 'circle',
@@ -1518,6 +1534,14 @@
                                 visibleInLegend: true
                             },
                             3: { 
+                                color: '#9c27b0',
+                                lineWidth: 3,
+                                pointSize: 6,
+                                pointShape: 'circle',
+                                targetAxisIndex: 0,
+                                visibleInLegend: true
+                            },
+                            4: { 
                                 color: '#e53935',
                                 lineWidth: 3,
                                 pointSize: 6,
@@ -1525,7 +1549,7 @@
                                 targetAxisIndex: 1,
                                 visibleInLegend: true
                             },
-                            4: { 
+                            5: { 
                                 color: '#43a047',
                                 lineWidth: 3,
                                 pointSize: 6,
@@ -1536,7 +1560,7 @@
                         },
                         vAxes: {
                             0: { 
-                                title: 'Sales, Orders & Clicks',
+                                title: 'Sales, Orders, Qty & Clicks',
                                 titleTextStyle: { 
                                     color: '#1e88e5', 
                                     fontSize: 14, 

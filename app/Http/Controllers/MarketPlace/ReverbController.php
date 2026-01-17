@@ -33,22 +33,17 @@ class ReverbController extends Controller
         $demo = $request->query("demo");
 
         // Get percentage from cache or database
-        // $percentage = Cache::remember(
-        //     "reverb_marketplace_percentage",
-        //     now()->addDays(30),
-        //     function () {
-        //         $marketplaceData = MarketplacePercentage::where(
-        //             "marketplace",
-        //             "Reverb"
-        //         )->first();
-        //         return $marketplaceData ? $marketplaceData->percentage : 100;
-        //     }
-        // );
-
-        $marketplaceData = ChannelMaster::where('channel', 'Reverb')->first();
-
-        $percentage = $marketplaceData ? $marketplaceData->channel_percentage : 100;
-        $adUpdates = $marketplaceData ? $marketplaceData->ad_updates : 0;
+        $percentage = Cache::remember(
+            "reverb_marketplace_percentage",
+            now()->addDays(30),
+            function () {
+                $marketplaceData = MarketplacePercentage::where(
+                    "marketplace",
+                    "Reverb"
+                )->first();
+                return $marketplaceData ? $marketplaceData->percentage : 85;
+            }
+        );
 
         return view("market-places.reverb", [
             "mode" => $mode,
@@ -639,8 +634,18 @@ class ReverbController extends Controller
         $mode = $request->query("mode");
         $demo = $request->query("demo");
 
-        $marketplaceData = ChannelMaster::where('channel', 'Reverb')->first();
-        $percentage = $marketplaceData ? $marketplaceData->channel_percentage : 85;
+        // Get percentage from cache or database
+        $percentage = Cache::remember(
+            "reverb_marketplace_percentage",
+            now()->addDays(30),
+            function () {
+                $marketplaceData = MarketplacePercentage::where(
+                    "marketplace",
+                    "Reverb"
+                )->first();
+                return $marketplaceData ? $marketplaceData->percentage : 85;
+            }
+        );
 
         return view("market-places.reverb_tabulator_view", [
             "mode" => $mode,
@@ -667,9 +672,18 @@ class ReverbController extends Controller
 
     public function getViewReverbTabularData(Request $request)
     {
-        // Get percentage from database
-        $marketplaceData = ChannelMaster::where('channel', 'Reverb')->first();
-        $percentage = $marketplaceData ? $marketplaceData->channel_percentage : 85;
+        // Get percentage from cache or database
+        $percentage = Cache::remember(
+            "reverb_marketplace_percentage",
+            now()->addDays(30),
+            function () {
+                $marketplaceData = MarketplacePercentage::where(
+                    "marketplace",
+                    "Reverb"
+                )->first();
+                return $marketplaceData ? $marketplaceData->percentage : 85;
+            }
+        );
         $percentageValue = $percentage / 100;
 
         // Fetch all product master records (excluding parent rows)

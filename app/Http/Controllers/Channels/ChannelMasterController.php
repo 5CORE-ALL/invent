@@ -302,9 +302,23 @@ class ChannelMasterController extends Controller
             }
 
             // Add clicks data from adv_masters_data if available
+            // Map channel names to match adv_masters_data table
             $channelKey = strtoupper($channel);
-            if (isset($advMastersData[$channelKey])) {
-                $advData = $advMastersData[$channelKey];
+            $channelMapping = [
+                'TIKTOKSHOP' => 'TIKTOK',
+                'SHOPIFYB2C' => 'SHOPIFY',
+                'SHOPIFYB2B' => 'SHOPIFY',
+                'EBAYTWO' => 'EBAY 2',
+                'EBAYTHREE' => 'EBAY 3',
+                'FBMARKETPLACE' => 'FB CARAOUSEL', // Or FB VIDEO
+                'FBSHOP' => 'FB VIDEO',
+                'INSTAGRAMSHOP' => 'INSTA CARAOUSEL', // Or INSTA VIDEO
+            ];
+            
+            $advKey = $channelMapping[$channelKey] ?? $channelKey;
+            
+            if (isset($advMastersData[$advKey])) {
+                $advData = $advMastersData[$advKey];
                 $row['clicks'] = $advData->clicks ?? 0;
             } else {
                 $row['clicks'] = 0;
@@ -463,6 +477,7 @@ class ChannelMasterController extends Controller
 
         $l30Sales = $metrics->total_sales ?? 0;
         $l30Orders = $metrics->total_orders ?? 0;
+        $totalQuantity = $metrics->total_quantity ?? 0;
         $totalProfit = $metrics->total_pft ?? 0;
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
@@ -497,6 +512,7 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
             'Gprofit%'   => round($gProfitPct, 2) . '%',
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
@@ -661,6 +677,7 @@ class ChannelMasterController extends Controller
 
         $l30Sales = $metrics->total_sales ?? 0;
         $l30Orders = $metrics->total_orders ?? 0;
+        $totalQuantity = $metrics->total_quantity ?? 0;
         $totalProfit = $metrics->total_pft ?? 0;
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
@@ -694,6 +711,7 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
             'Gprofit%'   => round($gProfitPct, 2) . '%',
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
@@ -792,7 +810,8 @@ class ChannelMasterController extends Controller
 
         // Use pre-calculated metrics from MarketplaceDailyMetric (same as Amazon)
         $l30Sales = $metrics->total_sales ?? 0;
-        $l30Orders = $metrics->total_quantity ?? 0; // Changed from total_orders to total_quantity (shows units sold)
+        $l30Orders = $metrics->total_orders ?? 0;
+        $totalQuantity = $metrics->total_quantity ?? 0;
         $totalProfit = $metrics->total_pft ?? 0;
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
@@ -826,6 +845,7 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
             'Gprofit%'   => round($gProfitPct, 2) . '%',
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
@@ -947,7 +967,8 @@ class ChannelMasterController extends Controller
 
         // Use pre-calculated metrics from MarketplaceDailyMetric (same as Amazon/eBay 2)
         $l30Sales = $metrics->total_sales ?? 0;
-        $l30Orders = $metrics->total_quantity ?? 0; // Changed from total_orders to total_quantity (shows units sold)
+        $l30Orders = $metrics->total_orders ?? 0;
+        $totalQuantity = $metrics->total_quantity ?? 0;
         $totalProfit = $metrics->total_pft ?? 0;
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
@@ -978,6 +999,7 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
             'Gprofit%'   => round($gProfitPct, 2) . '%',
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
@@ -1062,6 +1084,7 @@ class ChannelMasterController extends Controller
         // Use MarketplaceDailyMetric data
         $l30Sales = $metrics->total_sales ?? $metrics->l30_sales ?? 0;
         $l30Orders = $metrics->total_orders ?? 0;
+        $totalQuantity = $metrics->total_quantity ?? 0;
         $totalProfit = $metrics->total_pft ?? 0;
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
@@ -1093,6 +1116,7 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
             'Gprofit%'   => round($gProfitPct, 2) . '%',
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
@@ -1158,6 +1182,7 @@ class ChannelMasterController extends Controller
 
         $l30Orders = $query->sum('r_l30');
         $l60Orders = $query->sum('r_l60');
+        $totalQuantity = $l30Orders; // r_l30 is already units sold (quantity)
 
         $l30Sales  = (clone $query)->selectRaw('SUM(r_l30 * price) as total')->value('total') ?? 0;
         $l60Sales  = (clone $query)->selectRaw('SUM(r_l60 * price) as total')->value('total') ?? 0;
@@ -1255,6 +1280,7 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
             'Gprofit%'   => round($gProfitPct, 2) . '%',
             'gprofitL60'   => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
@@ -1336,6 +1362,7 @@ class ChannelMasterController extends Controller
         // Current metrics
         $l30Sales = $latestMetric ? $latestMetric->l30_sales : 0;
         $l30Orders = $latestMetric ? $latestMetric->total_orders : 0;
+        $totalQuantity = $latestMetric ? $latestMetric->total_quantity : 0;
         $totalCogs = $latestMetric ? $latestMetric->total_cogs : 0;
         $totalPft = $latestMetric ? $latestMetric->total_pft : 0;
         $gProfitPct = $latestMetric ? $latestMetric->pft_percentage : 0;
@@ -1368,6 +1395,7 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
             'Gprofit%'   => round($gProfitPct, 1) . '%',
             'gprofitL60'   => round($gprofitL60, 1) . '%',
             'G Roi'      => round($gRoi, 1),
@@ -1435,6 +1463,7 @@ class ChannelMasterController extends Controller
 
         $l30Sales = $metrics->total_sales ?? 0;
         $l30Orders = $metrics->total_orders ?? 0;
+        $totalQuantity = $metrics->total_quantity ?? 0;
         $totalProfit = $metrics->total_pft ?? 0;
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
@@ -1467,6 +1496,7 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
             'Gprofit%'   => round($gProfitPct, 2) . '%',
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
@@ -1611,6 +1641,7 @@ class ChannelMasterController extends Controller
         // Process L30 data
         $l30Sales = 0;
         $l30OrderCount = 0;
+        $l30TotalQuantity = 0;
         $totalProfit = 0;
         $totalCogs = 0;
         $l30OrderIds = [];
@@ -1621,6 +1652,7 @@ class ChannelMasterController extends Controller
             $unitPrice = floatval($order->price ?? 0);
             
             $saleAmount = $unitPrice * $quantity;
+            $l30TotalQuantity += $quantity;
 
             // Get ProductMaster data
             $pm = $productMasters->get($sku);
@@ -1763,6 +1795,7 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60OrderCount,
             'L30 Orders' => $l30OrderCount,
+            'Qty'        => intval($l30TotalQuantity),
             'Gprofit%'   => round($gProfitPct, 2) . '%',
             'gprofitL60'   => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
@@ -1836,6 +1869,7 @@ class ChannelMasterController extends Controller
         // Use MarketplaceDailyMetric data
         $l30Sales = $metrics->total_sales ?? $metrics->l30_sales ?? 0;
         $l30Orders = $metrics->total_orders ?? 0;
+        $totalQuantity = $metrics->total_quantity ?? 0;
         $totalProfit = $metrics->total_pft ?? 0;
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
@@ -1867,6 +1901,7 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
             'Gprofit%'   => round($gProfitPct, 2) . '%',
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
@@ -1944,6 +1979,7 @@ class ChannelMasterController extends Controller
         // Use MarketplaceDailyMetric data
         $l30Sales = $metrics->total_sales ?? $metrics->l30_sales ?? 0;
         $l30Orders = $metrics->total_orders ?? 0;
+        $totalQuantity = $metrics->total_quantity ?? 0;
         $totalProfit = $metrics->total_pft ?? 0;
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
@@ -1975,6 +2011,7 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
             'Gprofit%'   => round($gProfitPct, 2) . '%',
             'gprofitL60'   => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
@@ -2047,6 +2084,7 @@ class ChannelMasterController extends Controller
 
         $l30Orders = $query->sum('p_l30');
         $l60Orders = $query->sum('p_l60');
+        $totalQuantity = $l30Orders; // p_l30 is already units sold (quantity)
 
         $l30Sales  = (clone $query)->selectRaw('SUM(p_l30 * price) as total')->value('total') ?? 0;
         $l60Sales  = (clone $query)->selectRaw('SUM(p_l60 * price) as total')->value('total') ?? 0;
@@ -2145,6 +2183,7 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
             'Gprofit%'   => round($gProfitPct, 2) . '%',
             'gprofitL60'   => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
@@ -2213,6 +2252,7 @@ class ChannelMasterController extends Controller
 
         $l30Orders = $query->sum('l30');
         $l60Orders = $query->sum('l60');
+        $totalQuantity = $l30Orders; // l30 is already units sold (quantity)
 
         $l30Sales  = (clone $query)->selectRaw('SUM(l30 * price) as total')->value('total') ?? 0;
         $l60Sales  = (clone $query)->selectRaw('SUM(l60 * price) as total')->value('total') ?? 0;
@@ -2311,6 +2351,7 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
             'Gprofit%'   => round($gProfitPct, 2) . '%',
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
@@ -2373,6 +2414,7 @@ class ChannelMasterController extends Controller
 
         $l30Orders = $query->sum('f_l30');
         $l60Orders = $query->sum('f_l60');
+        $totalQuantity = $l30Orders; // f_l30 is already units sold (quantity)
 
         $l30Sales  = (clone $query)->selectRaw('SUM(f_l30 * price) as total')->value('total') ?? 0;
         $l60Sales  = (clone $query)->selectRaw('SUM(f_l60 * price) as total')->value('total') ?? 0;
@@ -2471,6 +2513,7 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
             'Gprofit%'   => round($gProfitPct, 2) . '%',
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
@@ -2505,6 +2548,7 @@ class ChannelMasterController extends Controller
 
         $l30Sales = $metrics->total_sales ?? 0;
         $l30Orders = $metrics->total_orders ?? 0;
+        $totalQuantity = $metrics->total_quantity ?? 0;
         $totalProfit = $metrics->total_pft ?? 0;
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
@@ -2535,6 +2579,7 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
             'Gprofit%'   => round($gProfitPct, 1) . '%',
             'gprofitL60' => round($gprofitL60, 1) . '%',
             'G Roi'      => round($gRoi, 1),
@@ -2667,6 +2712,7 @@ class ChannelMasterController extends Controller
             // Calculate L30 metrics from ShipHub
             $l30Orders = 0;
             $l30Sales = 0;
+            $totalQuantity = 0;
             $totalProfit = 0;
             $totalCogs = 0;
             
@@ -2758,6 +2804,7 @@ class ChannelMasterController extends Controller
                     $pftEach = ($unitPrice * 0.80) - $lp - $shipCost; // 80% margin for TikTok
                     $profit = $pftEach * $quantity;
                     
+                    $totalQuantity += $quantity;
                     $totalCogs += $cogs;
                     $totalProfit += $profit;
                 }
@@ -2786,6 +2833,7 @@ class ChannelMasterController extends Controller
             $l60Sales = 0;
             $l30Orders = 0;
             $l30Sales = 0;
+            $totalQuantity = 0;
             $totalProfit = 0;
             $totalCogs = 0;
             $gProfitPct = 0;
@@ -2814,6 +2862,7 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
             'Gprofit%'   => round($gProfitPct, 2),
             'gprofitL60' => round($gprofitL60, 2),
             'G Roi'      => round($gRoi, 2),
@@ -2884,6 +2933,7 @@ class ChannelMasterController extends Controller
 
         $l30Orders = $query->sum('i_l30');
         $l60Orders = $query->sum('i_l60');
+        $totalQuantity = $l30Orders; // i_l30 is already units sold (quantity)
 
         $l30Sales  = (clone $query)->selectRaw('SUM(i_l30 * price) as total')->value('total') ?? 0;
         $l60Sales  = (clone $query)->selectRaw('SUM(i_l60 * price) as total')->value('total') ?? 0;
@@ -2982,6 +3032,7 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
             'Gprofit%'   => round($gProfitPct, 2) . '%',
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
@@ -3055,6 +3106,7 @@ class ChannelMasterController extends Controller
 
         $l30Sales = $metrics->total_sales ?? 0;
         $l30Orders = $metrics->total_orders ?? 0;
+        $totalQuantity = $metrics->total_quantity ?? 0;
         $totalProfit = $metrics->total_pft ?? 0;
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
@@ -3086,6 +3138,7 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
             'Gprofit%'   => round($gProfitPct, 2) . '%',
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
@@ -3164,6 +3217,7 @@ class ChannelMasterController extends Controller
 
         $l30Sales = $metrics->total_sales ?? 0;
         $l30Orders = $metrics->total_orders ?? 0;
+        $totalQuantity = $metrics->total_quantity ?? 0;
         $totalProfit = $metrics->total_pft ?? 0;
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
@@ -3194,6 +3248,7 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
             'Gprofit%'   => round($gProfitPct, 1) . '%',
             'gprofitL60' => round($gprofitL60, 1) . '%',
             'G Roi'      => round($gRoi, 1),
@@ -3268,6 +3323,7 @@ class ChannelMasterController extends Controller
 
         $l30Sales = $metrics->total_sales ?? 0;
         $l30Orders = $metrics->total_orders ?? 0;
+        $totalQuantity = $metrics->total_quantity ?? 0;
         $totalProfit = $metrics->total_pft ?? 0;
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
@@ -3298,6 +3354,7 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
             'Gprofit%'   => round($gProfitPct, 1) . '%',
             'gprofitL60' => round($gprofitL60, 1) . '%',
             'G Roi'      => round($gRoi, 1),
@@ -3366,6 +3423,7 @@ class ChannelMasterController extends Controller
 
         $l30Orders = $query->sum('l30');
         $l60Orders = $query->sum('l60');
+        $totalQuantity = $l30Orders; // l30 is already units sold (quantity)
 
         $l30Sales  = (clone $query)->selectRaw('SUM(l30 * price) as total')->value('total') ?? 0;
         $l60Sales  = (clone $query)->selectRaw('SUM(l60 * price) as total')->value('total') ?? 0;
@@ -3464,6 +3522,7 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
             'Gprofit%'   => round($gProfitPct, 2) . '%',
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
@@ -3531,6 +3590,7 @@ class ChannelMasterController extends Controller
 
         $l30Orders = $query->sum('l30');
         $l60Orders = $query->sum('l60');
+        $totalQuantity = $l30Orders; // l30 is already units sold (quantity)
 
         $l30Sales  = (clone $query)->selectRaw('SUM(l30 * price) as total')->value('total') ?? 0;
         $l60Sales  = (clone $query)->selectRaw('SUM(l60 * price) as total')->value('total') ?? 0;
@@ -3629,6 +3689,7 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
             'Gprofit%'   => round($gProfitPct, 2) . '%',
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
@@ -3658,6 +3719,7 @@ class ChannelMasterController extends Controller
 
         $l30Orders = $query->sum('l30');
         $l60Orders = $query->sum('l60');
+        $totalQuantity = $l30Orders; // l30 is already units sold (quantity)
 
         $l30Sales  = (clone $query)->selectRaw('SUM(l30 * price) as total')->value('total') ?? 0;
         $l60Sales  = (clone $query)->selectRaw('SUM(l60 * price) as total')->value('total') ?? 0;
@@ -3759,6 +3821,7 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
             'Gprofit%'   => round($gProfitPct, 2) . '%',
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
@@ -3788,6 +3851,7 @@ class ChannelMasterController extends Controller
 
         $l30Orders = $query->sum('l30');
         $l60Orders = $query->sum('l60');
+        $totalQuantity = $l30Orders; // l30 is already units sold (quantity)
 
         $l30Sales  = (clone $query)->selectRaw('SUM(l30 * price) as total')->value('total') ?? 0;
         $l60Sales  = (clone $query)->selectRaw('SUM(l60 * price) as total')->value('total') ?? 0;
@@ -3889,6 +3953,7 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
             'Gprofit%'   => round($gProfitPct, 2) . '%',
             'gprofitL60' => round($gprofitL60, 2) . '%',
             'G Roi'      => round($gRoi, 2),
@@ -3923,6 +3988,7 @@ class ChannelMasterController extends Controller
 
         $l30Sales = $metrics->total_sales ?? 0;
         $l30Orders = $metrics->total_orders ?? 0;
+        $totalQuantity = $metrics->total_quantity ?? 0;
         $totalProfit = $metrics->total_pft ?? 0;
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
@@ -3958,6 +4024,7 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
             'Gprofit%'   => round($gProfitPct, 1) . '%',
             'gprofitL60' => round($gprofitL60, 1) . '%',
             'G Roi'      => round($gRoi, 1),
@@ -4043,6 +4110,7 @@ class ChannelMasterController extends Controller
 
         $l30Sales = $metrics->total_sales ?? 0;
         $l30Orders = $metrics->total_orders ?? 0;
+        $totalQuantity = $metrics->total_quantity ?? 0;
         $totalProfit = $metrics->total_pft ?? 0;
         $totalCogs = $metrics->total_cogs ?? 0;
         $gProfitPct = $metrics->pft_percentage ?? 0;
@@ -4076,6 +4144,7 @@ class ChannelMasterController extends Controller
             'Growth'     => round($growth, 2) . '%',
             'L60 Orders' => $l60Orders,
             'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
             'Gprofit%'   => round($gProfitPct, 1) . '%',
             'gprofitL60' => round($gprofitL60, 1) . '%',
             'G Roi'      => round($gRoi, 1),
@@ -5081,12 +5150,49 @@ class ChannelMasterController extends Controller
                 'data' => $history,
             ]);
         } catch (\Exception $e) {
-            \Log::error('Error fetching channel history: ' . $e->getMessage());
+            Log::error('Error fetching channel history: ' . $e->getMessage());
             return response()->json([
                 'status' => 500,
                 'message' => 'Error fetching history',
             ], 500);
         }
+    }
+
+    /**
+     * Get channel name as it appears in marketplace_daily_metrics table
+     */
+    private function getChannelNameForMetrics($normalizedChannelName)
+    {
+        $mapping = [
+            'amazon' => 'Amazon',
+            'ebay' => 'eBay',
+            'ebaytwo' => 'eBay 2',
+            'ebaythree' => 'eBay 3',
+            'walmart' => 'Walmart',
+            'temu' => 'Temu',
+            'macys' => 'Macys',
+            'tiendamia' => 'Tiendamia',
+            'bestbuyusa' => 'Best Buy USA',
+            'reverb' => 'Reverb',
+            'doba' => 'Doba',
+            'pls' => 'PLS',
+            'wayfair' => 'Wayfair',
+            'faire' => 'Faire',
+            'shein' => 'Shein',
+            'tiktokshop' => 'TikTok',
+            'instagramshop' => 'Instagram Shop',
+            'aliexpress' => 'AliExpress',
+            'mercariwship' => 'Mercari With Ship',
+            'mercariwoship' => 'Mercari Without Ship',
+            'fbmarketplace' => 'FB Marketplace',
+            'fbshop' => 'FB Shop',
+            'business5core' => 'Business 5Core',
+            'topdawg' => 'TopDawg',
+            'shopifyb2c' => 'Shopify B2C',
+            'shopifyb2b' => 'Shopify B2B',
+        ];
+        
+        return $mapping[$normalizedChannelName] ?? ucfirst($normalizedChannelName);
     }
 
     /**
@@ -5110,6 +5216,13 @@ class ChannelMasterController extends Controller
                 $tcosPercent = $l30Sales > 0 ? ($adSpend / $l30Sales * 100) : 0;
                 $npftPercent = $gprofitPercent - $tcosPercent;
                 
+                // Get actual total_quantity from marketplace_daily_metrics (for units sold)
+                $channelNameForMetrics = $this->getChannelNameForMetrics($channelName);
+                $metrics = \App\Models\MarketplaceDailyMetric::where('channel', $channelNameForMetrics)
+                    ->latest('date')
+                    ->first();
+                $totalQuantity = $metrics ? ($metrics->total_quantity ?? $metrics->total_orders ?? 0) : 0;
+                
                 // Prepare summary data
                 $summaryData = [
                     // Sales & Orders
@@ -5117,6 +5230,7 @@ class ChannelMasterController extends Controller
                     'l30_sales' => $l30Sales,
                     'l60_orders' => floatval($row['L60 Orders'] ?? 0),
                     'l30_orders' => floatval($row['L30 Orders'] ?? 0),
+                    'total_quantity' => floatval($totalQuantity), // Total quantity (units sold) from marketplace_daily_metrics
                     'growth' => floatval($row['Growth'] ?? 0),
                     'clicks' => intval($row['clicks'] ?? 0),
                     
@@ -5163,12 +5277,12 @@ class ChannelMasterController extends Controller
                 );
             }
             
-            \Log::info("Channel Master daily summaries saved for {$today}", [
+            Log::info("Channel Master daily summaries saved for {$today}", [
                 'channels_count' => count($channelData),
             ]);
             
         } catch (\Exception $e) {
-            \Log::error('Error saving channel master daily summaries: ' . $e->getMessage());
+            Log::error('Error saving channel master daily summaries: ' . $e->getMessage());
         }
     }
 
