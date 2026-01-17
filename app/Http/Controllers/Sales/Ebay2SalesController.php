@@ -26,9 +26,16 @@ class Ebay2SalesController extends Controller
             ->selectRaw('SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")) as total_spend')
             ->value('total_spend') ?? 0;
 
+        // Calculate KW Spent (from ebay_2_priority_reports)
+        $kwSpent = DB::table('ebay_2_priority_reports')
+            ->where('report_range', 'L30')
+            ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
+            ->selectRaw('SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")) as total_spend')
+            ->value('total_spend') ?? 0;
+
         return view('sales.ebay2_daily_sales_data', [
             'pmtSpent' => (float) $pmtSpent,
-            'kwSpent' => 0 // eBay 2 may not have priority reports
+            'kwSpent' => (float) $kwSpent
         ]);
     }
 
@@ -96,6 +103,21 @@ class Ebay2SalesController extends Controller
         }
 
         \Log::info('eBay 2 PMT Data - Reports found: ' . $generalReports->count() . ', Total PMT entries: ' . count($pmtSpentByItemId));
+
+        // Calculate KW Spent per SKU (from ebay_2_priority_reports)
+        $priorityReports = DB::table('ebay_2_priority_reports')
+            ->whereIn('campaign_name', $skus)
+            ->where('report_range', 'L30')
+            ->get();
+        
+        $kwSpentBySku = [];
+        foreach ($priorityReports as $report) {
+            $spent = (float) preg_replace('/[^\d.]/', '', $report->cpc_ad_fees_payout_currency ?? '0');
+            $sku = $report->campaign_name;
+            $kwSpentBySku[$sku] = ($kwSpentBySku[$sku] ?? 0) + $spent;
+        }
+
+        \Log::info('eBay 2 KW Data - Reports found: ' . $priorityReports->count() . ', Total KW entries: ' . count($kwSpentBySku));
 
         // Get marketplace percentage
         $marketplaceData = MarketplacePercentage::where('marketplace', 'EbayTwo')->first();
@@ -170,6 +192,9 @@ class Ebay2SalesController extends Controller
                 // Get PMT Spent for this item_id
                 $pmtSpent = $pmtSpentByItemId[$item->item_id] ?? 0;
 
+                // Get KW Spent for this SKU (using the lookup SKU without OPEN BOX/USED prefix)
+                $kwSpent = $kwSpentBySku[$lookupSku] ?? 0;
+
                 $data[] = [
                     'order_id' => $order->ebay_order_id,
                     'item_id' => $item->item_id,
@@ -191,6 +216,7 @@ class Ebay2SalesController extends Controller
                     'pft_each_pct' => round($pftEachPct, 2),
                     'pft' => round($pft, 2),
                     'roi' => round($roi, 2),
+                    'kw_spent' => round($kwSpent, 2),
                     'pmt_spent' => round($pmtSpent, 2),
                 ];
             }
@@ -198,9 +224,11 @@ class Ebay2SalesController extends Controller
 
         \Log::info('Returning ' . count($data) . ' eBay 2 data items');
         
-        // Log sample PMT values for debugging
+        // Log sample PMT and KW values for debugging
         $pmtSamples = array_filter(array_column($data, 'pmt_spent'), fn($v) => $v > 0);
+        $kwSamples = array_filter(array_column($data, 'kw_spent'), fn($v) => $v > 0);
         \Log::info('PMT Spent non-zero count: ' . count($pmtSamples) . ', Samples: ' . json_encode(array_slice($pmtSamples, 0, 5)));
+        \Log::info('KW Spent non-zero count: ' . count($kwSamples) . ', Samples: ' . json_encode(array_slice($kwSamples, 0, 5)));
 
         return response()->json($data);
     }
@@ -230,6 +258,7 @@ class Ebay2SalesController extends Controller
                 'pft_each_pct' => true,
                 'pft' => true,
                 'roi' => true,
+                'kw_spent' => true,
                 'pmt_spent' => true,
             ];
 

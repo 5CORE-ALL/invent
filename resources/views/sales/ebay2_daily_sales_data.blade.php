@@ -97,6 +97,9 @@
                             style="color: white; font-weight: bold;">L30 Sales: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-cogs-badge"
                             style="color: white; font-weight: bold;">Total COGS: $0.00</span>
+                        <span class="badge fs-6 p-2" id="kw-spent-badge"
+                            style="background-color: #ffc107; color: black; font-weight: bold;">KW Spent:
+                            ${{ number_format($kwSpent ?? 0, 0) }}</span>
                         <span class="badge fs-6 p-2" id="pmt-spent-badge"
                             style="background-color: #28a745; color: white; font-weight: bold;">PMT Spent:
                             ${{ number_format($pmtSpent ?? 0, 0) }}</span>
@@ -130,6 +133,7 @@
     <script>
         const COLUMN_VIS_KEY = "ebay2_sales_column_visibility";
         let table = null;
+        const KW_SPENT = {{ $kwSpent ?? 0 }};
         const PMT_SPENT = {{ $pmtSpent ?? 0 }};
 
         // Toast notification function
@@ -416,6 +420,20 @@
                         }
                     },
                     {
+                        title: "KW",
+                        field: "kw_spent",
+                        width: 60,
+                        hozAlign: "right",
+                        sorter: "number",
+                        formatter: "money",
+                        formatterParams: {
+                            decimal: ".",
+                            thousand: ",",
+                            symbol: "$",
+                            precision: 2
+                        }
+                    },
+                    {
                         title: "PMT",
                         field: "pmt_spent",
                         width: 60,
@@ -486,15 +504,20 @@
                     totalL30Sales += l30Sales;
 
                     if (row.sku && !uniqueSkuSpend[row.sku]) {
+                        const kwSpent = parseFloat(row.kw_spent) || 0;
                         const pmtSpent = parseFloat(row.pmt_spent) || 0;
-                        uniqueSkuSpend[row.sku] = pmtSpent;
+                        uniqueSkuSpend[row.sku] = kwSpent + pmtSpent;
                     }
                 });
 
                 const avgPrice = totalQuantityForPrice > 0 ? totalWeightedPrice / totalQuantityForPrice : 0;
                 const pftPercentage = totalL30Sales > 0 ? (totalPft / totalL30Sales) * 100 : 0;
                 const roiPercentage = totalCogs > 0 ? (totalPft / totalCogs) * 100 : 0;
-                const tacosPercentage = totalRevenue > 0 ? (PMT_SPENT / totalRevenue) * 100 : 0;
+                
+                // Calculate TACOS Percentage: ((KW Spent + PMT Spent) / Total Sales) * 100
+                const tacosPercentage = totalRevenue > 0 ? ((KW_SPENT + PMT_SPENT) / totalRevenue) * 100 : 0;
+                
+                // Calculate N PFT: GPFT % - TACOS %
                 const mPft = pftPercentage - tacosPercentage;
                 
                 // Calculate N ROI: ROI % - TACOS % (same as N PFT formula)
