@@ -1229,7 +1229,8 @@ class ReverbController extends Controller
                 'zero_sold_count' => $zeroSoldCount,
                 'missing_count' => $missingCount,
                 'map_count' => $mapCount,
-                'inv_r_stock_count' => $invRStockCount,
+                'nmap_count' => $invRStockCount,  // Not mapped (inventory mismatch)
+                'inv_r_stock_count' => $invRStockCount,  // Keep for backward compatibility
                 'less_amz_count' => $lessAmzCount,
                 'more_amz_count' => $moreAmzCount,
                 
