@@ -201,6 +201,17 @@
                             0 Sold: <span id="zero-sold-count">0</span>
                         </span>
                         
+                        <!-- Inventory Mapping Badges (Clickable) -->
+                        <span class="badge bg-success fs-6 p-2 map-filter-badge" data-filter="mapped" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter items where INV = INV AMZ">
+                            Map: <span id="map-count">0</span>
+                        </span>
+                        <span class="badge bg-danger fs-6 p-2 map-filter-badge" data-filter="nmapped" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter items where INV ≠ INV AMZ">
+                             N Map: <span id="nmap-count">0</span>
+                        </span>
+                        <span class="badge bg-warning fs-6 p-2 missing-amz-filter-badge" data-filter="missing-amazon" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter items missing from Amazon table">
+                            Missing: <span id="missing-amazon-count">0</span>
+                        </span>
+                        
                         <!-- Price Comparison Badge -->
                         <span class="badge bg-danger fs-6 p-2 price-filter-badge" data-filter="prc-gt-lmp" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter items where Prc > LMP">
                             Prc > LMP: <span id="prc-gt-lmp-count">0</span>
@@ -222,6 +233,7 @@
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-amazon-inv-badge" style="color: black; font-weight: bold;">INV: 0</span>
+                        <span class="badge bg-success fs-6 p-2" id="total-amazon-inv-amz-badge" style="color: black; font-weight: bold;">INV AMZ: 0</span>
                         
                         <!-- Ad Spend Breakdown -->
                         <span class="badge bg-dark fs-6 p-2" id="kw-spend-badge" style="color: white; font-weight: bold;">KW Ads: $0</span>
@@ -361,6 +373,7 @@
         let selectedSkus = new Set(); // Track selected SKUs across all pages
         let soldFilterActive = 'all'; // Track sold filter state: 'all', 'sold', 'zero'
         let priceFilterActive = false; // Track price filter state: true = show only Prc > LMP
+        let mapFilterActive = 'all'; // Track map filter state: 'all', 'mapped', 'missing'
 
         // SKU-specific chart
         function initSkuMetricsChart() {
@@ -624,6 +637,71 @@
                     $(this).removeClass('bg-danger').addClass('bg-warning').css('color', 'black');
                 } else {
                     $(this).removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
+                }
+                
+                // Re-apply filters
+                applyFilters();
+            });
+
+            // Map filter badge click handlers
+            $('.map-filter-badge').on('click', function() {
+                const filter = $(this).data('filter');
+                
+                // Toggle filter state
+                if (mapFilterActive === filter) {
+                    // If clicking the same filter, turn it off
+                    mapFilterActive = 'all';
+                    // Reset badge appearance
+                    $('.map-filter-badge').each(function() {
+                        const badgeFilter = $(this).data('filter');
+                        if (badgeFilter === 'mapped') {
+                            $(this).removeClass('bg-warning').addClass('bg-success').css('color', 'black');
+                        } else {
+                            $(this).removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
+                        }
+                    });
+                } else {
+                    // Set new filter
+                    mapFilterActive = filter;
+                    // Update badge appearance
+                    $('.map-filter-badge').each(function() {
+                        const badgeFilter = $(this).data('filter');
+                        if (badgeFilter === filter) {
+                            $(this).removeClass('bg-success bg-danger').addClass('bg-warning').css('color', 'black');
+                        } else {
+                            if (badgeFilter === 'mapped') {
+                                $(this).removeClass('bg-warning').addClass('bg-success').css('color', 'black');
+                            } else {
+                                $(this).removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
+                            }
+                        }
+                    });
+                }
+                
+                // Re-apply filters
+                applyFilters();
+            });
+
+            // Missing Amazon filter badge click handler
+            let missingAmazonFilterActive = false;
+            $('.missing-amz-filter-badge').on('click', function() {
+                missingAmazonFilterActive = !missingAmazonFilterActive;
+                
+                // Update badge appearance
+                if (missingAmazonFilterActive) {
+                    $(this).removeClass('bg-warning').addClass('bg-info').css('color', 'black');
+                    // Turn off map filters
+                    mapFilterActive = 'all';
+                    $('.map-filter-badge').each(function() {
+                        const badgeFilter = $(this).data('filter');
+                        if (badgeFilter === 'mapped') {
+                            $(this).removeClass('bg-warning').addClass('bg-success').css('color', 'black');
+                        } else {
+                            $(this).removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
+                        }
+                    });
+                } else {
+                    $(this).removeClass('bg-info').addClass('bg-warning').css('color', 'black');
                 }
                 
                 // Re-apply filters
@@ -1482,6 +1560,105 @@
                      
                     },
                     {
+                        title: "NR/RL",
+                        field: "NR",
+                        hozAlign: "center",
+                        headerSort: false,
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+
+                            // Empty for parent rows
+                            if (row.is_parent_summary) return '';
+
+                            const nrl = row['NR'] || '';
+                            const sku = row['(Child) sku'];
+
+                            // Determine current value (default to RL if empty)
+                            let value = '';
+                            if (nrl === 'NR') {
+                                value = 'NR';
+                            } else if (nrl === 'REQ') {
+                                value = 'REQ';
+                            } else {
+                                value = 'REQ'; // Default to REQ
+                            }
+
+                            return `<select class="form-select form-select-sm nr-select" data-sku="${sku}"
+                                style="border: 1px solid #ddd; text-align: center; cursor: pointer; padding: 2px 4px; font-size: 16px; width: 50px; height: 28px; color: black; font-weight: bold;">
+                                <option value="REQ" ${value === 'REQ' ? 'selected' : ''} style="color: black;">🟢</option>
+                                <option value="NR" ${value === 'NR' ? 'selected' : ''} style="color: black;">🔴</option>
+                            </select>`;
+                        },
+                        cellClick: function(e, cell) {
+                            e.stopPropagation();
+                        },
+                        width: 60
+                    },
+                    {
+                        title: "Missing",
+                        field: "is_missing",
+                        hozAlign: "center",
+                        width: 65,
+                        headerSort: false,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            
+                            // Empty for parent rows
+                            if (rowData.is_parent_summary) return '';
+                            
+                            const inv = parseFloat(rowData.INV) || 0;
+                            const nrValue = rowData.NR || '';
+                            const isMissingAmazon = rowData.is_missing_amazon || false;
+                            
+                            // Only check for INV > 0 and NR = REQ
+                            if (inv > 0 && nrValue === 'REQ') {
+                                if (isMissingAmazon) {
+                                    return `<span style="font-size: 16px; color: #dc3545; font-weight: bold;">M</span>`;
+                                }
+                            }
+                            
+                            return '';
+                        }
+                    },
+
+                    {
+                        title: "Map",
+                        field: "inv_map",
+                        hozAlign: "center",
+                        width: 60,
+                        headerSort: false,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            
+                            // Empty for parent rows
+                            if (rowData.is_parent_summary) return '';
+                            
+                            const inv = parseFloat(rowData.INV) || 0;
+                            const nrValue = rowData.NR || '';
+                            const isMissingAmazon = rowData.is_missing_amazon || false;
+                            
+                            // Only show for INV > 0 and NR = REQ
+                            if (inv <= 0 || nrValue !== 'REQ') return '';
+                            
+                            // If item is missing from Amazon, leave Map blank
+                            if (isMissingAmazon) return '';
+                            
+                            const invAmz = parseFloat(rowData.INV_AMZ) || 0;
+                            const difference = Math.abs(inv - invAmz);
+                            
+                            if (difference === 0) {
+                                // Perfect match - show green dot
+                                return `<span style="font-size: 20px; color: #28a745;">🟢</span>`;
+                            } else {
+                                // Not matching - show red dot with difference count
+                                return `<div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                                    <span style="font-size: 16px; color: #dc3545;">🔴</span>
+                                    <span style="font-size: 11px; color: #dc3545; font-weight: 600;">${Math.round(difference)}</span>
+                                </div>`;
+                            }
+                        }
+                    },
+                    {
                         title: "Rating",
                         field: "rating",
                         hozAlign: "center",
@@ -1562,6 +1739,35 @@
                         width: 50,
                         sorter: "number"
                     },
+
+                    {
+                        title: "INV AMZ",
+                        field: "INV_AMZ",
+                        hozAlign: "center",
+                        width: 65,
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue()) || 0;
+                            const rowData = cell.getRow().getData();
+                            const shopifyInv = parseFloat(rowData.INV) || 0;
+                            
+                            // Color logic: Green if matches, Red if different by >3, Yellow if different by <=3
+                            let color = '';
+                            const difference = Math.abs(value - shopifyInv);
+                            
+                            if (difference === 0) {
+                                color = '#28a745'; // Green - exact match
+                            } else if (difference <= 3) {
+                                color = '#ffc107'; // Yellow - small difference
+                            } else {
+                                color = '#dc3545'; // Red - large difference
+                            }
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}</span>`;
+                        }
+                    },
+
+                   
 
                     {
                         title: "OV L30",
@@ -1691,50 +1897,6 @@
                                 return sess7 === 0 ? 0 : (aL7 / sess7) * 100;
                             };
                             return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
-                        },
-                        width: 60
-                    },
-
-                    {
-                        title: "NR/RL",
-                        field: "NR",
-                        hozAlign: "center",
-                        headerSort: false,
-                        formatter: function(cell) {
-                            const row = cell.getRow().getData();
-
-                            // Empty for parent rows
-                            if (row.is_parent_summary) return '';
-
-                            const nrl = row['NR'] || '';
-                            const sku = row['(Child) sku'];
-
-                            // Determine current value (default to RL if empty)
-                            let value = '';
-                            if (nrl === 'NR') {
-                                value = 'NR';
-                            } else if (nrl === 'REQ') {
-                                value = 'REQ';
-                            } else {
-                                value = 'REQ'; // Default to REQ
-                            }
-
-                            // Set background color based on value
-                            let bgColor = '#28a745'; // Green for RL
-                            let textColor = 'black';
-                            if (value === 'NR') {
-                                bgColor = '#dc3545'; // Red for NR
-                                textColor = 'black';
-                            }
-
-                            return `<select class="form-select form-select-sm nr-select" data-sku="${sku}"
-                                style="border: 1px solid #ddd; text-align: center; cursor: pointer; padding: 2px 4px; font-size: 16px; width: 50px; height: 28px;">
-                                <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>🟢</option>
-                                <option value="NR" ${value === 'NR' ? 'selected' : ''}>🔴</option>
-                            </select>`;
-                        },
-                        cellClick: function(e, cell) {
-                            e.stopPropagation();
                         },
                         width: 60
                     },
@@ -2635,6 +2797,44 @@
                     });
                 }
 
+                // Map filter (INV vs INV_AMZ) - for inventory sync
+                if (mapFilterActive !== 'all') {
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return false;
+                        
+                        const inv = parseFloat(data.INV) || 0;
+                        const nrValue = data.NR || '';
+                        const isMissingAmazon = data.is_missing_amazon || false;
+                        
+                        // Only apply to INV > 0, NR = REQ, and not missing from Amazon
+                        if (inv <= 0 || nrValue !== 'REQ' || isMissingAmazon) return false;
+                        
+                        const invAmz = parseFloat(data.INV_AMZ) || 0;
+                        const difference = Math.abs(inv - invAmz);
+                        
+                        if (mapFilterActive === 'mapped') {
+                            return difference === 0; // Show only matched items (Map)
+                        } else if (mapFilterActive === 'nmapped') {
+                            return difference > 0; // Show only mismatched items (N Map)
+                        }
+                        return true;
+                    });
+                }
+
+                // Missing Amazon filter - for items not in amazon_datsheets table
+                if (missingAmazonFilterActive) {
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return false;
+                        
+                        const inv = parseFloat(data.INV) || 0;
+                        const nrValue = data.NR || '';
+                        const isMissingAmazon = data.is_missing_amazon || false;
+                        
+                        // Show only REQ items with INV > 0 that are missing from Amazon
+                        return isMissingAmazon && inv > 0 && nrValue === 'REQ';
+                    });
+                }
+
                 updateCalcValues();
                 updateSummary();
                 // Update select all checkbox after filter is applied
@@ -2696,6 +2896,7 @@
                 let totalSalesAmt = 0;
                 let totalLpAmt = 0;
                 let totalAmazonInv = 0;
+                let totalAmazonInvAmz = 0;
                 let totalAmazonL30 = 0;
                 let totalDilPercent = 0;
                 let dilCount = 0;
@@ -2703,6 +2904,9 @@
                 let totalSoldCount = 0;
                 let zeroSoldCount = 0;
                 let prcGtLmpCount = 0;
+                let mapCount = 0;
+                let missingCount = 0;
+                let missingAmazonCount = 0;
 
                 data.forEach(row => {
                     if (!row['is_parent_summary'] && parseFloat(row['INV']) > 0) {
@@ -2713,6 +2917,12 @@
                         totalSalesAmt += parseFloat(row['T_Sale_l30'] || 0);
                         totalLpAmt += parseFloat(row['LP_productmaster'] || 0) * parseFloat(row['A_L30'] || 0);
                         totalAmazonInv += parseFloat(row['INV'] || 0);
+                        
+                        // Handle INV_AMZ - only sum if numeric
+                        const invAmz = row['INV_AMZ'];
+                        if (invAmz && !isNaN(parseFloat(invAmz))) {
+                            totalAmazonInvAmz += parseFloat(invAmz);
+                        }
                         
                         // Ad Spend Breakdown - DO NOT sum from rows as it causes double-counting
                         // We'll use the campaign totals from the backend instead (calculated below)
@@ -2732,6 +2942,29 @@
                         const lmpPrice = parseFloat(row['lmp_price'] || 0);
                         if (lmpPrice > 0 && price > lmpPrice) {
                             prcGtLmpCount++;
+                        }
+                        
+                        // Count Missing from Amazon and Map/Missing inventory sync
+                        // Only count for INV > 0 and NR = REQ
+                        const inv = parseFloat(row['INV'] || 0);
+                        const nrValue = row['NR'] || '';
+                        const isMissingAmazon = row['is_missing_amazon'] || false;
+                        
+                        if (inv > 0 && nrValue === 'REQ') {
+                            if (isMissingAmazon) {
+                                // SKU doesn't exist in amazon_datsheets
+                                missingAmazonCount++;
+                            } else {
+                                // SKU exists in amazon_datsheets, check inventory sync
+                                const invAmzNum = parseFloat(row['INV_AMZ'] || 0);
+                                const invDifference = Math.abs(inv - invAmzNum);
+                                
+                                if (invDifference === 0) {
+                                    mapCount++; // Perfect match
+                                } else {
+                                    missingCount++; // Inventory mismatch
+                                }
+                            }
                         }
                         
                         const dil = parseFloat(row['E Dil%'] || 0);
@@ -2769,6 +3002,13 @@
                 $('#total-sold-count').text(totalSoldCount.toLocaleString());
                 $('#zero-sold-count').text(zeroSoldCount.toLocaleString());
                 
+                // Update Map and N Map counts (inventory sync for items that exist in Amazon)
+                $('#map-count').text(mapCount.toLocaleString());
+                $('#nmap-count').text(missingCount.toLocaleString());
+                
+                // Update Missing Amazon count (items not in amazon_datsheets)
+                $('#missing-amazon-count').text(missingAmazonCount.toLocaleString());
+                
                 // Update Prc > LMP count
                 $('#prc-gt-lmp-count').text(prcGtLmpCount.toLocaleString());
                 
@@ -2792,6 +3032,7 @@
                 $('#tcos-percent-badge').text('TCOS: ' + tcosPercent.toFixed(1) + '%');
                 
                 $('#total-amazon-inv-badge').text('INV: ' + Math.round(totalAmazonInv).toLocaleString());
+                $('#total-amazon-inv-amz-badge').text('INV AMZ: ' + Math.round(totalAmazonInvAmz).toLocaleString());
                 $('#total-pft-amt-badge').text('Total PFT: $' + Math.round(totalPftAmt));
                 $('#total-sales-amt-badge').text('Total Sales: $' + Math.round(totalSalesAmt));
                 

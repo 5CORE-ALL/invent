@@ -148,7 +148,11 @@ class ChannelMasterController extends Controller
             $mapCount = $summaryData->summary_data['map_count'] 
                      ?? $summaryData->summary_data['mapping_count'] 
                      ?? 0;
-            $missCount = $summaryData->summary_data['missing_count'] ?? 0;
+            
+            // Check for both 'missing_count' and 'missing_amazon_count' field names
+            $missCount = $summaryData->summary_data['missing_count'] 
+                      ?? $summaryData->summary_data['missing_amazon_count']
+                      ?? 0;
         }
         
         return ['map' => $mapCount, 'miss' => $missCount];
@@ -187,12 +191,15 @@ class ChannelMasterController extends Controller
         // Fetch both channel and sheet_link from ChannelMaster
         $columns = ['channel', 'sheet_link', 'channel_percentage', 'type'];
         
-        // Check if 'base' and 'target' columns exist before adding them
+        // Check if 'base', 'target', and 'missing_link' columns exist before adding them
         if (Schema::hasColumn('channel_master', 'base')) {
             $columns[] = 'base';
         }
         if (Schema::hasColumn('channel_master', 'target')) {
             $columns[] = 'target';
+        }
+        if (Schema::hasColumn('channel_master', 'missing_link')) {
+            $columns[] = 'missing_link';
         }
         
         $channels = ChannelMaster::where('status', 'Active')
@@ -274,6 +281,7 @@ class ChannelMasterController extends Controller
                 'channel_percentage' => $channelRow->channel_percentage ?? '',
                 'base' => $channelRow->base ?? 0,
                 'target' => $channelRow->target ?? 0,
+                'missing_link' => $channelRow->missing_link ?? '',
                 // '0 Sold SKU Count' => 0,
                 // 'Sold SKU Count'   => 0,
                 // 'Brand Registry'   => '',
@@ -4139,6 +4147,7 @@ class ChannelMasterController extends Controller
         $channelPercentage = $request->input('channel_percentage');
         $base = $request->input('base');
         $target = $request->input('target');
+        $missingLink = $request->input('missing_link');
 
         $channel = ChannelMaster::where('channel', $originalChannel)->first();
 
@@ -4152,6 +4161,12 @@ class ChannelMasterController extends Controller
         $channel->channel_percentage = $channelPercentage;
         $channel->base = $base;
         $channel->target = $target;
+        
+        // Save missing_link if column exists
+        if (Schema::hasColumn('channel_master', 'missing_link')) {
+            $channel->missing_link = $missingLink;
+        }
+        
         $channel->save();
 
         MarketplacePercentage::updateOrCreate(
@@ -5102,6 +5117,7 @@ class ChannelMasterController extends Controller
                     'l60_orders' => floatval($row['L60 Orders'] ?? 0),
                     'l30_orders' => floatval($row['L30 Orders'] ?? 0),
                     'growth' => floatval($row['Growth'] ?? 0),
+                    'clicks' => intval($row['clicks'] ?? 0),
                     
                     // Profit & ROI Metrics
                     'gprofit_percent' => $gprofitPercent,
@@ -5115,6 +5131,8 @@ class ChannelMasterController extends Controller
                     // Counts
                     'missing_listing' => intval($row['Missing Listing'] ?? 0),
                     'stock_mapping' => intval($row['Stock Mapping'] ?? 0),
+                    'map_count' => intval($row['Map'] ?? 0),
+                    'miss_count' => intval($row['Miss'] ?? 0),
                     'nr_count' => intval($row['NR'] ?? 0),
                     'listed_count' => intval($row['listed_count'] ?? 0),
                     

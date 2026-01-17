@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'All Marketplace Master', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Active Channel', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -217,6 +217,12 @@
                         <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;">
                             Total Clicks: <span id="total-clicks">0</span>
                         </span>
+                        <span class="badge bg-success fs-6 p-2" style="color: white; font-weight: bold;">
+                             Map: <span id="total-map">0</span>
+                        </span>
+                        <span class="badge bg-danger fs-6 p-2" style="color: white; font-weight: bold;">
+                             Missing: <span id="total-miss">0</span>
+                        </span>
                     </div>
                 </div>
             </div>
@@ -302,6 +308,11 @@
                             <label for="editTarget" class="form-label">Target</label>
                             <input type="number" class="form-control" id="editTarget" step="0.01">
                         </div>
+                        <div class="mb-3">
+                            <label for="editMissingLink" class="form-label">Missing Link</label>
+                            <input type="url" class="form-control" id="editMissingLink" placeholder="https://...">
+                            <small class="text-muted">This link will open when clicking the Missing column</small>
+                        </div>
                     </form>
                 </div>
                 <div class="modal-footer">
@@ -331,13 +342,14 @@
                                     <th>Date</th>
                                     <th class="text-end">L30 Sales</th>
                                     <th class="text-end">L30 Orders</th>
+                                    <th class="text-end">Clicks</th>
                                     <th class="text-end">Gprofit%</th>
                                     <th class="text-end">NPFT%</th>
                                 </tr>
                             </thead>
                             <tbody id="historyTableBody">
                                 <tr>
-                                    <td colspan="5" class="text-center">Loading...</td>
+                                    <td colspan="6" class="text-center">Loading...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -483,6 +495,41 @@
                         }
                     },
                     {
+                        title: "Missing",
+                        field: "Miss",
+                        hozAlign: "center",
+                        sorter: "number",
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const missingLink = rowData['missing_link'] || '';
+                            
+                            let style = '';
+                            
+                            if (value === 0) { 
+                                style = 'color:#28a745;'; // Green text
+                            } else if (value <= 20) { 
+                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;'; // Yellow bg with black text
+                            } else if (value <= 50) { 
+                                style = 'color:#ff6f00;'; // Dark Orange text
+                            } else { 
+                                style = 'color:#a00211;'; // Red text
+                            }
+                            
+                            // Make clickable if missing_link exists
+                            if (missingLink && value > 0) {
+                                return `<a href="${missingLink}" target="_blank" style="${style}font-weight:600;text-decoration:none;cursor:pointer;" title="Click to view missing items details">${value}</a>`;
+                            }
+                            
+                            return `<span style="${style}font-weight:600;">${value}</span>`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
                         title: "Map",
                         field: "Map",
                         hozAlign: "center",
@@ -502,28 +549,11 @@
                             }
                             
                             return `<span style="${style}font-weight:600;">${value}</span>`;
-                        }
-                    },
-                    {
-                        title: "Miss",
-                        field: "Miss",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
-                            let style = '';
-                            
-                            if (value === 0) { 
-                                style = 'color:#28a745;'; // Green text
-                            } else if (value <= 20) { 
-                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;'; // Yellow bg with black text
-                            } else if (value <= 50) { 
-                                style = 'color:#ff6f00;'; // Dark Orange text
-                            } else { 
-                                style = 'color:#a00211;'; // Red text
-                            }
-                            
-                            return `<span style="${style}font-weight:600;">${value}</span>`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
                         }
                     },
                     {
@@ -554,19 +584,26 @@
                         }
                     },
                     {
-                        title: "L30 Orders",
-                        field: "L30 Orders",
+                        title: "Growth",
+                        field: "Growth",
                         hozAlign: "center",
                         sorter: "number",
-                        width: 100,
                         formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
-                            return `<span>${value.toLocaleString('en-US')}</span>`;
-                        },
-                        bottomCalc: "sum",
-                        bottomCalcFormatter: function(cell) {
-                            const value = cell.getValue();
-                            return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
+                            const rowData = cell.getRow().getData();
+                            const l30Sales = parseNumber(rowData['L30 Sales']);
+                            const achieved = parseNumber(rowData['base']);
+                            const growthPercent = achieved > 0 ? ((l30Sales - achieved) / achieved) * 100 : 0;
+                            
+                            let style = '';
+                            if (growthPercent < 0) { 
+                                style = 'color:#a00211;'; // Red text
+                            } else if (growthPercent === 0) { 
+                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;'; // Yellow bg with black text
+                            } else { 
+                                style = 'color:#28a745;'; // Green text
+                            }
+                            
+                            return `<span style="${style}font-weight:600;">${growthPercent < 0 ? '' : '+'}${growthPercent.toFixed(0)}%</span>`;
                         }
                     },
                     {
@@ -585,6 +622,23 @@
                             return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
                         }
                     },
+                    {
+                        title: "L30 Orders",
+                        field: "L30 Orders",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            return `<span>${value.toLocaleString('en-US')}</span>`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                   
                     {
                         title: "Gprofit%",
                         field: "Gprofit%",
@@ -631,6 +685,7 @@
                             return `<span style="${style}font-weight:600;">${value.toFixed(0)}%</span>`;
                         }
                     },
+                   
                     {
                         title: "Ads%",
                         field: "Ads%",
@@ -845,30 +900,6 @@
                         }
                     },
                     {
-                        title: "Growth",
-                        field: "Growth",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const l30Sales = parseNumber(rowData['L30 Sales']);
-                            const achieved = parseNumber(rowData['base']);
-                            const growthPercent = achieved > 0 ? ((l30Sales - achieved) / achieved) * 100 : 0;
-                            
-                            let style = '';
-                            if (growthPercent < 0) { 
-                                style = 'color:#a00211;'; // Red text
-                            } else if (growthPercent === 0) { 
-                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;'; // Yellow bg with black text
-                            } else { 
-                                style = 'color:#28a745;'; // Green text
-                            }
-                            
-                            return `<span style="${style}font-weight:600;">${growthPercent < 0 ? '' : '+'}${growthPercent.toFixed(0)}%</span>`;
-                        }
-                    },
-                   
-                    {
                         title: "Action",
                         field: "_action",
                         hozAlign: "center",
@@ -911,19 +942,21 @@
                                 try {
                                     const rowData = JSON.parse(rowDataStr);
                                     
-                                    const channel = rowData['Channel '] || rowData['Channel'] || '';
-                                    const sheetUrl = rowData['sheet_link'] || '';
-                                    const type = rowData['type'] || '';
-                                    const base = rowData['base'] || 0;
-                                    const target = rowData['target'] || 0;
-                                    
-                                    // Populate modal
-                                    $('#editChannelName').val(channel);
-                                    $('#editChannelUrl').val(sheetUrl);
-                                    $('#editType').val(type);
-                                    $('#editBase').val(base);
-                                    $('#editTarget').val(target);
-                                    $('#originalChannel').val(channel);
+                    const channel = rowData['Channel '] || rowData['Channel'] || '';
+                    const sheetUrl = rowData['sheet_link'] || '';
+                    const type = rowData['type'] || '';
+                    const base = rowData['base'] || 0;
+                    const target = rowData['target'] || 0;
+                    const missingLink = rowData['missing_link'] || '';
+                    
+                    // Populate modal
+                    $('#editChannelName').val(channel);
+                    $('#editChannelUrl').val(sheetUrl);
+                    $('#editType').val(type);
+                    $('#editBase').val(base);
+                    $('#editTarget').val(target);
+                    $('#editMissingLink').val(missingLink);
+                    $('#originalChannel').val(channel);
                                     
                                     // Open modal
                                     const modalElement = document.getElementById('editChannelModal');
@@ -983,6 +1016,8 @@
                 let totalPft = 0;
                 let totalCogs = 0;
                 let totalAdSpend = 0;
+                let totalMap = 0;
+                let totalMiss = 0;
                 let gprofitSum = 0;
                 let groiSum = 0;
                 let npftSum = 0;
@@ -999,6 +1034,8 @@
                     const npft = parseNumber(row['N PFT'] || 0);
                     const nroi = parseNumber(row['N ROI'] || 0);
                     const cogs = parseNumber(row['cogs'] || 0);
+                    const mapCount = parseNumber(row['Map'] || 0);
+                    const missCount = parseNumber(row['Miss'] || 0);
                     
                     // Ad spend - handle Walmart, Temu, and Shopify B2C separately to avoid double counting
                     const kwSpent = parseNumber(row['KW Spent'] || 0);
@@ -1020,6 +1057,8 @@
                     totalClicks += clicks;
                     totalAdSpend += adSpend;
                     totalCogs += cogs;
+                    totalMap += mapCount;
+                    totalMiss += missCount;
                     
                     // Calculate profit amount from percentage
                     const profitAmount = (gprofitPercent / 100) * l30Sales;
@@ -1058,6 +1097,8 @@
                 $('#total-ad-spend').text('$' + Math.round(totalAdSpend).toLocaleString('en-US'));
                 $('#avg-npft').text(avgNpft.toFixed(1) + '%');
                 $('#avg-nroi').text(avgNroi.toFixed(1) + '%');
+                $('#total-map').text(Math.round(totalMap).toLocaleString('en-US'));
+                $('#total-miss').text(Math.round(totalMiss).toLocaleString('en-US'));
             }
 
             // Channel Search
@@ -1176,6 +1217,7 @@
                     const type = rowData['type'] || '';
                     const base = rowData['base'] || 0;
                     const target = rowData['target'] || 0;
+                    const missingLink = rowData['missing_link'] || '';
                     
                     // Populate modal fields
                     $('#editChannelName').val(channel);
@@ -1183,6 +1225,7 @@
                     $('#editType').val(type);
                     $('#editBase').val(base);
                     $('#editTarget').val(target);
+                    $('#editMissingLink').val(missingLink);
                     $('#originalChannel').val(channel);
                     
                     // Show modal using Bootstrap 5 API
@@ -1279,11 +1322,13 @@
                 data.forEach(row => {
                     const summaryData = row.summary_data || {};
                     const npft = parseNumber(summaryData.gprofit_percent || 0) - parseNumber(summaryData.tcos_percent || 0);
+                    const clicks = parseNumber(summaryData.clicks || 0);
                     html += `
                         <tr>
                             <td>${formatDate(row.snapshot_date)}</td>
                             <td class="text-end">$${parseNumber(summaryData.l30_sales).toLocaleString()}</td>
                             <td class="text-end">${parseNumber(summaryData.l30_orders).toLocaleString()}</td>
+                            <td class="text-end">${clicks > 0 ? clicks.toLocaleString() : '-'}</td>
                             <td class="text-end">${parseNumber(summaryData.gprofit_percent).toFixed(1)}%</td>
                             <td class="text-end">${npft.toFixed(1)}%</td>
                         </tr>
@@ -1291,7 +1336,7 @@
                 });
                 
                 if (html === '') {
-                    html = '<tr><td colspan="5" class="text-center">No data available</td></tr>';
+                    html = '<tr><td colspan="6" class="text-center">No data available</td></tr>';
                 }
                 
                 $('#historyTableBody').html(html);
@@ -1352,7 +1397,7 @@
 
                 // Prepare data for Google Charts
                 const chartData = [
-                    ['Date', 'L30 Sales', 'L30 Orders', 'Gprofit%', 'NPFT%']
+                    ['Date', 'L30 Sales', 'L30 Orders', 'Clicks', 'Gprofit%', 'NPFT%']
                 ];
 
                 const reversedData = [...data].reverse();
@@ -1360,11 +1405,13 @@
                 reversedData.forEach(row => {
                     const summaryData = row.summary_data || {};
                     const npft = toNum(summaryData.gprofit_percent || 0) - toNum(summaryData.tcos_percent || 0);
+                    const clicks = toNum(summaryData.clicks || 0);
                     
                     chartData.push([
                         formatDate(row.snapshot_date),
                         toNum(summaryData.l30_sales),
                         toNum(summaryData.l30_orders),
+                        clicks,
                         toNum(summaryData.gprofit_percent),
                         npft
                     ]);
@@ -1373,6 +1420,7 @@
                 // Calculate min/max for dynamic axis scaling
                 let minSales = Infinity, maxSales = -Infinity;
                 let minOrders = Infinity, maxOrders = -Infinity;
+                let minClicks = Infinity, maxClicks = -Infinity;
                 let minGprofit = Infinity, maxGprofit = -Infinity;
                 let minNPFT = Infinity, maxNPFT = -Infinity;
 
@@ -1380,13 +1428,16 @@
                     const row = chartData[i];
                     const sales = row[1];
                     const orders = row[2];
-                    const gprofit = row[3];
-                    const npft = row[4];
+                    const clicks = row[3];
+                    const gprofit = row[4];
+                    const npft = row[5];
 
                     if (sales < minSales) minSales = sales;
                     if (sales > maxSales) maxSales = sales;
                     if (orders < minOrders) minOrders = orders;
                     if (orders > maxOrders) maxOrders = orders;
+                    if (clicks < minClicks) minClicks = clicks;
+                    if (clicks > maxClicks) maxClicks = clicks;
                     if (gprofit < minGprofit) minGprofit = gprofit;
                     if (gprofit > maxGprofit) maxGprofit = gprofit;
                     if (npft < minNPFT) minNPFT = npft;
@@ -1394,8 +1445,8 @@
                 }
 
                 // Calculate combined min/max for axes with 15% buffer
-                const leftMin = Math.min(minSales, minOrders);
-                const leftMax = Math.max(maxSales, maxOrders);
+                const leftMin = Math.min(minSales, minOrders, minClicks);
+                const leftMax = Math.max(maxSales, maxOrders, maxClicks);
                 const leftRange = leftMax - leftMin;
                 const leftAxisMin = Math.max(0, leftMin - (leftRange * 0.15));
                 const leftAxisMax = leftMax + (leftRange * 0.15);
@@ -1459,6 +1510,14 @@
                                 visibleInLegend: true
                             },
                             2: { 
+                                color: '#9c27b0',
+                                lineWidth: 3,
+                                pointSize: 6,
+                                pointShape: 'circle',
+                                targetAxisIndex: 0,
+                                visibleInLegend: true
+                            },
+                            3: { 
                                 color: '#e53935',
                                 lineWidth: 3,
                                 pointSize: 6,
@@ -1466,7 +1525,7 @@
                                 targetAxisIndex: 1,
                                 visibleInLegend: true
                             },
-                            3: { 
+                            4: { 
                                 color: '#43a047',
                                 lineWidth: 3,
                                 pointSize: 6,
@@ -1477,7 +1536,7 @@
                         },
                         vAxes: {
                             0: { 
-                                title: 'Sales & Orders',
+                                title: 'Sales, Orders & Clicks',
                                 titleTextStyle: { 
                                     color: '#1e88e5', 
                                     fontSize: 14, 
@@ -1615,6 +1674,7 @@
                 const type = $('#editType').val();
                 const base = $('#editBase').val().trim();
                 const target = $('#editTarget').val().trim();
+                const missingLink = $('#editMissingLink').val().trim();
                 const originalChannel = $('#originalChannel').val().trim();
 
                 if (!channel || !sheetUrl) {
@@ -1631,6 +1691,7 @@
                         type: type,
                         base: base,
                         target: target,
+                        missing_link: missingLink,
                         original_channel: originalChannel,
                         _token: $('meta[name="csrf-token"]').attr('content')
                     },

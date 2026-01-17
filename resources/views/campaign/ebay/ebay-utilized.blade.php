@@ -471,7 +471,7 @@
                                     <div class="col-md-2 d-flex gap-2 align-items-end">
                                         <button id="apply-all-range-filters-btn" class="btn btn-primary btn-sm flex-fill">
                                             <i class="fa-solid fa-filter me-1"></i>
-                                            Apply All Filters
+                                            Apply
                                         </button>
                                         <button id="clear-all-range-filters-btn" class="btn btn-secondary btn-sm flex-fill">
                                             <i class="fa-solid fa-times me-1"></i>
@@ -1754,6 +1754,7 @@
                             return value.toFixed(1) + "%";
                         },
                         sorter: "number",
+                        width: 70
                     },
                     {
                         title: "BGT",

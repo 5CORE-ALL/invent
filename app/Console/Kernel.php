@@ -52,6 +52,7 @@ class Kernel extends ConsoleKernel
         \App\Console\Commands\EbayOverUtilzBidsAutoUpdate::class,
         \App\Console\Commands\Ebay2UtilizedBidsAutoUpdate::class,
         \App\Console\Commands\Ebay3UtilizedBidsAutoUpdate::class,
+        \App\Console\Commands\Ebay2PauseAdsAuto::class,
         \App\Console\Commands\UpdateEbayOneBudget::class,
         \App\Console\Commands\AutoUpdateAmazonFbaOverKwBids::class,
         \App\Console\Commands\AutoUpdateAmazonFbaUnderKwBids::class,
@@ -107,7 +108,7 @@ class Kernel extends ConsoleKernel
             }
         })->everyFiveMinutes()->name('clear-laravel-log');
 
-
+$schedule->command('amazon:sync-inventory')->everySixHours();
         // All commands running every 5 minutes
         $schedule->command('shopify:save-daily-inventory')
             ->everyFiveMinutes()
@@ -360,6 +361,9 @@ class Kernel extends ConsoleKernel
             ->dailyAt('12:00')
             ->timezone('Asia/Kolkata');
         $schedule->command('ebay3:auto-update-utilized-bids')
+            ->dailyAt('12:00')
+            ->timezone('Asia/Kolkata');
+        $schedule->command('ebay2:auto-pause-ads')
             ->dailyAt('12:00')
             ->timezone('Asia/Kolkata');
         $schedule->command('ebay:update-suggestedbid')

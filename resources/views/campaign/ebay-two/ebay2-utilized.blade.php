@@ -471,7 +471,7 @@
                                     <div class="col-md-2 d-flex gap-2 align-items-end">
                                         <button id="apply-all-range-filters-btn" class="btn btn-primary btn-sm flex-fill">
                                             <i class="fa-solid fa-filter me-1"></i>
-                                            Apply All Filters
+                                            Apply
                                         </button>
                                         <button id="clear-all-range-filters-btn" class="btn btn-secondary btn-sm flex-fill">
                                             <i class="fa-solid fa-times me-1"></i>
@@ -1605,7 +1605,6 @@
                             `;
                         },
                         visible: true,
-                        width: 80
                     },
                     {
                         title: "INV",
@@ -1728,13 +1727,12 @@
                     {
                         title: "EBAY L30",
                         field: "ebay_l30",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         formatter: function(cell) {
                             var value = parseFloat(cell.getValue() || 0);
                             return value.toFixed(0);
                         },
                         sorter: "number",
-                        width: 80
                     },
                     {
                         title: "VIEWS",
@@ -1761,15 +1759,14 @@
                     {
                         title: "BGT",
                         field: "campaignBudgetAmount",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         formatter: (cell) => parseFloat(cell.getValue() || 0),
                         sorter: "number",
-                        width: 80
                     },
                     {
                         title: "SBGT",
                         field: "suggestedBudget",
-                        hozAlign: "right",
+                        hozAlign: "center",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var acosRaw = row.acos;
@@ -1797,7 +1794,6 @@
                             return suggestedBudget.toFixed(0);
                         },
                         sorter: "number",
-                        width: 80
                     },
                     {
                         title: "ACOS",
@@ -2541,7 +2537,6 @@
                     {
                         title: "Status",
                         field: "campaignStatus",
-                        width: 80,
                         hozAlign: "center",
                         formatter: function(cell) {
                             var status = cell.getValue();
