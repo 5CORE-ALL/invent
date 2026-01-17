@@ -81,14 +81,10 @@
                         style="width: auto; display: inline-block;">
                         <option value="all">GPFT%</option>
                         <option value="negative">Negative (&lt;0%)</option>
-                        <option value="0-5">0-5%</option>
-                        <option value="5-10">5-10%</option>
-                        <option value="10-15">10-15%</option>
-                        <option value="15-20">15-20%</option>
-                        <option value="20-25">20-25%</option>
-                        <option value="25-30">25-30%</option>
-                        <option value="30-35">30-35%</option>
-                        <option value="35-40">35-40%</option>
+                        <option value="0-10">0-10%</option>
+                        <option value="10-20">10-20%</option>
+                        <option value="20-30">20-30%</option>
+                        <option value="30-40">30-40%</option>
                         <option value="40plus">40%+</option>
                     </select>
 
@@ -145,21 +141,24 @@
                         <option value="zero">0 Sold</option>
                     </select>
 
-                    <!-- Views Range Filter -->
-                    <select id="views-column-select" class="form-select form-select-sm"
+                    <!-- Unified Range Filter (Views & Sold) -->
+                    <select id="range-column-select" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="Sess30" selected>View L30</option>
+                        <option value="">Select Filter</option>
+                        <option value="Sess30">View L30</option>
                         <option value="Sess7">View L7</option>
+                        <option value="A_L30">Sold L30</option>
+                        <option value="A_L7">Sold L7</option>
                     </select>
-                    <input type="number" id="views-min" class="form-control form-control-sm" 
-                        placeholder="Min Views" min="0" style="width: 100px; display: inline-block;">
-                    <input type="number" id="views-max" class="form-control form-control-sm" 
-                        placeholder="Max Views" min="0" style="width: 100px; display: inline-block;">
-                    <button id="clear-views-filter" class="btn btn-sm btn-outline-secondary" title="Clear Views Filter">
+                    <input type="number" id="range-min" class="form-control form-control-sm" 
+                        placeholder="Min" min="0" style="width: 90px; display: inline-block;">
+                    <input type="number" id="range-max" class="form-control form-control-sm" 
+                        placeholder="Max" min="0" style="width: 90px; display: inline-block;">
+                    <button id="clear-range-filter" class="btn btn-sm btn-outline-secondary" title="Clear Range Filter">
                         <i class="fas fa-times"></i>
                     </button>
-                    <span class="badge bg-primary fs-6 p-2" id="views-filter-count-badge" style="color: white; font-weight: bold; display: none;">
-                        Filtered: <span id="views-filter-count">0</span>
+                    <span class="badge bg-info fs-6 p-2" id="range-filter-count-badge" style="color: white; font-weight: bold; display: none;">
+                        Filtered: <span id="range-filter-count">0</span>
                     </span>
 
                     <!-- Column Visibility Dropdown -->
@@ -2689,9 +2688,9 @@
                 const parentFilter = $('#parent-filter').val();
                 const statusFilter = $('#status-filter').val();
                 const soldFilter = $('#sold-filter').val();
-                const viewsMin = parseFloat($('#views-min').val()) || null;
-                const viewsMax = parseFloat($('#views-max').val()) || null;
-                const viewsColumn = $('#views-column-select').val() || 'Sess30';
+                const rangeMin = parseFloat($('#range-min').val()) || null;
+                const rangeMax = parseFloat($('#range-max').val()) || null;
+                const rangeColumn = $('#range-column-select').val() || '';
 
                 table.clearFilter(true);
 
@@ -2720,14 +2719,10 @@
                         const gpft = parseFloat(data['GPFT%']) || 0;
                         
                         if (gpftFilter === 'negative') return gpft < 0;
-                        if (gpftFilter === '0-5') return gpft >= 0 && gpft <= 5;
-                        if (gpftFilter === '5-10') return gpft > 5 && gpft <= 10;
-                        if (gpftFilter === '10-15') return gpft > 10 && gpft <= 15;
-                        if (gpftFilter === '15-20') return gpft > 15 && gpft <= 20;
-                        if (gpftFilter === '20-25') return gpft > 20 && gpft <= 25;
-                        if (gpftFilter === '25-30') return gpft > 25 && gpft <= 30;
-                        if (gpftFilter === '30-35') return gpft > 30 && gpft <= 35;
-                        if (gpftFilter === '35-40') return gpft > 35 && gpft <= 40;
+                        if (gpftFilter === '0-10') return gpft >= 0 && gpft <= 10;
+                        if (gpftFilter === '10-20') return gpft > 10 && gpft <= 20;
+                        if (gpftFilter === '20-30') return gpft > 20 && gpft <= 30;
+                        if (gpftFilter === '30-40') return gpft > 30 && gpft <= 40;
                         if (gpftFilter === '40plus') return gpft > 40;
                         
                         return true;
@@ -2825,20 +2820,20 @@
                     });
                 }
 
-                // Views Range Filter (based on selected column: Sess30 or Sess7)
-                if (viewsMin !== null || viewsMax !== null) {
+                // Unified Range Filter (Views L30/L7, Sold L30/L7)
+                if (rangeColumn && (rangeMin !== null || rangeMax !== null)) {
                     table.addFilter(function(data) {
                         if (data.is_parent_summary) return false;
                         
-                        const views = parseFloat(data[viewsColumn]) || 0;
+                        const value = parseFloat(data[rangeColumn]) || 0;
                         
                         // Apply min filter
-                        if (viewsMin !== null && views < viewsMin) {
+                        if (rangeMin !== null && value < rangeMin) {
                             return false;
                         }
                         
                         // Apply max filter
-                        if (viewsMax !== null && views > viewsMax) {
+                        if (rangeMax !== null && value > rangeMax) {
                             return false;
                         }
                         
@@ -2846,8 +2841,8 @@
                     });
                 }
 
-                // Update views filter badge
-                updateViewsFilterBadge();
+                // Update range filter badge
+                updateRangeFilterBadge();
 
                 // Price filter (Prc > LMP)
                 if (priceFilterActive) {
@@ -2911,25 +2906,27 @@
                 applyFilters();
             });
 
-            // Views range filter input handlers
-            $('#views-min, #views-max, #views-column-select').on('keyup change', function() {
+            // Unified range filter input handlers
+            $('#range-min, #range-max, #range-column-select').on('keyup change', function() {
                 applyFilters();
             });
 
-            // Clear views filter button
-            $('#clear-views-filter').on('click', function() {
-                $('#views-min').val('');
-                $('#views-max').val('');
+            // Clear range filter button
+            $('#clear-range-filter').on('click', function() {
+                $('#range-min').val('');
+                $('#range-max').val('');
+                $('#range-column-select').val('');
                 applyFilters();
             });
 
-            // Function to update views filter badge
-            function updateViewsFilterBadge() {
-                const viewsMin = parseFloat($('#views-min').val()) || null;
-                const viewsMax = parseFloat($('#views-max').val()) || null;
+            // Function to update range filter badge
+            function updateRangeFilterBadge() {
+                const rangeMin = parseFloat($('#range-min').val()) || null;
+                const rangeMax = parseFloat($('#range-max').val()) || null;
+                const rangeColumn = $('#range-column-select').val() || '';
                 
                 // Only show badge if filter is active
-                if (viewsMin !== null || viewsMax !== null) {
+                if (rangeColumn && (rangeMin !== null || rangeMax !== null)) {
                     const data = table.getData("active");
                     let filteredCount = 0;
                     
@@ -2939,10 +2936,10 @@
                         }
                     });
                     
-                    $('#views-filter-count').text(filteredCount.toLocaleString());
-                    $('#views-filter-count-badge').show();
+                    $('#range-filter-count').text(filteredCount.toLocaleString());
+                    $('#range-filter-count-badge').show();
                 } else {
-                    $('#views-filter-count-badge').hide();
+                    $('#range-filter-count-badge').hide();
                 }
             }
 
