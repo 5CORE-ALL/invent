@@ -220,7 +220,7 @@
                         <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;">
                             Total Clicks: <span id="total-clicks">0</span>
                         </span>
-                        <span class="badge bg-success fs-6 p-2" style="color: white; font-weight: bold;">
+                        <span class="badge bg-warning fs-6 p-2" style="color: black; font-weight: bold;">
                              Map: <span id="total-map">0</span>
                         </span>
                         <span class="badge bg-danger fs-6 p-2" style="color: white; font-weight: bold;">
@@ -508,24 +508,15 @@
                             const rowData = cell.getRow().getData();
                             const missingLink = rowData['missing_link'] || '';
                             
-                            let style = '';
-                            
-                            if (value === 0) { 
-                                style = 'color:#28a745;'; // Green text
-                            } else if (value <= 20) { 
-                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;'; // Yellow bg with black text
-                            } else if (value <= 50) { 
-                                style = 'color:#ff6f00;'; // Dark Orange text
-                            } else { 
-                                style = 'color:#a00211;'; // Red text
-                            }
+                            // Simple black text - no background colors
+                            const style = 'color:black;font-weight:600;';
                             
                             // Make clickable if missing_link exists
                             if (missingLink && value > 0) {
-                                return `<a href="${missingLink}" target="_blank" style="${style}font-weight:600;text-decoration:none;cursor:pointer;" title="Click to view missing items details">${value}</a>`;
+                                return `<a href="${missingLink}" target="_blank" style="${style}text-decoration:none;cursor:pointer;" title="Click to view missing items details">${value}</a>`;
                             }
                             
-                            return `<span style="${style}font-weight:600;">${value}</span>`;
+                            return `<span style="${style}">${value}</span>`;
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -540,19 +531,11 @@
                         sorter: "number",
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
-                            let style = '';
                             
-                            if (value === 0) { 
-                                style = 'color:#28a745;'; // Green text
-                            } else if (value <= 20) { 
-                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;'; // Yellow bg with black text
-                            } else if (value <= 50) { 
-                                style = 'color:#ff6f00;'; // Dark Orange text
-                            } else { 
-                                style = 'color:#a00211;'; // Red text
-                            }
+                            // Simple black text - no background colors
+                            const style = 'color:black;font-weight:600;';
                             
-                            return `<span style="${style}font-weight:600;">${value}</span>`;
+                            return `<span style="${style}">${value}</span>`;
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
