@@ -261,7 +261,11 @@
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const itemId = rowData['eBay_item_id'];
-                            if (!itemId || itemId === null || itemId === '') {
+                            const inv = parseFloat(rowData['INV']) || 0;
+                            const nrReq = rowData['nr_req'] || 'REQ';
+                            
+                            // Only show Missing for INV > 0 and REQ items
+                            if ((!itemId || itemId === null || itemId === '') && inv > 0 && nrReq === 'REQ') {
                                 return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
                             }
                             return '';
@@ -319,11 +323,19 @@
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const itemId = rowData['eBay_item_id'];
+                            const inv = parseFloat(rowData['INV']) || 0;
+                            const nrReq = rowData['nr_req'] || 'REQ';
+                            
+                            // Only show MAP for INV > 0 and REQ items
+                            if (inv <= 0 || nrReq !== 'REQ') return '';
+                            
+                            // If missing from eBay (no item_id), leave blank
                             if (!itemId || itemId === null || itemId === '') {
                                 return '';
                             }
+                            
                             const ebayStock = parseFloat(rowData['eBay Stock']) || 0;
-                            const inv = parseFloat(rowData['INV']) || 0;
+                            
                             if (inv > 0 && ebayStock === 0) {
                                 return `<span style=\"color: #dc3545; font-weight: bold;\">N MP<br>(${inv})</span>`;
                             }
@@ -1040,33 +1052,51 @@
                     });
                 }
 
-                // Missing badge filter (only INV > 0)
+                // Missing badge filter (only INV > 0 and REQ items)
                 if (missingFilterActive) {
                     table.addFilter(function(data) {
+                        // Exclude parent rows
+                        if (data.Parent && data.Parent.startsWith('PARENT')) return false;
+                        
                         const itemId = data['eBay_item_id'];
                         const inv = parseFloat(data['INV']) || 0;
-                        return (!itemId || itemId === null || itemId === '') && inv > 0;
+                        const nrReq = data['nr_req'] || 'REQ';
+                        
+                        // Show only REQ items with INV > 0 and no eBay item_id
+                        return (!itemId || itemId === null || itemId === '') && inv > 0 && nrReq === 'REQ';
                     });
                 }
 
-                // Map badge filter (only INV > 0)
+                // Map badge filter (only INV > 0 and REQ items, NOT Missing)
                 if (mapFilterActive) {
                     table.addFilter(function(data) {
+                        // Exclude parent rows
+                        if (data.Parent && data.Parent.startsWith('PARENT')) return false;
+                        
                         const itemId = data['eBay_item_id'];
                         const inv = parseFloat(data['INV']) || 0;
-                        if (!itemId || itemId === null || itemId === '' || inv === 0) return false;
+                        const nrReq = data['nr_req'] || 'REQ';
+                        
+                        // Must have item_id (not missing), REQ status, and INV > 0
+                        if (!itemId || itemId === null || itemId === '' || inv === 0 || nrReq !== 'REQ') return false;
                         
                         const ebayStock = parseFloat(data['eBay Stock']) || 0;
                         return inv > 0 && ebayStock > 0 && inv === ebayStock;
                     });
                 }
 
-                // Not Map badge filter (only INV > 0)
+                // Not Map badge filter (only INV > 0 and REQ items, NOT Missing)
                 if (notMapFilterActive) {
                     table.addFilter(function(data) {
+                        // Exclude parent rows
+                        if (data.Parent && data.Parent.startsWith('PARENT')) return false;
+                        
                         const itemId = data['eBay_item_id'];
                         const inv = parseFloat(data['INV']) || 0;
-                        if (!itemId || itemId === null || itemId === '' || inv === 0) return false;
+                        const nrReq = data['nr_req'] || 'REQ';
+                        
+                        // Must have item_id (not missing), REQ status, and INV > 0
+                        if (!itemId || itemId === null || itemId === '' || inv === 0 || nrReq !== 'REQ') return false;
                         
                         const ebayStock = parseFloat(data['eBay Stock']) || 0;
                         return inv > 0 && (ebayStock === 0 || (ebayStock > 0 && inv !== ebayStock));
@@ -1110,6 +1140,17 @@
             $('#missing-count-badge').on('click', function() {
                 missingFilterActive = !missingFilterActive;
                 mapFilterActive = false;
+                notMapFilterActive = false;
+                
+                // Update badge appearance
+                if (missingFilterActive) {
+                    $(this).removeClass('bg-danger').addClass('bg-warning').css('color', 'black');
+                    $('#map-count-badge').removeClass('bg-warning').addClass('bg-success').css('color', 'white');
+                    $('#not-map-count-badge').removeClass('bg-warning').addClass('bg-warning').css('color', 'black');
+                } else {
+                    $(this).removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
+                }
+                
                 applyFilters();
             });
 
@@ -1117,6 +1158,16 @@
                 mapFilterActive = !mapFilterActive;
                 missingFilterActive = false;
                 notMapFilterActive = false;
+                
+                // Update badge appearance
+                if (mapFilterActive) {
+                    $(this).removeClass('bg-success').addClass('bg-warning').css('color', 'black');
+                    $('#missing-count-badge').removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
+                    $('#not-map-count-badge').removeClass('bg-warning').addClass('bg-warning').css('color', 'black');
+                } else {
+                    $(this).removeClass('bg-warning').addClass('bg-success').css('color', 'white');
+                }
+                
                 applyFilters();
             });
 
@@ -1124,6 +1175,16 @@
                 notMapFilterActive = !notMapFilterActive;
                 mapFilterActive = false;
                 missingFilterActive = false;
+                
+                // Update badge appearance
+                if (notMapFilterActive) {
+                    $(this).removeClass('bg-warning').addClass('bg-info').css('color', 'black');
+                    $('#missing-count-badge').removeClass('bg-warning').addClass('bg-danger').css('color', 'white');
+                    $('#map-count-badge').removeClass('bg-warning').addClass('bg-success').css('color', 'white');
+                } else {
+                    $(this).removeClass('bg-info').addClass('bg-warning').css('color', 'black');
+                }
+                
                 applyFilters();
             });
 
@@ -1209,15 +1270,18 @@
                         zeroSoldCount++;
                     }
                     
-                    // Count Missing (only count if INV > 0)
+                    // Get nr_req status
                     const itemId = row['eBay_item_id'];
-                    const inv = parseFloat(row.INV || 0);
-                    if ((!itemId || itemId === null || itemId === '') && inv > 0) {
+                    const nrReq = row['nr_req'] || 'REQ';
+                    
+                    // Count Missing (only REQ items with INV > 0)
+                    if ((!itemId || itemId === null || itemId === '') && inv > 0 && nrReq === 'REQ') {
                         missingCount++;
                     }
                     
-                    // Count Map and N MP (only INV > 0)
-                    if (itemId && itemId !== null && itemId !== '' && inv > 0) {
+                    // Count Map and N MP (only REQ items with INV > 0 and NOT Missing)
+                    const isMissing = (!itemId || itemId === null || itemId === '');
+                    if (!isMissing && inv > 0 && nrReq === 'REQ') {
                         const ebayStock = parseFloat(row['eBay Stock']) || 0;
                         if (inv > 0 && ebayStock > 0 && inv === ebayStock) {
                             mapCount++;

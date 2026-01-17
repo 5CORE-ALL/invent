@@ -5,6 +5,7 @@ namespace App\Http\Controllers\MarketPlace;
 use App\Models\ShopifySku;
 use Illuminate\Http\Request;
 use App\Models\ProductMaster;
+use App\Models\ProductStockMapping;
 use App\Models\AmazonDataView;
 use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
@@ -1429,6 +1430,11 @@ class OverallAmazonController extends Controller
 
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
 
+        // Get Amazon inventory from product_stock_mappings table
+        $stockMappings = ProductStockMapping::whereIn('sku', $skus)
+            ->get()
+            ->keyBy('sku');
+
         $ratings = AmazonFbmManual::whereIn('sku', $skus)->pluck('data', 'sku')->toArray();
 
         // Get all JungleScout data - group by SKU first, then also by ASIN for fallback
@@ -1666,6 +1672,22 @@ class OverallAmazonController extends Controller
             }
 
             $row['INV'] = $shopify->inv ?? 0;
+            
+            // Get Amazon inventory from stock mappings (null-safe, handle string values)
+            $stockMapping = $stockMappings->get($pm->sku);
+            $inventoryAmazon = $stockMapping ? ($stockMapping->inventory_amazon ?? 0) : 0;
+            
+            // Convert to numeric if possible, otherwise 0 (handle "Not Listed", "NRL", etc.)
+            if (is_numeric($inventoryAmazon)) {
+                $row['INV_AMZ'] = (int)$inventoryAmazon;
+            } else {
+                $row['INV_AMZ'] = 0; // Set to 0 for non-numeric values
+            }
+            
+            // Check if SKU exists in amazon_datsheets (indicates it's listed on Amazon)
+            // If it doesn't exist, mark as missing
+            $row['is_missing_amazon'] = $amazonSheet ? false : true;
+            
             $row['L30'] = $shopify->quantity ?? 0;
             $row['fba'] = $pm->fba;
 
@@ -1976,6 +1998,11 @@ class OverallAmazonController extends Controller
                 '(Child) sku' => 'PARENT ' . $parent,
                 'Parent' => $parent,
                 'INV' => $rows->sum('INV'),
+                'INV_AMZ' => $rows->sum(function($row) {
+                    $val = $row->INV_AMZ ?? 0;
+                    return is_numeric($val) ? (int)$val : 0;
+                }),
+                'is_missing_amazon' => false, // Parent rows are never missing
                 'L30' => $rows->sum('L30'),
                 'price' => '',
                 'price_lmpa' => '',
