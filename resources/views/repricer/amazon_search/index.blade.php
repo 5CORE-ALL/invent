@@ -113,6 +113,13 @@
         padding: 4px 10px;
     }
     
+    .rating-badge {
+        background: #FFF8E1;
+        color: #F57C00;
+        font-size: 11px;
+        font-weight: 600;
+    }
+    
     .asin-badge {
         background: #E8F5E9;
         color: #2E7D32;
@@ -456,6 +463,8 @@ $(document).ready(function() {
             
             results.forEach(function(item) {
                 const price = item.price ? `$${parseFloat(item.price).toFixed(2)}` : 'N/A';
+                const rating = item.rating ? `${parseFloat(item.rating).toFixed(1)} ★` : '';
+                const reviews = item.reviews ? `(${item.reviews.toLocaleString()})` : '';
                 const image = item.image || 'https://via.placeholder.com/100';
                 
                 const productLink = `https://www.amazon.com/dp/${item.asin}`;
@@ -487,6 +496,7 @@ $(document).ready(function() {
                                 
                                 <div class="product-meta">
                                     <span class="meta-badge price-badge">${price}</span>
+                                    ${rating ? `<span class="meta-badge rating-badge">${rating} ${reviews}</span>` : ''}
                                 </div>
                                 
                                 <div class="product-meta">
