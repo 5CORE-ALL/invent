@@ -558,18 +558,9 @@ class EbayCampaignReports extends Command
         $clientId = env('EBAY_APP_ID');
         $clientSecret = env('EBAY_CERT_ID');
 
-        $scope = implode(' ', [
-            'https://api.ebay.com/oauth/api_scope',
-            'https://api.ebay.com/oauth/api_scope/sell.account',
-            'https://api.ebay.com/oauth/api_scope/sell.inventory',
-            'https://api.ebay.com/oauth/api_scope/sell.account',
-            'https://api.ebay.com/oauth/api_scope/sell.fulfillment',
-            'https://api.ebay.com/oauth/api_scope/sell.analytics.readonly',
-            'https://api.ebay.com/oauth/api_scope/sell.stores',
-            'https://api.ebay.com/oauth/api_scope/sell.finances',
-            'https://api.ebay.com/oauth/api_scope/sell.marketing',
-            'https://api.ebay.com/oauth/api_scope/sell.marketing.readonly'
-        ]);
+        // For refresh token, scope is optional - the refresh token already contains the granted scopes
+        // Only specify scope if you want to request additional scopes
+        $scope = 'https://api.ebay.com/oauth/api_scope/sell.marketing.readonly https://api.ebay.com/oauth/api_scope/sell.marketing';
 
         try {
             $response = Http::asForm()
