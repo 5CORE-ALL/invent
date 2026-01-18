@@ -2995,12 +2995,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/tiktok/ads', 'index')->name('tiktokshop.ads');
     });
     Route::prefix('repricer/amazon-search')->group(function () {
-        Route::get('/', [\App\Http\Controllers\Repricer\AmazonSearchController::class, 'index']);
-        Route::post('/search', [\App\Http\Controllers\Repricer\AmazonSearchController::class, 'search']);
-        Route::get('/history', [\App\Http\Controllers\Repricer\AmazonSearchController::class, 'getSearchHistory']);
-        Route::get('/results', [\App\Http\Controllers\Repricer\AmazonSearchController::class, 'getResults']);
-        Route::get('/skus', [\App\Http\Controllers\Repricer\AmazonSearchController::class, 'getSkus']);
-        Route::post('/store-competitors', [\App\Http\Controllers\Repricer\AmazonSearchController::class, 'storeCompetitors']);
+        Route::get('/', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'index']);
+        Route::post('/search', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'search']);
+        Route::get('/history', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getSearchHistory']);
+        Route::get('/results', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getResults']);
+        Route::get('/skus', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getSkus']);
+        Route::post('/store-competitors', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'storeCompetitors']);
     });
 
     Route::get('/facebook-image-ads', [FacebookAdsController::class, 'facebookImageAds'])->name('facebook.image.ads');

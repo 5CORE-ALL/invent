@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Repricer;
+namespace App\Http\Controllers\RePricer;
 
 use App\Http\Controllers\Controller;
 use App\Models\AmazonCompetitorAsin;
