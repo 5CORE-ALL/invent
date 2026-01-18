@@ -2703,9 +2703,15 @@
                     } else if (scvr >= 5.01 && scvr <= 7) {
                         // Between 5.01-7%: SBID 5% or views < 100 then 8% (whichever is higher)
                         sbidValue = views < 100 ? 8 : 5;
-                    } else if (scvr >= 7.01 && scvr <= 13) {
-                        // Between 7.01-13%: SBID 4% or views < 100 then 8% (whichever is higher)
-                        sbidValue = views < 100 ? 8 : 4;
+                    } else if (scvr >= 7.01 && scvr <= 8) {
+                        // Between 7.01-8%: SBID 5% or views < 100 then 8% (whichever is higher)
+                        sbidValue = views < 100 ? 8 : 5;
+                    } else if (scvr >= 8.01 && scvr <= 10) {
+                        // Between 8.01-10%: SBID 3% or views < 100 then 8% (whichever is higher)
+                        sbidValue = views < 100 ? 8 : 3;
+                    } else if (scvr >= 10.01 && scvr <= 13) {
+                        // Between 10.01-13%: SBID 2% or views < 100 then 8% (whichever is higher)
+                        sbidValue = views < 100 ? 8 : 2;
                     } else if (scvr > 13) {
                         // Greater than 13%: SBID 3% or views < 100 then 8% (whichever is higher)
                         sbidValue = views < 100 ? 8 : 3;
@@ -4596,9 +4602,15 @@
                         } else if (scvr >= 5.01 && scvr <= 7) {
                             // Between 5.01-7%: SBID 5% or views < 100 then 8% (whichever is higher)
                             sbidValue = views < 100 ? 8 : 5;
-                        } else if (scvr >= 7.01 && scvr <= 13) {
-                            // Between 7.01-13%: SBID 4% or views < 100 then 8% (whichever is higher)
-                            sbidValue = views < 100 ? 8 : 4;
+                        } else if (scvr >= 7.01 && scvr <= 8) {
+                            // Between 7.01-8%: SBID 5% or views < 100 then 8% (whichever is higher)
+                            sbidValue = views < 100 ? 8 : 5;
+                        } else if (scvr >= 8.01 && scvr <= 10) {
+                            // Between 8.01-10%: SBID 3% or views < 100 then 8% (whichever is higher)
+                            sbidValue = views < 100 ? 8 : 3;
+                        } else if (scvr >= 10.01 && scvr <= 13) {
+                            // Between 10.01-13%: SBID 2% or views < 100 then 8% (whichever is higher)
+                            sbidValue = views < 100 ? 8 : 2;
                         } else if (scvr > 13) {
                             // Greater than 13%: SBID 3% or views < 100 then 8% (whichever is higher)
                             sbidValue = views < 100 ? 8 : 3;

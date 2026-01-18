@@ -206,9 +206,15 @@ class UpdateEbayTwoSuggestedBid extends Command
                     } elseif ($cvr >= 5.01 && $cvr <= 7) {
                         // Between 5.01-7%: SBID 5% or views < 100 then 8% (whichever is higher)
                         $newBid = $views < 100 ? 8 : 5;
-                    } elseif ($cvr >= 7.01 && $cvr <= 13) {
-                        // Between 7.01-13%: SBID 4% or views < 100 then 8% (whichever is higher)
-                        $newBid = $views < 100 ? 8 : 4;
+                    } elseif ($cvr >= 7.01 && $cvr <= 8) {
+                        // Between 7.01-8%: SBID 5% or views < 100 then 8% (whichever is higher)
+                        $newBid = $views < 100 ? 8 : 5;
+                    } elseif ($cvr >= 8.01 && $cvr <= 10) {
+                        // Between 8.01-10%: SBID 3% or views < 100 then 8% (whichever is higher)
+                        $newBid = $views < 100 ? 8 : 3;
+                    } elseif ($cvr >= 10.01 && $cvr <= 13) {
+                        // Between 10.01-13%: SBID 2% or views < 100 then 8% (whichever is higher)
+                        $newBid = $views < 100 ? 8 : 2;
                     } elseif ($cvr > 13) {
                         // Greater than 13%: SBID 3% or views < 100 then 8% (whichever is higher)
                         $newBid = $views < 100 ? 8 : 3;
