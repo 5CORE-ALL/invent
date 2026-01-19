@@ -591,10 +591,11 @@ class Ebay2UtilizedAdsController extends Controller
         $nrValues = EbayTwoDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
         $reports = Ebay2PriorityReport::whereIn('report_range', ['L7', 'L1', 'L30'])
-            ->where('campaignStatus', 'RUNNING')
+            ->whereIn('campaignStatus', ['RUNNING', 'PAUSED'])
             ->where('campaign_name', 'NOT LIKE', 'Campaign %')
             ->where('campaign_name', 'NOT LIKE', 'General - %')
             ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->orderByRaw("CASE WHEN campaignStatus = 'RUNNING' THEN 0 ELSE 1 END")
             ->orderBy('report_range', 'asc')
             ->get();
 
@@ -659,7 +660,8 @@ class Ebay2UtilizedAdsController extends Controller
             if (!$matchedReports->isEmpty()) {
                 foreach ($matchedReports as $campaign) {
                     $tempCampaignId = $campaign->campaign_id ?? '';
-                    if (!empty($tempCampaignId) && $campaign->campaignStatus === 'RUNNING') {
+                    // Check if campaign exists (has campaign_id) regardless of status (RUNNING or PAUSED)
+                    if (!empty($tempCampaignId)) {
                         $hasCampaign = true;
                         $campaignId = $tempCampaignId;
                         $campaignName = $campaign->campaign_name ?? '';
@@ -2248,6 +2250,96 @@ class Ebay2UtilizedAdsController extends Controller
             return response()->json([
                 'status' => 500,
                 'message' => 'Error clearing SBID M: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function toggleCampaignStatus(Request $request)
+    {
+        try {
+            $campaignId = $request->input('campaign_id');
+            $status = $request->input('status'); // 'ENABLED' or 'PAUSED'
+            
+            if (!$campaignId || !$status) {
+                return response()->json([
+                    'status' => 400,
+                    'message' => 'Campaign ID and status are required'
+                ], 400);
+            }
+
+            if (!in_array($status, ['ENABLED', 'PAUSED'])) {
+                return response()->json([
+                    'status' => 400,
+                    'message' => 'Status must be ENABLED or PAUSED'
+                ], 400);
+            }
+
+            $accessToken = $this->getEbay2AccessToken();
+            if (!$accessToken) {
+                return response()->json([
+                    'status' => 500,
+                    'message' => 'Failed to get access token'
+                ], 500);
+            }
+
+            // Use campaign-level pause/resume endpoints
+            if ($status === 'PAUSED') {
+                $endpoint = "https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/pause";
+            } else {
+                $endpoint = "https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/resume";
+            }
+
+            try {
+                $response = Http::withHeaders([
+                    'Authorization' => "Bearer {$accessToken}",
+                    'Content-Type'  => 'application/json',
+                ])->post($endpoint);
+
+                if ($response->successful()) {
+                    // Update campaign status in database
+                    $dbStatus = $status === 'ENABLED' ? 'RUNNING' : 'PAUSED';
+                    
+                    // Update pink_dil_paused_at: set timestamp when PAUSED, null when ENABLED
+                    $updateData = ['campaignStatus' => $dbStatus];
+                    if ($status === 'PAUSED') {
+                        $updateData['pink_dil_paused_at'] = now();
+                    } else {
+                        $updateData['pink_dil_paused_at'] = null;
+                    }
+                    
+                    Ebay2PriorityReport::where('campaign_id', $campaignId)
+                        ->update($updateData);
+
+                    return response()->json([
+                        'status' => 200,
+                        'message' => "Campaign {$status} successfully.",
+                        'campaign_id' => $campaignId,
+                        'status' => $status
+                    ]);
+                } else {
+                    Log::error("Failed to {$status} campaign {$campaignId}: " . $response->body());
+                    return response()->json([
+                        'status' => $response->status(),
+                        'message' => "Failed to {$status} campaign: " . ($response->json()['errors'][0]['message'] ?? $response->body())
+                    ], $response->status());
+                }
+            } catch (\Exception $e) {
+                Log::error("Exception {$status} campaign {$campaignId}: " . $e->getMessage());
+                return response()->json([
+                    'status' => 500,
+                    'message' => 'Error updating campaign status: ' . $e->getMessage()
+                ], 500);
+            }
+        } catch (\Exception $e) {
+            Log::error('Error toggling eBay2 campaign status: ' . $e->getMessage(), [
+                'campaign_id' => $request->input('campaign_id'),
+                'status' => $request->input('status'),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'status' => 500,
+                'message' => 'Error updating campaign status: ' . $e->getMessage()
             ], 500);
         }
     }

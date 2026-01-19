@@ -28,6 +28,8 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use App\Models\AmazonFbmManual;
 use App\Models\AmazonListingStatus;
 use App\Models\AmazonChannelSummary;
+use App\Models\AmazonSeoAuditHistory;
+use App\Models\AmazonSkuCompetitor;
 
 class OverallAmazonController extends Controller
 {
@@ -1437,6 +1439,26 @@ class OverallAmazonController extends Controller
 
         $ratings = AmazonFbmManual::whereIn('sku', $skus)->pluck('data', 'sku')->toArray();
 
+        // Load SEO Audit History from dedicated table with user names
+        $seoAuditHistory = AmazonSeoAuditHistory::whereIn('sku', $skus)
+            ->leftJoin('users', 'amazon_seo_audit_history.user_id', '=', 'users.id')
+            ->select('amazon_seo_audit_history.*', 'users.name as user_name')
+            ->orderBy('amazon_seo_audit_history.created_at', 'desc')
+            ->get()
+            ->groupBy('sku')
+            ->map(function($entries) {
+                return $entries->map(function($entry) {
+                    return [
+                        'id' => $entry->id,
+                        'text' => $entry->checklist_text,
+                        'user_name' => $entry->user_name ?? 'Guest',
+                        'timestamp' => $entry->created_at ? $entry->created_at->format('Y-m-d H:i:s') : 'N/A'
+                    ];
+                })->values()->toArray();
+            });
+        
+        Log::info('SEO Audit History loaded', ['count' => $seoAuditHistory->count()]);
+
         // Get all JungleScout data - group by SKU first, then also by ASIN for fallback
         $allJungleScoutData = JungleScoutProductData::all();
         
@@ -1514,24 +1536,26 @@ class OverallAmazonController extends Controller
         // Keep loading other data from AmazonDataView for backward compatibility
         $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku', 'fba');
 
-        // Fetch LMP data from repricer database
+        // Fetch LMP data from amazon_sku_competitors table
         $lmpLowestLookup = collect();
         $lmpDetailsLookup = collect();
         try {
-            $lmpRecords = DB::connection('repricer')
-                ->table('lmpa_data')
-                ->select('sku', 'price', 'link', 'image')
-                ->whereIn('sku', $skus)
+            // Fetch all competitors and group by normalized SKU (handle line breaks, spaces, case)
+            $lmpRecords = AmazonSkuCompetitor::where('marketplace', 'amazon')
+                ->where('price', '>', 0)
                 ->orderBy('price', 'asc')
                 ->get()
-                ->groupBy('sku');
+                ->groupBy(function($item) {
+                    // Normalize: remove ALL whitespace (newlines, tabs, etc.), replace with single space, uppercase
+                    return strtoupper(preg_replace('/\s+/', ' ', trim($item->sku)));
+                });
 
             $lmpDetailsLookup = $lmpRecords;
             $lmpLowestLookup = $lmpRecords->map(function ($items) {
                 return $items->first();
             });
         } catch (\Exception $e) {
-            Log::warning('Could not fetch LMP data from repricer database: ' . $e->getMessage());
+            Log::warning('Could not fetch LMP data from amazon_sku_competitors: ' . $e->getMessage());
         }
 
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Amazon')->first();
@@ -1667,8 +1691,8 @@ class OverallAmazonController extends Controller
                 $row['Sess7'] = $amazonSheet->sessions_l7 ?? 0;
                 $row['price'] = $amazonSheet->price;
                 $row['price_lmpa'] = $amazonSheet->price_lmpa;
-                $row['sessions_l60'] = $amazonSheet->sessions_l60;
-                $row['units_ordered_l60'] = $amazonSheet->units_ordered_l60;
+                $row['sessions_l60'] = $amazonSheet->sessions_l60 ?? 0;
+                $row['units_ordered_l60'] = $amazonSheet->units_ordered_l60 ?? 0;
             }
 
             $row['INV'] = $shopify->inv ?? 0;
@@ -1741,24 +1765,30 @@ class OverallAmazonController extends Controller
             $row['js_comp_manual_api_link'] = null;
             $row['js_comp_manual_link'] = null;
 
-            // LMP data - lowest entry plus top entries
-            $lmpEntries = $lmpDetailsLookup->get($pm->sku);
+            // LMP data - lowest entry plus all competitors
+            // Use uppercase and trimmed SKU for lookup (case-insensitive)
+            $skuLookupKey = strtoupper(trim($pm->sku));
+            $lmpEntries = $lmpDetailsLookup->get($skuLookupKey);
             if (!$lmpEntries instanceof \Illuminate\Support\Collection) {
                 $lmpEntries = collect();
             }
 
-            $lowestLmp = $lmpLowestLookup->get($pm->sku);
+            $lowestLmp = $lmpLowestLookup->get($skuLookupKey);
             $row['lmp_price'] = ($lowestLmp && isset($lowestLmp->price))
                 ? (is_numeric($lowestLmp->price) ? floatval($lowestLmp->price) : null)
                 : null;
-            $row['lmp_link'] = $lowestLmp->link ?? null;
+            $row['lmp_link'] = $lowestLmp->product_link ?? null;
+            $row['lmp_asin'] = $lowestLmp->asin ?? null;
+            $row['lmp_title'] = $lowestLmp->product_title ?? null;
             $row['lmp_entries'] = $lmpEntries
-                ->take(10)
                 ->map(function ($entry) {
                     return [
+                        'id' => $entry->id,
+                        'asin' => $entry->asin ?? null,
                         'price' => is_numeric($entry->price) ? floatval($entry->price) : null,
-                        'link' => $entry->link ?? null,
-                        'image' => $entry->image ?? null,
+                        'link' => $entry->product_link ?? null,
+                        'title' => $entry->product_title ?? null,
+                        'marketplace' => $entry->marketplace ?? 'US',
                     ];
                 })
                 ->toArray();
@@ -1906,7 +1936,21 @@ class OverallAmazonController extends Controller
                     $row['APlus'] = isset($raw['APlus']) ? filter_var($raw['APlus'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['js_comp_manual_api_link'] = $raw['js_comp_manual_api_link'] ?? '';
                     $row['js_comp_manual_link'] = $raw['js_comp_manual_link'] ?? '';
+                    $row['checklist'] = $raw['checklist'] ?? '';
                 }
+            }
+            
+            // Load SEO audit history from dedicated table
+            $historyForSku = $seoAuditHistory->get($pm->sku) ?? [];
+            $row['seo_audit_history'] = $historyForSku;
+            
+            // Debug log for first few SKUs with history
+            if (!empty($historyForSku) && rand(1, 100) <= 5) {
+                Log::info('SEO History for SKU', [
+                    'sku' => $pm->sku,
+                    'history_count' => count($historyForSku),
+                    'history' => $historyForSku
+                ]);
             }
             
             // Fallback to AmazonListingStatus if NR not set from AmazonDataView
@@ -2007,8 +2051,14 @@ class OverallAmazonController extends Controller
                 'price' => '',
                 'price_lmpa' => '',
                 'A_L30' => $rows->sum('A_L30'),
+                'A_L7' => $rows->sum('A_L7'),
+                'units_ordered_l60' => $rows->sum('units_ordered_l60'),
                 'Sess30' => $rows->sum('Sess30'),
+                'Sess7' => $rows->sum('Sess7'),
+                'sessions_l60' => $rows->sum('sessions_l60'),
                 'CVR_L30' => '',
+                'CVR_L7' => '',
+                'CVR_L60' => '',
                 'NRL' => '',
                 'NRA' => '',
                 'FBA' => null,
@@ -2888,6 +2938,11 @@ class OverallAmazonController extends Controller
         return view("market-places.amazon_tabulator_view");
     }
 
+    public function amazonPricingCvrTabular(Request $request)
+    {
+        return view("market-places.amazonpricing_cvr_tabular");
+    }
+
     public function amazonDataJson(Request $request)
     {
         try {
@@ -3480,6 +3535,306 @@ class OverallAmazonController extends Controller
         } catch (\Exception $e) {
             // Don't break the main response if summary save fails
             Log::error('Error saving daily Amazon summary: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Save checklist to history table
+     */
+    public function saveAmazonChecklistToHistory(Request $request)
+    {
+        try {
+            $sku = strtoupper(trim($request->input('sku')));
+            $checklistText = $request->input('checklist_text', '');
+            
+            // Enforce 180 character limit
+            if (strlen($checklistText) > 180) {
+                $checklistText = substr($checklistText, 0, 180);
+            }
+            
+            if (!$sku) {
+                return response()->json(['error' => 'SKU is required'], 400);
+            }
+            
+            if (empty(trim($checklistText))) {
+                return response()->json(['error' => 'Checklist text is required'], 400);
+            }
+            
+            // Create new history entry in dedicated table
+            AmazonSeoAuditHistory::create([
+                'sku' => $sku,
+                'checklist_text' => $checklistText,
+                'user_id' => auth()->id() ?? null,
+            ]);
+            
+            // Get all history for this SKU (for frontend update)
+            $allHistory = AmazonSeoAuditHistory::where('sku', $sku)
+                ->orderBy('created_at', 'desc')
+                ->get()
+                ->map(function($entry) {
+                    return [
+                        'id' => $entry->id,
+                        'text' => $entry->checklist_text,
+                        'user_id' => $entry->user_id,
+                        'timestamp' => $entry->created_at->format('Y-m-d H:i:s')
+                    ];
+                })
+                ->toArray();
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Added to SEO Audit History',
+                'history' => $allHistory
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error saving checklist to history', [
+                'sku' => $sku ?? 'unknown',
+                'error' => $e->getMessage()
+            ]);
+            
+            return response()->json([
+                'error' => 'Failed to save to history: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get SEO audit history for a SKU
+     */
+    public function getAmazonSeoHistory(Request $request)
+    {
+        try {
+            $sku = strtoupper(trim($request->input('sku')));
+            
+            if (!$sku) {
+                return response()->json(['error' => 'SKU is required'], 400);
+            }
+            
+            $history = AmazonSeoAuditHistory::where('amazon_seo_audit_history.sku', $sku)
+                ->leftJoin('users', 'amazon_seo_audit_history.user_id', '=', 'users.id')
+                ->select('amazon_seo_audit_history.*', 'users.name as user_name')
+                ->orderBy('amazon_seo_audit_history.created_at', 'desc')
+                ->get()
+                ->map(function($entry) {
+                    return [
+                        'id' => $entry->id,
+                        'text' => $entry->checklist_text,
+                        'user_name' => $entry->user_name ?? 'Guest',
+                        'timestamp' => $entry->created_at ? $entry->created_at->format('Y-m-d H:i:s') : 'N/A'
+                    ];
+                })
+                ->toArray();
+            
+            return response()->json([
+                'success' => true,
+                'history' => $history
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error fetching SEO history', [
+                'sku' => $sku ?? 'unknown',
+                'error' => $e->getMessage()
+            ]);
+            
+            return response()->json([
+                'error' => 'Failed to fetch history: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get all competitors for a SKU (for modal display)
+     */
+    public function getAmazonCompetitors(Request $request)
+    {
+        try {
+            $sku = trim($request->input('sku'));
+            
+            if (!$sku) {
+                return response()->json(['error' => 'SKU is required'], 400);
+            }
+            
+            // Use 'amazon' to match database marketplace value
+            $competitors = AmazonSkuCompetitor::getCompetitorsForSku($sku, 'amazon');
+            
+            $lowestPrice = $competitors->first();
+            
+            return response()->json([
+                'success' => true,
+                'competitors' => $competitors->map(function($comp) {
+                    return [
+                        'id' => $comp->id,
+                        'asin' => $comp->asin,
+                        'price' => floatval($comp->price),
+                        'product_link' => $comp->product_link,
+                        'product_title' => $comp->product_title,
+                        'marketplace' => $comp->marketplace,
+                        'created_at' => $comp->created_at->format('Y-m-d H:i:s'),
+                    ];
+                }),
+                'lowest_price' => $lowestPrice ? floatval($lowestPrice->price) : null,
+                'total_count' => $competitors->count()
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error fetching Amazon competitors', [
+                'sku' => $sku ?? 'unknown',
+                'error' => $e->getMessage()
+            ]);
+            
+            return response()->json([
+                'error' => 'Failed to fetch competitors: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Add LMP from competitor data
+     */
+    public function addAmazonLmp(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'asin' => 'required|string',
+                'price' => 'required|numeric|min:0.01',
+                'product_link' => 'nullable|string',
+                'product_title' => 'nullable|string',
+                'marketplace' => 'nullable|string',
+            ]);
+            
+            $sku = trim($validated['sku']);
+            $marketplace = $validated['marketplace'] ?? 'amazon';
+            
+            // Check if this exact record already exists
+            $existing = AmazonSkuCompetitor::where('sku', $sku)
+                ->where('asin', $validated['asin'])
+                ->where('marketplace', $marketplace)
+                ->first();
+            
+            if ($existing) {
+                return response()->json([
+                    'error' => 'This competitor is already saved for this SKU'
+                ], 409);
+            }
+            
+            // Create new LMP entry
+            DB::beginTransaction();
+            
+            $lmp = AmazonSkuCompetitor::create([
+                'sku' => $sku,
+                'asin' => $validated['asin'],
+                'price' => $validated['price'],
+                'product_link' => $validated['product_link'] ?? null,
+                'product_title' => $validated['product_title'] ?? null,
+                'marketplace' => $marketplace,
+            ]);
+            
+            DB::commit();
+            
+            Log::info('LMP added successfully', [
+                'sku' => $sku,
+                'asin' => $validated['asin'],
+                'price' => $validated['price']
+            ]);
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'LMP added successfully',
+                'data' => [
+                    'id' => $lmp->id,
+                    'sku' => $lmp->sku,
+                    'asin' => $lmp->asin,
+                    'price' => floatval($lmp->price),
+                    'product_link' => $lmp->product_link,
+                    'product_title' => $lmp->product_title,
+                ]
+            ]);
+            
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation failed',
+                'messages' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            
+            Log::error('Error adding LMP', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'error' => 'Failed to add LMP: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete LMP entry
+     */
+    public function deleteAmazonLmp(Request $request)
+    {
+        try {
+            $id = $request->input('id');
+            
+            Log::info('Delete LMP request received', [
+                'id' => $id,
+                'all_input' => $request->all()
+            ]);
+            
+            if (!$id || !is_numeric($id)) {
+                Log::warning('Invalid ID provided for delete', ['id' => $id]);
+                return response()->json([
+                    'error' => 'Valid ID is required'
+                ], 400);
+            }
+            
+            $lmp = AmazonSkuCompetitor::find($id);
+            
+            if (!$lmp) {
+                Log::warning('LMP entry not found', ['id' => $id]);
+                return response()->json([
+                    'error' => 'LMP entry not found'
+                ], 404);
+            }
+            
+            DB::beginTransaction();
+            
+            $sku = $lmp->sku;
+            $asin = $lmp->asin;
+            $price = $lmp->price;
+            
+            $lmp->delete();
+            
+            DB::commit();
+            
+            Log::info('LMP deleted successfully', [
+                'id' => $id,
+                'sku' => $sku,
+                'asin' => $asin,
+                'price' => $price
+            ]);
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Competitor deleted successfully',
+                'deleted_id' => $id
+            ]);
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            
+            Log::error('Error deleting LMP', [
+                'id' => $id ?? 'unknown',
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'error' => 'Failed to delete competitor: ' . $e->getMessage()
+            ], 500);
         }
     }
 }

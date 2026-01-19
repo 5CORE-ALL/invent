@@ -15,6 +15,55 @@
             border-color: #198754;
             background-color: rgba(25, 135, 84, 0.05);
         }
+        
+        /* Smooth transitions for table updates */
+        #suppliers-table tbody {
+            transition: opacity 0.2s ease-in-out;
+        }
+        
+        #suppliers-table tbody.fade-out {
+            opacity: 0.5;
+        }
+        
+        #suppliers-table tbody.fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        /* Smooth pagination transitions */
+        .pagination-wrapper {
+            transition: opacity 0.2s ease-in-out;
+        }
+        
+        /* Smooth count badge update */
+        #supplier-count {
+            transition: all 0.3s ease;
+        }
+        
+        /* Smooth Select2 transitions */
+        .select2-container {
+            transition: all 0.2s ease;
+        }
+        
+        /* Loading indicator smooth fade */
+        #loading-indicator {
+            transition: opacity 0.3s ease;
+        }
+        
+        /* Smooth scroll behavior */
+        html {
+            scroll-behavior: smooth;
+        }
     </style>
 @endsection
 
@@ -33,7 +82,15 @@
         <div class="card shadow-sm">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h4 class="card-title mb-0">Suppliers</h4>
+                    <div class="d-flex align-items-center gap-3">
+                        <h4 class="card-title mb-0">Suppliers</h4>
+                        <span class="badge bg-primary rounded-pill px-3 py-2" id="supplier-count" style="font-size: 1rem; font-weight: 600;">
+                            <strong style="font-size: 1.1rem;">{{ number_format($filteredCount) }}</strong>
+                            @if($filteredCount != $totalCount)
+                                <span class="text-white-50" style="font-size: 0.95rem;">/ {{ number_format($totalCount) }}</span>
+                            @endif
+                        </span>
+                    </div>
                     <div class="d-flex gap-2">
                         <button type="button" class="btn btn-primary" data-bs-toggle="modal"
                             data-bs-target="#addSupplierModal">
@@ -85,41 +142,50 @@
                     </div>
                 </div>
 
-                <div class="row mb-4">
-                    <div class="col-md-4">
-                        <label for="category-filter" class="form-label fw-semibold">Category</label>
-                        <select class="form-select select2" id="category-filter" data-placeholder="Filter by category">
-                            <option value="">All Categories</option>
-                            @foreach($categories as $category)
-                                <option value="{{ $category->name }}">{{ $category->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
+                <form method="GET" action="{{ route('supplier.list') }}" id="filter-form">
+                    <div class="row mb-4">
+                        <div class="col-md-4">
+                            <label for="category-filter" class="form-label fw-semibold">Category</label>
+                            <select class="form-select select2" id="category-filter" name="category" data-placeholder="Filter by category">
+                                <option value="">All Categories</option>
+                                @foreach($categories as $category)
+                                    <option value="{{ $category->name }}" {{ request('category') == $category->name ? 'selected' : '' }}>{{ $category->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
 
-                    <div class="col-md-4">
-                        <label for="type-filter" class="form-label fw-semibold">Type</label>
-                        @php
-                            $types = ['Supplier','Forwarders', 'Photographer'];
-                        @endphp
-                        <select class="form-select select2" id="type-filter" data-placeholder="Filter by type">
-                            <option value="">Select Type</option>
-                            @foreach($types as $type)
-                                <option value="{{ $type }}">{{ $type }}</option>
-                            @endforeach
-                        </select>
-                    </div>
+                        <div class="col-md-4">
+                            <label for="type-filter" class="form-label fw-semibold">Type</label>
+                            @php
+                                $types = ['Supplier','Forwarders', 'Photographer'];
+                            @endphp
+                            <select class="form-select select2" id="type-filter" name="type" data-placeholder="Filter by type">
+                                <option value="">Select Type</option>
+                                @foreach($types as $type)
+                                    <option value="{{ $type }}" {{ request('type') == $type ? 'selected' : '' }}>{{ $type }}</option>
+                                @endforeach
+                            </select>
+                        </div>
 
-                    <div class="col-md-4">
-                        <label for="search-input" class="form-label fw-semibold">Search by name</label>
-                        <div class="input-group">
-                            <span class="input-group-text" style="height: 42px;"><i class="mdi mdi-magnify"></i></span>
-                            <input type="text" id="search-input" class="form-control" placeholder="Search suppliers..." style="height: 42px;">
+                        <div class="col-md-4">
+                            <label for="search-input" class="form-label fw-semibold">Search by name</label>
+                            <div class="input-group">
+                                <span class="input-group-text" style="height: 42px;"><i class="mdi mdi-magnify"></i></span>
+                                <input type="text" id="search-input" name="search" class="form-control" placeholder="Search suppliers..." value="{{ request('search') }}" style="height: 42px;">
+                            </div>
                         </div>
                     </div>
-                </div>
+                </form>
 
-                <div class="table-responsive" style="position: relative; overflow: visible;">
-                    <table class="table table-centered table-hover mb-0" id="suppliers-table" style="overflow: visible;">
+                <div class="table-responsive" style="position: relative; overflow-x: auto;">
+                    <!-- Loading indicator -->
+                    <div id="loading-indicator" class="text-center py-5" style="display: none; position: absolute; top: 0; left: 0; right: 0; background: rgba(255,255,255,0.9); z-index: 10;">
+                        <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-3 text-muted fw-semibold">Loading suppliers...</p>
+                    </div>
+                    <table class="table table-centered table-hover mb-0" id="suppliers-table">
                         <thead class="table-light">
                             <tr>
                                 <th>Type</th>
@@ -143,7 +209,7 @@
                     </table>
                 </div>
                 <div class="d-flex justify-content-end mt-4">
-                    <div class="pagination-wrapper">
+                    <div class="pagination-wrapper" id="pagination-wrapper">
                         {{ $suppliers->onEachSide(1)->links('pagination::bootstrap-5') }}
                     </div>
                 </div>
@@ -634,52 +700,340 @@
                 console.log('✅ All validations passed - submitting form');
             });
 
+            // Initialize Select2 for category filter with search enabled
+            const categorySelect = $('#category-filter');
+            // Only initialize if not already initialized
+            if (!categorySelect.hasClass('select2-hidden-accessible')) {
+                categorySelect.select2({
+                    theme: "bootstrap-5",
+                    width: '100%',
+                    placeholder: categorySelect.data('placeholder') || 'Filter by category',
+                    allowClear: true,
+                    minimumResultsForSearch: 0, // Always show search box
+                }).on('select2:open', function() {
+                    // Focus on search input when dropdown opens
+                    setTimeout(function() {
+                        $('.select2-search__field').focus();
+                    }, 80);
+                });
+            }
+
+            // Initialize Select2 for type filter with search enabled
+            const typeSelect = $('#type-filter');
+            // Only initialize if not already initialized
+            if (!typeSelect.hasClass('select2-hidden-accessible')) {
+                typeSelect.select2({
+                    theme: "bootstrap-5",
+                    width: '100%',
+                    placeholder: typeSelect.data('placeholder') || 'Filter by type',
+                    allowClear: true,
+                    minimumResultsForSearch: 0, // Always show search box
+                });
+            }
+
+            // Function to load suppliers via AJAX (no page refresh)
+            function loadSuppliers(page = 1) {
+                // Get values from Select2 properly - ensure we get the actual selected value
+                // Get from the underlying select element, not from Select2 instance
+                const categorySelect = $('#category-filter');
+                const category = categorySelect.val() || '';
+                
+                const typeSelect = $('#type-filter');
+                const type = typeSelect.val() || '';
+                
+                const search = $('#search-input').val().trim() || '';
+                
+                // Build query parameters
+                const params = new URLSearchParams();
+                if (category) params.set('category', category);
+                if (type) params.set('type', type);
+                if (search) params.set('search', search);
+                if (page > 1) params.set('page', page);
+                
+                // Smooth scroll to table if not on first page or if filters are applied
+                if (page === 1 && (category || type || search)) {
+                    $('html, body').animate({
+                        scrollTop: $('#suppliers-table').offset().top - 150
+                    }, 300, 'swing');
+                }
+                
+                // Show loading indicator with smooth fade
+                $('#loading-indicator').fadeIn(200);
+                $('#suppliers-table tbody').addClass('fade-out');
+                $('.pagination-wrapper').fadeOut(150);
+                
+                // Update URL without page refresh
+                const newURL = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+                window.history.pushState({ path: newURL }, '', newURL);
+                
+                // Make AJAX request
+                $.ajax({
+                    url: '{{ route("supplier.list") }}',
+                    method: 'GET',
+                    data: params.toString(),
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            // Get current filter values from URL params (most reliable source)
+                            const urlParams = new URLSearchParams(window.location.search);
+                            // Decode URL-encoded values (e.g., "Drum+Stool" becomes "Drum Stool")
+                            const currentCategory = urlParams.get('category') ? decodeURIComponent(urlParams.get('category').replace(/\+/g, ' ')) : '';
+                            const currentType = urlParams.get('type') ? decodeURIComponent(urlParams.get('type').replace(/\+/g, ' ')) : '';
+                            const currentSearch = urlParams.get('search') ? decodeURIComponent(urlParams.get('search').replace(/\+/g, ' ')) : '';
+                            
+                            // Update table body with smooth fade-in
+                            $('#suppliers-table tbody').removeClass('fade-out').html(response.html).addClass('fade-in');
+                            setTimeout(function() {
+                                $('#suppliers-table tbody').removeClass('fade-in');
+                            }, 300);
+                            
+                            // Update pagination with smooth fade-in
+                            $('#pagination-wrapper').html(response.pagination).fadeIn(200);
+                            
+                            // Update count badge with smooth transition
+                            let countHtml = '<strong style="font-size: 1.1rem;">' + formatNumber(response.filteredCount) + '</strong>';
+                            if (response.filteredCount != response.totalCount) {
+                                countHtml += '<span class="text-white-50" style="font-size: 0.95rem;">/ ' + formatNumber(response.totalCount) + '</span>';
+                            }
+                            $('#supplier-count').fadeOut(100, function() {
+                                $(this).html(countHtml).fadeIn(100);
+                            });
+                            
+                            // Restore Select2 values - Destroy and reinitialize for reliability
+                            isRestoringValues = true;
+                            
+                            // Restore values after DOM is ready (reduced delay for smoother experience)
+                            setTimeout(function() {
+                                // Restore category filter
+                                const categorySelect = $('#category-filter');
+                                
+                                // Store current value before destroying
+                                const categoryValue = currentCategory || null;
+                                
+                                // Properly destroy and clean up Select2
+                                if (categorySelect.hasClass('select2-hidden-accessible')) {
+                                    try {
+                                        categorySelect.select2('destroy');
+                                    } catch(e) {
+                                        // If destroy fails, force cleanup
+                                        console.log('Select2 destroy had issues, forcing cleanup');
+                                    }
+                                }
+                                
+                                // Remove any leftover Select2 containers (safety cleanup)
+                                categorySelect.nextAll('.select2-container').remove();
+                                categorySelect.siblings('.select2-container').remove();
+                                
+                                // Remove select2 classes and attributes that might be left behind
+                                categorySelect.removeClass('select2-hidden-accessible');
+                                categorySelect.removeAttr('data-select2-id');
+                                categorySelect.find('option').removeAttr('data-select2-id');
+                                
+                                // Set the value on the underlying select first
+                                if (categoryValue) {
+                                    // Check if option exists
+                                    let optionExists = false;
+                                    categorySelect.find('option').each(function() {
+                                        if ($(this).val() === categoryValue) {
+                                            optionExists = true;
+                                            return false;
+                                        }
+                                    });
+                                    if (optionExists) {
+                                        categorySelect.val(categoryValue);
+                                    } else {
+                                        categorySelect.val(null);
+                                    }
+                                } else {
+                                    categorySelect.val(null);
+                                }
+                                
+                                // Small delay to ensure cleanup is complete before reinitializing
+                                setTimeout(function() {
+                                    // Reinitialize Select2 with the value already set (only if not already initialized)
+                                    if (!categorySelect.hasClass('select2-hidden-accessible')) {
+                                        categorySelect.select2({
+                                            theme: "bootstrap-5",
+                                            width: '100%',
+                                            placeholder: categorySelect.data('placeholder') || 'Filter by category',
+                                            allowClear: true,
+                                            minimumResultsForSearch: 0,
+                                        }).on('select2:open', function() {
+                                            setTimeout(function() {
+                                                $('.select2-search__field').focus();
+                                            }, 80);
+                                        });
+                                    }
+                                }, 30);
+                                
+                                // Restore type filter
+                                const typeSelect = $('#type-filter');
+                                
+                                // Store current value before destroying
+                                const typeValue = currentType || null;
+                                
+                                // Properly destroy and clean up Select2
+                                if (typeSelect.hasClass('select2-hidden-accessible')) {
+                                    try {
+                                        typeSelect.select2('destroy');
+                                    } catch(e) {
+                                        // If destroy fails, force cleanup
+                                        console.log('Select2 destroy had issues, forcing cleanup');
+                                    }
+                                }
+                                
+                                // Remove any leftover Select2 containers (safety cleanup)
+                                typeSelect.nextAll('.select2-container').remove();
+                                typeSelect.siblings('.select2-container').remove();
+                                
+                                // Remove select2 classes and attributes that might be left behind
+                                typeSelect.removeClass('select2-hidden-accessible');
+                                typeSelect.removeAttr('data-select2-id');
+                                typeSelect.find('option').removeAttr('data-select2-id');
+                                
+                                // Set the value on the underlying select first
+                                if (typeValue) {
+                                    // Check if option exists
+                                    let optionExists = false;
+                                    typeSelect.find('option').each(function() {
+                                        if ($(this).val() === typeValue) {
+                                            optionExists = true;
+                                            return false;
+                                        }
+                                    });
+                                    if (optionExists) {
+                                        typeSelect.val(typeValue);
+                                    } else {
+                                        typeSelect.val(null);
+                                    }
+                                } else {
+                                    typeSelect.val(null);
+                                }
+                                
+                                // Small delay to ensure cleanup is complete before reinitializing
+                                setTimeout(function() {
+                                    // Reinitialize Select2 with the value already set (only if not already initialized)
+                                    if (!typeSelect.hasClass('select2-hidden-accessible')) {
+                                        typeSelect.select2({
+                                            theme: "bootstrap-5",
+                                            width: '100%',
+                                            placeholder: typeSelect.data('placeholder') || 'Filter by type',
+                                            allowClear: true,
+                                            minimumResultsForSearch: 0,
+                                        });
+                                    }
+                                }, 30);
+                                
+                                // Restore search input value
+                                $('#search-input').val(currentSearch);
+                                
+                                // Re-attach event handlers after reinitialization
+                                attachFilterHandlers();
+                                
+                                // Reset flag after values are restored
+                                setTimeout(function() {
+                                    isRestoringValues = false;
+                                }, 200);
+                            }, 150);
+                            
+                            // Re-initialize Select2 in modals if needed
+                            initSelect2();
+                            
+                            // Re-bind rating modal buttons
+                            bindRatingButtons();
+                        }
+                    },
+                    error: function(xhr) {
+                        console.error('Error loading suppliers:', xhr);
+                        alert('Error loading suppliers. Please try again.');
+                    },
+                    complete: function() {
+                        $('#loading-indicator').fadeOut(200);
+                    }
+                });
+            }
+            
+            // Helper function to format numbers
+            function formatNumber(num) {
+                return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+            }
+            
+            // Flag to prevent infinite loop when restoring Select2 values
+            let isRestoringValues = false;
+            
+            // Function to attach filter event handlers (needed after re-initialization)
+            function attachFilterHandlers() {
+                // Remove existing handlers to avoid duplicates
+                $('#category-filter').off('change.select2-filter select2:select select2:clear');
+                $('#type-filter').off('change.select2-filter');
+                
+                // Apply filters when category changes (including Select2 selection)
+                $('#category-filter').on('change.select2-filter', function (e) {
+                    // Skip if we're just restoring values after AJAX
+                    if (!isRestoringValues) {
+                        loadSuppliers(1); // Reset to page 1
+                    }
+                });
+
+                // Also listen to Select2 select event to ensure it triggers when selecting from search
+                $('#category-filter').on('select2:select', function (e) {
+                    if (!isRestoringValues) {
+                        // Wait a bit to ensure Select2 has finished updating its display
+                        setTimeout(function() {
+                            loadSuppliers(1); // Reset to page 1
+                        }, 50);
+                    }
+                });
+
+                // Handle clearing the filter
+                $('#category-filter').on('select2:clear', function (e) {
+                    if (!isRestoringValues) {
+                        loadSuppliers(1); // Reset to page 1
+                    }
+                });
+
+                // Apply filters when type changes
+                $('#type-filter').on('change.select2-filter', function (e) {
+                    // Skip if we're just restoring values after AJAX
+                    if (!isRestoringValues) {
+                        loadSuppliers(1); // Reset to page 1
+                    }
+                });
+            }
+            
+            // Attach handlers initially
+            attachFilterHandlers();
+
+            // Apply filters when search input changes (with debounce and Enter key)
             let searchTimer;
-            $('#search-input').on('keyup', function () {
+            $('#search-input').on('keyup', function (e) {
+                if (e.key === 'Enter') {
+                    clearTimeout(searchTimer);
+                    loadSuppliers(1); // Reset to page 1
+                    return;
+                }
+                
                 clearTimeout(searchTimer);
                 searchTimer = setTimeout(() => {
-                    const value = $(this).val().toLowerCase();
-                    $("#suppliers-table tbody tr").each(function () {
-                        $(this).toggle($(this).text().toLowerCase().indexOf(value) > -1);
-                    });
-                }, 300);
+                    loadSuppliers(1); // Reset to page 1
+                }, 800);
             });
-
-            $( '#category-filter' ).select2( {
-                theme: "bootstrap-5",
-                width: $( this ).data( 'width' ) ? $( this ).data( 'width' ) : $( this ).hasClass( 'w-100' ) ? '100%' : 'style',
-                placeholder: $( this ).data( 'placeholder' ),
-            } );
-
             
-            $('#category-filter').on('change', function () {
-                const selectedCategory = $(this).val().toLowerCase();
-                $("#suppliers-table tbody tr").each(function () {
-                    const categories = $(this).find("td:eq(1)").text().toLowerCase();
-                    if (selectedCategory === '') {
-                        $(this).show(); // Show all if no category selected
-                    } else {
-                        $(this).toggle(categories.includes(selectedCategory)); // Show/hide based on match
-                    }
-                });
-            });
-
-            $( '#type-filter' ).select2( {
-                theme: "bootstrap-5",
-                width: $( this ).data( 'width' ) ? $( this ).data( 'width' ) : $( this ).hasClass( 'w-100' ) ? '100%' : 'style',
-                placeholder: $( this ).data( 'placeholder' ),
-            } );
-
-            $('#type-filter').on('change', function () {
-                const value = $(this).val().toLowerCase();
-                $("#suppliers-table tbody tr").each(function () {
-                    const type = $(this).find("td:eq(0)").text().toLowerCase(); // Type is column 1 (index 0)
-                    if (value === '') {
-                        $(this).show(); // Show all if no type selected
-                    } else {
-                        $(this).toggle(type.includes(value)); // Show/hide based on exact match
-                    }
-                });
+            // Handle pagination clicks via AJAX
+            $(document).on('click', '.pagination-wrapper .pagination a', function(e) {
+                e.preventDefault();
+                const url = $(this).attr('href');
+                if (url) {
+                    const urlObj = new URL(url);
+                    const page = urlObj.searchParams.get('page') || 1;
+                    loadSuppliers(page);
+                    // Smooth scroll to top of table
+                    $('html, body').animate({
+                        scrollTop: $('#suppliers-table').offset().top - 100
+                    }, 400, 'swing');
+                }
             });
         });
 
@@ -691,29 +1045,33 @@
             window.open(baseURL + number, '_blank');
         }
 
-        //rating modal
-        $('.rate-btn').on('click', function () {
-            const supplierId = $(this).data('supplier-id');
-            const supplierName = $(this).data('supplier-name');
-            const parent = $(this).data('parent');
-            const skus = $(this).data('skus'); 
+        // Function to bind rating modal buttons (needed after AJAX updates) - Global scope
+        function bindRatingButtons() {
+            $('.rate-btn').off('click').on('click', function () {
+                const supplierId = $(this).data('supplier-id');
+                const supplierName = $(this).data('supplier-name');
+                const parent = $(this).data('parent');
+                const skus = $(this).data('skus'); 
 
-            $('#modal-supplier-id').val(supplierId);
-            $('#modal-parent').val(parent);
+                $('#modal-supplier-id').val(supplierId);
+                $('#modal-parent').val(parent);
+                $('#modal-supplier-name').val(supplierName);
 
-            $('#modal-supplier-name').val(supplierName);
+                const skuSelect = $('#modal-skus');
+                skuSelect.empty();
+                if (Array.isArray(skus)) {
+                    skus.forEach(sku => {
+                        skuSelect.append(new Option(`${parent} → ${sku}`, sku, true, true));
+                    });
+                }
+                skuSelect.trigger('change');
+            });
+        }
 
-            const skuSelect = $('#modal-skus');
-            skuSelect.empty();
-            if (Array.isArray(skus)) {
-                skus.forEach(sku => {
-                    skuSelect.append(new Option(`${parent} → ${sku}`, sku, true, true));
-                });
-            }
-
-            skuSelect.trigger('change');
+        // Initial binding of rating modal buttons when document is ready
+        $(document).ready(function() {
+            bindRatingButtons();
         });
-
 
         document.body.style.zoom = '90%';
 

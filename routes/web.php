@@ -985,6 +985,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/overallAmazon/saveLowProfit', action: [OverallAmazonController::class, 'saveLowProfit']);
     Route::get('/amazon-pricing-cvr', action: [OverallAmazonController::class, 'amazonPricingCVR'])->name('amazon.pricing.cvr');
     Route::get('/amazon-tabulator-view', action: [OverallAmazonController::class, 'amazonTabulatorView'])->name('amazon.tabulator.view');
+    Route::get('/amazonpricing-cvr-tabular', action: [OverallAmazonController::class, 'amazonPricingCvrTabular'])->name('amazon.pricing.cvr.tabular');
     Route::get('/amazon-column-visibility', [OverallAmazonController::class, 'getAmazonColumnVisibility'])->name('amazon.column.visibility');
     Route::post('/amazon-column-visibility', [OverallAmazonController::class, 'saveAmazonColumnVisibility'])->name('amazon.column.visibility.save');
     Route::get('/amazon-data-json', action: [OverallAmazonController::class, 'amazonDataJson'])->name('amazon.data.json');
@@ -1007,7 +1008,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon-analytics/export', [OverallAmazonController::class, 'exportAmazonAnalytics'])->name('amazon.analytics.export');
     Route::get('/amazon-analytics/sample', [OverallAmazonController::class, 'downloadSample'])->name('amazon.analytics.sample');
     Route::post('/import-amazon-ratings', [OverallAmazonController::class, 'importAmazonRatings']);
+    Route::get('/amazon/competitors', [OverallAmazonController::class, 'getAmazonCompetitors'])->name('amazon.competitors.get');
+    Route::post('/amazon/lmp/add', [OverallAmazonController::class, 'addAmazonLmp'])->name('amazon.lmp.add');
+    Route::post('/amazon/lmp/delete', [OverallAmazonController::class, 'deleteAmazonLmp'])->name('amazon.lmp.delete.post');
+    Route::delete('/amazon/lmp/delete', [OverallAmazonController::class, 'deleteAmazonLmp'])->name('amazon.lmp.delete');
     Route::post('/update-amazon-rating', [OverallAmazonController::class, 'updateAmazonRating']);
+    Route::post('/save-amazon-checklist-to-history', [OverallAmazonController::class, 'saveAmazonChecklistToHistory']);
+    Route::get('/get-amazon-seo-history', [OverallAmazonController::class, 'getAmazonSeoHistory']);
     Route::get('/amazon-metrics-history', [OverallAmazonController::class, 'getMetricsHistory'])->name('amazon.metrics.history');
 
     //ebay 2 
@@ -1604,6 +1611,9 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/product_master/update-field', [ProductMasterController::class, 'updateField'])->name('product_master.update-field');
     Route::post('/product_master/update-verified', [ProductMasterController::class, 'updateVerified'])->name('product_master.update-verified');
     Route::post('/product-master/import', [ProductMasterController::class, 'import'])->name('product_master.import');
+    Route::post('/product-master/bulk-update-all', [ProductMasterController::class, 'bulkUpdateAll'])->name('product_master.bulk_update_all');
+    Route::post('/product-master/restore-bulk-update', [ProductMasterController::class, 'restoreBulkUpdate'])->name('product_master.restore_bulk_update');
+    Route::get('/product-master/download-template', [ProductMasterController::class, 'downloadTemplate'])->name('product_master.download_template');
     Route::post('/product-master/batch-update', [ProductMasterController::class, 'batchUpdate']);
     Route::post('/channel_master/store', [ChannelMasterController::class, 'store'])->name('channel_master.store');
     Route::post('/channel-master/update-sheet-link', [ChannelMasterController::class, 'updateSheetLink']);
@@ -2728,6 +2738,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/save-ebay-sbid-m', 'saveEbaySbidM');
         Route::post('/save-ebay-sbid-m-bulk', 'saveEbaySbidMBulk');
         Route::post('/clear-ebay-sbid-m-bulk', 'clearEbaySbidMBulk');
+        Route::post('/toggle-ebay-campaign-status', 'toggleCampaignStatus');
     });
     Route::controller(EbayACOSController::class)->group(function () {
         Route::get('/ebay-over-uti-acos-pink', 'ebayOverUtiAcosPink')->name('ebay-over-uti-acos-pink');
@@ -2856,6 +2867,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/save-ebay3-sbid-m', 'saveEbay3SbidM');
         Route::post('/save-ebay3-sbid-m-bulk', 'saveEbay3SbidMBulk');
         Route::post('/clear-ebay3-sbid-m-bulk', 'clearEbay3SbidMBulk');
+        Route::post('/toggle-ebay3-campaign-status', 'toggleCampaignStatus');
     });
 
     Route::controller(Ebay2UtilizedAdsController::class)->group(function () {
@@ -2870,6 +2882,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/save-ebay2-sbid-m', 'saveEbay2SbidM');
         Route::post('/save-ebay2-sbid-m-bulk', 'saveEbay2SbidMBulk');
         Route::post('/clear-ebay2-sbid-m-bulk', 'clearEbay2SbidMBulk');
+        Route::post('/toggle-ebay2-campaign-status', 'toggleCampaignStatus');
     });
 
     Route::controller(Ebay3KeywordAdsController::class)->group(function () {

@@ -740,6 +740,447 @@ class ProductMasterController extends Controller
         return false;
     }
 
+    /**
+     * Download Excel template for bulk update
+     */
+    public function downloadTemplate(Request $request)
+    {
+        try {
+            // Create a sample template with headers and example data
+            $headers = [
+                'Parent',
+                'SKU',
+                'UPC',
+                'STATUS',
+                'Unit',
+                'LP',
+                'CP',
+                'FRGHT',
+                'SHIP',
+                'TEMU SHIP',
+                'MOQ',
+                'EBAY2 SHIP',
+                'INITIAL QUANTITY',
+                'Label QTY',
+                'WT ACT',
+                'WT DECL',
+                'L',
+                'W',
+                'H',
+                'CBM',
+                'Image',
+                'DC',
+                'Pcs/Box',
+                'L1',
+                'B',
+                'H1',
+                'Weight',
+                'MSRP',
+                'MAP',
+            ];
+
+            // Create example row
+            $exampleRow = [
+                'PARENT-001',           // Parent
+                'SKU-001',             // SKU
+                '810099499629',        // UPC
+                'active',              // STATUS
+                'Pair',                // Unit
+                '9.94',                // LP
+                '7.10',                // CP
+                '2.84',                // FRGHT
+                '7.17',                // SHIP
+                '5.00',                // TEMU SHIP
+                '100',                 // MOQ
+                '6.50',                // EBAY2 SHIP
+                '500',                 // INITIAL QUANTITY
+                '1',                   // Label QTY
+                '2.50',                // WT ACT
+                '2.00',                // WT DECL
+                '10.00',               // L
+                '8.00',                // W
+                '6.00',                // H
+                '0.0118',              // CBM
+                '',                    // Image (URL or path)
+                '',                    // DC
+                '',                    // Pcs/Box
+                '',                    // L1
+                '',                    // B
+                '',                    // H1
+                '',                    // Weight
+                '',                    // MSRP
+                '',                    // MAP
+            ];
+
+            $data = [$headers, $exampleRow];
+
+            // Create Excel file in memory
+            $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+            $sheet = $spreadsheet->getActiveSheet();
+            $sheet->fromArray($data, null, 'A1');
+
+            // Style the header row
+            $headerStyle = [
+                'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+                'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'startColor' => ['rgb' => '2C6ED5']],
+                'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER],
+            ];
+            $sheet->getStyle('A1:AC1')->applyFromArray($headerStyle);
+
+            // Auto-size columns
+            foreach (range('A', 'AC') as $col) {
+                $sheet->getColumnDimension($col)->setAutoSize(true);
+            }
+
+            // Create writer and save to output
+            $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+            $fileName = 'product_master_bulk_update_template_'.date('Y-m-d').'.xlsx';
+
+            // Set headers for download
+            header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            header('Content-Disposition: attachment;filename="'.$fileName.'"');
+            header('Cache-Control: max-age=0');
+
+            $writer->save('php://output');
+            exit;
+
+        } catch (\Exception $e) {
+            Log::error('Template Download Error: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to generate template: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Bulk update ALL product data (not just missing data)
+     * Creates backup before updating for restore functionality
+     */
+    public function bulkUpdateAll(Request $request)
+    {
+        $request->validate([
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv|max:10240',
+        ]);
+
+        try {
+            $file = $request->file('excel_file');
+
+            // Load spreadsheet
+            $spreadsheet = IOFactory::load($file->getPathName());
+            $sheet = $spreadsheet->getActiveSheet();
+            $rows = $sheet->toArray();
+
+            if (count($rows) < 2) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Excel file is empty or has no data rows',
+                ], 422);
+            }
+
+            // Clean headers
+            $headers = array_map(function ($header) {
+                return strtolower(trim(preg_replace('/[^a-zA-Z0-9_]/', '_', $header)));
+            }, $rows[0]);
+
+            // Remove header row
+            unset($rows[0]);
+
+            // Column mapping (Excel headers to JSON keys in Values column)
+            $columnMap = [
+                'sku' => 'sku',
+                'parent' => 'parent',
+                'lp' => 'lp',
+                'cp' => 'cp',
+                'cp_' => 'cp',  // Handle "CP$" header
+                'frght' => 'frght',
+                'ship' => 'ship',
+                'temu_ship' => 'temu_ship',
+                'moq' => 'moq',
+                'ebay2_ship' => 'ebay2_ship',
+                'initial_quantity' => 'initial_quantity',
+                'label_qty' => 'label_qty',
+                'wt_act' => 'wt_act',
+                'wt_decl' => 'wt_decl',
+                'l' => 'l',
+                'l_2_' => 'l2_url',  // Handle "L(2)" header
+                'w' => 'w',
+                'h' => 'h',
+                'cbm' => 'cbm',
+                'image' => 'image_path',
+                'image_path' => 'image_path',
+                'status' => 'status',
+                'unit' => 'unit',
+                'upc' => 'upc',
+                'dc' => 'dc',
+                'pcs_box' => 'pcs_per_box',
+                'pcs_per_box' => 'pcs_per_box',
+                'l1' => 'l1',
+                'b' => 'b',
+                'h1' => 'h1',
+                'weight' => 'weight',
+                'msrp' => 'msrp',
+                'map' => 'map',
+                'verified_data' => 'verified_data',
+                'ov_l30' => 'shopify_quantity',  // OV L30 - but we skip this
+                'inv' => 'shopify_inv',  // INV - but we skip this
+            ];
+
+            // Find column indices
+            $columnIndices = [];
+            foreach ($columnMap as $key => $value) {
+                $index = array_search($key, $headers);
+                if ($index !== false) {
+                    $columnIndices[$value] = $index;
+                }
+            }
+
+            // Log what columns were found for debugging
+            Log::info('Excel Headers Found: '.implode(', ', $headers));
+            Log::info('Columns Mapped: '.implode(', ', array_keys($columnIndices)));
+
+            if (!isset($columnIndices['sku'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'SKU column not found in the Excel file. Found headers: '.implode(', ', $headers),
+                ], 422);
+            }
+
+            $updated = 0;
+            $skipped = 0;
+            $errors = [];
+            $backups = []; // Store backups for potential restore
+            $updateDetails = []; // Track what was updated
+
+            DB::beginTransaction();
+
+            try {
+                foreach ($rows as $index => $row) {
+                    $rowNumber = $index + 2;
+
+                    // Skip empty rows
+                    if (empty($row[$columnIndices['sku']])) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    $sku = trim($row[$columnIndices['sku']]);
+
+                    // Normalize SKU spaces (replace multiple spaces with single space)
+                    $sku = preg_replace('/\s+/', ' ', $sku);
+
+                    // Find product by SKU - try exact match first, then case-insensitive
+                    $product = ProductMaster::where('sku', $sku)->first();
+                    
+                    if (!$product) {
+                        // Try case-insensitive match
+                        $product = ProductMaster::whereRaw('LOWER(sku) = ?', [strtolower($sku)])->first();
+                    }
+
+                    if (!$product) {
+                        $errors[] = "Row {$rowNumber}: SKU '{$sku}' not found in database";
+                        Log::warning("Bulk Update: SKU not found - '{$sku}'");
+                        continue;
+                    }
+
+                    Log::info("Bulk Update: Processing SKU '{$sku}' (Row {$rowNumber})");
+
+                    // BACKUP existing data before updating
+                    $backups[] = [
+                        'sku' => $product->sku,
+                        'parent' => $product->parent,
+                        'values' => $product->Values, // Store original Values JSON
+                        'updated_at' => now(),
+                    ];
+
+                    // Get existing Values
+                    $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+                    if (!is_array($values)) {
+                        $values = [];
+                    }
+
+                    // Log existing keys for debugging
+                    $existingKeys = array_keys($values);
+                    Log::info("Before Update - SKU '{$sku}' has ".count($existingKeys)." fields: ".implode(', ', $existingKeys));
+
+                    // Update parent if provided (not in Values JSON)
+                    if (isset($columnIndices['parent']) && isset($row[$columnIndices['parent']])) {
+                        $parentValue = trim($row[$columnIndices['parent']]);
+                        if ($parentValue !== '') {
+                            $product->parent = $parentValue;
+                        }
+                    }
+
+                    // Track fields updated for this product
+                    $fieldsUpdated = [];
+
+                    // Update ALL fields from Excel (except INV and SKU)
+                    foreach ($columnIndices as $field => $colIndex) {
+                        // Skip SKU (used for matching), parent (handled above), and inventory fields
+                        if ($field === 'sku' || $field === 'parent' || 
+                            $field === 'shopify_inv' || $field === 'shopify_quantity' || 
+                            $field === 'inv' || $field === 'ov_l30') {
+                            continue; // Skip inventory columns - NEVER update these
+                        }
+
+                        // Get cell value
+                        $cellValue = isset($row[$colIndex]) ? $row[$colIndex] : null;
+
+                        // Skip if cell is empty/null - keep existing value
+                        if ($cellValue === null || $cellValue === '' || trim($cellValue) === '') {
+                            continue;
+                        }
+
+                        $value = trim($cellValue);
+
+                        // Convert numeric fields
+                        $isNumeric = in_array($field, ['lp', 'cp', 'frght', 'ship', 'temu_ship', 'moq', 'ebay2_ship', 'label_qty', 'wt_act', 'wt_decl', 'l', 'w', 'h', 'cbm', 'upc', 'initial_quantity']);
+
+                        if ($isNumeric && is_numeric($value)) {
+                            $value = (float) $value;
+                        }
+
+                        // Track what's being updated
+                        $oldValue = $values[$field] ?? 'null';
+                        if ($oldValue != $value) {
+                            $fieldsUpdated[] = "{$field}: {$oldValue} → {$value}";
+                        }
+
+                        // Update value in Values JSON
+                        $values[$field] = $value;
+                    }
+
+                    // Log what fields remain after update
+                    $finalKeys = array_keys($values);
+                    Log::info("After Update - SKU '{$sku}' now has ".count($finalKeys)." fields: ".implode(', ', $finalKeys));
+
+                    // Save updated Values
+                    $product->Values = $values;
+                    $product->save();
+                    $updated++;
+
+                    // Log what was updated
+                    if (!empty($fieldsUpdated)) {
+                        Log::info("Bulk Update: SKU '{$sku}' updated - ".implode(', ', $fieldsUpdated));
+                        $updateDetails[] = [
+                            'sku' => $sku,
+                            'fields' => $fieldsUpdated,
+                        ];
+                    } else {
+                        Log::info("Bulk Update: SKU '{$sku}' - no changes (all values same or empty cells)");
+                    }
+                }
+
+                // Store backup in session for restore functionality
+                if (!empty($backups)) {
+                    session(['product_update_backup' => [
+                        'timestamp' => now()->toDateTimeString(),
+                        'data' => $backups,
+                        'updated_count' => $updated,
+                    ]]);
+                }
+
+                DB::commit();
+
+                $message = "Successfully processed {$updated} product(s).";
+                if ($skipped > 0) {
+                    $message .= " Skipped {$skipped} empty row(s).";
+                }
+                if (count($errors) > 0) {
+                    $message .= " {$errors[0]}"; // Show first error
+                }
+
+                Log::info("Bulk Update Complete: Updated={$updated}, Skipped={$skipped}, Errors=".count($errors));
+
+                return response()->json([
+                    'success' => true,
+                    'message' => $message,
+                    'updated' => $updated,
+                    'skipped' => $skipped,
+                    'errors' => $errors,
+                    'details' => $updateDetails, // Show what was updated
+                    'backup_available' => !empty($backups),
+                ]);
+
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+
+        } catch (\Exception $e) {
+            Log::error('Bulk Update All Error: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Update failed: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Restore previous values from last bulk update
+     */
+    public function restoreBulkUpdate(Request $request)
+    {
+        try {
+            $backup = session('product_update_backup');
+
+            if (!$backup) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No backup data found. Restore is only available immediately after an update.',
+                ], 404);
+            }
+
+            $restored = 0;
+            $errors = [];
+
+            DB::beginTransaction();
+
+            try {
+                foreach ($backup['data'] as $backupItem) {
+                    $product = ProductMaster::where('sku', $backupItem['sku'])->first();
+
+                    if (!$product) {
+                        $errors[] = "SKU '{$backupItem['sku']}' not found for restore";
+                        continue;
+                    }
+
+                    // Restore original values
+                    $product->parent = $backupItem['parent'];
+                    $product->Values = $backupItem['values'];
+                    $product->save();
+                    $restored++;
+                }
+
+                DB::commit();
+
+                // Clear backup after successful restore
+                session()->forget('product_update_backup');
+
+                return response()->json([
+                    'success' => true,
+                    'message' => "Successfully restored {$restored} products to their previous values.",
+                    'restored' => $restored,
+                    'errors' => $errors,
+                ]);
+
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+
+        } catch (\Exception $e) {
+            Log::error('Restore Bulk Update Error: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Restore failed: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function import(Request $request)
     {
         $request->validate([
