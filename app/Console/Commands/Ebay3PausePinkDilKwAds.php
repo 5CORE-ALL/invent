@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Log;
 class Ebay3PausePinkDilKwAds extends Command
 {
     protected $signature = 'ebay3:auto-pause-pink-dil-kw-ads {--dry-run : Run without actually pausing ads} {--campaign-id= : Test with specific campaign ID only}';
-    protected $description = 'Automatically pause eBay3 KW ads if DIL is pink (DIL > 50%). Ignore if ACOS < 7%. Only for RUNNING campaigns.';
+    protected $description = 'Automatically pause eBay3 campaigns if DIL is pink (DIL > 50%). Ignore if ACOS < 7%. Only for RUNNING campaigns.';
 
     public function handle()
     {
@@ -118,88 +118,48 @@ class Ebay3PausePinkDilKwAds extends Command
                 $this->info("📦 Processing campaign " . ($campaignIndex + 1) . "/" . count($campaigns) . ": {$campaignName} (ID: {$campaignId})");
 
                 try {
-                    $adGroups = $this->getAdGroups($campaignId, $accessToken);
-                    if (empty($adGroups['adGroups'] ?? [])) {
-                        $this->warn("   ⚠️  No ad groups found for campaign {$campaignId}");
-                        continue;
-                    }
+                    // Pause the entire campaign using campaign-level pause endpoint
+                    $endpoint = "https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/pause";
 
-                    $keywordsPaused = 0;
-                    $keywordsFailed = 0;
+                    try {
+                        $response = Http::withHeaders([
+                            'Authorization' => "Bearer {$accessToken}",
+                            'Content-Type'  => 'application/json',
+                        ])->post($endpoint);
 
-                    foreach ($adGroups['adGroups'] as $adGroup) {
-                        $adGroupId = $adGroup['adGroupId'];
-                        $keywords = $this->getKeywords($campaignId, $adGroupId, $accessToken);
-
-                        if (empty($keywords)) {
-                            continue;
-                        }
-
-                        // Process keywords in chunks of 100
-                        foreach (array_chunk($keywords, 100) as $keywordChunk) {
-                            $payload = [
-                                "requests" => []
-                            ];
-
-                            foreach ($keywordChunk as $keywordId) {
-                                $payload["requests"][] = [
-                                    "keywordId" => $keywordId,
-                                    "keywordStatus" => "PAUSED"
+                        if ($response->successful()) {
+                            $totalSuccess++;
+                            
+                            // Update campaign status to PAUSED in database and set pink_dil_paused_at timestamp
+                            $updatedCount = Ebay3PriorityReport::where('campaign_id', $campaignId)
+                                ->where('campaignStatus', 'RUNNING')
+                                ->update([
+                                    'campaignStatus' => 'PAUSED',
+                                    'pink_dil_paused_at' => now()
+                                ]);
+                            
+                            if ($updatedCount > 0) {
+                                // Track paused campaign
+                                $pausedCampaigns[] = [
+                                    'campaign_id' => $campaignId,
+                                    'campaign_name' => $campaignName,
+                                    'dil' => $campaign->dil ?? 0,
+                                    'acos' => $campaign->acos ?? 0,
+                                    'paused_at' => now()->toDateTimeString()
                                 ];
                             }
-
-                            $endpoint = "https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/bulk_update_keyword";
-
-                            try {
-                                $response = Http::withHeaders([
-                                    'Authorization' => "Bearer {$accessToken}",
-                                    'Content-Type'  => 'application/json',
-                                ])->post($endpoint, $payload);
-
-                                if ($response->successful()) {
-                                    $keywordsPaused += count($keywordChunk);
-                                } else {
-                                    $keywordsFailed += count($keywordChunk);
-                                    $hasError = true;
-                                    $this->error("   ❌ Failed to pause keywords: " . $response->body());
-                                }
-                            } catch (\Exception $e) {
-                                $keywordsFailed += count($keywordChunk);
-                                $hasError = true;
-                                $this->error("   ❌ Exception pausing keywords: " . $e->getMessage());
-                            }
+                            
+                            $this->info("   ✅ Campaign paused successfully");
+                            $this->info("   ✅ Updated campaign status to PAUSED in database");
+                        } else {
+                            $totalFailed++;
+                            $hasError = true;
+                            $this->error("   ❌ Failed to pause campaign: " . $response->body());
                         }
-                    }
-
-                    if ($keywordsPaused > 0) {
-                        $this->info("   ✅ Paused {$keywordsPaused} keywords");
-                        $totalSuccess += $keywordsPaused;
-                        
-                        // Update campaign status to PAUSED in database and set pink_dil_paused_at timestamp
-                        $updatedCount = Ebay3PriorityReport::where('campaign_id', $campaignId)
-                            ->where('campaignStatus', 'RUNNING')
-                            ->update([
-                                'campaignStatus' => 'PAUSED',
-                                'pink_dil_paused_at' => now()
-                            ]);
-                        
-                        if ($updatedCount > 0) {
-                            // Track paused campaign
-                            $pausedCampaigns[] = [
-                                'campaign_id' => $campaignId,
-                                'campaign_name' => $campaignName,
-                                'dil' => $campaign->dil ?? 0,
-                                'acos' => $campaign->acos ?? 0,
-                                'keywords_paused' => $keywordsPaused,
-                                'paused_at' => now()->toDateTimeString()
-                            ];
-                        }
-                        
-                        $this->info("   ✅ Updated campaign status to PAUSED in database");
-                    }
-                    if ($keywordsFailed > 0) {
-                        $this->error("   ❌ Failed to pause {$keywordsFailed} keywords");
-                        $totalFailed += $keywordsFailed;
+                    } catch (\Exception $e) {
+                        $totalFailed++;
+                        $hasError = true;
+                        $this->error("   ❌ Exception pausing campaign: " . $e->getMessage());
                     }
 
                 } catch (\Exception $e) {
@@ -215,7 +175,7 @@ class Ebay3PausePinkDilKwAds extends Command
             $this->info("📊 Pause Results");
             $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
             $this->info("Status: " . (!$hasError ? "✅ Success" : ($totalSuccess > 0 ? "⚠️  Partial Success" : "❌ Failed")));
-            $this->info("📈 Summary: {$totalSuccess} keywords paused successfully, {$totalFailed} failed");
+            $this->info("📈 Summary: {$totalSuccess} campaign(s) paused successfully, {$totalFailed} failed");
             $this->info("📋 Campaigns Paused: " . count($pausedCampaigns));
             $this->info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
