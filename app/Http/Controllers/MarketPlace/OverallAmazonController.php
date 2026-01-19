@@ -28,6 +28,7 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use App\Models\AmazonFbmManual;
 use App\Models\AmazonListingStatus;
 use App\Models\AmazonChannelSummary;
+use App\Models\AmazonSeoAuditHistory;
 
 class OverallAmazonController extends Controller
 {
@@ -1437,6 +1438,26 @@ class OverallAmazonController extends Controller
 
         $ratings = AmazonFbmManual::whereIn('sku', $skus)->pluck('data', 'sku')->toArray();
 
+        // Load SEO Audit History from dedicated table with user names
+        $seoAuditHistory = AmazonSeoAuditHistory::whereIn('sku', $skus)
+            ->leftJoin('users', 'amazon_seo_audit_history.user_id', '=', 'users.id')
+            ->select('amazon_seo_audit_history.*', 'users.name as user_name')
+            ->orderBy('amazon_seo_audit_history.created_at', 'desc')
+            ->get()
+            ->groupBy('sku')
+            ->map(function($entries) {
+                return $entries->map(function($entry) {
+                    return [
+                        'id' => $entry->id,
+                        'text' => $entry->checklist_text,
+                        'user_name' => $entry->user_name ?? 'Guest',
+                        'timestamp' => $entry->created_at ? $entry->created_at->format('Y-m-d H:i:s') : 'N/A'
+                    ];
+                })->values()->toArray();
+            });
+        
+        Log::info('SEO Audit History loaded', ['count' => $seoAuditHistory->count()]);
+
         // Get all JungleScout data - group by SKU first, then also by ASIN for fallback
         $allJungleScoutData = JungleScoutProductData::all();
         
@@ -1667,8 +1688,8 @@ class OverallAmazonController extends Controller
                 $row['Sess7'] = $amazonSheet->sessions_l7 ?? 0;
                 $row['price'] = $amazonSheet->price;
                 $row['price_lmpa'] = $amazonSheet->price_lmpa;
-                $row['sessions_l60'] = $amazonSheet->sessions_l60;
-                $row['units_ordered_l60'] = $amazonSheet->units_ordered_l60;
+                $row['sessions_l60'] = $amazonSheet->sessions_l60 ?? 0;
+                $row['units_ordered_l60'] = $amazonSheet->units_ordered_l60 ?? 0;
             }
 
             $row['INV'] = $shopify->inv ?? 0;
@@ -1906,7 +1927,21 @@ class OverallAmazonController extends Controller
                     $row['APlus'] = isset($raw['APlus']) ? filter_var($raw['APlus'], FILTER_VALIDATE_BOOLEAN) : null;
                     $row['js_comp_manual_api_link'] = $raw['js_comp_manual_api_link'] ?? '';
                     $row['js_comp_manual_link'] = $raw['js_comp_manual_link'] ?? '';
+                    $row['checklist'] = $raw['checklist'] ?? '';
                 }
+            }
+            
+            // Load SEO audit history from dedicated table
+            $historyForSku = $seoAuditHistory->get($pm->sku) ?? [];
+            $row['seo_audit_history'] = $historyForSku;
+            
+            // Debug log for first few SKUs with history
+            if (!empty($historyForSku) && rand(1, 100) <= 5) {
+                Log::info('SEO History for SKU', [
+                    'sku' => $pm->sku,
+                    'history_count' => count($historyForSku),
+                    'history' => $historyForSku
+                ]);
             }
             
             // Fallback to AmazonListingStatus if NR not set from AmazonDataView
@@ -2007,8 +2042,14 @@ class OverallAmazonController extends Controller
                 'price' => '',
                 'price_lmpa' => '',
                 'A_L30' => $rows->sum('A_L30'),
+                'A_L7' => $rows->sum('A_L7'),
+                'units_ordered_l60' => $rows->sum('units_ordered_l60'),
                 'Sess30' => $rows->sum('Sess30'),
+                'Sess7' => $rows->sum('Sess7'),
+                'sessions_l60' => $rows->sum('sessions_l60'),
                 'CVR_L30' => '',
+                'CVR_L7' => '',
+                'CVR_L60' => '',
                 'NRL' => '',
                 'NRA' => '',
                 'FBA' => null,
@@ -2888,6 +2929,11 @@ class OverallAmazonController extends Controller
         return view("market-places.amazon_tabulator_view");
     }
 
+    public function amazonPricingCvrTabular(Request $request)
+    {
+        return view("market-places.amazonpricing_cvr_tabular");
+    }
+
     public function amazonDataJson(Request $request)
     {
         try {
@@ -3480,6 +3526,111 @@ class OverallAmazonController extends Controller
         } catch (\Exception $e) {
             // Don't break the main response if summary save fails
             Log::error('Error saving daily Amazon summary: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Save checklist to history table
+     */
+    public function saveAmazonChecklistToHistory(Request $request)
+    {
+        try {
+            $sku = strtoupper(trim($request->input('sku')));
+            $checklistText = $request->input('checklist_text', '');
+            
+            // Enforce 180 character limit
+            if (strlen($checklistText) > 180) {
+                $checklistText = substr($checklistText, 0, 180);
+            }
+            
+            if (!$sku) {
+                return response()->json(['error' => 'SKU is required'], 400);
+            }
+            
+            if (empty(trim($checklistText))) {
+                return response()->json(['error' => 'Checklist text is required'], 400);
+            }
+            
+            // Create new history entry in dedicated table
+            AmazonSeoAuditHistory::create([
+                'sku' => $sku,
+                'checklist_text' => $checklistText,
+                'user_id' => auth()->id() ?? null,
+            ]);
+            
+            // Get all history for this SKU (for frontend update)
+            $allHistory = AmazonSeoAuditHistory::where('sku', $sku)
+                ->orderBy('created_at', 'desc')
+                ->get()
+                ->map(function($entry) {
+                    return [
+                        'id' => $entry->id,
+                        'text' => $entry->checklist_text,
+                        'user_id' => $entry->user_id,
+                        'timestamp' => $entry->created_at->format('Y-m-d H:i:s')
+                    ];
+                })
+                ->toArray();
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Added to SEO Audit History',
+                'history' => $allHistory
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error saving checklist to history', [
+                'sku' => $sku ?? 'unknown',
+                'error' => $e->getMessage()
+            ]);
+            
+            return response()->json([
+                'error' => 'Failed to save to history: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get SEO audit history for a SKU
+     */
+    public function getAmazonSeoHistory(Request $request)
+    {
+        try {
+            $sku = strtoupper(trim($request->input('sku')));
+            
+            if (!$sku) {
+                return response()->json(['error' => 'SKU is required'], 400);
+            }
+            
+            $history = AmazonSeoAuditHistory::where('amazon_seo_audit_history.sku', $sku)
+                ->leftJoin('users', 'amazon_seo_audit_history.user_id', '=', 'users.id')
+                ->select('amazon_seo_audit_history.*', 'users.name as user_name')
+                ->orderBy('amazon_seo_audit_history.created_at', 'desc')
+                ->get()
+                ->map(function($entry) {
+                    return [
+                        'id' => $entry->id,
+                        'text' => $entry->checklist_text,
+                        'user_name' => $entry->user_name ?? 'Guest',
+                        'timestamp' => $entry->created_at ? $entry->created_at->format('Y-m-d H:i:s') : 'N/A'
+                    ];
+                })
+                ->toArray();
+            
+            return response()->json([
+                'success' => true,
+                'history' => $history
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error fetching SEO history', [
+                'sku' => $sku ?? 'unknown',
+                'error' => $e->getMessage()
+            ]);
+            
+            return response()->json([
+                'error' => 'Failed to fetch history: ' . $e->getMessage()
+            ], 500);
         }
     }
 }

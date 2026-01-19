@@ -270,6 +270,36 @@ class FetchAmazonListings extends Command
                     ->where('campaignStatus', '!=', 'ARCHIVED')
                     ->get();
             }
+            
+            if ($key === 'l7') {
+                // Fetch all SP campaigns for L7 (KW and PT)
+                $allSpCampaignsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+                    ->where('report_date_range', 'L7')
+                    ->where('campaignStatus', '!=', 'ARCHIVED')
+                    ->get();
+                
+                $this->info("Fetched {$allSpCampaignsL7->count()} SP campaigns for L7");
+                
+                // Separate KW (not PT) and PT campaigns
+                $kwCampaignsL7 = $allSpCampaignsL7->filter(function($item) {
+                    $name = strtoupper($item->campaignName);
+                    return !str_contains($name, ' PT') && !str_contains($name, ' PT.');
+                });
+                
+                $ptCampaignsL7 = $allSpCampaignsL7->filter(function($item) {
+                    $name = strtoupper($item->campaignName);
+                    return (str_ends_with($name, ' PT') || str_ends_with($name, ' PT.')) 
+                           && !str_contains($name, 'FBA PT');
+                });
+                
+                // Fetch all SB campaigns for L7 (HL)
+                $hlCampaignsL7 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+                    ->where('report_date_range', 'L7')
+                    ->where('campaignStatus', '!=', 'ARCHIVED')
+                    ->get();
+                    
+                $this->info("L7 Campaigns - KW: {$kwCampaignsL7->count()}, PT: {$ptCampaignsL7->count()}, HL: {$hlCampaignsL7->count()}");
+            }
         
             foreach ($salesAndTraffic as $asinData) {
                 $asin = $asinData['childAsin'] ?? null;
@@ -294,10 +324,10 @@ class FetchAmazonListings extends Command
                     "sessions_{$key}"      => $sessions,
                 ];
                 
-                // Calculate organic_views for L30 data using formula:
+                // Calculate organic_views for L30 and L7 data using formula:
                 // Organic Views = Total Detail Page Views - Ads Attributed Views
-                // Total Detail Page Views = sessions_l30
-                // Ads Attributed Views = sum of clicks_l30 (KW + PT + HL)
+                // Total Detail Page Views = sessions
+                // Ads Attributed Views = sum of clicks (KW + PT + HL)
                 if ($key === 'l30') {
                     $kwClicksL30 = 0;
                     $ptClicksL30 = 0;
@@ -333,7 +363,7 @@ class FetchAmazonListings extends Command
                         $hlClicksL30 = $hlCampaign ? intval($hlCampaign->clicks ?? 0) : 0;
                     }
                     
-                    // Calculate organic_views
+                    // Calculate organic_views for L30
                     // Use the sessions value from API response (which will be stored as sessions_l30)
                     // Organic Views = Total Detail Page Views - Ads Attributed Views
                     $totalDetailPageViews = intval($sessions); // This is sessions_l30 from API
@@ -341,6 +371,63 @@ class FetchAmazonListings extends Command
                     $organicViews = max(0, $totalDetailPageViews - $adsAttributedViews); // Ensure non-negative
                     
                     $updateData['organic_views'] = $organicViews;
+                }
+                
+                if ($key === 'l7') {
+                    $kwClicksL7 = 0;
+                    $ptClicksL7 = 0;
+                    $hlClicksL7 = 0;
+                    
+                    // Only fetch campaign data if SKU is available
+                    if (!empty($amazonSheet->sku)) {
+                        $sku = strtoupper(trim($amazonSheet->sku));
+                        $cleanSku = strtoupper(trim(rtrim($sku, '.')));
+                        
+                        // Get KW clicks_l7 from pre-fetched campaigns (campaignName matches SKU exactly, NOT PT)
+                        $kwCampaign = $kwCampaignsL7->first(function($item) use ($cleanSku) {
+                            $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
+                            return $campaignName === $cleanSku;
+                        });
+                        $kwClicksL7 = $kwCampaign ? intval($kwCampaign->clicks ?? 0) : 0;
+                        
+                        // Get PT clicks_l7 from pre-fetched campaigns (campaignName ends with "SKU PT", exclude FBA PT)
+                        $ptCampaign = $ptCampaignsL7->first(function($item) use ($sku) {
+                            $cleanName = strtoupper(trim($item->campaignName));
+                            return (str_ends_with($cleanName, $sku . ' PT') || 
+                                    str_ends_with($cleanName, $sku . ' PT.'));
+                        });
+                        $ptClicksL7 = $ptCampaign ? intval($ptCampaign->clicks ?? 0) : 0;
+                        
+                        // Get HL clicks_l7 from pre-fetched campaigns (campaignName equals SKU or "SKU HEAD")
+                        $hlCampaign = $hlCampaignsL7->first(function($item) use ($sku) {
+                            $cleanName = strtoupper(trim($item->campaignName));
+                            $expected1 = $sku;
+                            $expected2 = $sku . ' HEAD';
+                            return ($cleanName === $expected1 || $cleanName === $expected2);
+                        });
+                        $hlClicksL7 = $hlCampaign ? intval($hlCampaign->clicks ?? 0) : 0;
+                    }
+                    
+                    // Calculate organic_views_7 for L7
+                    // Use the sessions value from API response (which will be stored as sessions_l7)
+                    // Organic Views = Total Detail Page Views - Ads Attributed Views
+                    $totalDetailPageViews = intval($sessions); // This is sessions_l7 from API
+                    $adsAttributedViews = $kwClicksL7 + $ptClicksL7 + $hlClicksL7;
+                    $organicViews7 = max(0, $totalDetailPageViews - $adsAttributedViews); // Ensure non-negative
+                    
+                    $updateData['organic_views_7'] = $organicViews7;
+                    
+                    // Debug logging
+                    Log::info("L7 Organic Views Calculation", [
+                        'sku' => $amazonSheet->sku ?? 'N/A',
+                        'asin' => $asin,
+                        'sessions_l7' => $totalDetailPageViews,
+                        'kw_clicks' => $kwClicksL7,
+                        'pt_clicks' => $ptClicksL7,
+                        'hl_clicks' => $hlClicksL7,
+                        'total_ad_clicks' => $adsAttributedViews,
+                        'organic_views_7' => $organicViews7
+                    ]);
                 }
                 
                 $amazonSheet->update($updateData);
