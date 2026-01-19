@@ -33,7 +33,15 @@
         <div class="card shadow-sm">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h4 class="card-title mb-0">Suppliers</h4>
+                    <div class="d-flex align-items-center gap-3">
+                        <h4 class="card-title mb-0">Suppliers</h4>
+                        <span class="badge bg-primary rounded-pill px-3 py-2" id="supplier-count" style="font-size: 1rem; font-weight: 600;">
+                            <strong style="font-size: 1.1rem;">{{ number_format($filteredCount) }}</strong>
+                            @if($filteredCount != $totalCount)
+                                <span class="text-white-50" style="font-size: 0.95rem;">/ {{ number_format($totalCount) }}</span>
+                            @endif
+                        </span>
+                    </div>
                     <div class="d-flex gap-2">
                         <button type="button" class="btn btn-primary" data-bs-toggle="modal"
                             data-bs-target="#addSupplierModal">
@@ -85,38 +93,40 @@
                     </div>
                 </div>
 
-                <div class="row mb-4">
-                    <div class="col-md-4">
-                        <label for="category-filter" class="form-label fw-semibold">Category</label>
-                        <select class="form-select select2" id="category-filter" data-placeholder="Filter by category">
-                            <option value="">All Categories</option>
-                            @foreach($categories as $category)
-                                <option value="{{ $category->name }}">{{ $category->name }}</option>
-                            @endforeach
-                        </select>
-                    </div>
+                <form method="GET" action="{{ route('supplier.list') }}" id="filter-form">
+                    <div class="row mb-4">
+                        <div class="col-md-4">
+                            <label for="category-filter" class="form-label fw-semibold">Category</label>
+                            <select class="form-select select2" id="category-filter" name="category" data-placeholder="Filter by category">
+                                <option value="">All Categories</option>
+                                @foreach($categories as $category)
+                                    <option value="{{ $category->name }}" {{ request('category') == $category->name ? 'selected' : '' }}>{{ $category->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
 
-                    <div class="col-md-4">
-                        <label for="type-filter" class="form-label fw-semibold">Type</label>
-                        @php
-                            $types = ['Supplier','Forwarders', 'Photographer'];
-                        @endphp
-                        <select class="form-select select2" id="type-filter" data-placeholder="Filter by type">
-                            <option value="">Select Type</option>
-                            @foreach($types as $type)
-                                <option value="{{ $type }}">{{ $type }}</option>
-                            @endforeach
-                        </select>
-                    </div>
+                        <div class="col-md-4">
+                            <label for="type-filter" class="form-label fw-semibold">Type</label>
+                            @php
+                                $types = ['Supplier','Forwarders', 'Photographer'];
+                            @endphp
+                            <select class="form-select select2" id="type-filter" name="type" data-placeholder="Filter by type">
+                                <option value="">Select Type</option>
+                                @foreach($types as $type)
+                                    <option value="{{ $type }}" {{ request('type') == $type ? 'selected' : '' }}>{{ $type }}</option>
+                                @endforeach
+                            </select>
+                        </div>
 
-                    <div class="col-md-4">
-                        <label for="search-input" class="form-label fw-semibold">Search by name</label>
-                        <div class="input-group">
-                            <span class="input-group-text" style="height: 42px;"><i class="mdi mdi-magnify"></i></span>
-                            <input type="text" id="search-input" class="form-control" placeholder="Search suppliers..." style="height: 42px;">
+                        <div class="col-md-4">
+                            <label for="search-input" class="form-label fw-semibold">Search by name</label>
+                            <div class="input-group">
+                                <span class="input-group-text" style="height: 42px;"><i class="mdi mdi-magnify"></i></span>
+                                <input type="text" id="search-input" name="search" class="form-control" placeholder="Search suppliers..." value="{{ request('search') }}" style="height: 42px;">
+                            </div>
                         </div>
                     </div>
-                </div>
+                </form>
 
                 <div class="table-responsive" style="position: relative; overflow: visible;">
                     <table class="table table-centered table-hover mb-0" id="suppliers-table" style="overflow: visible;">
@@ -634,52 +644,84 @@
                 console.log('✅ All validations passed - submitting form');
             });
 
+            // Initialize Select2 for category filter with search enabled
+            const categorySelect = $('#category-filter');
+            categorySelect.select2({
+                theme: "bootstrap-5",
+                width: '100%',
+                placeholder: categorySelect.data('placeholder') || 'Filter by category',
+                allowClear: true,
+                minimumResultsForSearch: 0, // Always show search box
+            }).on('select2:open', function() {
+                // Focus on search input when dropdown opens
+                setTimeout(function() {
+                    $('.select2-search__field').focus();
+                }, 100);
+            });
+
+            // Initialize Select2 for type filter with search enabled
+            $('#type-filter').select2({
+                theme: "bootstrap-5",
+                width: '100%',
+                placeholder: $('#type-filter').data('placeholder') || 'Filter by type',
+                allowClear: true,
+                minimumResultsForSearch: 0, // Always show search box
+            });
+
+            // Function to submit form for server-side filtering (filters all data across all pages)
+            function submitFilters() {
+                // Reset to page 1 when filters change by removing page parameter
+                const form = $('#filter-form');
+                const currentUrl = new URL(window.location.href);
+                currentUrl.searchParams.delete('page');
+                
+                // Update form action to current URL without page parameter
+                form.attr('action', currentUrl.pathname + currentUrl.search);
+                
+                // Submit the form to trigger server-side filtering
+                form.submit();
+            }
+
+            // Apply filters when category changes (including Select2 selection)
+            $('#category-filter').on('change', function () {
+                submitFilters();
+            });
+
+            // Also listen to Select2 select event to ensure it triggers when selecting from search
+            $('#category-filter').on('select2:select', function (e) {
+                // Get the selected value from the event or the select element
+                const selectedValue = e.params ? e.params.data.id : $(this).val();
+                // Ensure the underlying select has the value
+                $(this).val(selectedValue);
+                // Submit form for server-side filtering
+                submitFilters();
+            });
+
+            // Handle clearing the filter
+            $('#category-filter').on('select2:clear', function (e) {
+                submitFilters();
+            });
+
+            // Apply filters when type changes
+            $('#type-filter').on('change', function () {
+                submitFilters();
+            });
+
+            // Apply filters when search input changes (with debounce and Enter key)
             let searchTimer;
-            $('#search-input').on('keyup', function () {
+            $('#search-input').on('keyup', function (e) {
+                // Submit immediately on Enter key
+                if (e.key === 'Enter') {
+                    clearTimeout(searchTimer);
+                    submitFilters();
+                    return;
+                }
+                
+                // For other keys, debounce the submission
                 clearTimeout(searchTimer);
                 searchTimer = setTimeout(() => {
-                    const value = $(this).val().toLowerCase();
-                    $("#suppliers-table tbody tr").each(function () {
-                        $(this).toggle($(this).text().toLowerCase().indexOf(value) > -1);
-                    });
-                }, 300);
-            });
-
-            $( '#category-filter' ).select2( {
-                theme: "bootstrap-5",
-                width: $( this ).data( 'width' ) ? $( this ).data( 'width' ) : $( this ).hasClass( 'w-100' ) ? '100%' : 'style',
-                placeholder: $( this ).data( 'placeholder' ),
-            } );
-
-            
-            $('#category-filter').on('change', function () {
-                const selectedCategory = $(this).val().toLowerCase();
-                $("#suppliers-table tbody tr").each(function () {
-                    const categories = $(this).find("td:eq(1)").text().toLowerCase();
-                    if (selectedCategory === '') {
-                        $(this).show(); // Show all if no category selected
-                    } else {
-                        $(this).toggle(categories.includes(selectedCategory)); // Show/hide based on match
-                    }
-                });
-            });
-
-            $( '#type-filter' ).select2( {
-                theme: "bootstrap-5",
-                width: $( this ).data( 'width' ) ? $( this ).data( 'width' ) : $( this ).hasClass( 'w-100' ) ? '100%' : 'style',
-                placeholder: $( this ).data( 'placeholder' ),
-            } );
-
-            $('#type-filter').on('change', function () {
-                const value = $(this).val().toLowerCase();
-                $("#suppliers-table tbody tr").each(function () {
-                    const type = $(this).find("td:eq(0)").text().toLowerCase(); // Type is column 1 (index 0)
-                    if (value === '') {
-                        $(this).show(); // Show all if no type selected
-                    } else {
-                        $(this).toggle(type.includes(value)); // Show/hide based on exact match
-                    }
-                });
+                    submitFilters();
+                }, 800); // Increased delay for search to allow typing
             });
         });
 

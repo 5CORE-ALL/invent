@@ -13,11 +13,45 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class SupplierController extends Controller
 {
-    function supplierList()
+    function supplierList(Request $request)
     {
-        $suppliers = Supplier::paginate(20);
+        $query = Supplier::query();
+
+        // Apply category filter
+        if ($request->filled('category')) {
+            $categoryName = $request->get('category');
+            $category = Category::where('name', $categoryName)->first();
+            if ($category) {
+                $query->where('category_id', 'LIKE', '%' . $category->id . '%');
+            }
+        }
+
+        // Apply type filter
+        if ($request->filled('type')) {
+            $query->where('type', $request->get('type'));
+        }
+
+        // Apply search filter
+        if ($request->filled('search')) {
+            $search = $request->get('search');
+            $query->where(function($q) use ($search) {
+                $q->where('name', 'LIKE', '%' . $search . '%')
+                  ->orWhere('company', 'LIKE', '%' . $search . '%')
+                  ->orWhere('email', 'LIKE', '%' . $search . '%')
+                  ->orWhere('phone', 'LIKE', '%' . $search . '%');
+            });
+        }
+
+        // Get total count before pagination (for filtered results)
+        $filteredCount = $query->count();
+        
+        // Get total count of all suppliers (unfiltered)
+        $totalCount = Supplier::count();
+        
+        $suppliers = $query->paginate(20)->appends($request->query());
         $categories = Category::orderBy('name')->get();
-        return view('purchase-master.supplier.suppliers' , compact('suppliers', 'categories'));
+        
+        return view('purchase-master.supplier.suppliers' , compact('suppliers', 'categories', 'filteredCount', 'totalCount'));
     }
 
     public function postSupplier(Request $request)
