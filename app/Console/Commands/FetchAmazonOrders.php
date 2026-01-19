@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
 use App\Models\AmazonOrder;
 use App\Models\AmazonOrderItem;
+use App\Models\AmazonOrderCursor;
 use App\Models\ProductMaster;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
@@ -28,14 +29,15 @@ class FetchAmazonOrders extends Command
         {--from= : Fetch orders from this date (Y-m-d format)}
         {--to= : Fetch orders to this date (Y-m-d format)}
         {--limit= : Maximum number of orders to fetch (no limit by default)}
-        {--delay=3 : Delay in seconds between API requests (default: 3)}';
+        {--delay=3 : Delay in seconds between API requests (default: 3)}
+        {--reset-cursor : Reset cursor and start fresh (ignores existing cursor)}';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'Fetch Amazon orders daily and insert into database (uses California/Pacific Time)';
+    protected $description = 'Fetch Amazon orders daily and insert into database (uses California/Pacific Time) - CURSOR-BASED';
 
     /**
      * Execute the console command.
@@ -62,38 +64,351 @@ class FetchAmazonOrders extends Command
 
         $this->info('Access Token obtained successfully');
 
+        // Determine date range for cursor
+        $dateRange = $this->determineDateRange();
+        $startDate = $dateRange['start'];
+        $endDate = $dateRange['end'];
+
+        $this->info("Date Range: {$startDate->toDateTimeString()} to {$endDate->toDateTimeString()}");
+
+        // Execute cursor-based fetch
+        $this->fetchOrdersWithCursor($accessToken, $startDate, $endDate);
+    }
+
+    /**
+     * Determine date range based on command options
+     */
+    private function determineDateRange()
+    {
         // Check if specific date range is provided
         if ($this->option('from') && $this->option('to')) {
-            $this->fetchDateRange($accessToken);
-            return;
+            return [
+                'start' => Carbon::parse($this->option('from'))->startOfDay(),
+                'end' => Carbon::parse($this->option('to'))->endOfDay(),
+            ];
         }
 
         // Check if we should only fetch new orders
         if ($this->option('new-only')) {
-            $this->fetchNewOrdersOnly($accessToken);
-            return;
+            $lastOrderDate = AmazonOrder::max('order_date');
+            
+            if (!$lastOrderDate) {
+                $this->info('No existing orders found. Fetching last 30 days (California Time)...');
+                return [
+                    'start' => Carbon::today('America/Los_Angeles')->subDays(29)->startOfDay(),
+                    'end' => Carbon::today('America/Los_Angeles')->endOfDay(),
+                ];
+            }
+
+            return [
+                'start' => Carbon::parse($lastOrderDate)->addDay()->startOfDay(),
+                'end' => Carbon::today('America/Los_Angeles')->endOfDay(),
+            ];
         }
 
         // Daily-based fetching options (using California/Pacific Time)
         if ($this->option('daily')) {
-            $this->fetchDailyOrders($accessToken, Carbon::today('America/Los_Angeles'));
-            return;
+            $date = Carbon::today('America/Los_Angeles');
+            return [
+                'start' => $date->copy()->startOfDay(),
+                'end' => $this->getEndDateWithAmazonDelay($date),
+            ];
         }
 
         if ($this->option('yesterday')) {
-            $this->fetchDailyOrders($accessToken, Carbon::yesterday('America/Los_Angeles'));
-            return;
+            $date = Carbon::yesterday('America/Los_Angeles');
+            return [
+                'start' => $date->copy()->startOfDay(),
+                'end' => $this->getEndDateWithAmazonDelay($date),
+            ];
         }
 
         // Default: fetch orders for last N days
         $lastDays = (int) ($this->option('last-days') ?: 30);
-        $this->fetchLastDaysOrders($accessToken, $lastDays);
+        $this->info("Fetching orders for last {$lastDays} days (California Time)...");
+        
+        return [
+            'start' => Carbon::today('America/Los_Angeles')->subDays($lastDays - 1)->startOfDay(),
+            'end' => Carbon::now('America/Los_Angeles')->subMinutes(2), // Amazon 2-minute rule
+        ];
+    }
 
-        // After inserting new orders, fetch items for any orders missing items
-        $this->info('Checking for orders with missing items...');
-        $this->fetchMissingItems();
+    /**
+     * Get end date respecting Amazon's 2-minute delay rule
+     */
+    private function getEndDateWithAmazonDelay($date)
+    {
+        $now = Carbon::now('America/Los_Angeles');
+        $twoMinutesAgo = $now->copy()->subMinutes(2);
+        
+        // For today: use current time minus 2 minutes as end time
+        if ($date->isToday('America/Los_Angeles')) {
+            return $twoMinutesAgo;
+        }
+        
+        // For past dates: use end of day, but respect 2-minute rule if recent
+        $endDate = $date->copy()->endOfDay();
+        if ($endDate->greaterThan($twoMinutesAgo)) {
+            return $twoMinutesAgo;
+        }
+        
+        return $endDate;
+    }
 
-        $this->info('✅ Amazon Orders inserted successfully!');
+    /**
+     * Cursor-based fetch: Insert orders immediately after each page, resume on failure
+     */
+    private function fetchOrdersWithCursor($accessToken, $startDate, $endDate)
+    {
+        // Generate unique cursor key based on date range
+        $cursorKey = 'orders_' . $startDate->format('Ymd_His') . '_to_' . $endDate->format('Ymd_His');
+        
+        // Check for existing cursor
+        $cursor = AmazonOrderCursor::where('cursor_key', $cursorKey)->first();
+        
+        // Reset cursor if requested
+        if ($this->option('reset-cursor') && $cursor) {
+            $this->warn("Resetting cursor: {$cursorKey}");
+            $cursor->delete();
+            $cursor = null;
+        }
+        
+        // If cursor is completed, exit
+        if ($cursor && $cursor->status === 'completed') {
+            $this->info("✅ Cursor already completed. Fetched {$cursor->orders_fetched} orders in {$cursor->pages_fetched} pages.");
+            $this->info("Completed at: {$cursor->completed_at}");
+            $this->info("Use --reset-cursor to fetch again.");
+            return;
+        }
+        
+        // Create or resume cursor
+        if (!$cursor) {
+            $cursor = AmazonOrderCursor::create([
+                'cursor_key' => $cursorKey,
+                'status' => 'running',
+                'started_at' => now(),
+                'orders_fetched' => 0,
+                'pages_fetched' => 0,
+            ]);
+            $this->info("🆕 Created new cursor: {$cursorKey}");
+        } else {
+            $this->info("🔄 Resuming cursor: {$cursorKey}");
+            $this->info("   Status: {$cursor->status}");
+            $this->info("   Progress: {$cursor->orders_fetched} orders, {$cursor->pages_fetched} pages");
+            $this->info("   Last page at: {$cursor->last_page_at}");
+            
+            // Reset status to running if it was failed
+            if ($cursor->status === 'failed') {
+                $cursor->update(['status' => 'running', 'error_message' => null]);
+            }
+        }
+        
+        // Execute cursor-based pagination
+        $this->executeCursorFetch($accessToken, $cursor, $startDate, $endDate);
+    }
+
+    /**
+     * Execute cursor-based fetch with immediate inserts and safe failure handling
+     */
+    private function executeCursorFetch($accessToken, $cursor, $startDate, $endDate)
+    {
+        $marketplaceId = env('SPAPI_MARKETPLACE_ID');
+        $delay = (int) $this->option('delay') ?: 3;
+        $limit = $this->option('limit') ? (int) $this->option('limit') : null;
+        $maxRetries = 3; // Lower retries - we'll resume on next run
+        
+        $createdAfter = $startDate->toIso8601ZuluString();
+        $createdBefore = $endDate->toIso8601ZuluString();
+        
+        // Resume from saved NextToken if exists
+        $nextToken = $cursor->next_token;
+        
+        $totalOrdersFetched = $cursor->orders_fetched;
+        $totalPagesFetched = $cursor->pages_fetched;
+        
+        do {
+            // Check limit before fetching more
+            if ($limit && $totalOrdersFetched >= $limit) {
+                $this->info("✅ Reached limit of {$limit} orders. Marking cursor as completed.");
+                $cursor->update([
+                    'status' => 'completed',
+                    'completed_at' => now(),
+                    'orders_fetched' => $totalOrdersFetched,
+                    'pages_fetched' => $totalPagesFetched,
+                    'next_token' => null,
+                ]);
+                break;
+            }
+
+            // Build API request params
+            $params = [
+                'MarketplaceIds' => $marketplaceId,
+                'MaxResultsPerPage' => 100,
+            ];
+            
+            // Use NextToken if resuming, otherwise use date range
+            if ($nextToken) {
+                $params['NextToken'] = $nextToken;
+            } else {
+                $params['CreatedAfter'] = $createdAfter;
+                $params['CreatedBefore'] = $createdBefore;
+            }
+
+            // Fetch page with retry logic
+            $attempt = 0;
+            $response = null;
+            $shouldStop = false;
+            
+            while ($attempt < $maxRetries) {
+                $response = Http::withHeaders([
+                    'x-amz-access-token' => $accessToken,
+                ])->get('https://sellingpartnerapi-na.amazon.com/orders/v0/orders', $params);
+
+                if ($response->successful()) {
+                    break; // Success - exit retry loop
+                }
+
+                $statusCode = $response->status();
+                $body = $response->json();
+                $errorCode = $body['errors'][0]['code'] ?? '';
+                $errorMessage = $body['errors'][0]['message'] ?? $response->body();
+
+                // Handle quota exceeded or rate limited - STOP SAFELY
+                if ($statusCode === 429 || $errorCode === 'QuotaExceeded') {
+                    $this->error("⚠️ Amazon API rate limit/quota exceeded.");
+                    $this->error("   Error: {$errorMessage}");
+                    $this->info("💾 Saving cursor state for resume...");
+                    
+                    // Save cursor state as FAILED
+                    $cursor->update([
+                        'status' => 'failed',
+                        'error_message' => "Rate limit/quota exceeded: {$errorMessage}",
+                        'orders_fetched' => $totalOrdersFetched,
+                        'pages_fetched' => $totalPagesFetched,
+                        'last_page_at' => now(),
+                    ]);
+                    
+                    Log::error("Amazon Orders API quota exceeded, cursor saved", [
+                        'cursor_key' => $cursor->cursor_key,
+                        'next_token' => $nextToken ? substr($nextToken, 0, 50) . '...' : null,
+                        'error' => $errorMessage,
+                    ]);
+                    
+                    $this->info("✅ Cursor saved. Run command again to resume from this point.");
+                    $this->info("   Orders fetched so far: {$totalOrdersFetched}");
+                    $this->info("   Pages fetched so far: {$totalPagesFetched}");
+                    
+                    $shouldStop = true;
+                    break; // Exit retry loop
+                }
+
+                // Other errors - retry with backoff
+                $attempt++;
+                if ($attempt < $maxRetries) {
+                    $waitTime = pow(2, $attempt) * 5; // 10s, 20s, 40s
+                    $this->warn("  ⚠️ API error (attempt {$attempt}/{$maxRetries}). Waiting {$waitTime}s...");
+                    Log::warning("Amazon API error, retrying", ['attempt' => $attempt, 'error' => $errorMessage]);
+                    sleep($waitTime);
+                } else {
+                    // Max retries reached - save and stop
+                    $this->error("❌ Max retries reached. Saving cursor state...");
+                    $cursor->update([
+                        'status' => 'failed',
+                        'error_message' => "Max retries reached: {$errorMessage}",
+                        'orders_fetched' => $totalOrdersFetched,
+                        'pages_fetched' => $totalPagesFetched,
+                        'last_page_at' => now(),
+                    ]);
+                    $shouldStop = true;
+                }
+            }
+
+            // Stop if we encountered a fatal error
+            if ($shouldStop || !$response || $response->failed()) {
+                break;
+            }
+
+            // Parse response
+            $data = $response->json();
+            $orders = $data['payload']['Orders'] ?? [];
+            $nextToken = $data['payload']['NextToken'] ?? null;
+            
+            $pageOrderCount = count($orders);
+            $totalPagesFetched++;
+            
+            $this->info("📄 Page {$totalPagesFetched}: Fetched {$pageOrderCount} orders");
+            
+            // INSERT orders immediately (no batching in memory)
+            $insertedCount = 0;
+            $skippedCount = 0;
+            
+            foreach ($orders as $order) {
+                $orderId = $order['AmazonOrderId'] ?? null;
+                if (!$orderId) {
+                    $skippedCount++;
+                    continue;
+                }
+
+                // Use firstOrCreate to avoid duplicates (does NOT update existing)
+                $orderRecord = AmazonOrder::firstOrCreate(
+                    ['amazon_order_id' => $orderId],
+                    [
+                        'order_date' => Carbon::parse($order['PurchaseDate']),
+                        'status' => $order['OrderStatus'] ?? null,
+                        'total_amount' => $order['OrderTotal']['Amount'] ?? 0,
+                        'currency' => $order['OrderTotal']['CurrencyCode'] ?? 'USD',
+                        'raw_data' => json_encode($order),
+                    ]
+                );
+
+                // Check if it was just created (wasRecentlyCreated)
+                if ($orderRecord->wasRecentlyCreated) {
+                    $insertedCount++;
+                }
+            }
+            
+            $totalOrdersFetched += $insertedCount;
+            
+            $this->info("   ✅ Inserted: {$insertedCount}, Skipped (duplicates): " . ($pageOrderCount - $insertedCount - $skippedCount));
+            $this->info("   📊 Total orders fetched: {$totalOrdersFetched}");
+            
+            // SAVE cursor state after EVERY successful page
+            $cursor->update([
+                'next_token' => $nextToken,
+                'orders_fetched' => $totalOrdersFetched,
+                'pages_fetched' => $totalPagesFetched,
+                'last_page_at' => now(),
+            ]);
+            
+            // If no more pages, mark as completed
+            if (!$nextToken) {
+                $this->info("✅ All pages fetched. Marking cursor as completed.");
+                $cursor->update([
+                    'status' => 'completed',
+                    'completed_at' => now(),
+                    'next_token' => null,
+                ]);
+                break;
+            }
+            
+            // Rate limiting between pages
+            $this->info("   ⏳ Waiting {$delay}s before next page...");
+            sleep($delay);
+            
+        } while ($nextToken);
+
+        // Final summary
+        if ($cursor->status === 'completed') {
+            $this->info("\n🎉 ✅ Cursor fetch COMPLETED!");
+            $this->info("   Total Orders Fetched: {$totalOrdersFetched}");
+            $this->info("   Total Pages Fetched: {$totalPagesFetched}");
+            $this->info("   Started at: {$cursor->started_at}");
+            $this->info("   Completed at: {$cursor->completed_at}");
+        } else {
+            $this->warn("\n⚠️ Cursor fetch PAUSED (will resume on next run).");
+            $this->info("   Orders fetched so far: {$totalOrdersFetched}");
+            $this->info("   Pages fetched so far: {$totalPagesFetched}");
+        }
     }
 
     /**
@@ -289,130 +604,6 @@ class FetchAmazonOrders extends Command
         $this->info("   Still $0: {$stillZero}");
     }
 
-    /**
-     * Fetch orders for a specific single day
-     */
-    private function fetchDailyOrders($accessToken, $date)
-    {
-        $startDate = $date->copy()->startOfDay();
-        
-        // Amazon requires 2-minute delay - can't fetch orders newer than 2 minutes ago
-        // Use California time for consistency
-        $now = Carbon::now('America/Los_Angeles');
-        $twoMinutesAgo = $now->copy()->subMinutes(2);
-        
-        // For today: use current time minus 2 minutes as end time
-        // For past dates: use end of day
-        if ($date->isToday('America/Los_Angeles')) {
-            $endDate = $twoMinutesAgo;
-            $this->info("Fetching orders for {$date->toDateString()} (up to " . $endDate->format('H:i:s') . " PT)...");
-        } else {
-            $endDate = $date->copy()->endOfDay();
-            // But still respect the 2-minute rule if date is recent
-            if ($endDate->greaterThan($twoMinutesAgo)) {
-                $endDate = $twoMinutesAgo;
-            }
-            $this->info("Fetching orders for {$date->toDateString()}...");
-        }
-        
-        $orders = $this->fetchOrders($accessToken, $startDate, $endDate);
-        $this->info("Fetched " . count($orders) . " orders for {$date->toDateString()}");
-        
-        if (count($orders) > 0) {
-            $this->insertOrders($orders, null, $accessToken);
-        } else {
-            $this->info('No orders found for this date.');
-        }
-    }
-
-    /**
-     * Fetch orders for the last N days (based on California/Pacific Time)
-     */
-    private function fetchLastDaysOrders($accessToken, $days)
-    {
-        $this->info("Fetching orders for last {$days} days (California Time, respecting Amazon's 2-minute delay)...");
-        
-        for ($i = 0; $i < $days; $i++) {
-            $date = Carbon::today('America/Los_Angeles')->subDays($i);
-            
-            // Skip if this would be too recent (less than 2 minutes ago)
-            $twoMinutesAgo = Carbon::now('America/Los_Angeles')->subMinutes(2);
-            if ($i == 0 && $date->startOfDay()->greaterThan($twoMinutesAgo)) {
-                $this->info("Skipping {$date->toDateString()} - too recent (Amazon 2-minute rule)");
-                continue;
-            }
-            
-            $this->fetchDailyOrders($accessToken, $date);
-            
-            // Small delay between days to respect rate limits
-            if ($i < $days - 1) {
-                sleep(1);
-            }
-        }
-    }
-
-    /**
-     * Fetch orders for a specific date range
-     */
-    private function fetchDateRange($accessToken)
-    {
-        $limit = $this->option('limit') ? (int) $this->option('limit') : null;
-        $startDate = Carbon::parse($this->option('from'))->startOfDay();
-        $endDate = Carbon::parse($this->option('to'))->endOfDay();
-
-        $this->info("Fetching orders from {$startDate->toDateString()} to {$endDate->toDateString()}...");
-        $this->info("Limit: " . ($limit ? "{$limit} orders" : "No limit (fetching all)"));
-
-        $orders = $this->fetchOrders($accessToken, $startDate, $endDate, $limit);
-        $this->info("Fetched " . count($orders) . " orders");
-
-        if (count($orders) > 0) {
-            $this->insertOrders($orders, null, $accessToken);
-        }
-
-        $this->info('✅ Date range orders fetched successfully!');
-    }
-
-    /**
-     * Fetch only new orders (from last order date to yesterday, based on California Time)
-     */
-    private function fetchNewOrdersOnly($accessToken)
-    {
-        $lastOrderDate = AmazonOrder::max('order_date');
-        $limit = $this->option('limit') ? (int) $this->option('limit') : null;
-        
-        if (!$lastOrderDate) {
-            $this->info('No existing orders found. Fetching last 30 days (California Time)...');
-            $startDate = Carbon::today('America/Los_Angeles')->subDays(29)->startOfDay();
-            $endDate = Carbon::today('America/Los_Angeles')->endOfDay();
-            $orders = $this->fetchOrders($accessToken, $startDate, $endDate, $limit);
-            $this->info("Fetched " . count($orders) . " orders for last 30 days");
-            $this->insertOrders($orders, null, $accessToken);
-            return;
-        }
-
-        $startDate = Carbon::parse($lastOrderDate)->addDay()->startOfDay();
-        $endDate = Carbon::today('America/Los_Angeles')->endOfDay();
-
-        if ($startDate->greaterThan($endDate)) {
-            $this->info('Database is already up to date! Last order: ' . $lastOrderDate);
-            return;
-        }
-
-        $this->info("Fetching NEW orders from {$startDate->toDateString()} to {$endDate->toDateString()}...");
-        $this->info("(Skipping orders before {$startDate->toDateString()} - already in database)");
-        $this->info("Limit: " . ($limit ? "{$limit} orders" : "No limit (fetching all)"));
-
-        $orders = $this->fetchOrders($accessToken, $startDate, $endDate, $limit);
-        $this->info("Fetched " . count($orders) . " NEW orders");
-
-        if (count($orders) > 0) {
-            $this->insertOrders($orders, null, $accessToken);
-        }
-
-        $this->info('✅ New orders fetched successfully!');
-    }
-
     private function getAccessToken()
     {
         $res = Http::asForm()->post('https://api.amazon.com/auth/o2/token', [
@@ -423,176 +614,6 @@ class FetchAmazonOrders extends Command
         ]);
 
         return $res['access_token'] ?? null;
-    }
-
-    private function fetchOrders($accessToken, $startDate, $endDate, $limit = null)
-    {
-        $marketplaceId = env('SPAPI_MARKETPLACE_ID');
-        $orders = [];
-        $nextToken = null;
-        $delay = (int) $this->option('delay') ?: 3;
-        $maxRetries = 5;
-
-        $createdAfter = $startDate->toIso8601ZuluString();
-        $createdBefore = $endDate->toIso8601ZuluString();
-
-        do {
-            // Check limit before fetching more
-            if ($limit && count($orders) >= $limit) {
-                $this->info("  Reached limit of {$limit} orders. Stopping fetch.");
-                break;
-            }
-
-            $params = [
-                'MarketplaceIds' => $marketplaceId,
-                'CreatedAfter' => $createdAfter,
-                'CreatedBefore' => $createdBefore,
-                'MaxResultsPerPage' => 100,
-            ];
-
-            if ($nextToken) {
-                $params['NextToken'] = $nextToken;
-            }
-
-            // Retry loop for quota/rate limit errors
-            $attempt = 0;
-            $response = null;
-            while ($attempt < $maxRetries) {
-                $response = Http::withHeaders([
-                    'x-amz-access-token' => $accessToken,
-                ])->get('https://sellingpartnerapi-na.amazon.com/orders/v0/orders', $params);
-
-                if ($response->successful()) {
-                    break;
-                }
-
-                $statusCode = $response->status();
-                $body = $response->json();
-                $errorCode = $body['errors'][0]['code'] ?? '';
-
-                // Handle quota exceeded or rate limited
-                if ($statusCode === 429 || $errorCode === 'QuotaExceeded') {
-                    $attempt++;
-                    $waitTime = pow(2, $attempt) * 30; // Exponential backoff: 60s, 120s, 240s, 480s, 960s
-                    $this->warn("  ⚠️ Quota exceeded. Waiting {$waitTime}s before retry (attempt {$attempt}/{$maxRetries})...");
-                    Log::warning("Amazon API quota exceeded, waiting {$waitTime}s", ['attempt' => $attempt]);
-                    sleep($waitTime);
-                    continue;
-                }
-
-                // Other error - break out
-                $this->error('Failed to fetch orders: ' . $response->body());
-                Log::error('Amazon Orders API Error', ['response' => $response->body()]);
-                break 2; // Break out of both loops
-            }
-
-            if (!$response || $response->failed()) {
-                $this->error('  Max retries reached or fatal error. Stopping fetch.');
-                break;
-            }
-
-            $data = $response->json();
-            $fetchedOrders = $data['payload']['Orders'] ?? [];
-            $orders = array_merge($orders, $fetchedOrders);
-            
-            $nextToken = $data['payload']['NextToken'] ?? null;
-            
-            $this->info("  Fetched " . count($fetchedOrders) . " orders, total: " . count($orders));
-            
-            // Rate limiting - Amazon SP-API has rate limits
-            if ($nextToken) {
-                sleep($delay);
-            }
-        } while ($nextToken);
-
-        // Trim to limit if exceeded
-        if ($limit && count($orders) > $limit) {
-            $orders = array_slice($orders, 0, $limit);
-        }
-
-        return $orders;
-    }
-
-    private function insertOrders($orders, $period, $accessToken)
-    {
-        $inserted = 0;
-        $updated = 0;
-        $itemsInserted = 0;
-        $total = count($orders);
-        $delay = (int) $this->option('delay') ?: 3;
-        $delayMs = $delay * 1000000; // Convert to microseconds
-
-        $this->info("  Inserting {$total} orders with {$delay}s delay between item fetches...");
-
-        foreach ($orders as $index => $order) {
-            $orderId = $order['AmazonOrderId'] ?? null;
-            if (!$orderId) continue;
-
-            // Check if order already exists
-            $existingOrder = AmazonOrder::where('amazon_order_id', $orderId)->first();
-            
-            // Insert/Update order (without period field)
-            $orderRecord = AmazonOrder::updateOrCreate(
-                ['amazon_order_id' => $orderId],
-                [
-                    'order_date' => Carbon::parse($order['PurchaseDate']),
-                    'status' => $order['OrderStatus'] ?? null,
-                    'total_amount' => $order['OrderTotal']['Amount'] ?? 0,
-                    'currency' => $order['OrderTotal']['CurrencyCode'] ?? 'USD',
-                    'raw_data' => json_encode($order),
-                ]
-            );
-
-            if ($existingOrder) {
-                $updated++;
-            } else {
-                $inserted++;
-            }
-
-            // Fetch order items
-            $items = $this->fetchOrderItems($accessToken, $orderId);
-            
-            foreach ($items as $item) {
-                // Safely extract ItemPrice - it may not exist for some items
-                $itemPrice = 0;
-                $itemCurrency = 'USD';
-                if (isset($item['ItemPrice']) && is_array($item['ItemPrice'])) {
-                    $itemPrice = floatval($item['ItemPrice']['Amount'] ?? 0);
-                    $itemCurrency = $item['ItemPrice']['CurrencyCode'] ?? 'USD';
-                }
-                
-                AmazonOrderItem::updateOrCreate(
-                    [
-                        'amazon_order_id' => $orderRecord->id, 
-                        'asin' => $item['ASIN'] ?? null,
-                        'sku' => $item['SellerSKU'] ?? null,
-                    ],
-                    [
-                        'quantity' => $item['QuantityOrdered'] ?? 1,
-                        'price' => $itemPrice,
-                        'currency' => $itemCurrency,
-                        'title' => $item['Title'] ?? null,
-                        'raw_data' => json_encode($item),
-                    ]
-                );
-                $itemsInserted++;
-            }
-
-            // Progress update every 50 orders
-            if (($index + 1) % 50 === 0) {
-                $this->info("    Progress: " . ($index + 1) . "/{$total} orders processed...");
-            }
-
-            // Rate limiting for order items API
-            usleep($delayMs);
-        }
-
-        $this->info("  ✅ Processed orders: {$inserted} new, {$updated} updated, {$itemsInserted} items inserted");
-    }
-
-    private function fetchOrderItems($accessToken, $orderId)
-    {
-        return $this->fetchOrderItemsWithRetry($accessToken, $orderId);
     }
 
     private function fetchOrderItemsWithRetry($accessToken, $orderId, $maxRetries = 5)
