@@ -2733,6 +2733,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/save-ebay-sbid-m', 'saveEbaySbidM');
         Route::post('/save-ebay-sbid-m-bulk', 'saveEbaySbidMBulk');
         Route::post('/clear-ebay-sbid-m-bulk', 'clearEbaySbidMBulk');
+        Route::post('/toggle-ebay-campaign-status', 'toggleCampaignStatus');
     });
     Route::controller(EbayACOSController::class)->group(function () {
         Route::get('/ebay-over-uti-acos-pink', 'ebayOverUtiAcosPink')->name('ebay-over-uti-acos-pink');
@@ -2861,6 +2862,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/save-ebay3-sbid-m', 'saveEbay3SbidM');
         Route::post('/save-ebay3-sbid-m-bulk', 'saveEbay3SbidMBulk');
         Route::post('/clear-ebay3-sbid-m-bulk', 'clearEbay3SbidMBulk');
+        Route::post('/toggle-ebay3-campaign-status', 'toggleCampaignStatus');
     });
 
     Route::controller(Ebay2UtilizedAdsController::class)->group(function () {
@@ -2875,6 +2877,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/save-ebay2-sbid-m', 'saveEbay2SbidM');
         Route::post('/save-ebay2-sbid-m-bulk', 'saveEbay2SbidMBulk');
         Route::post('/clear-ebay2-sbid-m-bulk', 'clearEbay2SbidMBulk');
+        Route::post('/toggle-ebay2-campaign-status', 'toggleCampaignStatus');
     });
 
     Route::controller(Ebay3KeywordAdsController::class)->group(function () {

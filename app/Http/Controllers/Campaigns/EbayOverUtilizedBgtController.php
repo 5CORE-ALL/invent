@@ -485,7 +485,7 @@ class EbayOverUtilizedBgtController extends Controller
         $nrValues = EbayDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
         $ebayCampaignReportsL7 = EbayPriorityReport::where('report_range', 'L7')
-            ->where('campaignStatus', 'RUNNING')
+            ->whereIn('campaignStatus', ['RUNNING', 'PAUSED'])
             ->where(function ($q) use ($skus) {
                 foreach ($skus as $sku) {
                     $q->orWhere('campaign_name', 'LIKE', '%' . $sku . '%');
@@ -494,7 +494,7 @@ class EbayOverUtilizedBgtController extends Controller
             ->get();
 
         $ebayCampaignReportsL1 = EbayPriorityReport::where('report_range', 'L1')
-            ->where('campaignStatus', 'RUNNING')
+            ->whereIn('campaignStatus', ['RUNNING', 'PAUSED'])
             ->where(function ($q) use ($skus) {
                 foreach ($skus as $sku) {
                     $q->orWhere('campaign_name', 'LIKE', '%' . $sku . '%');
@@ -503,13 +503,37 @@ class EbayOverUtilizedBgtController extends Controller
             ->get();
 
         $ebayCampaignReportsL30 = EbayPriorityReport::where('report_range', 'L30')
-            ->where('campaignStatus', 'RUNNING')
+            ->whereIn('campaignStatus', ['RUNNING', 'PAUSED'])
             ->where(function ($q) use ($skus) {
                 foreach ($skus as $sku) {
                     $q->orWhere('campaign_name', 'LIKE', '%' . $sku . '%');
                 }
             })
             ->get();
+
+        // Fallback: Get all campaigns (any report_range) for PAUSED campaigns that might not have L7/L30 data
+        // Group by campaign_id instead of campaign_name to handle multiple report ranges properly
+        $allCampaignReports = EbayPriorityReport::whereIn('campaignStatus', ['RUNNING', 'PAUSED'])
+            ->where(function ($q) use ($skus) {
+                foreach ($skus as $sku) {
+                    $q->orWhere('campaign_name', 'LIKE', '%' . $sku . '%');
+                }
+            })
+            ->get()
+            ->groupBy('campaign_id')
+            ->map(function ($group) {
+                // For each campaign_id, get the one with the most recent data or RUNNING status
+                return $group->sortByDesc(function ($item) {
+                    // Prefer RUNNING over PAUSED, then prefer L30 > L7 > L1 > date ranges
+                    $statusPriority = $item->campaignStatus === 'RUNNING' ? 2 : 1;
+                    $rangePriority = 0;
+                    if ($item->report_range === 'L30') $rangePriority = 5;
+                    elseif ($item->report_range === 'L7') $rangePriority = 4;
+                    elseif ($item->report_range === 'L1') $rangePriority = 3;
+                    else $rangePriority = 1; // Date ranges
+                    return $statusPriority * 10 + $rangePriority;
+                })->first();
+            });
 
         $result = [];
 
@@ -541,12 +565,30 @@ class EbayOverUtilizedBgtController extends Controller
             });
             $matchedCampaignL30 = $matchedCampaignsL30->first();
 
-            // Use L7 if available, otherwise fall back to L30
-            $campaignForDisplay = $matchedCampaignL7 ?? $matchedCampaignL30;
+            // Use L7 if available, otherwise fall back to L30, then L1
+            // If still not found, try fallback query (for PAUSED campaigns without report data)
+            $campaignForDisplay = $matchedCampaignL7 ?? $matchedCampaignL30 ?? $matchedCampaignL1;
             
-            // Only show RUNNING campaigns
-            if (!$campaignForDisplay || $campaignForDisplay->campaignStatus !== 'RUNNING') {
+            // Fallback: Check all campaigns if not found in L7/L30/L1
+            if (!$campaignForDisplay) {
+                $cleanSku = strtoupper(trim(rtrim($sku, '.')));
+                foreach ($allCampaignReports as $campaignId => $campaign) {
+                    $normalizedCampaignName = strtoupper(trim(rtrim($campaign->campaign_name, '.')));
+                    if ($normalizedCampaignName === $cleanSku) {
+                        $campaignForDisplay = $campaign;
+                        break;
+                    }
+                }
+            }
+            
+            // Include both RUNNING and PAUSED campaigns (exclude ENDED)
+            if (!$campaignForDisplay || !in_array($campaignForDisplay->campaignStatus, ['RUNNING', 'PAUSED'])) {
                 continue;
+            }
+            
+            // Ensure campaign_id is always set (critical for toggle to work)
+            if (empty($campaignForDisplay->campaign_id)) {
+                continue; // Skip if no campaign_id
             }
 
             $row = [];
@@ -560,10 +602,13 @@ class EbayOverUtilizedBgtController extends Controller
             $row['campaignStatus'] = $campaignForDisplay->campaignStatus ?? '';
             $row['campaignBudgetAmount'] = $campaignForDisplay->campaignBudgetAmount ?? '';
 
-            $adFees   = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_ad_fees_payout_currency ?? 0);
-            $sales    = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_sale_amount_payout_currency ?? 0 );
-            $clicks = (int) ($matchedCampaignL30->cpc_clicks ?? 0);
-            $attributedSales = (int) ($matchedCampaignL30->cpc_attributed_sales ?? 0);
+            // Use L30 data if available, otherwise use L7 or empty values
+            $dataSource = $matchedCampaignL30 ?? $matchedCampaignL7 ?? $matchedCampaignL1 ?? null;
+            
+            $adFees   = $dataSource ? (float) str_replace('USD ', '', $dataSource->cpc_ad_fees_payout_currency ?? 0) : 0;
+            $sales    = $dataSource ? (float) str_replace('USD ', '', $dataSource->cpc_sale_amount_payout_currency ?? 0) : 0;
+            $clicks = $dataSource ? (int) ($dataSource->cpc_clicks ?? 0) : 0;
+            $attributedSales = $dataSource ? (int) ($dataSource->cpc_attributed_sales ?? 0) : 0;
 
             $acos = $sales > 0 ? ($adFees / $sales) * 100 : 0;
             
@@ -588,10 +633,10 @@ class EbayOverUtilizedBgtController extends Controller
             $row['adFees'] = $adFees;
             $row['ad_sold'] = $attributedSales;
 
-            $row['l7_spend'] = (float) str_replace('USD ', '', $matchedCampaignL7->cpc_ad_fees_payout_currency ?? 0);
-            $row['l7_cpc'] = (float) str_replace('USD ', '', $matchedCampaignL7->cost_per_click ?? 0);
-            $row['l1_spend'] = (float) str_replace('USD ', '', $matchedCampaignL1->cpc_ad_fees_payout_currency ?? 0);
-            $row['l1_cpc'] = (float) str_replace('USD ', '', $matchedCampaignL1->cost_per_click ?? 0);
+            $row['l7_spend'] = $matchedCampaignL7 ? (float) str_replace('USD ', '', $matchedCampaignL7->cpc_ad_fees_payout_currency ?? 0) : 0;
+            $row['l7_cpc'] = $matchedCampaignL7 ? (float) str_replace('USD ', '', $matchedCampaignL7->cost_per_click ?? 0) : 0;
+            $row['l1_spend'] = $matchedCampaignL1 ? (float) str_replace('USD ', '', $matchedCampaignL1->cpc_ad_fees_payout_currency ?? 0) : 0;
+            $row['l1_cpc'] = $matchedCampaignL1 ? (float) str_replace('USD ', '', $matchedCampaignL1->cost_per_click ?? 0) : 0;
 
             $row['NR'] = '';
             if (isset($nrValues[$pm->sku])) {
@@ -1141,10 +1186,11 @@ class EbayOverUtilizedBgtController extends Controller
         $nrValues = EbayDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
         $reports = EbayPriorityReport::whereIn('report_range', ['L7', 'L1', 'L30'])
-            ->where('campaignStatus', 'RUNNING')
+            ->whereIn('campaignStatus', ['RUNNING', 'PAUSED'])
             ->where('campaign_name', 'NOT LIKE', 'Campaign %')
             ->where('campaign_name', 'NOT LIKE', 'General - %')
             ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->orderByRaw("CASE WHEN campaignStatus = 'RUNNING' THEN 0 ELSE 1 END")
             ->orderBy('report_range', 'asc')
             ->get();
 
@@ -1209,7 +1255,8 @@ class EbayOverUtilizedBgtController extends Controller
             if (!$matchedReports->isEmpty()) {
                 foreach ($matchedReports as $campaign) {
                     $tempCampaignId = $campaign->campaign_id ?? '';
-                    if (!empty($tempCampaignId) && $campaign->campaignStatus === 'RUNNING') {
+                    // Check if campaign exists (has campaign_id) regardless of status (RUNNING or PAUSED)
+                    if (!empty($tempCampaignId)) {
                         $hasCampaign = true;
                         $campaignId = $tempCampaignId;
                         $campaignName = $campaign->campaign_name ?? '';
@@ -1502,7 +1549,7 @@ class EbayOverUtilizedBgtController extends Controller
                     DB::raw('SUM(cpc_attributed_sales) as total_ad_sold')
                 )
                 ->whereRaw("report_range >= ? AND report_range <= ? AND report_range NOT IN ('L7', 'L1', 'L30')", [$thirtyDaysAgo, $today])
-                ->where('campaignStatus', 'RUNNING')
+                ->whereIn('campaignStatus', ['RUNNING', 'PAUSED'])
                 ->where('campaign_name', 'NOT LIKE', 'Campaign %')
                 ->where('campaign_name', 'NOT LIKE', 'General - %')
                 ->where('campaign_name', 'NOT LIKE', 'Default%')
@@ -2581,6 +2628,96 @@ class EbayOverUtilizedBgtController extends Controller
             return response()->json([
                 'status' => 500,
                 'message' => 'Error clearing SBID M: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function toggleCampaignStatus(Request $request)
+    {
+        try {
+            $campaignId = $request->input('campaign_id');
+            $status = $request->input('status'); // 'ENABLED' or 'PAUSED'
+            
+            if (!$campaignId || !$status) {
+                return response()->json([
+                    'status' => 400,
+                    'message' => 'Campaign ID and status are required'
+                ], 400);
+            }
+
+            if (!in_array($status, ['ENABLED', 'PAUSED'])) {
+                return response()->json([
+                    'status' => 400,
+                    'message' => 'Status must be ENABLED or PAUSED'
+                ], 400);
+            }
+
+            $accessToken = $this->getEbayAccessToken();
+            if (!$accessToken) {
+                return response()->json([
+                    'status' => 500,
+                    'message' => 'Failed to get access token'
+                ], 500);
+            }
+
+            // Use campaign-level pause/resume endpoints
+            if ($status === 'PAUSED') {
+                $endpoint = "https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/pause";
+            } else {
+                $endpoint = "https://api.ebay.com/sell/marketing/v1/ad_campaign/{$campaignId}/resume";
+            }
+
+            try {
+                $response = Http::withHeaders([
+                    'Authorization' => "Bearer {$accessToken}",
+                    'Content-Type'  => 'application/json',
+                ])->post($endpoint);
+
+                if ($response->successful()) {
+                    // Update campaign status in database
+                    $dbStatus = $status === 'ENABLED' ? 'RUNNING' : 'PAUSED';
+                    
+                    // Update pink_dil_paused_at: set timestamp when PAUSED, null when ENABLED
+                    $updateData = ['campaignStatus' => $dbStatus];
+                    if ($status === 'PAUSED') {
+                        $updateData['pink_dil_paused_at'] = now();
+                    } else {
+                        $updateData['pink_dil_paused_at'] = null;
+                    }
+                    
+                    EbayPriorityReport::where('campaign_id', $campaignId)
+                        ->update($updateData);
+
+                    return response()->json([
+                        'status' => 200,
+                        'message' => "Campaign {$status} successfully.",
+                        'campaign_id' => $campaignId,
+                        'status' => $status
+                    ]);
+                } else {
+                    Log::error("Failed to {$status} campaign {$campaignId}: " . $response->body());
+                    return response()->json([
+                        'status' => $response->status(),
+                        'message' => "Failed to {$status} campaign: " . ($response->json()['errors'][0]['message'] ?? $response->body())
+                    ], $response->status());
+                }
+            } catch (\Exception $e) {
+                Log::error("Exception {$status} campaign {$campaignId}: " . $e->getMessage());
+                return response()->json([
+                    'status' => 500,
+                    'message' => 'Error updating campaign status: ' . $e->getMessage()
+                ], 500);
+            }
+        } catch (\Exception $e) {
+            Log::error('Error toggling eBay campaign status: ' . $e->getMessage(), [
+                'campaign_id' => $request->input('campaign_id'),
+                'status' => $request->input('status'),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'status' => 500,
+                'message' => 'Error updating campaign status: ' . $e->getMessage()
             ], 500);
         }
     }

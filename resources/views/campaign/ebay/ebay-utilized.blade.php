@@ -698,6 +698,7 @@
                 let validSkuCount = 0; // Count only valid SKUs (not parent, not empty)
                 let ub7Count = 0; // Count 7UB
                 let ub7Ub1Count = 0; // Count 7UB + 1UB
+                let pausedCampaignsCount = 0; // Count paused campaigns
 
                 // Track processed SKUs to avoid counting duplicates
                 const processedSkusForNra = new Set(); // Track SKUs for NRA/RA counting
@@ -928,6 +929,11 @@
                         ub7Ub1Count++;
                         }
                     }
+
+                    // Count paused campaigns (campaigns with pink_dil_paused_at)
+                    if (hasCampaign && row.pink_dil_paused_at) {
+                        pausedCampaignsCount++;
+                    }
                 });
 
                 // Update missing campaign count
@@ -988,6 +994,12 @@
                 const ub7Ub1CountEl = document.getElementById('7ub-1ub-count');
                 if (ub7Ub1CountEl) {
                     ub7Ub1CountEl.textContent = ub7Ub1Count;
+                }
+
+                // Update paused campaigns count
+                const pausedCampaignsCountEl = document.getElementById('paused-campaigns-count');
+                if (pausedCampaignsCountEl) {
+                    pausedCampaignsCountEl.textContent = pausedCampaignsCount;
                 }
 
                 // Update total SKU count
@@ -1713,6 +1725,20 @@
                     {
                         title: "DIL %",
                         field: "DIL %",
+                        hozAlign: "right",
+                        sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
+                            var aData = aRow.getData();
+                            var bData = bRow.getData();
+                            var aL30 = parseFloat(aData.L30 || 0);
+                            var aInv = parseFloat(aData.INV || 0);
+                            var bL30 = parseFloat(bData.L30 || 0);
+                            var bInv = parseFloat(bData.INV || 0);
+                            
+                            var aDil = (aInv > 0 && !isNaN(aL30) && !isNaN(aInv)) ? (aL30 / aInv) * 100 : 0;
+                            var bDil = (bInv > 0 && !isNaN(bL30) && !isNaN(bInv)) ? (bL30 / bInv) * 100 : 0;
+                            
+                            return aDil - bDil;
+                        },
                         formatter: function(cell) {
                             const data = cell.getData();
                             const l30 = parseFloat(data.L30);
@@ -2613,16 +2639,34 @@
                         field: "campaignStatus",
                         hozAlign: "center",
                         formatter: function(cell) {
-                            var status = cell.getValue();
-                            if (status === 'RUNNING') {
-                                return '<div style="display: flex; justify-content: center; align-items: center;"><span style="width: 12px; height: 12px; background-color: #28a745; border-radius: 50%; display: inline-block;"></span></div>';
-                            } else if (status === 'PAUSED') {
-                                return '<div style="display: flex; justify-content: center; align-items: center;"><span style="width: 12px; height: 12px; background-color: #ffc107; border-radius: 50%; display: inline-block;"></span></div>';
-                            } else if (status === 'ENDED') {
-                                return '<div style="display: flex; justify-content: center; align-items: center;"><span style="width: 12px; height: 12px; background-color: #dc3545; border-radius: 50%; display: inline-block;"></span></div>';
+                            var row = cell.getRow().getData();
+                            var campaignId = row.campaign_id || '';
+                            var status = row.campaignStatus || 'PAUSED';
+                            var isEnabled = status === 'RUNNING';
+                            
+                            // Check if campaignId is empty, null, or undefined
+                            if (!campaignId || campaignId === '' || campaignId === null || campaignId === undefined) {
+                                return '<span style="color: #999;">-</span>';
                             }
-                            return status;
-                        }
+                            
+                            return `
+                                <div class="form-check form-switch d-flex justify-content-center">
+                                    <input class="form-check-input campaign-status-toggle" 
+                                           type="checkbox" 
+                                           role="switch" 
+                                           data-campaign-id="${campaignId}"
+                                           ${isEnabled ? 'checked' : ''}
+                                           style="cursor: pointer; width: 3rem; height: 1.5rem;">
+                                </div>
+                            `;
+                        },
+                        cellClick: function(e, cell) {
+                            // Prevent default to handle toggle manually
+                            if (e.target.classList.contains('campaign-status-toggle')) {
+                                e.stopPropagation();
+                            }
+                        },
+                        width: 80
                     }
                 ],
                 ajaxResponse: function(url, params, response) {
@@ -2660,14 +2704,8 @@
                         ebaySkuCountEl.textContent = ebaySkuCountFromBackend;
                     }
 
-                    // Update paused campaigns count
-                    if (pausedCampaignsData) {
-                        const pausedCount = pausedCampaignsData.count || 0;
-                        const pausedCountEl = document.getElementById('paused-campaigns-count');
-                        if (pausedCountEl) {
-                            pausedCountEl.textContent = pausedCount;
-                        }
-                    }
+                    // Note: Paused campaigns count is now calculated from filtered table data in updateButtonCounts()
+                    // to match pagination count and respect all filters
                     
                     return response.data;
                 }
@@ -3992,6 +4030,115 @@ document.getElementById("apr-all-sbid-btn").addEventListener("click", function()
                 });
             }
 
+            // Handle campaign status toggle
+            document.addEventListener("change", function(e) {
+                if(e.target.classList.contains("campaign-status-toggle")) {
+                    let campaignId = e.target.getAttribute("data-campaign-id");
+                    let isEnabled = e.target.checked;
+                    let newStatus = isEnabled ? 'ENABLED' : 'PAUSED';
+                    let originalChecked = isEnabled; // Store original state
+                    
+                    if(!campaignId) {
+                        alert("Campaign ID not found!");
+                        e.target.checked = !isEnabled; // Revert toggle
+                        return;
+                    }
+                    
+                    const overlay = document.getElementById("progress-overlay");
+                    if (overlay) {
+                        overlay.style.display = "flex";
+                    }
+                    
+                    fetch('/toggle-ebay-campaign-status', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                        },
+                        body: JSON.stringify({
+                            campaign_id: campaignId,
+                            status: newStatus
+                        })
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if(data.status === 200 || data.status === '200'){
+                            // Update the row data
+                            let rows = table.getRows();
+                            for(let i = 0; i < rows.length; i++) {
+                                let rowData = rows[i].getData();
+                                if(rowData.campaign_id === campaignId) {
+                                    let dbStatus = newStatus === 'ENABLED' ? 'RUNNING' : 'PAUSED';
+                                    // Preserve all row data and update status - ensure campaign_id and hasCampaign are preserved
+                                    let updatedData = Object.assign({}, rowData, {
+                                        campaignStatus: dbStatus,
+                                        campaign_id: rowData.campaign_id, // Preserve campaign_id
+                                        hasCampaign: rowData.hasCampaign !== undefined ? rowData.hasCampaign : (rowData.campaign_id && rowData.campaignName) // Preserve hasCampaign
+                                    });
+                                    rows[i].update(updatedData);
+                                    
+                                    // Function to update checkbox state
+                                    function updateCheckboxState() {
+                                        let statusCell = rows[i].getCell('campaignStatus');
+                                        if(statusCell) {
+                                            let cellElement = statusCell.getElement();
+                                            if(cellElement) {
+                                                let checkbox = cellElement.querySelector('.campaign-status-toggle');
+                                                if(checkbox) {
+                                                    checkbox.checked = (dbStatus === 'RUNNING');
+                                                    // Trigger change event to ensure UI updates
+                                                    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+                                                }
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Reformat Status cell to refresh toggle
+                                    let statusCell = rows[i].getCell('campaignStatus');
+                                    if(statusCell) {
+                                        statusCell.reformat();
+                                        // Update checkbox immediately and after delays
+                                        setTimeout(updateCheckboxState, 10);
+                                        setTimeout(updateCheckboxState, 50);
+                                        setTimeout(updateCheckboxState, 100);
+                                    }
+                                    
+                                    // Reformat Missing cell to ensure correct dot color
+                                    let missingCell = rows[i].getCell('hasCampaign');
+                                    if(missingCell) {
+                                        missingCell.reformat();
+                                    }
+                                    
+                                    // Also reformat the entire row as backup
+                                    setTimeout(function() {
+                                        rows[i].reformat();
+                                        // Update checkbox after full row reformat
+                                        setTimeout(updateCheckboxState, 10);
+                                        setTimeout(updateCheckboxState, 50);
+                                    }, 100);
+                                    break;
+                                }
+                            }
+                            // Show success message
+                            showToast('success', data.message || 'Campaign status updated successfully');
+                        } else {
+                            showToast('error', data.message || "Failed to update campaign status");
+                            e.target.checked = !originalChecked; // Revert toggle to original state
+                        }
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        alert("Request failed: " + err.message);
+                        e.target.checked = !originalChecked; // Revert toggle to original state
+                    })
+                    .finally(() => {
+                        if (overlay) {
+                            overlay.style.display = "none";
+                        }
+                    });
+                }
+            });
+
             // Handle SBID M cell edit
             table.on("cellEdited", function(cell) {
                 const field = cell.getField();
@@ -4184,8 +4331,20 @@ document.getElementById("apr-all-sbid-btn").addEventListener("click", function()
                     '<div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>');
             }
 
+            // Determine background color based on type
+            let bgClass = 'bg-info'; // default
+            if (type === 'success') {
+                bgClass = 'bg-success';
+            } else if (type === 'error') {
+                bgClass = 'bg-danger';
+            } else if (type === 'warning') {
+                bgClass = 'bg-warning';
+            } else if (type === 'info') {
+                bgClass = 'bg-info';
+            }
+
             const toast = $(`
-                <div class="toast align-items-center text-white bg-${type === 'success' ? 'success' : type === 'error' ? 'danger' : 'info'} border-0" role="alert">
+                <div class="toast align-items-center text-white ${bgClass} border-0" role="alert">
                     <div class="d-flex">
                         <div class="toast-body">${message}</div>
                         <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
@@ -4195,7 +4354,9 @@ document.getElementById("apr-all-sbid-btn").addEventListener("click", function()
             $('.toast-container').append(toast);
             const bsToast = new bootstrap.Toast(toast[0]);
             bsToast.show();
-            setTimeout(() => toast.remove(), 3000);
+            toast.on('hidden.bs.toast', function() {
+                $(this).remove();
+            });
         }
     </script>
 @endsection
