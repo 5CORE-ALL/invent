@@ -317,16 +317,68 @@
         </div>
     </div>
 
-    <!-- LMP Modal -->
+    <!-- LMP Competitors Modal -->
     <div class="modal fade" id="lmpModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">LMP Data for <span id="lmpSku"></span></h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="fa fa-shopping-cart"></i> Competitors for SKU: <span id="lmpSku"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div id="lmpDataList"></div>
+                    <!-- Add New Competitor Form -->
+                    <div class="card mb-3 border-success">
+                        <div class="card-header bg-success text-white">
+                            <strong><i class="fa fa-plus-circle"></i> Add New Competitor</strong>
+                        </div>
+                        <div class="card-body">
+                            <form id="addCompetitorForm" class="row g-3">
+                                <div class="col-md-3">
+                                    <label class="form-label"><strong>SKU</strong></label>
+                                    <input type="text" class="form-control" id="addCompSku" readonly>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label"><strong>ASIN</strong> <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control" id="addCompAsin" placeholder="B07ABC123" required>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label"><strong>Price</strong> <span class="text-danger">*</span></label>
+                                    <input type="number" class="form-control" id="addCompPrice" placeholder="29.99" step="0.01" min="0.01" required>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label"><strong>Product Link</strong></label>
+                                    <input type="url" class="form-control" id="addCompLink" placeholder="https://amazon.com/dp/...">
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label"><strong>Marketplace</strong></label>
+                                    <select class="form-select" id="addCompMarketplace">
+                                        <option value="amazon" selected>Amazon</option>
+                                        <option value="US">US</option>
+                                    </select>
+                                </div>
+                                <div class="col-12">
+                                    <button type="submit" class="btn btn-success">
+                                        <i class="fa fa-plus"></i> Add Competitor
+                                    </button>
+                                    <button type="reset" class="btn btn-secondary">
+                                        <i class="fa fa-undo"></i> Clear
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    
+                    <!-- Competitors List -->
+                    <div id="lmpDataList">
+                        <div class="text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading competitors...</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -640,6 +692,13 @@
                     alert('Error loading metrics data. Please check console for details.');
                 });
         }
+
+        // Global variable to store current LMP data
+        let currentLmpData = {
+            sku: null,
+            competitors: [],
+            lowestPrice: null
+        };
 
         $(document).ready(function() {
             // Initialize charts
@@ -2352,25 +2411,35 @@
                             if (rowData.is_parent_summary) return '';
 
                             const lmpPrice = cell.getValue();
-                            const lmpLink = rowData.lmp_link;
                             const lmpEntries = rowData.lmp_entries || [];
                             const sku = rowData['(Child) sku'];
+                            const totalCompetitors = rowData.lmp_entries_total || 0;
 
-                            if (!lmpPrice) {
+                            if (!lmpPrice && totalCompetitors === 0) {
                                 return '<span style="color: #999;">N/A</span>';
                             }
 
-                            const priceFormatted = '$' + parseFloat(lmpPrice).toFixed(2);
-                            const entriesJson = JSON.stringify(lmpEntries).replace(/"/g, '&quot;');
-
-                            if (lmpEntries.length > 0) {
-                                return `<a href="#" class="lmp-link" data-sku="${sku}" data-lmp-data="${entriesJson}" 
-                                    style="color: #007bff; text-decoration: none; cursor: pointer;">
-                                    ${priceFormatted} (${lmpEntries.length})
-                                </a>`;
-                            } else {
-                                return priceFormatted;
+                            let html = '<div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">';
+                            
+                            // Show lowest price OUTSIDE modal
+                            if (lmpPrice) {
+                                const priceFormatted = '$' + parseFloat(lmpPrice).toFixed(2);
+                                const currentPrice = parseFloat(rowData.price || 0);
+                                const priceColor = (lmpPrice < currentPrice) ? '#dc3545' : '#28a745';
+                                
+                                html += `<span style="color: ${priceColor}; font-weight: 600; font-size: 14px;">${priceFormatted}</span>`;
                             }
+                            
+                            // Show link to open modal with all competitors
+                            if (totalCompetitors > 0) {
+                                html += `<a href="#" class="view-lmp-competitors" data-sku="${sku}" 
+                                    style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 11px;">
+                                    <i class="fa fa-eye"></i> View ${totalCompetitors}
+                                </a>`;
+                            }
+                            
+                            html += '</div>';
+                            return html;
                         },
                         width: 100
                     },
@@ -3596,6 +3665,260 @@
                 bsToast.show();
                 setTimeout(() => toast.remove(), 3000);
             }
+
+            // Load Competitors Modal Function
+            function loadCompetitorsModal(sku) {
+                $('#lmpSku').text(sku);
+                
+                // Pre-fill form with SKU
+                $('#addCompSku').val(sku);
+                $('#addCompAsin').val('');
+                $('#addCompPrice').val('');
+                $('#addCompLink').val('');
+                $('#addCompMarketplace').val('amazon');
+                
+                $('#lmpModal').modal('show');
+                
+                // Show loading state
+                $('#lmpDataList').html(`
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2">Loading competitors...</p>
+                    </div>
+                `);
+                
+                // Fetch competitors from backend
+                $.ajax({
+                    url: '/amazon/competitors',
+                    method: 'GET',
+                    data: { sku: sku },
+                    success: function(response) {
+                        if (response.success) {
+                            currentLmpData.sku = sku;
+                            currentLmpData.competitors = response.competitors;
+                            currentLmpData.lowestPrice = response.lowest_price;
+                            
+                            renderCompetitorsList(response.competitors, response.lowest_price);
+                        } else {
+                            $('#lmpDataList').html(`
+                                <div class="alert alert-warning">
+                                    <i class="fa fa-info-circle"></i> No competitors found yet. Add your first competitor above!
+                                </div>
+                            `);
+                        }
+                    },
+                    error: function(xhr) {
+                        console.error('Error loading competitors:', xhr);
+                        $('#lmpDataList').html(`
+                            <div class="alert alert-warning">
+                                <i class="fa fa-info-circle"></i> No competitors found yet. Add your first competitor above!
+                            </div>
+                        `);
+                    }
+                });
+            }
+
+            // Render Competitors List Function
+            function renderCompetitorsList(competitors, lowestPrice) {
+                if (!competitors || competitors.length === 0) {
+                    $('#lmpDataList').html(`
+                        <div class="alert alert-info">
+                            <i class="fa fa-info-circle"></i> No competitors found for this SKU
+                        </div>
+                    `);
+                    return;
+                }
+                
+                let html = '<div class="table-responsive"><table class="table table-hover table-bordered">';
+                html += `
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 50px;">#</th>
+                            <th>ASIN</th>
+                            <th>Price</th>
+                            <th style="width: 80px;">Link</th>
+                            <th style="width: 100px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                `;
+                
+                competitors.forEach((item, index) => {
+                    const isLowest = (item.price === lowestPrice);
+                    const rowClass = isLowest ? 'table-success' : '';
+                    const priceFormatted = '$' + parseFloat(item.price).toFixed(2);
+                    const priceBadge = isLowest ? 
+                        `<span class="badge bg-success">${priceFormatted} <i class="fa fa-trophy"></i> LOWEST</span>` : 
+                        `<strong>${priceFormatted}</strong>`;
+                    
+                    const productLink = item.link || item.product_link || '#';
+                    
+                    html += `
+                        <tr class="${rowClass}">
+                            <td class="text-center"><strong>${index + 1}</strong></td>
+                            <td>
+                                <span class="text-primary" style="font-weight: 600;">${item.asin || 'N/A'}</span>
+                            </td>
+                            <td><strong>${priceBadge}</strong></td>
+                            <td class="text-center">
+                                <a href="${productLink}" target="_blank" class="btn btn-sm btn-info" title="View Product on Amazon">
+                                    <i class="fa fa-external-link"></i>
+                                </a>
+                            </td>
+                            <td class="text-center">
+                                <button class="btn btn-sm btn-danger delete-lmp-btn" 
+                                    data-id="${item.id}" 
+                                    data-asin="${item.asin}" 
+                                    data-price="${item.price}"
+                                    title="Delete this competitor">
+                                    <i class="fa fa-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                });
+                
+                html += '</tbody></table></div>';
+                $('#lmpDataList').html(html);
+            }
+
+            // View Competitors Modal Event Listener
+            $(document).on('click', '.view-lmp-competitors', function(e) {
+                e.preventDefault();
+                const sku = $(this).data('sku');
+                loadCompetitorsModal(sku);
+            });
+
+            // Add New Competitor Form Submit
+            $('#addCompetitorForm').on('submit', function(e) {
+                e.preventDefault();
+                
+                const sku = $('#addCompSku').val();
+                const asin = $('#addCompAsin').val().trim();
+                const price = parseFloat($('#addCompPrice').val());
+                const link = $('#addCompLink').val().trim();
+                const marketplace = $('#addCompMarketplace').val();
+                
+                // Validation
+                if (!asin) {
+                    showToast('error', 'ASIN is required');
+                    return;
+                }
+                
+                if (!price || price <= 0) {
+                    showToast('error', 'Valid price is required');
+                    return;
+                }
+                
+                const $submitBtn = $(this).find('button[type="submit"]');
+                const originalHtml = $submitBtn.html();
+                $submitBtn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Adding...');
+                
+                $.ajax({
+                    url: '/amazon/lmp/add',
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    data: {
+                        sku: sku,
+                        asin: asin,
+                        price: price,
+                        product_link: link || null,
+                        product_title: null,
+                        marketplace: marketplace
+                    },
+                    success: function(response) {
+                        showToast('success', 'Competitor added successfully');
+                        $submitBtn.prop('disabled', false).html(originalHtml);
+                        
+                        // Clear form
+                        $('#addCompAsin').val('');
+                        $('#addCompPrice').val('');
+                        $('#addCompLink').val('');
+                        
+                        // Reload table to show updated LMP
+                        if (table) {
+                            table.replaceData();
+                        }
+                        
+                        // Reload modal to show updated list
+                        loadCompetitorsModal(sku);
+                    },
+                    error: function(xhr) {
+                        $submitBtn.prop('disabled', false).html(originalHtml);
+                        
+                        let errorMsg = 'Failed to add competitor';
+                        
+                        // Handle 409 Conflict (duplicate entry)
+                        if (xhr.status === 409) {
+                            errorMsg = '⚠️ This ASIN is already saved for this SKU';
+                        } else if (xhr.responseJSON?.error) {
+                            errorMsg = xhr.responseJSON.error;
+                        } else if (xhr.responseJSON?.messages) {
+                            errorMsg = Object.values(xhr.responseJSON.messages).flat().join(', ');
+                        }
+                        
+                        showToast('error', errorMsg);
+                        console.error('Error adding competitor:', xhr);
+                    }
+                });
+            });
+
+            // Delete LMP Button Click
+            $(document).on('click', '.delete-lmp-btn', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const $btn = $(this);
+                const id = $btn.data('id');
+                const asin = $btn.data('asin');
+                const price = $btn.data('price');
+                
+                if (!id) {
+                    showToast('error', 'Invalid competitor ID');
+                    return;
+                }
+                
+                if (!confirm(`Delete competitor ${asin} ($${price}) from tracking?`)) {
+                    return;
+                }
+                
+                const originalHtml = $btn.html();
+                $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
+                
+                $.ajax({
+                    url: '/amazon/lmp/delete',
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    data: {
+                        _method: 'DELETE',
+                        id: id
+                    },
+                    success: function(response) {
+                        showToast('success', 'Competitor deleted successfully');
+                        
+                        // Reload table to show updated LMP
+                        if (table) {
+                            table.replaceData();
+                        }
+                        
+                        // Reload modal to show updated list
+                        loadCompetitorsModal(currentLmpData.sku);
+                    },
+                    error: function(xhr) {
+                        $btn.prop('disabled', false).html(originalHtml);
+                        
+                        const errorMsg = xhr.responseJSON?.error || 'Failed to delete competitor';
+                        showToast('error', errorMsg);
+                        console.error('Error deleting LMP:', xhr);
+                    }
+                });
+            });
         });
 
         // Scout Modal Event Listener
@@ -3628,38 +3951,6 @@
             });
             $('#scoutDataList').html(html);
             $('#scoutModal').modal('show');
-        }
-
-        // LMP Modal Event Listener
-        $(document).on('click', '.lmp-link', function(e) {
-            e.preventDefault();
-            const sku = $(this).data('sku');
-            let data = $(this).data('lmp-data');
-
-            try {
-                if (typeof data === 'string') {
-                    data = JSON.parse(data);
-                }
-                openLmpModal(sku, data);
-            } catch (error) {
-                console.error('Error parsing LMP data:', error);
-                alert('Error loading LMP data');
-            }
-        });
-
-        // LMP Modal Function
-        function openLmpModal(sku, data) {
-            $('#lmpSku').text(sku);
-            let html = '';
-            data.forEach(item => {
-                html += `<div style="margin-bottom: 10px; border: 1px solid #ccc; padding: 10px;">
-                    <strong>Price: $${item.price}</strong><br>
-                    <a href="${item.link}" target="_blank">View Link</a>
-                    ${item.image ? `<br><img src="${item.image}" alt="Product Image" style="max-width: 100px; max-height: 100px;">` : ''}
-                </div>`;
-            });
-        $('#lmpDataList').html(html);
-            $('#lmpModal').modal('show');
         }
 
         // Import Ratings Modal Handler
