@@ -741,6 +741,14 @@
                             <i class="fas fa-file-upload me-1"></i> Import Missing Data
                         </button>
 
+                        <button type="button" class="btn btn-warning ms-2" data-bs-toggle="modal" data-bs-target="#bulkUpdateAllModal">
+                            <i class="fas fa-sync-alt me-1"></i> Bulk Update All Data
+                        </button>
+
+                        <button type="button" class="btn btn-danger ms-2" id="restoreBtn" style="display: none;">
+                            <i class="fas fa-undo me-1"></i> Restore Previous Values
+                        </button>
+
                         {{-- <button id="missingImagesBtn" class="btn btn-success ms-2">
                             <i class="bi bi-image"></i> Show Missing Data
                         </button> --}}
@@ -1405,7 +1413,7 @@
                         </div>
                     </div>
 
-                    <!-- Import Excel Modal -->
+                    <!-- Import Excel Modal (Missing Data Only) -->
                     <div class="modal fade" id="importExcelModal" tabindex="-1" aria-labelledby="importExcelModalLabel" aria-hidden="true">
                         <div class="modal-dialog modal-dialog-centered">
                             <div class="modal-content">
@@ -1443,6 +1451,71 @@
                                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                                     <button type="button" class="btn btn-primary" id="importBtn" disabled>
                                         <i class="fas fa-upload me-2"></i>Import
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bulk Update All Modal (Updates ALL Data) -->
+                    <div class="modal fade" id="bulkUpdateAllModal" tabindex="-1" aria-labelledby="bulkUpdateAllModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered modal-lg">
+                            <div class="modal-content border-0" style="border-radius: 18px; overflow: hidden;">
+                                <div class="modal-header" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white;">
+                                    <h5 class="modal-title" id="bulkUpdateAllModalLabel">
+                                        <i class="fas fa-sync-alt me-2"></i>Bulk Update All Product Data
+                                    </h5>
+                                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="alert alert-warning">
+                                        <i class="fas fa-exclamation-triangle me-2"></i>
+                                        <strong>⚠️ Warning: This will REPLACE all existing data!</strong>
+                                        <ul class="mb-0 mt-2">
+                                            <li><strong>Updates ALL fields</strong> from the Excel file</li>
+                                            <li>Skips only: INV & OV L30 (Inventory) columns</li>
+                                            <li>Empty cells keep existing database values</li>
+                                            <li>Creates backup for restore option</li>
+                                        </ul>
+                                    </div>
+
+                                    <div class="alert alert-info">
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        <strong>Instructions:</strong>
+                                        <ol class="mb-0 mt-2">
+                                            <li>Download template or current data using buttons below</li>
+                                            <li>Update the values you want to change</li>
+                                            <li>Upload the file (backup will be created automatically)</li>
+                                            <li>Use "Restore Previous Values" button if needed</li>
+                                        </ol>
+                                    </div>
+
+                                    <div class="mb-3 d-flex gap-2">
+                                        <a href="/product-master/download-template" class="btn btn-outline-primary btn-sm">
+                                            <i class="fas fa-download me-1"></i> Download Template
+                                        </a>
+                                        <button type="button" class="btn btn-outline-success btn-sm" id="downloadCurrentData">
+                                            <i class="fas fa-file-excel me-1"></i> Download Current Data
+                                        </button>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label for="bulkUpdateFile" class="form-label fw-bold">Select Excel File</label>
+                                        <input type="file" class="form-control" id="bulkUpdateFile" accept=".xlsx,.xls,.csv">
+                                        <div class="form-text">Supported formats: .xlsx, .xls, .csv</div>
+                                        <div id="bulkUpdateFileError" class="text-danger mt-2" style="display: none;"></div>
+                                    </div>
+
+                                    <div id="bulkUpdateProgress" class="progress mb-3" style="display: none;">
+                                        <div class="progress-bar progress-bar-striped progress-bar-animated bg-warning" role="progressbar" style="width: 0%"></div>
+                                    </div>
+
+                                    <div id="bulkUpdateResult" class="alert" style="display: none;"></div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="button" class="btn btn-warning" id="bulkUpdateBtn" disabled>
+                                        <i class="fas fa-sync-alt me-2"></i>Update All Data
                                     </button>
                                 </div>
                             </div>
@@ -3324,6 +3397,7 @@
                 setupHeaderColumnSearch();
                 setupExcelExport();
                 setupImport();
+                setupBulkUpdateAll(); // New bulk update functionality
                 setupAddProductModal();
                 setupProgressModal();
                 setupSelectionMode();
@@ -3928,7 +4002,7 @@
                 }
             }
 
-            // Setup import functionality
+            // Setup import functionality (Missing Data Only)
             function setupImport() {
                 const importFile = document.getElementById('importFile');
                 const importBtn = document.getElementById('importBtn');
@@ -4066,6 +4140,221 @@
                     const progressBar = importProgress.querySelector('.progress-bar');
                     if (progressBar) progressBar.style.width = '0%';
                 });
+            }
+
+            // Setup Bulk Update All functionality (Updates ALL data)
+            function setupBulkUpdateAll() {
+                const bulkUpdateFile = document.getElementById('bulkUpdateFile');
+                const bulkUpdateBtn = document.getElementById('bulkUpdateBtn');
+                const bulkUpdateModal = document.getElementById('bulkUpdateAllModal');
+                const bulkUpdateFileError = document.getElementById('bulkUpdateFileError');
+                const bulkUpdateProgress = document.getElementById('bulkUpdateProgress');
+                const bulkUpdateResult = document.getElementById('bulkUpdateResult');
+                const restoreBtn = document.getElementById('restoreBtn');
+                const downloadCurrentDataBtn = document.getElementById('downloadCurrentData');
+
+                // Download current data as Excel (same as main download but triggered from modal)
+                if (downloadCurrentDataBtn) {
+                    downloadCurrentDataBtn.addEventListener('click', function() {
+                        // Trigger the main download excel functionality
+                        document.getElementById('downloadExcel')?.click();
+                    });
+                }
+
+                // Enable/disable button based on file selection
+                bulkUpdateFile.addEventListener('change', function() {
+                    if (this.files && this.files.length > 0) {
+                        const file = this.files[0];
+                        const fileName = file.name.toLowerCase();
+                        const validExtensions = ['.xlsx', '.xls', '.csv'];
+                        const isValid = validExtensions.some(ext => fileName.endsWith(ext));
+
+                        if (isValid) {
+                            bulkUpdateBtn.disabled = false;
+                            bulkUpdateFileError.style.display = 'none';
+                        } else {
+                            bulkUpdateBtn.disabled = true;
+                            bulkUpdateFileError.textContent = 'Please select a valid Excel file (.xlsx, .xls, or .csv)';
+                            bulkUpdateFileError.style.display = 'block';
+                        }
+                    } else {
+                        bulkUpdateBtn.disabled = true;
+                    }
+                });
+
+                // Handle bulk update
+                bulkUpdateBtn.addEventListener('click', async function() {
+                    const file = bulkUpdateFile.files[0];
+                    if (!file) {
+                        showToast('danger', 'Please select a file to upload');
+                        return;
+                    }
+
+                    // Confirm action
+                    if (!confirm('⚠️ This will UPDATE ALL product data from the Excel file (except INV). Continue?')) {
+                        return;
+                    }
+
+                    // Disable button and show progress
+                    bulkUpdateBtn.disabled = true;
+                    bulkUpdateProgress.style.display = 'block';
+                    bulkUpdateResult.style.display = 'none';
+                    bulkUpdateFileError.style.display = 'none';
+
+                    const formData = new FormData();
+                    formData.append('excel_file', file);
+                    formData.append('_token', csrfToken);
+
+                    try {
+                        const response = await fetch('/product-master/bulk-update-all', {
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': csrfToken
+                            },
+                            body: formData
+                        });
+
+                        const result = await response.json();
+
+                        // Update progress bar
+                        const progressBar = bulkUpdateProgress.querySelector('.progress-bar');
+                        progressBar.style.width = '100%';
+
+                        if (response.ok && result.success) {
+                            // Build detailed message
+                            let detailsHtml = '';
+                            if (result.details && result.details.length > 0) {
+                                detailsHtml = '<br><br><strong>Updated Products:</strong><ul style="max-height: 150px; overflow-y: auto; font-size: 12px;">';
+                                result.details.slice(0, 10).forEach(detail => {
+                                    detailsHtml += `<li><strong>${detail.sku}</strong>: ${detail.fields.length} field(s) changed</li>`;
+                                });
+                                if (result.details.length > 10) {
+                                    detailsHtml += `<li>... and ${result.details.length - 10} more</li>`;
+                                }
+                                detailsHtml += '</ul>';
+                            }
+
+                            bulkUpdateResult.className = 'alert alert-success';
+                            bulkUpdateResult.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div style="flex: 1;">
+                                        <i class="fas fa-check-circle me-2"></i>
+                                        <strong>Bulk Update Successful!</strong><br>
+                                        ${result.message || `Successfully updated ${result.updated || 0} products.`}
+                                        ${result.errors && result.errors.length > 0 ? `<br><br><strong class="text-danger">Errors (${result.errors.length}):</strong><br><small>${result.errors.slice(0, 5).join('<br>')}</small>` : ''}
+                                        ${detailsHtml}
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-success ms-3" id="bulkUpdateOkBtn" style="white-space: nowrap;">
+                                        <i class="fas fa-check me-1"></i> OK
+                                    </button>
+                                </div>
+                            `;
+                            bulkUpdateResult.style.display = 'block';
+
+                            // Show restore button if backup is available
+                            if (result.backup_available) {
+                                restoreBtn.style.display = 'inline-block';
+                                console.log('✅ Restore button shown - backup available');
+                            }
+
+                            // Reload data after successful update
+                            setTimeout(() => {
+                                loadData();
+                            }, 500);
+
+                            // Handle OK button click
+                            const okBtn = document.getElementById('bulkUpdateOkBtn');
+                            if (okBtn) {
+                                okBtn.addEventListener('click', function() {
+                                    const modal = bootstrap.Modal.getInstance(bulkUpdateModal);
+                                    if (modal) modal.hide();
+                                    // Reset form
+                                    bulkUpdateFile.value = '';
+                                    bulkUpdateBtn.disabled = true;
+                                    bulkUpdateProgress.style.display = 'none';
+                                    bulkUpdateResult.style.display = 'none';
+                                    progressBar.style.width = '0%';
+                                });
+                            }
+                        } else {
+                            bulkUpdateResult.className = 'alert alert-danger';
+                            bulkUpdateResult.innerHTML = `
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                <strong>Update Failed!</strong><br>
+                                ${result.message || 'An error occurred during update.'}
+                                ${result.errors && result.errors.length > 0 ? `<br><details><summary>View Errors</summary><pre>${result.errors.slice(0, 10).join('\n')}</pre></details>` : ''}
+                            `;
+                            bulkUpdateResult.style.display = 'block';
+                            bulkUpdateBtn.disabled = false;
+                        }
+                    } catch (error) {
+                        console.error('Bulk update error:', error);
+                        bulkUpdateResult.className = 'alert alert-danger';
+                        bulkUpdateResult.innerHTML = `
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                            <strong>Update Failed!</strong><br>
+                            ${error.message || 'An error occurred during update.'}
+                        `;
+                        bulkUpdateResult.style.display = 'block';
+                        bulkUpdateBtn.disabled = false;
+                    } finally {
+                        // Reset progress bar after a delay
+                        setTimeout(() => {
+                            const progressBar = bulkUpdateProgress.querySelector('.progress-bar');
+                            progressBar.style.width = '0%';
+                        }, 2000);
+                    }
+                });
+
+                // Reset form when modal is closed
+                bulkUpdateModal.addEventListener('hidden.bs.modal', function() {
+                    bulkUpdateFile.value = '';
+                    bulkUpdateBtn.disabled = true;
+                    bulkUpdateProgress.style.display = 'none';
+                    bulkUpdateResult.style.display = 'none';
+                    bulkUpdateFileError.style.display = 'none';
+                    const progressBar = bulkUpdateProgress.querySelector('.progress-bar');
+                    if (progressBar) progressBar.style.width = '0%';
+                });
+
+                // Setup restore functionality
+                if (restoreBtn) {
+                    restoreBtn.addEventListener('click', async function() {
+                        if (!confirm('⚠️ This will restore all products to their previous values before the last bulk update. Continue?')) {
+                            return;
+                        }
+
+                        // Disable button and show loading
+                        restoreBtn.disabled = true;
+                        restoreBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Restoring...';
+
+                        try {
+                            const response = await makeRequest('/product-master/restore-bulk-update', 'POST');
+                            const result = await response.json();
+
+                            if (response.ok && result.success) {
+                                showToast('success', result.message || 'Products restored successfully!');
+                                
+                                // Hide restore button after successful restore
+                                restoreBtn.style.display = 'none';
+                                
+                                // Reload data
+                                setTimeout(() => {
+                                    loadData();
+                                }, 500);
+                            } else {
+                                showToast('danger', result.message || 'Restore failed');
+                                restoreBtn.disabled = false;
+                                restoreBtn.innerHTML = '<i class="fas fa-undo me-1"></i> Restore Previous Values';
+                            }
+                        } catch (error) {
+                            console.error('Restore error:', error);
+                            showToast('danger', 'Restore failed: ' + error.message);
+                            restoreBtn.disabled = false;
+                            restoreBtn.innerHTML = '<i class="fas fa-undo me-1"></i> Restore Previous Values';
+                        }
+                    });
+                }
             }
 
             // Initialize the add product modal
