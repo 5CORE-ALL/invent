@@ -696,6 +696,7 @@
                 let validSkuCount = 0; // Count only valid SKUs (not parent, not empty)
                 let ub7Count = 0; // Count 7UB
                 let ub7Ub1Count = 0; // Count 7UB + 1UB
+                let pausedCampaignsCount = 0; // Count paused campaigns
 
                 // Track processed SKUs to avoid counting duplicates
                 const processedSkusForNra = new Set(); // Track SKUs for NRA/RA counting
@@ -926,6 +927,11 @@
                         ub7Ub1Count++;
                         }
                     }
+
+                    // Count paused campaigns (campaigns with pink_dil_paused_at)
+                    if (hasCampaign && row.pink_dil_paused_at) {
+                        pausedCampaignsCount++;
+                    }
                 });
 
                 // Update missing campaign count
@@ -986,6 +992,12 @@
                 const ub7Ub1CountEl = document.getElementById('7ub-1ub-count');
                 if (ub7Ub1CountEl) {
                     ub7Ub1CountEl.textContent = ub7Ub1Count;
+                }
+
+                // Update paused campaigns count
+                const pausedCampaignsCountEl = document.getElementById('paused-campaigns-count');
+                if (pausedCampaignsCountEl) {
+                    pausedCampaignsCountEl.textContent = pausedCampaignsCount;
                 }
 
                 // Update total SKU count
