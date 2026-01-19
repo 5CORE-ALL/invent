@@ -419,6 +419,10 @@ $(document).ready(function() {
         const query = response.query || '';
         
         // Show stats
+        const totalPrice = results.length > 0 
+            ? results.reduce((sum, r) => sum + (parseFloat(r.price) || 0), 0).toFixed(2)
+            : 0;
+        
         const avgPrice = results.length > 0 
             ? (results.reduce((sum, r) => sum + (parseFloat(r.price) || 0), 0) / results.filter(r => r.price).length).toFixed(2)
             : 0;
@@ -431,6 +435,10 @@ $(document).ready(function() {
             <div class="stat-card">
                 <div class="stat-value">${totalResults}</div>
                 <div class="stat-label">Total ASINs Found</div>
+            </div>
+            <div class="stat-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                <div class="stat-value">$${totalPrice}</div>
+                <div class="stat-label">Total Price Sum</div>
             </div>
             <div class="stat-card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
                 <div class="stat-value">$${avgPrice}</div>

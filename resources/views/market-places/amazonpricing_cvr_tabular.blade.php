@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Amazon FBM', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Amazon Pricing CVR Tabular', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -52,8 +52,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Amazon FBM',
-        'sub_title' => 'Amazon FBM',
+        'page_title' => 'Amazon Pricing CVR Tabular',
+        'sub_title' => 'Amazon Pricing CVR Tabular',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -210,7 +210,7 @@
                     </button>
 
                     <button id="seo-btn" class="btn btn-sm" style="background-color: #8B0000; color: white; font-weight: bold;">
-                        CVR Content (<span id="seo-count">0</span>)
+                        SEO (<span id="seo-count">0</span>)
                     </button>
 
                     <span class="badge bg-info fs-6 p-2" id="total-sku-count-badge" style="color: black; font-weight: bold; display: none;">Total SKUs: 0</span>
@@ -389,6 +389,24 @@
                         <button type="submit" class="btn btn-primary" id="uploadBtn">Upload & Import</button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- SEO Audit History Modal -->
+    <div class="modal fade" id="seoHistoryModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">SEO Audit History for <span id="seoHistorySku"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="seoHistoryList"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
             </div>
         </div>
     </div>
@@ -645,6 +663,39 @@
             // Initialize charts
             initSkuMetricsChart();
 
+            // Track which parents are expanded (children visible)
+            let expandedParents = new Set();
+
+            // Toggle parent-child visibility
+            $(document).on('click', '.toggle-parent-btn', function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                const parent = $(this).data('parent');
+                const $icon = $(this).find('i');
+                
+                console.log('Parent clicked:', parent, 'Type:', typeof parent);
+                
+                if (expandedParents.has(parent)) {
+                    // Currently expanded, so collapse (hide children)
+                    expandedParents.delete(parent);
+                    $icon.removeClass('fa-eye').addClass('fa-eye-slash');
+                    console.log('Collapsed. Expanded parents:', Array.from(expandedParents));
+                } else {
+                    // Currently collapsed, so expand (show children)
+                    expandedParents.add(parent);
+                    $icon.removeClass('fa-eye-slash').addClass('fa-eye');
+                    console.log('Expanded. Expanded parents:', Array.from(expandedParents));
+                    
+                    // Debug: Check how many children this parent has
+                    const allData = table.getData('all');
+                    const childrenCount = allData.filter(row => !row.is_parent_summary && row.Parent === parent).length;
+                    console.log('Children count for', parent + ':', childrenCount);
+                }
+                
+                // Re-apply filters to show/hide children
+                applyFilters();
+            });
+
             // Sold filter badge click handlers
             $('.sold-filter-badge').on('click', function() {
                 const filter = $(this).data('filter');
@@ -768,6 +819,9 @@
                     table.getColumn('Spft%').hide();
                     table.getColumn('SROI').hide();
                     
+                    // Show Dil column in SEO mode
+                    table.getColumn('E Dil%').show();
+                    
                     // Apply SEO filters
                     applyFilters();
                 } else {
@@ -792,6 +846,9 @@
                     // Show SPFT and SROI columns
                     table.getColumn('Spft%').show();
                     table.getColumn('SROI').show();
+                    
+                    // Hide Dil column when SEO mode is off
+                    table.getColumn('E Dil%').hide();
                     
                     // Remove SEO filters
                     applyFilters();
@@ -1642,9 +1699,15 @@
                             const sku = cell.getValue();
                             const rowData = cell.getRow().getData();
 
-                            // Don't show copy button for parent rows
+                            // Show eye icon for parent rows
                             if (rowData.is_parent_summary) {
-                                return `<span style="font-weight: bold;">${sku}</span>`;
+                                const parent = rowData.Parent;
+                                return `<div style="display: flex; align-items: center; gap: 8px;">
+                                    <button class="btn btn-sm btn-link toggle-parent-btn p-0" data-parent="${parent}" title="Click to Show Children" style="color: #007bff; font-size: 18px; cursor: pointer;">
+                                        <i class="fas fa-eye-slash"></i>
+                                    </button>
+                                    <span style="font-weight: bold;">${sku}</span>
+                                </div>`;
                             }
 
                             return `<div style="display: flex; align-items: center; gap: 5px;">
@@ -1659,6 +1722,119 @@
                         },
                      
                     },
+                    {
+                        title: "View L60",
+                        field: "sessions_l60",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 60,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            return Math.round(value || 0);
+                        }
+                    },
+
+                    {
+                        title: "View L30",
+                        field: "Sess30",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 55,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            return Math.round(value || 0);
+                        }
+                    },
+
+                    {
+                        title: "Growth Views",
+                        field: "view_growth",
+                        hozAlign: "center",
+                        sorter: function(a, b, aRow, bRow) {
+                            const calcGrowth = (row) => {
+                                const sessL30 = parseFloat(row['Sess30']) || 0;
+                                const sessL7 = parseFloat(row['Sess7']) || 0;
+                                if (sessL7 === 0) return 0;
+                                return ((sessL30 - sessL7) / sessL7) * 100;
+                            };
+                            return calcGrowth(aRow.getData()) - calcGrowth(bRow.getData());
+                        },
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const sessL30 = parseFloat(row['Sess30']) || 0;
+                            const sessL7 = parseFloat(row['Sess7']) || 0;
+                            
+                            // Empty for parent rows
+                            if (row.is_parent_summary) return '';
+                            
+                            if (sessL7 === 0) return '<span style="color: #6c757d;">-</span>';
+                            
+                            const growth = ((sessL30 - sessL7) / sessL7) * 100;
+                            
+                            let color = '';
+                            let arrow = '';
+                            
+                            if (growth > 0) {
+                                color = '#28a745'; // Green
+                                arrow = '↑';
+                            } else if (growth < 0) {
+                                color = '#dc3545'; // Red
+                                arrow = '↓';
+                            } else {
+                                color = '#6c757d'; // Gray
+                                arrow = '→';
+                            }
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${arrow} ${Math.round(Math.abs(growth))}%</span>`;
+                        },
+                        width: 70
+                    },
+
+                    {
+                        title: "View L7",
+                        field: "Sess7",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 50,
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            return Math.round(value || 0);
+                        }
+                    },
+
+                    {
+                        title: "CVR L60",
+                        field: "CVR_L60",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            const aL60 = parseFloat(row['units_ordered_l60']) || 0;
+                            const sess60 = parseFloat(row['sessions_l60']) || 0;
+
+                            if (sess60 === 0) return '<span style="color: #a00211; font-weight: 600;">0.0%</span>';
+
+                            const cvr = (aL60 / sess60) * 100;
+                            let color = '';
+                            
+                            if (cvr <= 4) color = '#a00211'; // red
+                            else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
+                            else if (cvr > 7 && cvr <= 10) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
+                        },
+                        sorter: function(a, b, aRow, bRow) {
+                            const calcCVR = (row) => {
+                                const aL60 = parseFloat(row['units_ordered_l60']) || 0;
+                                const sess60 = parseFloat(row['sessions_l60']) || 0;
+                                return sess60 === 0 ? 0 : (aL60 / sess60) * 100;
+                            };
+                            return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
+                        },
+                        width: 65
+                    },
+
                     {
                         title: "CVR L30",
                         field: "CVR_L30",
@@ -1692,9 +1868,65 @@
                         width: 65
                     },
                     {
+                        title: "Growth CVR",
+                        field: "cvr_growth",
+                        hozAlign: "center",
+                        sorter: function(a, b, aRow, bRow) {
+                            const calcGrowth = (row) => {
+                                const aL30 = parseFloat(row['A_L30']) || 0;
+                                const sess30 = parseFloat(row['Sess30']) || 0;
+                                const aL60 = parseFloat(row['units_ordered_l60']) || 0;
+                                const sess60 = parseFloat(row['sessions_l60']) || 0;
+                                
+                                const cvrL30 = sess30 === 0 ? 0 : (aL30 / sess30) * 100;
+                                const cvrL60 = sess60 === 0 ? 0 : (aL60 / sess60) * 100;
+                                
+                                if (cvrL60 === 0) return 0;
+                                return ((cvrL30 - cvrL60) / cvrL60) * 100;
+                            };
+                            return calcGrowth(aRow.getData()) - calcGrowth(bRow.getData());
+                        },
+                        formatter: function(cell) {
+                            const row = cell.getRow().getData();
+                            
+                            // Empty for parent rows
+                            if (row.is_parent_summary) return '';
+                            
+                            const aL30 = parseFloat(row['A_L30']) || 0;
+                            const sess30 = parseFloat(row['Sess30']) || 0;
+                            const aL60 = parseFloat(row['units_ordered_l60']) || 0;
+                            const sess60 = parseFloat(row['sessions_l60']) || 0;
+                            
+                            const cvrL30 = sess30 === 0 ? 0 : (aL30 / sess30) * 100;
+                            const cvrL60 = sess60 === 0 ? 0 : (aL60 / sess60) * 100;
+                            
+                            if (cvrL60 === 0) return '<span style="color: #6c757d;">-</span>';
+                            
+                            const growth = ((cvrL30 - cvrL60) / cvrL60) * 100;
+                            
+                            let color = '';
+                            let arrow = '';
+                            
+                            if (growth > 0) {
+                                color = '#28a745'; // Green
+                                arrow = '↑';
+                            } else if (growth < 0) {
+                                color = '#dc3545'; // Red
+                                arrow = '↓';
+                            } else {
+                                color = '#6c757d'; // Gray
+                                arrow = '→';
+                            }
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${arrow} ${Math.round(Math.abs(growth))}%</span>`;
+                        },
+                        width: 80
+                    },
+                    {
                         title: "CVR L7",
                         field: "CVR_L7",
                         hozAlign: "center",
+                        visible: false,
                         formatter: function(cell) {
                             const row = cell.getRow().getData();
                             const aL7 = parseFloat(row['A_L7']) || 0;
@@ -1721,37 +1953,6 @@
                             return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
                         },
                         width: 60
-                    },
-                    {
-                        title: "CVR L60",
-                        field: "CVR_L60",
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const row = cell.getRow().getData();
-                            const aL60 = parseFloat(row['units_ordered_l60']) || 0;
-                            const sess60 = parseFloat(row['sessions_l60']) || 0;
-
-                            if (sess60 === 0) return '<span style="color: #a00211; font-weight: 600;">0.0%</span>';
-
-                            const cvr = (aL60 / sess60) * 100;
-                            let color = '';
-                            
-                            if (cvr <= 4) color = '#a00211'; // red
-                            else if (cvr > 4 && cvr <= 7) color = '#ffc107'; // yellow
-                            else if (cvr > 7 && cvr <= 10) color = '#28a745'; // green
-                            else color = '#e83e8c'; // pink
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${cvr.toFixed(1)}%</span>`;
-                        },
-                        sorter: function(a, b, aRow, bRow) {
-                            const calcCVR = (row) => {
-                                const aL60 = parseFloat(row['units_ordered_l60']) || 0;
-                                const sess60 = parseFloat(row['sessions_l60']) || 0;
-                                return sess60 === 0 ? 0 : (aL60 / sess60) * 100;
-                            };
-                            return calcCVR(aRow.getData()) - calcCVR(bRow.getData());
-                        },
-                        width: 65
                     },
                     {
                         title: "NR/RL",
@@ -1977,6 +2178,7 @@
                         title: "Dil",
                         field: "E Dil%",
                         hozAlign: "center",
+                        visible: false,
                         sorter: "number",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
@@ -2003,6 +2205,7 @@
                         field: "A_L30",
                         hozAlign: "center",
                         width: 50,
+                        visible: false,
                         sorter: "number",
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -2015,6 +2218,7 @@
                         field: "A_L7",
                         hozAlign: "center",
                         width: 50,
+                        visible: false,
                         sorter: "number",
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -2027,43 +2231,8 @@
                         field: "units_ordered_l60",
                         hozAlign: "center",
                         width: 55,
+                        visible: false,
                         sorter: "number",
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            return Math.round(value || 0);
-                        }
-                    },
-
-                    {
-                        title: "View L30",
-                        field: "Sess30",
-                        hozAlign: "center",
-                        sorter: "number",
-                        width: 55,
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            return Math.round(value || 0);
-                        }
-                    },
-
-                    {
-                        title: "View L7",
-                        field: "Sess7",
-                        hozAlign: "center",
-                        sorter: "number",
-                        width: 50,
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            return Math.round(value || 0);
-                        }
-                    },
-
-                    {
-                        title: "View L60",
-                        field: "sessions_l60",
-                        hozAlign: "center",
-                        sorter: "number",
-                        width: 60,
                         formatter: function(cell) {
                             const value = cell.getValue();
                             return Math.round(value || 0);
@@ -2100,6 +2269,7 @@
                         title: "GPFT %",
                         field: "GPFT%",
                         hozAlign: "center",
+                        visible: false,
                         sorter: "number",
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -2121,6 +2291,7 @@
                         title: "GROI%",
                         field: "ROI_percentage",
                         hozAlign: "center",
+                        visible: false,
                         formatter: function(cell) {
                             const value = cell.getValue();
                             if (value === null || value === undefined) return '0.00%';
@@ -2143,6 +2314,7 @@
                         title: "NROI%",
                         field: "NROI",
                         hozAlign: "center",
+                        visible: false,
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const roi = parseFloat(rowData.ROI_percentage) || 0;
@@ -2182,6 +2354,7 @@
                         title: "TACOS",
                         field: "AD%",
                         hozAlign: "center",
+                        visible: false,
                         sorter: "number",
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -2212,6 +2385,7 @@
                         title: "ACOS",
                         field: "ACOS",
                         hozAlign: "center",
+                        visible: false,
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const spend = parseFloat(rowData.SPEND_L30 || rowData.AD_Spend_L30) || 0;
@@ -2258,6 +2432,7 @@
                         title: "Ad Pause",
                         field: "ad_pause",
                         hozAlign: "center",
+                        visible: false,
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
                             const sku = rowData['(Child) sku'];
@@ -2298,6 +2473,7 @@
                         title: "SPEND L30",
                         field: "AD_Spend_L30",
                         hozAlign: "center",
+                        visible: false,
                         sorter: "number",
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue() || 0);
@@ -2311,6 +2487,7 @@
                         title: "AD SALES L30",
                         field: "SALES_L30",
                         hozAlign: "center",
+                        visible: false,
                         sorter: "number",
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue() || 0);
@@ -2324,6 +2501,7 @@
                         title: "PFT %",
                         field: "PFT%",
                         hozAlign: "center",
+                        visible: false,
                         formatter: function(cell) {
                             const value = cell.getValue();
                             if (value === null || value === undefined) return '0.00%';
@@ -2375,6 +2553,62 @@
                         width: 100
                     },
                     {
+                        title: "Checklist",
+                        field: "checklist",
+                        hozAlign: "left",
+                        headerSort: false,
+                        editor: "input",
+                        titleFormatter: function(column) {
+                            return `<a href="https://docs.google.com/spreadsheets/d/1_wC5sQGHiQw6ngKylnmKNz--CUnX7LckYg5RMm5-6b8/edit?gid=0#gid=0" target="_blank" style="color: #007bff; text-decoration: underline; cursor: pointer;">Checklist</a>`;
+                        },
+                        formatter: function(cell) {
+                            const value = cell.getValue() || '';
+                            const rowData = cell.getRow().getData();
+                            
+                            // Empty for parent rows
+                            if (rowData.is_parent_summary) return '';
+                            
+                            // Truncate if over 180 characters for display
+                            const displayValue = value.length > 180 ? value.substring(0, 180) + '...' : value;
+                            return `<span style="font-size: 11px;">${displayValue}</span>`;
+                        },
+                        cellEdited: function(cell) {
+                            let value = cell.getValue() || '';
+                            
+                            // Enforce 180 character limit
+                            if (value.length > 180) {
+                                value = value.substring(0, 180);
+                                cell.setValue(value);
+                            }
+                        },
+                        width: 200
+                    },
+                    {
+                        title: "SEO Audit History",
+                        field: "seo_audit_history",
+                        hozAlign: "center",
+                        headerSort: false,
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            
+                            // Empty for parent rows
+                            if (rowData.is_parent_summary) return '';
+                            
+                            const sku = rowData['(Child) sku'];
+                            const history = rowData.seo_audit_history || [];
+                            const historyCount = history.length;
+                            
+                            if (historyCount > 0) {
+                                return `<button class="btn btn-sm btn-info view-seo-history-btn" data-sku="${sku}" title="View History">
+                                    <i class="fas fa-history"></i> ${historyCount}
+                                </button>`;
+                            } else {
+                                return '<span style="color: #999;">-</span>';
+                            }
+                        },
+                        width: 100
+                    },
+                    {
                         title: "Select",
                         field: "_select",
                         hozAlign: "center",
@@ -2409,6 +2643,7 @@
                         title: "S PRC",
                         field: "SPRICE",
                         hozAlign: "center",
+                        visible: false,
                         editor: "input",
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -2440,6 +2675,7 @@
                         title: "Accept",
                         field: "_accept",
                         hozAlign: "center",
+                        visible: false,
                         headerSort: false,
                         titleFormatter: function(column) {
                             return `<div style="display: flex; align-items: center; justify-content: center; gap: 5px; flex-direction: column;">
@@ -2597,6 +2833,7 @@
                         title: "S GPFT",
                         field: "SGPFT",
                         hozAlign: "center",
+                        visible: false,
                         formatter: function(cell) {
                             const value = cell.getValue();
                             if (value === null || value === undefined) return '';
@@ -2619,6 +2856,7 @@
                         title: "S PFT",
                         field: "Spft%",
                         hozAlign: "center",
+                        visible: false,
                         formatter: function(cell) {
                             const value = cell.getValue();
                             if (value === null || value === undefined) return '';
@@ -2641,6 +2879,7 @@
                         title: "SROI",
                         field: "SROI",
                         hozAlign: "center",
+                        visible: false,
                         formatter: function(cell) {
                             const value = cell.getValue();
                             if (value === null || value === undefined) return '';
@@ -2819,6 +3058,35 @@
                             showToast('error', 'Failed to update ' + field);
                         }
                     });
+                } else if (field === 'checklist') {
+                    const sku = data['(Child) sku'];
+                    
+                    // Save to history if not empty
+                    if (value && value.trim()) {
+                        $.ajax({
+                            url: '/save-amazon-checklist-to-history',
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                            },
+                            data: {
+                                sku: sku,
+                                checklist_text: value
+                            },
+                            success: function(response) {
+                                showToast('success', 'Added to SEO Audit History');
+                                
+                                // Update row data: clear checklist, update history
+                                row.update({
+                                    'checklist': '',
+                                    'seo_audit_history': response.history || []
+                                });
+                            },
+                            error: function(xhr) {
+                                showToast('error', 'Failed to save to history');
+                            }
+                        });
+                    }
                 }
             });
 
@@ -2841,10 +3109,17 @@
 
                 // SEO Mode filters
                 if (seoModeActive) {
-                    // Show only parent rows with INV > 0
+                    // In SEO mode: hide all children by default, show only children of expanded parents
+                    // Show parent rows with INV > 0, and children of expanded parents
                     table.addFilter(function(data) {
                         const inv = parseFloat(data['INV']) || 0;
-                        return data.is_parent_summary === true && inv > 0;
+                        
+                        // Show parent rows with INV > 0
+                        if (data.is_parent_summary === true && inv > 0) return true;
+                        
+                        // Show children of expanded parents
+                        const parent = data.Parent;
+                        return expandedParents.has(parent);
                     });
                     
                     // Skip other filters when in SEO mode
@@ -3701,6 +3976,65 @@
                 },
                 complete: function() {
                     uploadBtn.prop('disabled', false).html('Upload & Import');
+                }
+            });
+        });
+
+        // SEO Audit History Modal - Fetch fresh data from server
+        $(document).on('click', '.view-seo-history-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const sku = $(this).data('sku');
+            
+            $('#seoHistorySku').text(sku);
+            $('#seoHistoryList').html('<div class="text-center"><i class="fas fa-spinner fa-spin"></i> Loading...</div>');
+            $('#seoHistoryModal').modal('show');
+            
+            // Fetch history from server
+            console.log('Fetching history for SKU:', sku);
+            $.ajax({
+                url: '/get-amazon-seo-history',
+                method: 'GET',
+                data: { sku: sku },
+                success: function(response) {
+                    console.log('AJAX Success - Full response:', response);
+                    const history = response.history || [];
+                    
+                    console.log('History array:', history);
+                    console.log('History length:', history.length);
+                    
+                    let html = '';
+                    if (history.length === 0) {
+                        html = '<div class="alert alert-info">No history entries yet. Add notes in the Checklist column to create history.</div>';
+                        console.log('No history found, showing empty message');
+                    } else {
+                        console.log('Building HTML for', history.length, 'entries');
+                        // Show newest first (already ordered by created_at desc from backend)
+                        history.forEach((entry, index) => {
+                            const entryNumber = index + 1;
+                            console.log('Entry', entryNumber, ':', entry);
+                            html += `
+                                <div class="border-bottom pb-2 mb-2" style="padding: 6px 0;">
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <strong class="text-primary" style="font-size: 12px;">#${entryNumber}</strong>
+                                        <small class="text-muted" style="font-size: 10px;"><i class="fas fa-clock"></i> ${entry.timestamp || 'N/A'}</small>
+                                    </div>
+                                    <p style="white-space: pre-wrap; font-size: 12px; margin: 4px 0;">${entry.text || '(empty)'}</p>
+                                    <small class="text-muted" style="font-size: 10px;"><i class="fas fa-user"></i> ${entry.user_name || 'Guest'}</small>
+                                </div>
+                            `;
+                        });
+                    }
+                    
+                    console.log('Generated HTML length:', html.length);
+                    $('#seoHistoryList').html(html);
+                    console.log('Modal content updated');
+                },
+                error: function(xhr, status, error) {
+                    console.error('AJAX Error - Status:', status);
+                    console.error('AJAX Error - Error:', error);
+                    console.error('AJAX Error - Response:', xhr.responseText);
+                    $('#seoHistoryList').html('<div class="alert alert-danger">Error loading history: ' + (xhr.responseJSON?.error || error) + '</div>');
                 }
             });
         });

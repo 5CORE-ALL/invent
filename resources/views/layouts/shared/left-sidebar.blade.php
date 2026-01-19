@@ -1782,9 +1782,15 @@
 
                                     <li>
 
-                                        <a href="{{ url('/amazon-tabulator-view') }}">Amz FBM Pricing
+                                        <a href="{{ url('/amazon-tabulator-view') }}">Amz FBM
                                         </a>
                                     </li>
+                                      <li>
+
+                                        <a href="{{ url('/amazonpricing-cvr-tabular') }}">Amz FBM SEO
+                                        </a>
+                                    </li>
+
 
                                     <li>
                                         <a href="{{ route('listing.amazon') }}">Listing Amz FBM</a>

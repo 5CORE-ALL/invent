@@ -984,6 +984,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/overallAmazon/saveLowProfit', action: [OverallAmazonController::class, 'saveLowProfit']);
     Route::get('/amazon-pricing-cvr', action: [OverallAmazonController::class, 'amazonPricingCVR'])->name('amazon.pricing.cvr');
     Route::get('/amazon-tabulator-view', action: [OverallAmazonController::class, 'amazonTabulatorView'])->name('amazon.tabulator.view');
+    Route::get('/amazonpricing-cvr-tabular', action: [OverallAmazonController::class, 'amazonPricingCvrTabular'])->name('amazon.pricing.cvr.tabular');
     Route::get('/amazon-column-visibility', [OverallAmazonController::class, 'getAmazonColumnVisibility'])->name('amazon.column.visibility');
     Route::post('/amazon-column-visibility', [OverallAmazonController::class, 'saveAmazonColumnVisibility'])->name('amazon.column.visibility.save');
     Route::get('/amazon-data-json', action: [OverallAmazonController::class, 'amazonDataJson'])->name('amazon.data.json');
@@ -1007,6 +1008,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon-analytics/sample', [OverallAmazonController::class, 'downloadSample'])->name('amazon.analytics.sample');
     Route::post('/import-amazon-ratings', [OverallAmazonController::class, 'importAmazonRatings']);
     Route::post('/update-amazon-rating', [OverallAmazonController::class, 'updateAmazonRating']);
+    Route::post('/save-amazon-checklist-to-history', [OverallAmazonController::class, 'saveAmazonChecklistToHistory']);
+    Route::get('/get-amazon-seo-history', [OverallAmazonController::class, 'getAmazonSeoHistory']);
     Route::get('/amazon-metrics-history', [OverallAmazonController::class, 'getMetricsHistory'])->name('amazon.metrics.history');
 
     //ebay 2 
