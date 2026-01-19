@@ -896,11 +896,11 @@
                 let uniqueParents = [];
                 let isNavigationActive = false;
                 let filteredInventoryData = [];
-                let currentActionFilter = null; // null, 'NRB', or 'RB'
+                let currentActionFilter = 'RB'; // null, 'NRB', or 'RB' - default to RB
 
                 // Sorting System
-                let currentSortColumn = null;
-                let currentSortDirection = null; // 'asc' or 'desc'
+                let currentSortColumn = 'dil'; // Default sort by DIL
+                let currentSortDirection = 'desc'; // Default descending order
 
                 // Function to get DIL color based on value
                 function getDilColor(value) {
@@ -930,6 +930,9 @@
                                 initPlaybackControls();
                                 // Set up sorting handlers (in case DOM wasn't ready earlier)
                                 setupSorting();
+                                // Set RB filter as active by default
+                                $('#filterRB').addClass('active').css('opacity', '0.8');
+                                $('#filterNRB').removeClass('active').css('opacity', '1');
                                 renderInventoryTable(inventoryData);
                             }
                         },
@@ -1103,7 +1106,31 @@
                             }
                             
                             // Set the to_sku dropdown value (in FROM section)
-                            $('#to_sku').val(sku).trigger('change');
+                            // Use Select2 API to properly set the value
+                            console.log('Arrow button clicked, setting SKU:', sku);
+                            
+                            // Check if Select2 is initialized
+                            if ($('#to_sku').hasClass('select2-hidden-accessible')) {
+                                // Select2 is initialized, use its API
+                                $('#to_sku').val(sku).trigger('change.select2');
+                            } else {
+                                // Select2 not initialized yet, use regular jQuery
+                                $('#to_sku').val(sku).trigger('change');
+                            }
+                            
+                            // Also trigger regular change event after a delay to ensure our handler fires
+                            setTimeout(function() {
+                                console.log('Triggering change event for to_sku, current value:', $('#to_sku').val());
+                                $('#to_sku').trigger('change');
+                                
+                                // Fallback: If change event didn't fire, manually fetch history
+                                const currentSku = $('#to_sku').val();
+                                if (currentSku && currentSku === sku) {
+                                    console.log('Manually triggering history fetch as fallback');
+                                    // Manually call the history fetch function
+                                    fetchHistoryForSku(sku);
+                                }
+                            }, 150);
                             
                             // Also set parent, available qty, and dil if not auto-filled
                             setTimeout(function() {
@@ -1562,6 +1589,9 @@
                                 initPlaybackControls();
                                 // Set up sorting handlers (in case DOM wasn't ready earlier)
                                 setupSorting();
+                                // Set RB filter as active by default
+                                $('#filterRB').addClass('active').css('opacity', '0.8');
+                                $('#filterNRB').removeClass('active').css('opacity', '1');
                                 renderInventoryTable(inventoryData);
                             }
                         },
@@ -1805,9 +1835,113 @@
                 });
 
 
+                // Function to fetch and apply history for a SKU
+                function fetchHistoryForSku(sku) {
+                    if (!sku) {
+                        console.log('No SKU provided for history fetch');
+                        return;
+                    }
+                    
+                    console.log('Fetching history for SKU:', sku);
+                    $.ajax({
+                            url: '/stock-balance-get-recent-history',
+                            method: 'GET',
+                            data: {
+                                from_sku: sku
+                            },
+                            headers: {
+                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                            },
+                            beforeSend: function() {
+                                console.log('AJAX request starting for history fetch, SKU:', sku);
+                            },
+                            success: function (response) {
+                                console.log('History response:', response);
+                                if (response && response.data) {
+                                    const history = response.data;
+                                    console.log('History data:', history);
+                                    
+                                    // Auto-fill FROM section (which uses to_* fields in the form)
+                                    if (history.from_parent_name) {
+                                        $('#to_parent_name').val(history.from_parent_name);
+                                    }
+                                    if (history.from_available_qty !== null && history.from_available_qty !== undefined) {
+                                        $('#to_available_qty').val(history.from_available_qty);
+                                    }
+                                    if (history.from_dil_percent !== null && history.from_dil_percent !== undefined) {
+                                        $('#to_dil_percent').val(history.from_dil_percent);
+                                    }
+                                    if (history.from_adjust_qty) {
+                                        $('#to_adjust_qty').val(history.from_adjust_qty);
+                                    }
+                                    
+                                    // Auto-fill TO section (which uses from_* fields in the form)
+                                    // Function to set TO section values from history
+                                    const setToSectionValues = function() {
+                                        console.log('Setting TO section values from history:', {
+                                            to_parent_name: history.to_parent_name,
+                                            to_available_qty: history.to_available_qty,
+                                            to_dil_percent: history.to_dil_percent,
+                                            to_adjust_qty: history.to_adjust_qty
+                                        });
+                                        if (history.to_parent_name) {
+                                            $('#from_parent_name').val(history.to_parent_name);
+                                        }
+                                        if (history.to_available_qty !== null && history.to_available_qty !== undefined) {
+                                            $('#from_available_qty').val(history.to_available_qty);
+                                        }
+                                        if (history.to_dil_percent !== null && history.to_dil_percent !== undefined) {
+                                            $('#from_dil_percent').val(history.to_dil_percent);
+                                        }
+                                        if (history.to_adjust_qty) {
+                                            $('#from_adjust_qty').val(history.to_adjust_qty);
+                                        }
+                                    };
+                                    
+                                    // Set values first
+                                    setToSectionValues();
+                                    
+                                    // Now set the SKU dropdown if it exists
+                                    if (history.to_sku) {
+                                        // Check if the option exists in the dropdown
+                                        const toSkuOption = $('#from_sku option[value="' + history.to_sku + '"]');
+                                        if (toSkuOption.length > 0) {
+                                            // Set the SKU value and trigger change
+                                            $('#from_sku').val(history.to_sku).trigger('change');
+                                            
+                                            // Set values again after change handler completes
+                                            // This ensures history values override any values set by change handler
+                                            setTimeout(function() {
+                                                console.log('Re-setting TO section values after change handler');
+                                                setToSectionValues();
+                                            }, 200);
+                                        }
+                                    }
+                                }
+                            },
+                            error: function(xhr, status, error) {
+                                // Log error details for debugging
+                                console.error('Error fetching history:', {
+                                    status: status,
+                                    error: error,
+                                    response: xhr.responseText,
+                                    statusCode: xhr.status,
+                                    url: '/stock-balance-get-recent-history',
+                                    sku: sku
+                                });
+                            },
+                            complete: function() {
+                                console.log('History fetch completed for SKU:', sku);
+                            }
+                        });
+                }
+
                 // Auto-fill Avl Qty when select sku_to
                 $('#to_sku').on('change', function () {
                     const selected = $(this).find('option:selected');
+                    const sku = $(this).val();
+                    
+                    console.log('to_sku change event fired, SKU:', sku);
                     
                     // for to parent
                     const parent = selected.data('parent');
@@ -1826,6 +1960,11 @@
                     console.log('dilll',toDil);
                     
                     $('#to_dil_percent').val(toDil);
+                    
+                    // Fetch and auto-fill from most recent history if available
+                    if (sku) {
+                        fetchHistoryForSku(sku);
+                    }
                 });
 
                 // Calculate Qty Adj (To) based on Qty Adj (From) and ratio
