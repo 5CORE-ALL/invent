@@ -348,9 +348,9 @@
 
                         return `
                             <div class="d-flex justify-content-center align-item-center">
-                                <a href="#" class="btn btn-sm btn-success me-2 edit-btn" data-id="${rowData.id}" title="Edit" style="cursor:pointer;">
+                                <button class="btn btn-sm btn-success me-2 edit-btn" data-id="${rowData.id}" title="Edit" style="cursor:pointer;">
                                     <i class="fa-solid fa-pen-to-square"></i>
-                                </a>
+                                </button>
                                 <button class="btn btn-sm btn-danger delete-btn" data-id="${rowData.id}" title="Delete" style="cursor:pointer;">
                                     <i class="fa-solid fa-trash"></i>
                                 </button>
@@ -358,7 +358,81 @@
                         `;
                     },
                     cellClick: function(e, cell) {
+                        e.stopPropagation();
+                        
+                        if(e.target.closest('.edit-btn')) {
+                            e.preventDefault();
+                            const btn = e.target.closest('.edit-btn');
+                            const id = btn.dataset.id;
+
+                            fetch(`/rfq-form/edit/${id}`)
+                            .then(res => res.json())
+                            .then(res => {
+                                if(res.success) {
+                                    const data = res.data;
+
+                                    document.getElementById('edit_form_id').value = data.id;
+                                    document.getElementById('edit_rfq_form_name').value = data.name;
+                                    document.getElementById('edit_title').value = data.title;
+                                    document.getElementById('edit_subtitle').value = data.subtitle;
+
+                                    document.getElementById("editDimensionInner").checked = data.dimension_inner === true || data.dimension_inner === 1 || data.dimension_inner === "true";
+                                    document.getElementById("editProductDimension").checked = data.product_dimension === true || data.product_dimension === 1 || data.product_dimension === "true";
+                                    document.getElementById("editPackageDimension").checked = data.package_dimension === true || data.package_dimension === 1 || data.package_dimension === "true";
+
+                                    if(data.main_image){
+                                        document.getElementById('editMainImagePreview').src = "/storage/" + data.main_image;
+                                        document.getElementById('editMainImagePreview').style.display = 'block';
+                                    } else {
+                                        document.getElementById('editMainImagePreview').style.display = 'none';
+                                    }
+
+                                    // Dynamic fields
+                                    const wrapper = document.getElementById('editDynamicFieldsWrapper');
+                                    wrapper.innerHTML = '';
+                                    if(data.fields && data.fields.length > 0) {
+                                        data.fields.forEach((field, index) => {
+                                            wrapper.insertAdjacentHTML('beforeend', `
+                                                <div class="row g-3 mb-2 field-item">
+                                                    <div class="col-md-3">
+                                                        <input type="text" name="fields[${index}][label]" class="form-control field-label" value="${field.label || ''}" required>
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <input type="text" name="fields[${index}][name]" class="form-control field-name" value="${field.name || ''}" readonly>
+                                                    </div>
+                                                    <div class="col-md-2">
+                                                        <select name="fields[${index}][type]" class="form-select field-type">
+                                                            <option value="text" ${field.type === 'text' ? 'selected':''}>Text</option>
+                                                            <option value="number" ${field.type === 'number' ? 'selected':''}>Number</option>
+                                                            <option value="select" ${field.type === 'select' ? 'selected':''}>Select</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="col-md-3 select-options-wrapper" style="${field.type === 'select' ? 'display:block':'display:none'};">
+                                                        <input type="text" name="fields[${index}][options]" class="form-control" value="${field.options || ''}">
+                                                    </div>
+                                                    <div class="col-md-1">
+                                                        <input type="checkbox" name="fields[${index}][required]" class="form-check-input mt-2" value="1" ${field.required ? 'checked':''}>
+                                                    </div>
+                                                    <div class="col-md-1">
+                                                        <button type="button" class="btn btn-danger btn-sm remove-field">X</button>
+                                                    </div>
+                                                </div>
+                                            `);
+                                        });
+                                    }
+
+                                    let myModal = new bootstrap.Modal(document.getElementById('editRFQFormModal'));
+                                    myModal.show();
+                                } else {
+                                    alert('Failed to load form data');
+                                }
+                            })
+                            .catch(() => alert('Error loading form data'));
+                            return;
+                        }
+                        
                         if(e.target.closest('.delete-btn')) {
+                            e.preventDefault();
                             const btn = e.target.closest('.delete-btn');
                             const id = btn.dataset.id;
 
@@ -464,70 +538,6 @@
             if(e.target && e.target.classList.contains('field-label')){
                 let nameInput = e.target.closest('.field-item').querySelector('.field-name');
                 nameInput.value = slugify(e.target.value);
-            }
-        });
-
-        // edit rfq form
-        document.addEventListener('click', function(e) {
-            if(e.target.closest('.edit-btn')) {
-                const id = e.target.closest('.edit-btn').dataset.id;
-
-                fetch(`/rfq-form/edit/${id}`)
-                .then(res => res.json())
-                .then(res => {
-                    if(res.success) {
-                        const data = res.data;
-
-                        document.getElementById('edit_form_id').value = data.id;
-                        document.getElementById('edit_rfq_form_name').value = data.name;
-                        document.getElementById('edit_title').value = data.title;
-                        document.getElementById('edit_subtitle').value = data.subtitle;
-
-                        document.getElementById("editDimensionInner").checked = data.dimension_inner === true || data.dimension_inner === 1 || data.dimension_inner === "true";
-                        document.getElementById("editProductDimension").checked = data.product_dimension === true || data.product_dimension === 1 || data.product_dimension === "true";
-                        document.getElementById("editPackageDimension").checked = data.package_dimension === true || data.package_dimension === 1 || data.package_dimension === "true";
-
-                        if(data.main_image){
-                            document.getElementById('editMainImagePreview').src = "/storage/" + data.main_image;
-                            document.getElementById('editMainImagePreview').style.display = 'block';
-                        }
-
-                        // Dynamic fields
-                        const wrapper = document.getElementById('editDynamicFieldsWrapper');
-                        wrapper.innerHTML = '';
-                        data.fields.forEach((field, index) => {
-                            wrapper.insertAdjacentHTML('beforeend', `
-                                <div class="row g-3 mb-2 field-item">
-                                    <div class="col-md-3">
-                                        <input type="text" name="fields[${index}][label]" class="form-control field-label" value="${field.label}" required>
-                                    </div>
-                                    <div class="col-md-3">
-                                        <input type="text" name="fields[${index}][name]" class="form-control field-name" value="${field.name}" readonly>
-                                    </div>
-                                    <div class="col-md-2">
-                                        <select name="fields[${index}][type]" class="form-select field-type">
-                                            <option value="text" ${field.type === 'text' ? 'selected':''}>Text</option>
-                                            <option value="number" ${field.type === 'number' ? 'selected':''}>Number</option>
-                                            <option value="select" ${field.type === 'select' ? 'selected':''}>Select</option>
-                                        </select>
-                                    </div>
-                                    <div class="col-md-3 select-options-wrapper" style="${field.type === 'select' ? 'display:block':'display:none'};">
-                                        <input type="text" name="fields[${index}][options]" class="form-control" value="${field.options || ''}">
-                                    </div>
-                                    <div class="col-md-1">
-                                        <input type="checkbox" name="fields[${index}][required]" class="form-check-input mt-2" value="1" ${field.required ? 'checked':''}>
-                                    </div>
-                                    <div class="col-md-1">
-                                        <button type="button" class="btn btn-danger btn-sm remove-field">X</button>
-                                    </div>
-                                </div>
-                            `);
-                        });
-
-                        let myModal = new bootstrap.Modal(document.getElementById('editRFQFormModal'));
-                        myModal.show();
-                    }
-                });
             }
         });
 

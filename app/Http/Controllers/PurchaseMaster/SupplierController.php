@@ -51,6 +51,17 @@ class SupplierController extends Controller
         $suppliers = $query->paginate(20)->appends($request->query());
         $categories = Category::orderBy('name')->get();
         
+        // If AJAX request, return JSON
+        if ($request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'html' => view('purchase-master.supplier.partials.rows', compact('suppliers', 'categories'))->render(),
+                'pagination' => (string) $suppliers->onEachSide(1)->links('pagination::bootstrap-5'),
+                'filteredCount' => $filteredCount,
+                'totalCount' => $totalCount,
+            ]);
+        }
+        
         return view('purchase-master.supplier.suppliers' , compact('suppliers', 'categories', 'filteredCount', 'totalCount'));
     }
 
