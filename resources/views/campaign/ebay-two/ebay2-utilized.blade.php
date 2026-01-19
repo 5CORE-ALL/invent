@@ -1721,6 +1721,7 @@
                                 const dilDecimal = (l30 / inv);
                                 const percent = dilDecimal * 100;
                                 let textColor = '#000000'; // default black
+                                let bgColor = 'transparent'; // default background
                                 
                                 if (percent < 16.66) {
                                     textColor = '#dc3545'; // red
@@ -1729,10 +1730,12 @@
                                 } else if (percent >= 25 && percent < 50) {
                                     textColor = '#28a745'; // green
                                 } else {
-                                    textColor = '#e83e8c'; // pink
+                                    // Pink DIL: pink background with white text
+                                    bgColor = '#e83e8c'; // pink background
+                                    textColor = '#ffffff'; // white text
                                 }
                                 
-                                return `<div class="text-center"><span style="color: ${textColor}; font-weight: bold;">${Math.round(percent)}%</span></div>`;
+                                return `<div class="text-center"><span style="background-color: ${bgColor}; color: ${textColor}; font-weight: bold; padding: 2px 6px; border-radius: 3px; display: inline-block;">${Math.round(percent)}%</span></div>`;
                             }
                             return `<div class="text-center"><span style="color: #dc3545; font-weight: bold;">0%</span></div>`;
                         },
