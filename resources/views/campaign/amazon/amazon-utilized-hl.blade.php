@@ -341,7 +341,7 @@
                         <div class="card border-0 shadow-sm mb-4" style="border: 1px solid rgba(0, 0, 0, 0.05) !important;">
                             <div class="card-body p-4">
                                 <!-- Filters Row: Utilization Type, Status, Inventory, NRA, Rating, ACOS -->
-                                <div class="row g-3 align-items-end mb-3">
+                                <div class="row g-2 align-items-end mb-3">
                                     <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-filter me-1" style="color: #64748b;"></i>Utilization Type

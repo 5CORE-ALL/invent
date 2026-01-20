@@ -473,16 +473,20 @@
                                         </div>
                                     </div>
 
-                                    <!-- Action Buttons -->
-                                    <div class="col-md-2 d-flex gap-2 align-items-end">
-                                        <button id="apply-all-range-filters-btn" class="btn btn-primary btn-sm flex-fill">
-                                            <i class="fa-solid fa-filter me-1"></i>
-                                            Apply
-                                        </button>
-                                        <button id="clear-all-range-filters-btn" class="btn btn-secondary btn-sm flex-fill">
-                                            <i class="fa-solid fa-times me-1"></i>
-                                            Clear All
-                                        </button>
+                                    <!-- L7 Views Filter -->
+                                    <div class="col-md-2">
+                                        <label class="form-label fw-semibold mb-2"
+                                            style="color: #475569; font-size: 0.8125rem;">
+                                            L7 Views Range
+                                        </label>
+                                        <div class="d-flex gap-2">
+                                            <input type="number" id="range-filter-l7-views-min"
+                                                class="form-control form-control-sm" placeholder="Min" step="1"
+                                                style="border-color: #e2e8f0;">
+                                            <input type="number" id="range-filter-l7-views-max"
+                                                class="form-control form-control-sm" placeholder="Max" step="1"
+                                                style="border-color: #e2e8f0;">
+                                        </div>
                                     </div>
                                 </div>
 
@@ -657,7 +661,8 @@
                 '7ub': { min: null, max: null },
                 'lbid': { min: null, max: null },
                 'acos': { min: null, max: null },
-                'views': { min: null, max: null }
+                'views': { min: null, max: null },
+                'l7_views': { min: null, max: null }
             };
             
             // INC/DEC SBID variables
@@ -3006,6 +3011,22 @@
                         return false;
                     }
                 }
+                
+                // L7 Views filter
+                if (rangeFilters['l7_views'].min !== null || rangeFilters['l7_views'].max !== null) {
+                    let l7ViewsRaw = data.l7_views;
+                    let l7ViewsValue = parseFloat(l7ViewsRaw) || 0;
+                    if (isNaN(l7ViewsValue)) {
+                        l7ViewsValue = 0;
+                    }
+                    
+                    if (rangeFilters['l7_views'].min !== null && l7ViewsValue < rangeFilters['l7_views'].min) {
+                        return false;
+                    }
+                    if (rangeFilters['l7_views'].max !== null && l7ViewsValue > rangeFilters['l7_views'].max) {
+                        return false;
+                    }
+                }
 
                 return true;
             }
@@ -3173,6 +3194,16 @@
                         hasError = true;
                     }
                     
+                    // Get and validate L7 Views filter
+                    let l7ViewsMin = $("#range-filter-l7-views-min").val();
+                    let l7ViewsMax = $("#range-filter-l7-views-max").val();
+                    rangeFilters['l7_views'].min = l7ViewsMin !== '' ? parseFloat(l7ViewsMin) : null;
+                    rangeFilters['l7_views'].max = l7ViewsMax !== '' ? parseFloat(l7ViewsMax) : null;
+                    if (rangeFilters['l7_views'].min !== null && rangeFilters['l7_views'].max !== null && rangeFilters['l7_views'].min > rangeFilters['l7_views'].max) {
+                        alert('L7 Views: Minimum value cannot be greater than maximum value');
+                        hasError = true;
+                    }
+                    
                     if (hasError) {
                         return;
                     }
@@ -3198,6 +3229,8 @@
                     rangeFilters['acos'].max = null;
                     rangeFilters['views'].min = null;
                     rangeFilters['views'].max = null;
+                    rangeFilters['l7_views'].min = null;
+                    rangeFilters['l7_views'].max = null;
                     
                     // Clear all input fields
                     $("#range-filter-1ub-min").val('');
@@ -3210,6 +3243,8 @@
                     $("#range-filter-acos-max").val('');
                     $("#range-filter-views-min").val('');
                     $("#range-filter-views-max").val('');
+                    $("#range-filter-l7-views-min").val('');
+                    $("#range-filter-l7-views-max").val('');
                     
                     // Apply cleared filters
                     table.setFilter(combinedFilter);
@@ -3251,6 +3286,11 @@
                         rangeFilters['views'].min = viewsMin !== '' ? parseFloat(viewsMin) : null;
                         rangeFilters['views'].max = viewsMax !== '' ? parseFloat(viewsMax) : null;
                         
+                        let l7ViewsMin = $("#range-filter-l7-views-min").val();
+                        let l7ViewsMax = $("#range-filter-l7-views-max").val();
+                        rangeFilters['l7_views'].min = l7ViewsMin !== '' ? parseFloat(l7ViewsMin) : null;
+                        rangeFilters['l7_views'].max = l7ViewsMax !== '' ? parseFloat(l7ViewsMax) : null;
+                        
                         // Apply filters (skip validation for auto-apply)
                         table.setFilter(combinedFilter);
                         setTimeout(function() {
@@ -3262,7 +3302,7 @@
                 }
                 
                 // Add change event listeners to all range filter inputs
-                $("#range-filter-1ub-min, #range-filter-1ub-max, #range-filter-7ub-min, #range-filter-7ub-max, #range-filter-lbid-min, #range-filter-lbid-max, #range-filter-acos-min, #range-filter-acos-max, #range-filter-views-min, #range-filter-views-max").on("input change", function() {
+                $("#range-filter-1ub-min, #range-filter-1ub-max, #range-filter-7ub-min, #range-filter-7ub-max, #range-filter-lbid-min, #range-filter-lbid-max, #range-filter-acos-min, #range-filter-acos-max, #range-filter-views-min, #range-filter-views-max, #range-filter-l7-views-min, #range-filter-l7-views-max").on("input change", function() {
                     applyRangeFiltersOnChange();
                 });
                 

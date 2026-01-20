@@ -343,7 +343,7 @@
                         <div class="card border-0 shadow-sm mb-4" style="border: 1px solid rgba(0, 0, 0, 0.05) !important;">
                             <div class="card-body p-4">
                                 <!-- Filters Row: Utilization Type, Status, Inventory, NRA, Price, Rating, ACOS -->
-                                <div class="row g-3 align-items-end mb-3">
+                                <div class="row g-2 align-items-end mb-3">
                                     <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-filter me-1" style="color: #64748b;"></i>Utilization Type
@@ -377,7 +377,7 @@
                                             <option value="OTHERS" selected>OTHERS</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-2">
+                                    <div class="col-md-1">
                                         <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-tags me-1" style="color: #64748b;"></i>NRA
                                         </label>
@@ -402,7 +402,7 @@
                                             <option value="gt100">&gt; $100</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-2">
+                                    <div class="col-md-1">
                                         <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-star me-1" style="color: #64748b;"></i>Rating
                                         </label>
