@@ -215,11 +215,17 @@ class AutoUpdateAmazonBgtHl extends Command
 
                 // New sbgt rule: Budget = 10% of price (rounded up)
                 // BUT if ACOS > 20%, then budget = $1
+                // Maximum budget is $5
                 $price = (float) ($row['price'] ?? 0);
                 if ($acos > 20) {
                     $sbgt = 1;
                 } else {
                     $sbgt = ceil($price * 0.10);
+                }
+
+                // Cap maximum budget at $5
+                if ($sbgt > 5) {
+                    $sbgt = 5;
                 }
 
                 $row['sbgt'] = $sbgt;

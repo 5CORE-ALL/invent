@@ -50,11 +50,11 @@ class AutoUpdateAmazonPinkDilPtAds extends Command
             $campaignsToUpdate = [];
 
             foreach ($campaigns as $campaign) {
-                // Check if (dil is pink (dilPercent > 50) AND ACOS > 35%) OR (ratings < 3.5) OR (price < 10 AND units_ordered_l30 > 0)
+                // Check if (dil is pink (dilPercent > 50) AND ACOS > 20%) OR (ratings < 3.5) OR (price < 10 AND units_ordered_l30 > 0)
                 $rating = isset($campaign->rating) && $campaign->rating !== null ? (float) $campaign->rating : null;
                 $price = isset($campaign->price) ? (float) $campaign->price : null;
                 $unitsL30 = $campaign->A_L30 ?? 0;
-                $shouldPause = (($campaign->dilPercent ?? 0) > 50 && ($campaign->acos_L30 ?? 0) > 35) || ($rating !== null && $rating < 3.5) || ($price < 10 && $unitsL30 > 0);
+                $shouldPause = (($campaign->dilPercent ?? 0) > 50 && ($campaign->acos_L30 ?? 0) > 20) || ($rating !== null && $rating < 3.5) || ($price < 10 && $unitsL30 > 0);
                 if ($shouldPause) {
                     $campaignsToPause[] = $campaign->campaign_id;
                 } else {

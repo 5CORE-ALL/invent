@@ -1965,6 +1965,8 @@
                             } else {
                                 sbgt = Math.ceil(price * 0.10);
                                 if (sbgt < 1) sbgt = 1;
+                                // Maximum budget cap: $5
+                                if (sbgt > 5) sbgt = 5;
                             }
 
                             return sbgt; // ✅ sets row.sbgt

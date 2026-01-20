@@ -1189,6 +1189,76 @@ class AmazonACOSController extends Controller
         }
     }
 
+    public function pauseSbCampaigns(array $campaignIds)
+    {
+        ini_set('max_execution_time', 300);
+        ini_set('memory_limit', '512M');
+
+        if (empty($campaignIds)) {
+            return [
+                'message' => 'No campaign IDs provided',
+                'status' => 400
+            ];
+        }
+
+        $accessToken = $this->getAccessToken();
+        $client = new Client();
+        $url = 'https://advertising-api.amazon.com/sb/v4/campaigns';
+        $results = [];
+
+        try {
+            $allCampaigns = [];
+            foreach ($campaignIds as $campaignId) {
+                $allCampaigns[] = [
+                    'campaignId' => $campaignId,
+                    'state' => 'PAUSED'
+                ];
+            }
+
+            $chunks = array_chunk($allCampaigns, 10);
+            foreach ($chunks as $chunk) {
+                $response = $client->put($url, [
+                    'headers' => [
+                        'Amazon-Advertising-API-ClientId' => env('AMAZON_ADS_CLIENT_ID'),
+                        'Authorization' => 'Bearer ' . $accessToken,
+                        'Amazon-Advertising-API-Scope' => $this->profileId,
+                        'Content-Type' => 'application/vnd.sbcampaignresource.v4+json',
+                        'Accept' => 'application/vnd.sbcampaignresource.v4+json',
+                    ],
+                    'json' => [
+                        'campaigns' => $chunk
+                    ],
+                    'timeout' => 60,
+                    'connect_timeout' => 30,
+                ]);
+
+                $results[] = json_decode($response->getBody(), true);
+            }
+
+            // Update database after successful API call
+            try {
+                AmazonSbCampaignReport::whereIn('campaign_id', $campaignIds)
+                    ->update(['campaignStatus' => 'PAUSED']);
+            } catch (\Exception $dbError) {
+                Log::warning('Error updating SB campaign status in database: ' . $dbError->getMessage());
+            }
+
+            return [
+                'message' => 'SB Campaigns paused successfully',
+                'data' => $results,
+                'status' => 200,
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Error pausing SB campaigns: ' . $e->getMessage());
+            return [
+                'message' => 'Error pausing SB campaigns',
+                'error' => $e->getMessage(),
+                'status' => 500,
+            ];
+        }
+    }
+
     public function toggleAmazonSbCampaignStatus(Request $request)
     {
         ini_set('max_execution_time', 300);
