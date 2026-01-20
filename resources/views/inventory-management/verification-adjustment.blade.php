@@ -279,22 +279,21 @@
             box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.5) !important;
         }
 
-        /* ========== HIDE LAST APPROVED COLUMN ========== */
-        /* Hide Last Approved column header and data cells while maintaining column alignment */
-        .custom-resizable-table th.last-approved-header,
-        .custom-resizable-table td.last-approved-at {
-            width: 0 !important;
-            min-width: 0 !important;
-            max-width: 0 !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            border: none !important;
-            border-left: none !important;
-            border-right: none !important;
-            overflow: hidden !important;
-            visibility: hidden !important;
-            font-size: 0 !important;
-            line-height: 0 !important;
+        /* ========== HISTORY COLUMN STYLING ========== */
+        .custom-resizable-table th.history-header,
+        .custom-resizable-table td.history-column {
+            text-align: center;
+            vertical-align: middle;
+        }
+
+        /* ========== HISTORY DATE FILTER DROPDOWN ========== */
+        #historyDateFilterBtn.dropdown-toggle::after {
+            margin-left: 0.5em;
+        }
+        
+        /* Prevent dropdown from closing when clicking inside */
+        #historyDateFilterBtn + .dropdown-menu {
+            cursor: default;
         }
         
         /* Ensure table layout is fixed for proper column alignment */
@@ -1343,6 +1342,33 @@
                                 <i class="fas fa-file-excel"></i> Export
                             </button>
 
+                            <!-- History Date Range Filter -->
+                            <div class="dropdown ml-2">
+                                <button class="btn btn-info dropdown-toggle" type="button" id="historyDateFilterBtn" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                    <i class="fas fa-calendar-alt"></i> Filter by History Date
+                                </button>
+                                <div class="dropdown-menu dropdown-menu-right p-3" aria-labelledby="historyDateFilterBtn" style="min-width: 320px;">
+                                    <h6 class="dropdown-header">Filter by History Date Range</h6>
+                                    <div class="form-group mb-2">
+                                        <label for="historyDateFrom" class="small">From Date:</label>
+                                        <input type="date" id="historyDateFrom" class="form-control form-control-sm">
+                                    </div>
+                                    <div class="form-group mb-2">
+                                        <label for="historyDateTo" class="small">To Date:</label>
+                                        <input type="date" id="historyDateTo" class="form-control form-control-sm">
+                                    </div>
+                                    <div class="d-flex justify-content-between">
+                                        <button id="applyHistoryDateFilter" class="btn btn-primary btn-sm">
+                                            <i class="fas fa-check"></i> Apply
+                                        </button>
+                                        <button id="clearHistoryDateFilter" class="btn btn-secondary btn-sm">
+                                            <i class="fas fa-times"></i> Clear
+                                        </button>
+                                    </div>
+                                    <div id="historyFilterStatus" class="mt-2 small text-muted"></div>
+                                </div>
+                            </div>
+
                             <!-- <button id="viewHiddenRows" class="btn btn-primary ml-2 ms-2" data-toggle="modal">
                                 <i class="fa-regular fa-eye-slash"></i> Hide Rows
                             </button> -->
@@ -1634,7 +1660,7 @@
                                     </th> 
                                     <th colspan="10"></th> <!-- Skipping columns: VERIFIED, TO ADJUST, REASON, Accept, ADJ HISTORY (hidden), ADJ QTY, LOSS/GAIN, APPR-AT, VERIFIED, USER -->
                                     <th></th> <!-- REMARK -->
-                                    <th class="last-approved-header"></th> <!-- LAST APPR-AT (hidden) -->
+                                    <th></th> <!-- HISTORY -->
                                 </tr>
                                 <tr>
                                     <th data-field="bulk-select" style="width: 50px; text-align: center;">
@@ -1795,10 +1821,10 @@
                                             </div>
                                         </div>
                                     </th>
-                                    <th data-field="ad cost/ pc" class="last-approved-header" style="vertical-align: middle; white-space: nowrap; width: 0; padding: 0; border: none; visibility: hidden;">
+                                    <th data-field="history" class="history-header" style="vertical-align: middle; white-space: nowrap;">
                                         <div class="d-flex flex-column align-items-center">
                                             <div class="d-flex align-items-center">
-                                                LAST APPR-AT<span class="sort-arrow"></span>
+                                                HISTORY<span class="sort-arrow"></span>
                                             </div>
                                         </div>
                                     </th>
@@ -2471,6 +2497,27 @@
                 return `<div style="line-height:1.3">${datePart}<br><small>${timePart}</small></div>`;
             }
 
+            // Format date/time for display (returns string format: "04 Nov 2025, 04:04 AM")
+            function formatOhioTime(rawDate) {
+                if (!rawDate) return '';
+
+                const dateObj = new Date(rawDate);
+                if (isNaN(dateObj)) return '';
+
+                const day = dateObj.getDate().toString().padStart(2, '0'); 
+                const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                const month = monthNames[dateObj.getMonth()];
+                const year = dateObj.getFullYear();
+
+                let hours = dateObj.getHours();
+                const minutes = dateObj.getMinutes().toString().padStart(2, '0');
+                const ampm = hours >= 12 ? 'PM' : 'AM';
+                hours = hours % 12 || 12;
+
+                return `${day} ${month} ${year}, ${hours}:${minutes} ${ampm}`;
+            }
+
 
             // Load data from server
             function loadData() {
@@ -2522,6 +2569,7 @@
 
                                     APPROVED_AT: item.approved_at ? formatOhioTime(item.approved_at) : '',
                                     LAST_APPROVED_AT: formatApprovedAt(item.APPROVED_AT),
+                                    HISTORY: item.HISTORY ? formatOhioTime(item.HISTORY) : '',
 
                                     is_parent: (() => {
                                         const skuVal = (item.sku || item.SKU || '').toString().trim().toUpperCase();
@@ -2851,7 +2899,7 @@
                     $row.append($('<td>').html(`
                         <div class="d-flex flex-column align-items-center">
                             <input type="checkbox" class="form-check-input approve-checkbox" 
-                                data-index="${rowIndex}" ${item.APPROVED ? 'checked' : ''}/>
+                                data-index="${rowIndex}" />
                             <small class="approved-by text-success">${item.APPROVED_BY || ''}</small>
                         </div>
                     `));
@@ -2897,24 +2945,13 @@
                     }).html(verifiedByFirstName || '—');
                     $row.append($userCell);
 
-                    // $row.append($('<td>').addClass('last-approved-at').text(item.LAST_APPROVED_AT || '-'));
-                    $row.append($('<td>').addClass('last-approved-at').css({
-                        'width': '0',
-                        'padding': '0',
-                        'border': 'none',
-                        'visibility': 'hidden',
-                        'overflow': 'hidden'
-                    }).html(item.LAST_APPROVED_AT || '-'));
- 
-                    // $row.append($('<td>').text(item.LAST_APPROVED_AT || '-'));
-
-
-                    // let lastApprovedAtHTML = '-';
-                    // if (item.LAST_APPROVED_AT && item.LAST_APPROVED_AT.includes(', ')) {
-                    //     const [datePart, timePart] = item.LAST_APPROVED_AT.split(', ');
-                    //     lastApprovedAtHTML = `<div style="line-height:1.3">${datePart}<br><small>${timePart}</small></div>`;
-                    // }
-                    // $row.append($('<td>').addClass('last-approved-at').html(lastApprovedAtHTML));
+                    // HISTORY column - Shows latest approved date from Adjustment History
+                    let historyHTML = '-';
+                    if (item.HISTORY && item.HISTORY.includes(', ')) {
+                        const [datePart, timePart] = item.HISTORY.split(', ');
+                        historyHTML = `<div style="line-height:1.3">${datePart}<br><small>${timePart}</small></div>`;
+                    }
+                    $row.append($('<td>').addClass('history-column').html(historyHTML));
 
                     $tbody.append($row);
                 });
@@ -3127,6 +3164,7 @@
             $(document).on('click', '.verified-status-btn', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
+                e.stopImmediatePropagation();
                 
                 const $btn = $(this);
                 const sku = $btn.data('sku');
@@ -3150,46 +3188,27 @@
                     },
                     success: function(response) {
                         if (response.success) {
-                            // Find item in tableData by SKU and update both versions
+                            // Update only the button color - NOTHING ELSE
+                            const newColor = newVerified ? '#28a745' : '#dc3545'; // Green or Red
+                            const $icon = $btn.find('i.fa-circle');
+                            
+                            if ($icon.length > 0) {
+                                // Just change the icon color
+                                $icon.css('color', newColor);
+                            } else {
+                                // If icon not found, recreate it
+                                $btn.html(`<i class="fas fa-circle" style="color: ${newColor}; font-size: 12px;"></i>`);
+                            }
+                            
+                            // Update the data attribute for next toggle
+                            $btn.attr('data-verified', newVerified ? '1' : '0');
+                            
+                            // Update tableData silently (for export/other operations, but don't refresh UI)
                             const itemIndex = tableData.findIndex(item => item.SKU === sku);
                             if (itemIndex !== -1) {
                                 tableData[itemIndex].IS_VERIFIED = newVerified ? 1 : 0;
                                 tableData[itemIndex].is_verified = newVerified;
-                                // Update verified by first name from response
-                                if (response.verified_by_first_name) {
-                                    tableData[itemIndex].VERIFIED_BY_FIRST_NAME = response.verified_by_first_name;
-                                } else if (!newVerified) {
-                                    // Clear the name when unverifying
-                                    tableData[itemIndex].VERIFIED_BY_FIRST_NAME = null;
-                                }
                             }
-                            
-                            // Update button appearance
-                            if (newVerified) {
-                                // Show green dot when verified
-                                $btn.removeClass('btn-warning btn-success').css({
-                                    'background': 'none',
-                                    'border': 'none',
-                                    'padding': '0'
-                                });
-                                $btn.html('<i class="fas fa-circle" style="color: #28a745; font-size: 12px;"></i>');
-                                $btn.data('verified', '1');
-                            } else {
-                                // Show red dot when unverified
-                                $btn.removeClass('btn-warning btn-success').css({
-                                    'background': 'none',
-                                    'border': 'none',
-                                    'padding': '0'
-                                });
-                                $btn.html('<i class="fas fa-circle" style="color: #dc3545; font-size: 12px;"></i>');
-                                $btn.data('verified', '0');
-                            }
-                            
-                            // Update counts
-                            updateVerifiedCounts();
-                            
-                            // Apply all filters (unified)
-                            applyAllFilters();
                         }
                     },
                     error: function(xhr, status, error) {
@@ -3202,6 +3221,8 @@
                         $btn.prop('disabled', false);
                     }
                 });
+                
+                return false; // Prevent any default action
             });
 
             // Unified filter function that applies all filters together (AND logic)
@@ -3342,6 +3363,14 @@
             //call after checked the appr-WH checkbox
             $('#ebay-table').on('change', '.approve-checkbox', function () {
                 const $checkbox = $(this);
+                
+                // Skip if this is a programmatic change (to prevent processing when we auto-uncheck)
+                if ($checkbox.data('programmatic-change')) {
+                    $checkbox.removeData('programmatic-change');
+                    console.log('Skipping programmatic change');
+                    return;
+                }
+                
                 const $row = $checkbox.closest('tr');
                 const sku = $row.find('.sku-hidden').val();
                 const verifiedStock = parseInt($row.find('.verified-stock-input').val().trim()) || 0;
@@ -3437,6 +3466,30 @@
                             let alertType = 'success';
                             
                             showNotification(alertType, message);
+                            
+                            // Uncheck the Accept checkbox after successful approval to allow next approval
+                            if (isApproved) {
+                                console.log('Unchecking checkbox for SKU:', sku);
+                                console.log('Checkbox before uncheck:', $checkbox.prop('checked'));
+                                
+                                // Uncheck the checkbox
+                                $checkbox.prop('checked', false);
+                                
+                                // Also trigger change to ensure any event listeners are notified
+                                // But we need to prevent infinite loop, so we'll use a flag
+                                $checkbox.data('programmatic-change', true);
+                                
+                                console.log('Checkbox after uncheck:', $checkbox.prop('checked'));
+                                
+                                // Clear the verified stock input to prepare for next entry
+                                $row.find('.verified-stock-input').val('');
+                                $row.find('.to-adjust').text('');
+                                
+                                // Update the data to show checkbox should be unchecked
+                                if (!isNaN(index)) {
+                                    filteredData[index].APPROVED = false;
+                                }
+                            }
                         } else {
                             $checkbox.prop('checked', !isApproved);
                             showNotification('danger', res.message || 'Something went wrong.');
@@ -3761,6 +3814,118 @@
                     $(this).toggle($(this).text().toLowerCase().indexOf(value) > -1);
                 });
             });
+
+            // History Date Range Filter
+            let historyDateFilter = {
+                fromDate: null,
+                toDate: null,
+                active: false
+            };
+
+            // Prevent dropdown from closing when clicking inside
+            $('.dropdown-menu').on('click', function(e) {
+                e.stopPropagation();
+            });
+
+            // Apply History Date Filter
+            $("#applyHistoryDateFilter").on("click", function (e) {
+                e.stopPropagation();
+                
+                const fromDate = $("#historyDateFrom").val();
+                const toDate = $("#historyDateTo").val();
+                
+                if (!fromDate && !toDate) {
+                    alert("Please select at least one date!");
+                    return;
+                }
+                
+                historyDateFilter.fromDate = fromDate ? new Date(fromDate) : null;
+                historyDateFilter.toDate = toDate ? new Date(toDate) : null;
+                historyDateFilter.active = true;
+                
+                // Set time to end of day for toDate
+                if (historyDateFilter.toDate) {
+                    historyDateFilter.toDate.setHours(23, 59, 59, 999);
+                }
+                
+                // Apply filter
+                applyHistoryDateFilter();
+                
+                // Update status message
+                let statusMsg = "Filtered: ";
+                if (fromDate && toDate) {
+                    statusMsg += `${fromDate} to ${toDate}`;
+                } else if (fromDate) {
+                    statusMsg += `From ${fromDate}`;
+                } else {
+                    statusMsg += `Until ${toDate}`;
+                }
+                $("#historyFilterStatus").text(statusMsg).removeClass('text-muted').addClass('text-success');
+                
+                // Update button appearance
+                $("#historyDateFilterBtn").addClass('btn-warning').removeClass('btn-info');
+            });
+
+            // Clear History Date Filter
+            $("#clearHistoryDateFilter").on("click", function (e) {
+                e.stopPropagation();
+                
+                historyDateFilter.fromDate = null;
+                historyDateFilter.toDate = null;
+                historyDateFilter.active = false;
+                
+                $("#historyDateFrom").val('');
+                $("#historyDateTo").val('');
+                $("#historyFilterStatus").text('').removeClass('text-success').addClass('text-muted');
+                
+                // Reset filtered data to show all
+                filteredData = [...tableData];
+                currentPage = 1;
+                renderTable();
+                calculateTotals();
+                
+                // Update button appearance
+                $("#historyDateFilterBtn").removeClass('btn-warning').addClass('btn-info');
+            });
+
+            // Function to apply history date filter
+            function applyHistoryDateFilter() {
+                if (!historyDateFilter.active) {
+                    filteredData = [...tableData];
+                } else {
+                    filteredData = tableData.filter(item => {
+                        // Skip parent rows
+                        if (item.is_parent) return true;
+                        
+                        // If no HISTORY date, exclude it
+                        if (!item.HISTORY || item.HISTORY === '-' || item.HISTORY === '') {
+                            return false;
+                        }
+                        
+                        // Parse the HISTORY date (format: "04 Nov 2025, 04:04 AM")
+                        const historyDate = new Date(item.HISTORY);
+                        
+                        // Check if date is valid
+                        if (isNaN(historyDate.getTime())) {
+                            return false;
+                        }
+                        
+                        // Apply date range filter
+                        if (historyDateFilter.fromDate && historyDate < historyDateFilter.fromDate) {
+                            return false;
+                        }
+                        if (historyDateFilter.toDate && historyDate > historyDateFilter.toDate) {
+                            return false;
+                        }
+                        
+                        return true;
+                    });
+                }
+                
+                currentPage = 1;
+                renderTable();
+                calculateTotals();
+            }
 
             // Export to Excel (SheetJS)
             $("#exportExcel").on("click", function () {

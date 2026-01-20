@@ -868,4 +868,66 @@ class StockBalanceController extends Controller
             'status' => 200
         ]);
     }
+
+    /**
+     * Get the most recent history for a from_sku to auto-fill the form
+     */
+    public function getRecentHistory(Request $request)
+    {
+        $request->validate([
+            'from_sku' => 'required|string',
+        ]);
+
+        try {
+            $normalizeSku = function ($sku) {
+                $sku = strtoupper(trim($sku));
+                $sku = preg_replace('/\s+/u', ' ', $sku);
+                $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
+                return $sku;
+            };
+
+            $fromSku = $normalizeSku($request->from_sku);
+
+            // Get the most recent history for this from_sku
+            $history = StockBalance::where('from_sku', $fromSku)
+                ->orderBy('transferred_at', 'desc')
+                ->orderBy('created_at', 'desc')
+                ->first();
+
+            if (!$history) {
+                return response()->json([
+                    'message' => 'No history found for this SKU',
+                    'data' => null,
+                    'status' => 200
+                ]);
+            }
+
+            return response()->json([
+                'message' => 'History fetched successfully',
+                'data' => [
+                    'from_parent_name' => $history->from_parent_name,
+                    'from_sku' => $history->from_sku,
+                    'from_dil_percent' => $history->from_dil_percent,
+                    'from_available_qty' => $history->from_available_qty,
+                    'from_adjust_qty' => $history->from_adjust_qty,
+                    'to_parent_name' => $history->to_parent_name,
+                    'to_sku' => $history->to_sku,
+                    'to_dil_percent' => $history->to_dil_percent,
+                    'to_available_qty' => $history->to_available_qty,
+                    'to_adjust_qty' => $history->to_adjust_qty,
+                ],
+                'status' => 200
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Failed to get recent history: " . $e->getMessage(), [
+                'from_sku' => $request->from_sku ?? 'N/A',
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'error' => 'Error fetching history',
+                'details' => $e->getMessage()
+            ], 500);
+        }
+    }
 }

@@ -575,6 +575,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/stock-balance-add-relationships', [StockBalanceController::class, 'addRelationships']);
     Route::post('/stock-balance-delete-relationship', [StockBalanceController::class, 'deleteRelationship']);
     Route::get('/stock-balance-get-skus-autocomplete', [StockBalanceController::class, 'getSkusForAutocomplete']);
+    Route::get('/stock-balance-get-recent-history', [StockBalanceController::class, 'getRecentHistory']);
 
     //channel Movement Analysis
     Route::get('/channel-movement-analysis', [ChannelMovementAnalysisController::class, 'index'])->name('channel.movement.analysis');
@@ -1007,6 +1008,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon-analytics/export', [OverallAmazonController::class, 'exportAmazonAnalytics'])->name('amazon.analytics.export');
     Route::get('/amazon-analytics/sample', [OverallAmazonController::class, 'downloadSample'])->name('amazon.analytics.sample');
     Route::post('/import-amazon-ratings', [OverallAmazonController::class, 'importAmazonRatings']);
+    Route::get('/amazon/competitors', [OverallAmazonController::class, 'getAmazonCompetitors'])->name('amazon.competitors.get');
+    Route::post('/amazon/lmp/add', [OverallAmazonController::class, 'addAmazonLmp'])->name('amazon.lmp.add');
+    Route::post('/amazon/lmp/delete', [OverallAmazonController::class, 'deleteAmazonLmp'])->name('amazon.lmp.delete.post');
+    Route::delete('/amazon/lmp/delete', [OverallAmazonController::class, 'deleteAmazonLmp'])->name('amazon.lmp.delete');
     Route::post('/update-amazon-rating', [OverallAmazonController::class, 'updateAmazonRating']);
     Route::post('/save-amazon-checklist-to-history', [OverallAmazonController::class, 'saveAmazonChecklistToHistory']);
     Route::get('/get-amazon-seo-history', [OverallAmazonController::class, 'getAmazonSeoHistory']);

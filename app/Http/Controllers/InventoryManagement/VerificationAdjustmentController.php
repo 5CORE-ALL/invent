@@ -254,8 +254,22 @@ class VerificationAdjustmentController extends Controller
             ->get()
             ->keyBy(fn($inv) => $normalizeSku($inv->sku));
 
+        // Fetch the latest approved date from Adjustment History for HISTORY column
+        $latestApprovedHistory = Inventory::whereIn('sku', $originalSkus)
+            ->where('is_approved', true)
+            ->whereNotNull('approved_at')
+            ->select('sku', 'approved_at', 'approved_by')
+            ->orderBy('approved_at', 'desc')
+            ->get()
+            ->groupBy(function($item) use ($normalizeSku) {
+                return $normalizeSku($item->sku);
+            })
+            ->map(function($group) {
+                return $group->first(); // Get the most recent approved record
+            });
+
         // OVERRIDE: Merge everything - return ALL SKUs from product_master without any filtering
-        $data = $productMasterData->map(function ($item) use ($shopifyData, $verifiedInventory, $normalizeSku) {
+        $data = $productMasterData->map(function ($item) use ($shopifyData, $verifiedInventory, $latestApprovedHistory, $normalizeSku) {
             $sku = $normalizeSku($item->sku ?? '');
             $values = $item->values;
             $lp = $values['lp'] ?? 0;
@@ -280,6 +294,11 @@ class VerificationAdjustmentController extends Controller
                 $item->APPROVED = (bool)($inv->is_approved ?? false);
                 $item->APPROVED_BY = $inv->approved_by ?? null;
                 $item->APPROVED_AT = $inv->approved_at ?? null;
+                
+                // HISTORY column - Latest approved date from Adjustment History
+                $latestHistory = $latestApprovedHistory[$sku] ?? null;
+                $item->HISTORY = $latestHistory ? $latestHistory->approved_at : null;
+                
                 $item->is_verified = (bool)($inv->is_verified ?? false);
                 $item->is_doubtful = (bool)($inv->is_doubtful ?? false);
                 // Also set uppercase versions for compatibility
@@ -305,6 +324,7 @@ class VerificationAdjustmentController extends Controller
                 $item->IS_DOUBTFUL = false;
                 $item->is_doubtful = false;
                 $item->VERIFIED_BY_FIRST_NAME = null;
+                $item->HISTORY = null;
             }
 
             // OVERRIDE: Explicitly set IS_HIDE to 0 for all items to override any filtering
