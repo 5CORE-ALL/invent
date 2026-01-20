@@ -576,6 +576,11 @@
                                             <th class="sortable" data-column="dil">DIL% <span class="sort-icon">↕</span></th>
                                             <th>R</th>
                                             <th>ACTION</th>
+                                            <th style="background-color: #28a745; color: white;">TO SKU</th>
+                                            <th style="background-color: #28a745; color: white;">TO Parent</th>
+                                            <th style="background-color: #28a745; color: white;">TO Qty Adj</th>
+                                            <th style="background-color: #ffc107; color: #212529;">Ratio</th>
+                                            <th style="background-color: #17a2b8; color: white;">Submit</th>
                                         </tr>
                                     </thead>
                                     <tbody id="inventory-data-table-body">
@@ -1047,7 +1052,7 @@
                     }
 
                     if (dataToRender.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="8" class="text-center">No records found</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="13" class="text-center">No records found</td></tr>';
                         return;
                     }
 
@@ -1376,11 +1381,255 @@
                         actionCell.appendChild(actionSelect);
                         row.appendChild(actionCell);
 
+                        // TO SKU Column (Dropdown with Select2)
+                        const toSkuCell = document.createElement('td');
+                        const toSkuSelect = document.createElement('select');
+                        toSkuSelect.className = 'form-select form-select-sm to-sku-select';
+                        toSkuSelect.setAttribute('data-row-sku', item.SKU || '');
+                        toSkuSelect.style.minWidth = '180px';
+                        toSkuSelect.style.fontSize = '14px';
+                        
+                        // Add placeholder option
+                        const toSkuPlaceholder = document.createElement('option');
+                        toSkuPlaceholder.value = '';
+                        toSkuPlaceholder.textContent = 'Select TO SKU';
+                        toSkuPlaceholder.selected = true;
+                        toSkuPlaceholder.disabled = true;
+                        toSkuSelect.appendChild(toSkuPlaceholder);
+                        
+                        // Add all SKU options from inventoryData
+                        inventoryData.forEach(function(invItem) {
+                            if (invItem.SKU && invItem.SKU !== item.SKU) { // Don't allow selecting same SKU
+                                const option = document.createElement('option');
+                                option.value = invItem.SKU;
+                                option.textContent = invItem.SKU;
+                                option.setAttribute('data-parent', invItem.Parent || '');
+                                option.setAttribute('data-inv', invItem.INV || 0);
+                                option.setAttribute('data-dil', invItem.DIL || 0);
+                                toSkuSelect.appendChild(option);
+                            }
+                        });
+                        
+                        toSkuCell.appendChild(toSkuSelect);
+                        row.appendChild(toSkuCell);
+                        
+                        // TO Parent Column (Read-only input)
+                        const toParentCell = document.createElement('td');
+                        const toParentInput = document.createElement('input');
+                        toParentInput.type = 'text';
+                        toParentInput.className = 'form-control form-control-sm to-parent-input';
+                        toParentInput.style.minWidth = '120px';
+                        toParentInput.style.fontSize = '14px';
+                        toParentInput.readOnly = true;
+                        toParentInput.placeholder = 'Auto-fill';
+                        toParentCell.appendChild(toParentInput);
+                        row.appendChild(toParentCell);
+                        
+                        // TO Qty Adj Column (Number input)
+                        const toQtyCell = document.createElement('td');
+                        const toQtyInput = document.createElement('input');
+                        toQtyInput.type = 'number';
+                        toQtyInput.className = 'form-control form-control-sm to-qty-input';
+                        toQtyInput.style.width = '80px';
+                        toQtyInput.style.fontSize = '14px';
+                        toQtyInput.min = '1';
+                        toQtyInput.placeholder = 'Qty';
+                        toQtyInput.readOnly = true; // Will be calculated from ratio
+                        toQtyCell.appendChild(toQtyInput);
+                        row.appendChild(toQtyCell);
+                        
+                        // Ratio Column (Dropdown)
+                        const ratioCell = document.createElement('td');
+                        const ratioSelect = document.createElement('select');
+                        ratioSelect.className = 'form-select form-select-sm ratio-select';
+                        ratioSelect.style.width = '90px';
+                        ratioSelect.style.fontSize = '14px';
+                        
+                        const ratioOptions = ['1:4', '1:2', '1:1', '2:1', '4:1'];
+                        ratioOptions.forEach(function(ratioVal) {
+                            const option = document.createElement('option');
+                            option.value = ratioVal;
+                            option.textContent = ratioVal;
+                            if (ratioVal === '1:1') option.selected = true; // Default to 1:1
+                            ratioSelect.appendChild(option);
+                        });
+                        
+                        ratioCell.appendChild(ratioSelect);
+                        row.appendChild(ratioCell);
+                        
+                        // Submit Column (Submit button)
+                        const submitCell = document.createElement('td');
+                        const submitBtn = document.createElement('button');
+                        submitBtn.type = 'button';
+                        submitBtn.className = 'btn btn-success btn-sm submit-transfer-btn';
+                        submitBtn.innerHTML = '<i class="fas fa-check"></i>';
+                        submitBtn.style.minWidth = '70px';
+                        submitBtn.style.fontSize = '14px';
+                        submitBtn.setAttribute('data-from-sku', item.SKU || '');
+                        submitBtn.title = 'Submit Transfer';
+                        submitBtn.disabled = true; // Disabled until TO SKU is selected
+                        
+                        submitCell.appendChild(submitBtn);
+                        row.appendChild(submitCell);
+
                         tbody.appendChild(row);
                     });
 
                     // Update sort indicators in header
                     updateSortIndicators();
+                    
+                    // Initialize Select2 for TO SKU dropdowns in table
+                    setTimeout(function() {
+                        $('.to-sku-select').each(function() {
+                            if (!$(this).hasClass('select2-hidden-accessible')) {
+                                $(this).select2({
+                                    placeholder: 'Select TO SKU',
+                                    allowClear: true,
+                                    width: '180px'
+                                });
+                            }
+                        });
+                        
+                        // Handle TO SKU change
+                        $('.to-sku-select').off('change').on('change', function() {
+                            const $select = $(this);
+                            const $row = $select.closest('tr');
+                            const selectedOption = $select.find('option:selected');
+                            const toParent = selectedOption.attr('data-parent') || '';
+                            
+                            // Auto-fill TO Parent
+                            $row.find('.to-parent-input').val(toParent);
+                            
+                            // Enable submit button if TO SKU is selected
+                            const submitBtn = $row.find('.submit-transfer-btn');
+                            if ($select.val()) {
+                                submitBtn.prop('disabled', false);
+                            } else {
+                                submitBtn.prop('disabled', true);
+                            }
+                            
+                            // Recalculate TO Qty based on ratio
+                            calculateInlineToQty($row);
+                        });
+                        
+                        // Handle Ratio change
+                        $('.ratio-select').off('change').on('change', function() {
+                            const $row = $(this).closest('tr');
+                            calculateInlineToQty($row);
+                        });
+                        
+                        // Handle Submit button click
+                        $('.submit-transfer-btn').off('click').on('click', function() {
+                            const $btn = $(this);
+                            const $row = $btn.closest('tr');
+                            const fromSku = $btn.attr('data-from-sku');
+                            const toSku = $row.find('.to-sku-select').val();
+                            const toQty = parseInt($row.find('.to-qty-input').val()) || 0;
+                            const ratio = $row.find('.ratio-select').val();
+                            
+                            if (!toSku) {
+                                alert('Please select a TO SKU');
+                                return;
+                            }
+                            
+                            if (!toQty || toQty <= 0) {
+                                alert('TO Qty must be greater than 0');
+                                return;
+                            }
+                            
+                            // Calculate FROM qty based on ratio
+                            const ratioParts = ratio.split(':');
+                            const fromQty = Math.round(toQty * (parseFloat(ratioParts[0]) / parseFloat(ratioParts[1])));
+                            
+                            // Get FROM SKU data
+                            const fromItem = inventoryData.find(i => i.SKU === fromSku);
+                            const fromInv = fromItem ? (fromItem.INV || 0) : 0;
+                            
+                            // Validate FROM inventory
+                            if (fromQty > fromInv) {
+                                alert(`Insufficient inventory for ${fromSku}.\nAvailable: ${fromInv}, Required: ${fromQty}`);
+                                return;
+                            }
+                            
+                            // Get TO SKU data
+                            const toItem = inventoryData.find(i => i.SKU === toSku);
+                            
+                            // Confirm before submitting
+                            if (!confirm(`Transfer ${fromQty} units from ${fromSku} to ${toQty} units to ${toSku}?`)) {
+                                return;
+                            }
+                            
+                            // Prepare form data matching the existing form structure
+                            const transferData = {
+                                to_sku: fromSku,
+                                to_parent_name: fromItem ? fromItem.Parent : '',
+                                to_available_qty: fromInv,
+                                to_dil_percent: fromItem ? (parseFloat(fromItem.DIL) * 100) : 0,
+                                to_adjust_qty: fromQty,
+                                from_sku: toSku,
+                                from_parent_name: toItem ? toItem.Parent : '',
+                                from_available_qty: toItem ? (toItem.INV || 0) : 0,
+                                from_dil_percent: toItem ? (parseFloat(toItem.DIL) * 100) : 0,
+                                from_adjust_qty: toQty,
+                                ratio: ratio,
+                                _token: $('meta[name="csrf-token"]').attr('content')
+                            };
+                            
+                            // Disable button during processing
+                            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
+                            
+                            // Submit using the same endpoint as the form
+                            $.ajax({
+                                url: '{{ route("stock.balance.store") }}',
+                                method: 'POST',
+                                data: $.param(transferData),
+                                timeout: 120000,
+                                success: function(response) {
+                                    alert(response.message || 'Transfer successful!');
+                                    // Reset the row
+                                    $row.find('.to-sku-select').val(null).trigger('change');
+                                    $row.find('.to-parent-input').val('');
+                                    $row.find('.to-qty-input').val('');
+                                    $row.find('.ratio-select').val('1:1');
+                                    $btn.prop('disabled', true).html('<i class="fas fa-check"></i>');
+                                    
+                                    // Reload inventory data
+                                    loadInventoryData();
+                                },
+                                error: function(xhr) {
+                                    $btn.prop('disabled', false).html('<i class="fas fa-check"></i>');
+                                    
+                                    let errorMsg = 'Failed to transfer stock';
+                                    if (xhr.responseJSON && xhr.responseJSON.error) {
+                                        errorMsg = xhr.responseJSON.error;
+                                    }
+                                    alert(errorMsg);
+                                }
+                            });
+                        });
+                        
+                    }, 100);
+                }
+                
+                // Calculate TO Qty based on FROM INV and Ratio
+                function calculateInlineToQty($row) {
+                    const fromSku = $row.find('.submit-transfer-btn').attr('data-from-sku');
+                    const fromItem = inventoryData.find(i => i.SKU === fromSku);
+                    const fromInv = fromItem ? (fromItem.INV || 0) : 0;
+                    const ratio = $row.find('.ratio-select').val();
+                    
+                    if (ratio && fromInv > 0) {
+                        const ratioParts = ratio.split(':');
+                        const firstRatio = parseFloat(ratioParts[0]);
+                        const secondRatio = parseFloat(ratioParts[1]);
+                        
+                        if (firstRatio > 0) {
+                            // Calculate: to_qty = from_qty * (second_ratio / first_ratio)
+                            // Since FROM qty = INV, we use INV for calculation
+                            const calculatedQty = Math.round(fromInv * (secondRatio / firstRatio));
+                            $row.find('.to-qty-input').val(calculatedQty);
+                        }
+                    }
                 }
 
                 // Update sort indicators in table header
