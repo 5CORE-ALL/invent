@@ -77,6 +77,7 @@
                         <option value="">Show All</option>
                         <option value="RB" selected>RB</option>
                         <option value="NRB">NRB</option>
+                        <option value="--">-- (No Action)</option>
                     </select>
                     
                     <button id="show-all-columns-btn" class="btn btn-sm btn-outline-secondary">
@@ -128,6 +129,25 @@
             </div>
             
             <div class="card-body" style="padding: 0;">
+                <!-- Bulk Actions Panel (shown when SKUs are selected) -->
+                <div id="bulk-actions-panel" class="p-2 bg-warning border-bottom" style="display: none;">
+                    <div class="d-flex align-items-center gap-2">
+                        <span id="selected-count" class="fw-bold">0 SKUs selected</span>
+                        <button id="bulk-action-blank" class="btn btn-sm btn-secondary">
+                            Set to --
+                        </button>
+                        <button id="bulk-action-rb" class="btn btn-sm btn-success">
+                            <i class="fas fa-circle"></i> Set to RB
+                        </button>
+                        <button id="bulk-action-nrb" class="btn btn-sm btn-danger">
+                            <i class="fas fa-circle"></i> Set to NRB
+                        </button>
+                        <button id="clear-selection" class="btn btn-sm btn-light">
+                            <i class="fas fa-times"></i> Clear Selection
+                        </button>
+                    </div>
+                </div>
+                
                 <div id="stock-balance-table-wrapper" style="height: calc(100vh - 250px); display: flex; flex-direction: column;">
                     <!-- SKU Search -->
                     <div class="p-2 bg-light border-bottom">
@@ -164,6 +184,133 @@
     }
     
     $(document).ready(function() {
+        // Select all checkbox handler (works with filtered data)
+        $(document).on('change', '#select-all-checkbox', function() {
+            const isChecked = $(this).prop('checked');
+            const filteredData = table.getData('active'); // Get only filtered/visible data
+            
+            if (isChecked) {
+                // Add all filtered SKUs to selection
+                filteredData.forEach(function(row) {
+                    selectedSkus.add(row.SKU);
+                });
+            } else {
+                // Remove all filtered SKUs from selection
+                filteredData.forEach(function(row) {
+                    selectedSkus.delete(row.SKU);
+                });
+            }
+            
+            // Update checkboxes in visible rows
+            table.redraw(true);
+            updateBulkActionsPanel();
+        });
+        
+        // Individual checkbox handler
+        $(document).on('change', '.sku-checkbox', function() {
+            const sku = $(this).data('sku');
+            if ($(this).prop('checked')) {
+                selectedSkus.add(sku);
+            } else {
+                selectedSkus.delete(sku);
+                // Uncheck select-all if any item is unchecked
+                $('#select-all-checkbox').prop('checked', false);
+            }
+            updateBulkActionsPanel();
+        });
+        
+        // Update bulk actions panel visibility
+        function updateBulkActionsPanel() {
+            const count = selectedSkus.size;
+            $('#selected-count').text(count + ' SKU' + (count !== 1 ? 's' : '') + ' selected');
+            
+            if (count > 0) {
+                $('#bulk-actions-panel').slideDown(200);
+            } else {
+                $('#bulk-actions-panel').slideUp(200);
+            }
+        }
+        
+        // Clear selection button
+        $('#clear-selection').on('click', function() {
+            selectedSkus.clear();
+            $('#select-all-checkbox').prop('checked', false);
+            table.redraw(true);
+            updateBulkActionsPanel();
+        });
+        
+        // Bulk action buttons
+        $('#bulk-action-blank').on('click', function() {
+            bulkUpdateAction('');
+        });
+        
+        $('#bulk-action-rb').on('click', function() {
+            bulkUpdateAction('RB');
+        });
+        
+        $('#bulk-action-nrb').on('click', function() {
+            bulkUpdateAction('NRB');
+        });
+        
+        // Bulk update ACTION for selected SKUs
+        function bulkUpdateAction(actionValue) {
+            if (selectedSkus.size === 0) {
+                showToast('No SKUs selected', 'error');
+                return;
+            }
+            
+            const skuArray = Array.from(selectedSkus);
+            const actionText = actionValue === '' ? '--' : actionValue;
+            
+            if (!confirm('Update ACTION to "' + actionText + '" for ' + skuArray.length + ' selected SKU(s)?')) {
+                return;
+            }
+            
+            // Update all selected SKUs
+            let updated = 0;
+            let errors = 0;
+            
+            skuArray.forEach(function(sku) {
+                $.ajax({
+                    url: '/stock-balance-update-action',
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                        'Content-Type': 'application/json'
+                    },
+                    data: JSON.stringify({
+                        sku: sku,
+                        action: actionValue || null
+                    }),
+                    success: function(response) {
+                        updated++;
+                        // Update in table
+                        const rows = table.searchRows("SKU", "=", sku);
+                        if (rows.length > 0) {
+                            rows[0].update({ACTION: actionValue});
+                        }
+                        // Update in allTableData
+                        const item = allTableData.find(function(i) { return i.SKU === sku; });
+                        if (item) {
+                            item.ACTION = actionValue;
+                        }
+                        
+                        // Show success after all updates
+                        if (updated === skuArray.length) {
+                            showToast('Updated ' + updated + ' SKU(s) to ' + actionText, 'success');
+                            table.redraw(true);
+                        }
+                    },
+                    error: function(xhr) {
+                        errors++;
+                        if (updated + errors === skuArray.length) {
+                            showToast('Updated ' + updated + ' SKU(s), ' + errors + ' failed', 'warning');
+                        }
+                    }
+                });
+            });
+        }
+        
         // Copy SKU button handler
         $(document).on('click', '.copy-sku-icon', function(e) {
             e.stopPropagation();
@@ -480,12 +627,12 @@
                     hozAlign: "center",
                     headerSort: false,
                     width: 40,
-                    visible: false,
+                    visible: true,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const sku = rowData.SKU;
                         const isChecked = selectedSkus.has(sku) ? 'checked' : '';
-                        return '<input type="checkbox" class="sku-select-checkbox" data-sku="' + sku + '" ' + isChecked + '>';
+                        return '<input type="checkbox" class="sku-checkbox" data-sku="' + sku + '" ' + isChecked + '>';
                     }
                 },
                 {
@@ -573,10 +720,11 @@
                             selectBg = '#dc3545';
                         }
                         
+                        // Use colored dots instead of text
                         return '<select class="form-select form-select-sm action-select" data-sku="' + cell.getRow().getData().SKU + '" style="width:80px; font-size:14px; font-weight:bold; text-align:center; background-color:' + selectBg + '; color:' + selectColor + '; border:none;">' +
                             '<option value="" ' + (value === '' ? 'selected' : '') + ' style="background-color:#6c757d;color:white;">--</option>' +
-                            '<option value="RB" ' + (value === 'RB' ? 'selected' : '') + ' style="background-color:#28a745;color:white;">RB</option>' +
-                            '<option value="NRB" ' + (value === 'NRB' ? 'selected' : '') + ' style="background-color:#dc3545;color:white;">NRB</option>' +
+                            '<option value="RB" ' + (value === 'RB' ? 'selected' : '') + ' style="background-color:#28a745;color:white;">🟢</option>' +
+                            '<option value="NRB" ' + (value === 'NRB' ? 'selected' : '') + ' style="background-color:#dc3545;color:white;">🔴</option>' +
                             '</select>';
                     },
                     cellClick: function(e, cell) {
@@ -712,7 +860,14 @@
             // ACTION filter
             const actionVal = $('#action-filter').val();
             if (actionVal) {
-                table.addFilter("ACTION", "=", actionVal);
+                if (actionVal === '--') {
+                    // Filter for blank/null/empty ACTION values
+                    table.addFilter(function(data) {
+                        return !data.ACTION || data.ACTION === '' || data.ACTION === null;
+                    });
+                } else {
+                    table.addFilter("ACTION", "=", actionVal);
+                }
             }
         }
         
