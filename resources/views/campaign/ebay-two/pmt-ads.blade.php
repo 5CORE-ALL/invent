@@ -13,6 +13,7 @@
             overflow-y: visible;
             position: relative;
             max-height: 600px;
+            width: 100%;
         }
 
         .custom-resizable-table {
@@ -29,6 +30,12 @@
             position: relative;
             white-space: nowrap;
             overflow: visible !important;
+        }
+
+        /* First column (SKU) padding fix - ensure consistent left padding */
+        .custom-resizable-table th:first-child,
+        .custom-resizable-table td:first-child {
+            padding-left: 15px;
         }
 
         .custom-resizable-table th {
@@ -281,6 +288,12 @@
         /* ========== CARD BODY ========== */
         .card-body {
             position: relative;
+        }
+        
+        /* Ensure table container aligns with controls - both respect card-body padding */
+        .card-body > .table-container {
+            margin-left: 0;
+            margin-right: 0;
         }
 
         /* ========== SEARCH DROPDOWNS ========== */
@@ -649,7 +662,7 @@
 
         /* ========== PLAY/PAUSE NAVIGATION BUTTONS ========== */
         .time-navigation-group {
-            margin-left: 10px;
+            margin-left: 0;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
             border-radius: 50px;
             overflow: hidden;
@@ -1256,8 +1269,79 @@
                             data-bs-target="#createTaskModal">
                             <i class="bi bi-plus-circle me-2"></i>Create Task
                         </button>
+                    </div>
 
-                        <!-- for popup modal start Modal -->
+                    <!-- Range Filter Section -->
+                    <div class="row g-3 align-items-end pt-2 mb-3">
+                        <div class="col-12 col-sm-6 col-md-2">
+                            <label class="form-label fw-semibold mb-2"
+                                style="color: #475569; font-size: 0.8125rem;">
+                                T VIEWS Range
+                            </label>
+                            <div class="d-flex gap-2">
+                                <input type="number" id="t-views-filter-min"
+                                    class="form-control form-control-sm" placeholder="Min" step="1"
+                                    style="border-color: #e2e8f0; min-width: 70px; flex: 1;">
+                                <input type="number" id="t-views-filter-max"
+                                    class="form-control form-control-sm" placeholder="Max" step="1"
+                                    style="border-color: #e2e8f0; min-width: 70px; flex: 1;">
+                            </div>
+                        </div>
+                        <div class="col-12 col-sm-6 col-md-2">
+                            <label class="form-label fw-semibold mb-2"
+                                style="color: #475569; font-size: 0.8125rem;">
+                                L7 Views Range
+                            </label>
+                            <div class="d-flex gap-2">
+                                <input type="number" id="l7-views-filter-min"
+                                    class="form-control form-control-sm" placeholder="Min" step="1"
+                                    style="border-color: #e2e8f0; min-width: 70px; flex: 1;">
+                                <input type="number" id="l7-views-filter-max"
+                                    class="form-control form-control-sm" placeholder="Max" step="1"
+                                    style="border-color: #e2e8f0; min-width: 70px; flex: 1;">
+                            </div>
+                        </div>
+                        <div class="col-12 col-sm-6 col-md-2">
+                            <label class="form-label fw-semibold mb-2"
+                                style="color: #475569; font-size: 0.8125rem;">
+                                CBID Range
+                            </label>
+                            <div class="d-flex gap-2">
+                                <input type="number" id="cbid-filter-min"
+                                    class="form-control form-control-sm" placeholder="Min" step="0.01"
+                                    style="border-color: #e2e8f0; min-width: 70px; flex: 1;">
+                                <input type="number" id="cbid-filter-max"
+                                    class="form-control form-control-sm" placeholder="Max" step="0.01"
+                                    style="border-color: #e2e8f0; min-width: 70px; flex: 1;">
+                            </div>
+                        </div>
+                        <div class="col-12 col-sm-6 col-md-2">
+                            <label class="form-label fw-semibold mb-2"
+                                style="color: #475569; font-size: 0.8125rem;">
+                                SCVR Range
+                            </label>
+                            <div class="d-flex gap-2">
+                                <input type="number" id="scvr-filter-min"
+                                    class="form-control form-control-sm" placeholder="Min" step="0.01"
+                                    style="border-color: #e2e8f0; min-width: 70px; flex: 1;">
+                                <input type="number" id="scvr-filter-max"
+                                    class="form-control form-control-sm" placeholder="Max" step="0.01"
+                                    style="border-color: #e2e8f0; min-width: 70px; flex: 1;">
+                            </div>
+                        </div>
+                        <div class="col-12 col-sm-6 col-md-2 d-flex gap-2 align-items-end mb-2 mb-md-0">
+                            <button id="apply-l7-views-filter-btn" class="btn btn-primary btn-sm flex-fill">
+                                <i class="fa-solid fa-filter me-1"></i>
+                                Apply
+                            </button>
+                            <button id="clear-l7-views-filter-btn" class="btn btn-secondary btn-sm flex-fill">
+                                <i class="fa-solid fa-times me-1"></i>
+                                Clear
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- for popup modal start Modal -->
                         <div class="modal fade" id="createTaskModal" tabindex="-1"
                             aria-labelledby="createTaskModalLabel" aria-hidden="true">
                             <div class="modal-dialog modal-dialog-centered modal-lg">
@@ -1395,56 +1479,56 @@
                     </div>
 
                     <!-- play backward forwad  -->
-                    <div class="btn-group time-navigation-group" role="group" aria-label="Parent navigation">
-                        <button id="play-backward" class="btn btn-light rounded-circle" title="Previous parent">
-                            <i class="fas fa-step-backward"></i>
-                        </button>
-                        <button id="play-pause" class="btn btn-light rounded-circle" title="Show all products"
-                            style="display: none;">
-                            <i class="fas fa-pause"></i>
-                        </button>
-                        <button id="play-auto" class="btn btn-light rounded-circle" title="Show all products">
-                            <i class="fas fa-play"></i>
-                        </button>
-                        <button id="play-forward" class="btn btn-light rounded-circle" title="Next parent">
-                            <i class="fas fa-step-forward"></i>
-                        </button>
+                    <div class="d-flex justify-content-start mb-3 mt-3">
+                        <div class="btn-group time-navigation-group" role="group" aria-label="Parent navigation">
+                            <button id="play-backward" class="btn btn-light rounded-circle" title="Previous parent">
+                                <i class="fas fa-step-backward"></i>
+                            </button>
+                            <button id="play-pause" class="btn btn-light rounded-circle" title="Show all products"
+                                style="display: none;">
+                                <i class="fas fa-pause"></i>
+                            </button>
+                            <button id="play-auto" class="btn btn-light rounded-circle" title="Show all products">
+                                <i class="fas fa-play"></i>
+                            </button>
+                            <button id="play-forward" class="btn btn-light rounded-circle" title="Next parent">
+                                <i class="fas fa-step-forward"></i>
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Controls row -->
-                    <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap" style="gap: 16px;">
                         <!-- Left side controls -->
-                        <div class="d-flex flex-column" style="gap: 8px;">
-                            <div class="d-flex" style="gap: 16px;">
-
-                                <div class="form-group mb-2">
-                                    <label for="ovl30-filter" class="mr-2">OV L30:</label>
-                                    <select id="ovl30-filter" class="form-control form-control-sm">
+                        <div class="d-flex flex-column" style="gap: 8px; flex: 1 1 auto;">
+                            <div class="d-flex align-items-end flex-wrap" style="gap: 16px;">
+                                <div class="form-group mb-0">
+                                    <label for="ovl30-filter" class="mb-1 d-block" style="font-size: 0.875rem; font-weight: 500;">OV L30:</label>
+                                    <select id="ovl30-filter" class="form-control form-control-sm" style="min-width: 100px;">
                                         <option value="all">All</option>
                                         <option value="0">0</option>
                                         <option value="1-100+">1-100+</option>
                                     </select>
                                 </div>
-                                <div class="form-group mb-2">
-                                    <label for="ovl30-filter" class="d-block mb-1">TOTAL ITEMS:</label>
-                                    <div class="badge bg-info text-white px-3 py-1" style="font-size: 1rem; border-radius: 8px;">
+                                <div class="form-group mb-0">
+                                    <label class="mb-1 d-block" style="font-size: 0.875rem; font-weight: 500;">TOTAL ITEMS:</label>
+                                    <div class="badge bg-info text-white px-3 py-1" style="font-size: 1rem; border-radius: 8px; display: inline-block;">
                                         <span id="total-items-count">0</span>
                                     </div>
                                 </div>
                             </div>
-                            <div class="d-flex" style="gap: 16px;">
-
-                                <div class="form-group mb-2">
-                                    <label for="el30-filter" class="mr-2">EL 30:</label>
-                                    <select id="el30-filter" class="form-control form-control-sm">
+                            <div class="d-flex align-items-end flex-wrap" style="gap: 16px;">
+                                <div class="form-group mb-0">
+                                    <label for="el30-filter" class="mb-1 d-block" style="font-size: 0.875rem; font-weight: 500;">EL 30:</label>
+                                    <select id="el30-filter" class="form-control form-control-sm" style="min-width: 100px;">
                                         <option value="all">All</option>
                                         <option value="0">0</option>
                                         <option value="1-100+">1-100+</option>
                                     </select>
                                 </div>
-                                <div class="form-group mb-2">
-                                    <label for="nra-filter" class="mr-2">NRL:</label>
-                                    <select id="nra-filter" class="form-control form-control-sm">
+                                <div class="form-group mb-0">
+                                    <label for="nra-filter" class="mb-1 d-block" style="font-size: 0.875rem; font-weight: 500;">NRL:</label>
+                                    <select id="nra-filter" class="form-control form-control-sm" style="min-width: 100px;">
                                         <option value="all">All</option>
                                         <option value="RL">RL</option>
                                         <option value="NRL">NRL</option>
@@ -1555,6 +1639,13 @@
                                         <div class="d-flex flex-column align-items-center" style="gap: 4px">
                                             <div class="d-flex align-items-center">
                                                 T VIEWS <span class="sort-arrow">↓</span>
+                                            </div>
+                                        </div>
+                                    </th>
+                                    <th data-field="l7_views" style="vertical-align: middle; white-space: nowrap;">
+                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                            <div class="d-flex align-items-center">
+                                                L7 VIEWS <span class="sort-arrow">↓</span>
                                             </div>
                                         </div>
                                     </th>
@@ -1927,6 +2018,30 @@
                     'SCVR': 'all',
                     'entryType': 'all'
                 }
+            };
+
+            // T VIEWS range filter
+            let tViewsRangeFilter = {
+                min: null,
+                max: null
+            };
+            
+            // L7 Views range filter
+            let l7ViewsRangeFilter = {
+                min: null,
+                max: null
+            };
+            
+            // CBID range filter
+            let cbidRangeFilter = {
+                min: null,
+                max: null
+            };
+            
+            // SCVR range filter
+            let scvrRangeFilter = {
+                min: null,
+                max: null
             };
 
             // Modal System
@@ -2454,6 +2569,7 @@
                                     LP: item.LP_productmaster || 0,
                                     SHIP: item.Ship_productmaster || 0,
                                     VIEWS: item.ebay_views || 0,
+                                    L7_VIEWS: item.l7_views || 0,
                                     CBID: item.bid_percentage || 0,
                                     ESBID: item.suggested_bid || 0,
                                     TPFT: item.TPFT || 0,
@@ -2680,44 +2796,32 @@
                     let dilPercent = parseFloat(item.ov_dil || 0) * 100;
                     let isDilRed = dilPercent < 16.66;
 
-                    // Calculate SBID based on SCVR ranges
+                    // Calculate SBID based on L7_VIEWS ranges
                     let sbidValue;
+                    const l7Views = Number(item.L7_VIEWS || item.l7_views || 0) || 0;
                     
-                    // Priority 1: If SCVR < 0.01% (including 0.00%), use ESBID
-                    if (scvr < 0.01) {
-                        sbidValue = parseFloat(item.ESBID) || 0; // Use ESBID for SCVR < 0.01%
-                    } 
-                    // Priority 2: Check SCVR ranges and apply "whichever is higher" rule with views < 100
-                    else if (scvr >= 0.01 && scvr <= 1) {
-                        // Between 0.01-1%: SBID 8% or views < 100 then 8% (always 8%)
+                    if (l7Views >= 0 && l7Views < 50) {
+                        // 0-50: use ESBID
+                        sbidValue = parseFloat(item.ESBID) || 0;
+                    } else if (l7Views >= 50 && l7Views < 100) {
+                        sbidValue = 9;
+                    } else if (l7Views >= 100 && l7Views < 150) {
                         sbidValue = 8;
-                    } else if (scvr >= 1.01 && scvr <= 2) {
-                        // Between 1.01-2%: SBID 7% or views < 100 then 8% (whichever is higher)
-                        sbidValue = views < 100 ? 8 : 7;
-                    } else if (scvr >= 2.01 && scvr <= 3) {
-                        // Between 2.01-3%: SBID 6% or views < 100 then 8% (whichever is higher)
-                        sbidValue = views < 100 ? 8 : 6;
-                    } else if (scvr >= 3.01 && scvr <= 5) {
-                        // Between 3.01-5%: SBID 6% or views < 100 then 8% (whichever is higher)
-                        sbidValue = views < 100 ? 8 : 6;
-                    } else if (scvr >= 5.01 && scvr <= 7) {
-                        // Between 5.01-7%: SBID 5% or views < 100 then 8% (whichever is higher)
-                        sbidValue = views < 100 ? 8 : 5;
-                    } else if (scvr >= 7.01 && scvr <= 8) {
-                        // Between 7.01-8%: SBID 5% or views < 100 then 8% (whichever is higher)
-                        sbidValue = views < 100 ? 8 : 5;
-                    } else if (scvr >= 8.01 && scvr <= 10) {
-                        // Between 8.01-10%: SBID 3% or views < 100 then 8% (whichever is higher)
-                        sbidValue = views < 100 ? 8 : 3;
-                    } else if (scvr >= 10.01 && scvr <= 13) {
-                        // Between 10.01-13%: SBID 2% or views < 100 then 8% (whichever is higher)
-                        sbidValue = views < 100 ? 8 : 2;
-                    } else if (scvr > 13) {
-                        // Greater than 13%: SBID 3% or views < 100 then 8% (whichever is higher)
-                        sbidValue = views < 100 ? 8 : 3;
+                    } else if (l7Views >= 150 && l7Views < 200) {
+                        sbidValue = 7;
+                    } else if (l7Views >= 200 && l7Views < 250) {
+                        sbidValue = 6;
+                    } else if (l7Views >= 250 && l7Views < 300) {
+                        sbidValue = 5;
+                    } else if (l7Views >= 300 && l7Views < 350) {
+                        sbidValue = 4;
+                    } else if (l7Views >= 350 && l7Views < 400) {
+                        sbidValue = 3;
+                    } else if (l7Views >= 400) {
+                        sbidValue = 2;
                     } else {
-                        // Fallback: default to 8
-                        sbidValue = 8;
+                        // Fallback: use ESBID
+                        sbidValue = parseFloat(item.ESBID) || 0;
                     }
 
                     // Cap sbidValue to maximum of 15
@@ -2729,7 +2833,9 @@
                         </span>`
                     ));
 
-                    $row.append($('<td>').text(item.VIEWS));
+                    $row.append($('<td data-field="total_views">').text(item.VIEWS));
+
+                    $row.append($('<td data-field="l7_views">').text(item.L7_VIEWS || 0));
 
                     $row.append($('<td>').html(
                         `<span class="dil-percent-value" style="color: ${getCvrColor(scvr)}">
@@ -4544,6 +4650,7 @@
                         'esbid': 'ESBID',
                         's_bid': 'SBID', // S BID is calculated, not ESBID
                         'total_views': 'VIEWS',
+                        'l7_views': 'L7_VIEWS',
                         'cvr': 'SCVR', // SCVR is calculated dynamically
                         'pmtclkl7': 'PmtClkL7',
                         'views': 'PmtClkL30',
@@ -4579,45 +4686,36 @@
                         return views > 0 ? (ebayL30 / views) * 100 : 0;
                     }
 
-                    // Function to calculate SBID (same logic as in renderTable)
+                    // Function to calculate SBID based on L7_VIEWS ranges
                     function calculateSBID(item) {
-                        const scvr = calculateSCVR(item);
-                        const views = Number(item.VIEWS) || 0;
-                        
+                        const l7Views = Number(item.L7_VIEWS || item.l7_views || 0) || 0;
                         let sbidValue;
-                        if (scvr < 0.01) {
+                        
+                        if (l7Views >= 0 && l7Views < 50) {
+                            // 0-50: use ESBID
                             sbidValue = parseFloat(item.ESBID || 0) || 0;
-                        } else if (scvr >= 0.01 && scvr <= 1) {
-                            // Between 0.01-1%: SBID 8% or views < 100 then 8% (always 8%)
+                        } else if (l7Views >= 50 && l7Views < 100) {
+                            sbidValue = 9;
+                        } else if (l7Views >= 100 && l7Views < 150) {
                             sbidValue = 8;
-                        } else if (scvr >= 1.01 && scvr <= 2) {
-                            // Between 1.01-2%: SBID 7% or views < 100 then 8% (whichever is higher)
-                            sbidValue = views < 100 ? 8 : 7;
-                        } else if (scvr >= 2.01 && scvr <= 3) {
-                            // Between 2.01-3%: SBID 6% or views < 100 then 8% (whichever is higher)
-                            sbidValue = views < 100 ? 8 : 6;
-                        } else if (scvr >= 3.01 && scvr <= 5) {
-                            // Between 3.01-5%: SBID 6% or views < 100 then 8% (whichever is higher)
-                            sbidValue = views < 100 ? 8 : 6;
-                        } else if (scvr >= 5.01 && scvr <= 7) {
-                            // Between 5.01-7%: SBID 5% or views < 100 then 8% (whichever is higher)
-                            sbidValue = views < 100 ? 8 : 5;
-                        } else if (scvr >= 7.01 && scvr <= 8) {
-                            // Between 7.01-8%: SBID 5% or views < 100 then 8% (whichever is higher)
-                            sbidValue = views < 100 ? 8 : 5;
-                        } else if (scvr >= 8.01 && scvr <= 10) {
-                            // Between 8.01-10%: SBID 3% or views < 100 then 8% (whichever is higher)
-                            sbidValue = views < 100 ? 8 : 3;
-                        } else if (scvr >= 10.01 && scvr <= 13) {
-                            // Between 10.01-13%: SBID 2% or views < 100 then 8% (whichever is higher)
-                            sbidValue = views < 100 ? 8 : 2;
-                        } else if (scvr > 13) {
-                            // Greater than 13%: SBID 3% or views < 100 then 8% (whichever is higher)
-                            sbidValue = views < 100 ? 8 : 3;
+                        } else if (l7Views >= 150 && l7Views < 200) {
+                            sbidValue = 7;
+                        } else if (l7Views >= 200 && l7Views < 250) {
+                            sbidValue = 6;
+                        } else if (l7Views >= 250 && l7Views < 300) {
+                            sbidValue = 5;
+                        } else if (l7Views >= 300 && l7Views < 350) {
+                            sbidValue = 4;
+                        } else if (l7Views >= 350 && l7Views < 400) {
+                            sbidValue = 3;
+                        } else if (l7Views >= 400) {
+                            sbidValue = 2;
                         } else {
-                            // Fallback: default to 8
-                            sbidValue = 8;
+                            // Fallback: use ESBID
+                            sbidValue = parseFloat(item.ESBID || 0) || 0;
                         }
+                        
+                        // Cap sbidValue to maximum of 15
                         return Math.min(sbidValue, 15);
                     }
 
@@ -4625,9 +4723,9 @@
                     const numericFieldsSet = new Set([
                         'sl_no', 'INV', 'L30', 'ov_dil', 'eBay L30', 'E Dil%', 
                         'eBay Price', 'PFT %', 'Roi', 'Tacos30', 'SCVR', 'PmtClkL30', 'PmtClkL7',
-                        'SPRICE', 'SPFT', 'SROI', 'Sales L30', 'Profit', 'VIEWS',
+                        'SPRICE', 'SPFT', 'SROI', 'Sales L30', 'Profit', 'VIEWS', 'L7_VIEWS',
                         'CBID', 'ESBID', 'SBID', 'TPFT',
-                        'inv', 'ov_l30', 'el_30', 'c_bid', 'cbid', 'esbid', 's_bid', 'total_views',
+                        'inv', 'ov_l30', 'el_30', 'c_bid', 'cbid', 'esbid', 's_bid', 'total_views', 'l7_views',
                         'cvr', 'pmtclkl7', 'views', 'price', 'pft', 'roi', 'tpft', 'troi'
                     ]);
                     const isNumeric = numericFieldsSet.has(dataField) || numericFieldsSet.has(originalField);
@@ -4858,6 +4956,157 @@
                 applyColumnFilters();
             });
 
+            // Add change event listeners to all range filter inputs for auto-filter
+            $('#t-views-filter-min, #t-views-filter-max, #l7-views-filter-min, #l7-views-filter-max, #cbid-filter-min, #cbid-filter-max, #scvr-filter-min, #scvr-filter-max').on('input change', function() {
+                applyRangeFiltersOnChange();
+            });
+
+            // Function to apply range filters (used by both manual apply and auto-filter)
+            function applyRangeFilters() {
+                // T VIEWS filter
+                const tViewsMinVal = $('#t-views-filter-min').val();
+                const tViewsMaxVal = $('#t-views-filter-max').val();
+
+                // Validate T VIEWS
+                if (tViewsMinVal !== '' && tViewsMaxVal !== '' && parseFloat(tViewsMinVal) > parseFloat(tViewsMaxVal)) {
+                    return; // Skip validation on auto-filter, just don't apply
+                }
+
+                // Set T VIEWS filter values
+                tViewsRangeFilter.min = tViewsMinVal !== '' ? parseFloat(tViewsMinVal) : null;
+                tViewsRangeFilter.max = tViewsMaxVal !== '' ? parseFloat(tViewsMaxVal) : null;
+
+                // L7 Views filter
+                const l7MinVal = $('#l7-views-filter-min').val();
+                const l7MaxVal = $('#l7-views-filter-max').val();
+
+                // Validate L7 Views
+                if (l7MinVal !== '' && l7MaxVal !== '' && parseFloat(l7MinVal) > parseFloat(l7MaxVal)) {
+                    return; // Skip validation on auto-filter, just don't apply
+                }
+
+                // Set L7 Views filter values
+                l7ViewsRangeFilter.min = l7MinVal !== '' ? parseFloat(l7MinVal) : null;
+                l7ViewsRangeFilter.max = l7MaxVal !== '' ? parseFloat(l7MaxVal) : null;
+
+                // CBID filter
+                const cbidMinVal = $('#cbid-filter-min').val();
+                const cbidMaxVal = $('#cbid-filter-max').val();
+
+                // Validate CBID
+                if (cbidMinVal !== '' && cbidMaxVal !== '' && parseFloat(cbidMinVal) > parseFloat(cbidMaxVal)) {
+                    return; // Skip validation on auto-filter, just don't apply
+                }
+
+                // Set CBID filter values
+                cbidRangeFilter.min = cbidMinVal !== '' ? parseFloat(cbidMinVal) : null;
+                cbidRangeFilter.max = cbidMaxVal !== '' ? parseFloat(cbidMaxVal) : null;
+
+                // SCVR filter
+                const scvrMinVal = $('#scvr-filter-min').val();
+                const scvrMaxVal = $('#scvr-filter-max').val();
+
+                // Validate SCVR
+                if (scvrMinVal !== '' && scvrMaxVal !== '' && parseFloat(scvrMinVal) > parseFloat(scvrMaxVal)) {
+                    return; // Skip validation on auto-filter, just don't apply
+                }
+
+                // Set SCVR filter values
+                scvrRangeFilter.min = scvrMinVal !== '' ? parseFloat(scvrMinVal) : null;
+                scvrRangeFilter.max = scvrMaxVal !== '' ? parseFloat(scvrMaxVal) : null;
+
+                // Apply filters
+                applyColumnFilters();
+            }
+
+            // Auto-filter function (called on input change)
+            function applyRangeFiltersOnChange() {
+                applyRangeFilters();
+            }
+
+            // T VIEWS, L7 Views, CBID and SCVR range filter handlers
+            $('#apply-l7-views-filter-btn').on('click', function() {
+                // T VIEWS filter
+                const tViewsMinVal = $('#t-views-filter-min').val();
+                const tViewsMaxVal = $('#t-views-filter-max').val();
+
+                // Validate T VIEWS
+                if (tViewsMinVal !== '' && tViewsMaxVal !== '' && parseFloat(tViewsMinVal) > parseFloat(tViewsMaxVal)) {
+                    alert('T VIEWS: Minimum value cannot be greater than maximum value');
+                    return;
+                }
+
+                // L7 Views filter
+                const l7MinVal = $('#l7-views-filter-min').val();
+                const l7MaxVal = $('#l7-views-filter-max').val();
+
+                // Validate L7 Views
+                if (l7MinVal !== '' && l7MaxVal !== '' && parseFloat(l7MinVal) > parseFloat(l7MaxVal)) {
+                    alert('L7 Views: Minimum value cannot be greater than maximum value');
+                    return;
+                }
+
+                // CBID filter
+                const cbidMinVal = $('#cbid-filter-min').val();
+                const cbidMaxVal = $('#cbid-filter-max').val();
+
+                // Validate CBID
+                if (cbidMinVal !== '' && cbidMaxVal !== '' && parseFloat(cbidMinVal) > parseFloat(cbidMaxVal)) {
+                    alert('CBID: Minimum value cannot be greater than maximum value');
+                    return;
+                }
+
+                // SCVR filter
+                const scvrMinVal = $('#scvr-filter-min').val();
+                const scvrMaxVal = $('#scvr-filter-max').val();
+
+                // Validate SCVR
+                if (scvrMinVal !== '' && scvrMaxVal !== '' && parseFloat(scvrMinVal) > parseFloat(scvrMaxVal)) {
+                    alert('SCVR: Minimum value cannot be greater than maximum value');
+                    return;
+                }
+
+                // Apply filters with validation
+                applyRangeFilters();
+            });
+
+            $('#clear-l7-views-filter-btn').on('click', function() {
+                // Clear T VIEWS filter values
+                tViewsRangeFilter.min = null;
+                tViewsRangeFilter.max = null;
+
+                // Clear T VIEWS input fields
+                $('#t-views-filter-min').val('');
+                $('#t-views-filter-max').val('');
+
+                // Clear L7 Views filter values
+                l7ViewsRangeFilter.min = null;
+                l7ViewsRangeFilter.max = null;
+
+                // Clear L7 Views input fields
+                $('#l7-views-filter-min').val('');
+                $('#l7-views-filter-max').val('');
+
+                // Clear CBID filter values
+                cbidRangeFilter.min = null;
+                cbidRangeFilter.max = null;
+
+                // Clear CBID input fields
+                $('#cbid-filter-min').val('');
+                $('#cbid-filter-max').val('');
+
+                // Clear SCVR filter values
+                scvrRangeFilter.min = null;
+                scvrRangeFilter.max = null;
+
+                // Clear SCVR input fields
+                $('#scvr-filter-min').val('');
+                $('#scvr-filter-max').val('');
+
+                // Apply filters
+                applyColumnFilters();
+            });
+
             // Apply column filters
             function applyColumnFilters() {
                 // Default: show all rows
@@ -4897,6 +5146,69 @@
                         if (nraFilter === 'REQ') return nra === 'REQ';
                         if (nraFilter === 'NR') return nra === 'NR';
                         if (nraFilter === 'LATER') return nra === 'LATER';
+                        return true;
+                    });
+                }
+
+                // Apply T VIEWS range filter
+                if (tViewsRangeFilter.min !== null || tViewsRangeFilter.max !== null) {
+                    filteredData = filteredData.filter(item => {
+                        const tViews = parseFloat(item.VIEWS || item.ebay_views || 0) || 0;
+
+                        if (tViewsRangeFilter.min !== null && tViews < tViewsRangeFilter.min) {
+                            return false;
+                        }
+                        if (tViewsRangeFilter.max !== null && tViews > tViewsRangeFilter.max) {
+                            return false;
+                        }
+                        return true;
+                    });
+                }
+
+                // Apply L7 Views range filter
+                if (l7ViewsRangeFilter.min !== null || l7ViewsRangeFilter.max !== null) {
+                    filteredData = filteredData.filter(item => {
+                        const l7Views = parseFloat(item.L7_VIEWS || item.l7_views || 0) || 0;
+
+                        if (l7ViewsRangeFilter.min !== null && l7Views < l7ViewsRangeFilter.min) {
+                            return false;
+                        }
+                        if (l7ViewsRangeFilter.max !== null && l7Views > l7ViewsRangeFilter.max) {
+                            return false;
+                        }
+                        return true;
+                    });
+                }
+
+                // Apply CBID range filter
+                if (cbidRangeFilter.min !== null || cbidRangeFilter.max !== null) {
+                    filteredData = filteredData.filter(item => {
+                        const cbid = parseFloat(item.CBID || item.cbid || 0) || 0;
+
+                        if (cbidRangeFilter.min !== null && cbid < cbidRangeFilter.min) {
+                            return false;
+                        }
+                        if (cbidRangeFilter.max !== null && cbid > cbidRangeFilter.max) {
+                            return false;
+                        }
+                        return true;
+                    });
+                }
+
+                // Apply SCVR range filter
+                if (scvrRangeFilter.min !== null || scvrRangeFilter.max !== null) {
+                    filteredData = filteredData.filter(item => {
+                        // SCVR is calculated dynamically: (eBay L30 / VIEWS) * 100
+                        const ebayL30 = Number(item['eBay L30'] || item.raw_data?.['eBay L30'] || 0) || 0;
+                        const views = Number(item.VIEWS || item.ebay_views || 0) || 0;
+                        const scvrValue = views > 0 ? (ebayL30 / views) * 100 : 0;
+
+                        if (scvrRangeFilter.min !== null && scvrValue < scvrRangeFilter.min) {
+                            return false;
+                        }
+                        if (scvrRangeFilter.max !== null && scvrValue > scvrRangeFilter.max) {
+                            return false;
+                        }
                         return true;
                     });
                 }

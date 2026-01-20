@@ -14,7 +14,7 @@ use Exception;
 
 class UpdateEbaySuggestedBid extends Command
 {
-    protected $signature = 'ebay:update-suggestedbid';
+    protected $signature = 'ebay:update-suggestedbid {--dry-run : Run without making actual API calls}';
     protected $description = 'Bulk update eBay ad bids using suggested_bid percentages';
 
     public function __construct()
@@ -24,12 +24,21 @@ class UpdateEbaySuggestedBid extends Command
 
     public function handle() {
         try {
+            $dryRun = $this->option('dry-run');
+            
+            if ($dryRun) {
+                $this->warn('=== DRY RUN MODE - No actual changes will be made ===');
+            }
+            
             $this->info('Starting bulk eBay ad bid update...');
 
-            $accessToken = $this->getEbayAccessToken();
-            if (!$accessToken) {
-                $this->error('Failed to obtain eBay access token.');
-                return 1;
+            $accessToken = null;
+            if (!$dryRun) {
+                $accessToken = $this->getEbayAccessToken();
+                if (!$accessToken) {
+                    $this->error('Failed to obtain eBay access token.');
+                    return 1;
+                }
             }
 
             // Process ProductMaster records in chunks to prevent "Too many connections" error
@@ -142,7 +151,7 @@ class UpdateEbaySuggestedBid extends Command
                 ->keyBy('listing_id');
             
         // Process ProductMaster data in chunks and update campaign listings
-        $this->info('Processing bid updates based on CVR...');
+        $this->info('Processing bid updates based on L7_VIEWS...');
         $updatedListings = 0;
         
         ProductMaster::whereNull('deleted_at')
@@ -166,64 +175,37 @@ class UpdateEbaySuggestedBid extends Command
                         $listing = $campaignListings[$ebayMetric->item_id];
                         $l30Data = $ebayGeneralL30->get($ebayMetric->item_id);
                         
-                        // Calculate SCVR (Sales Conversion Rate) = (eBay L30 Sales / views) * 100
-                        // This matches the frontend calculation: scvr = (ebayL30 / views) * 100
-                        $ebay_l30 = (int) ($ebayMetric->ebay_l30 ?? 0);
-                        $pmtClkL30 = $l30Data ? (int) ($l30Data->clicks ?? 0) : 0; // PmtClkL30 from general report (kept for reference)
-                        $views = (int) ($ebayMetric->views ?? 0); // Used for SCVR calculation
-                        $cvr = $views > 0 ? ($ebay_l30 / $views) * 100 : 0;
+                        // Get L7_VIEWS for SBID calculation
+                        $l7Views = (int) ($ebayMetric->l7_views ?? 0);
                         
                         // Get ESBID (suggested bid from bid_percentage in campaign listing)
                         $esbid = (float) ($listing->suggested_bid ?? 0);
                         
-                        // Calculate ov_dil (OV DIL%) = L30 / INV (in decimal form)
-                        $inv = $shopify ? (int) ($shopify->inv ?? 0) : 0;
-                        $l30 = $shopify ? (int) ($shopify->quantity ?? 0) : 0;
-                        $ov_dil = $inv > 0 ? ($l30 / $inv) : 0;
-                        
-                        // Check if DIL is red (ov_dil < 0.1666, which is < 16.66%)
-                        $dilPercent = $ov_dil * 100;
-                        $isDilRed = $dilPercent < 16.66;
-                        
-                        // Determine new bid based on SCVR ranges with "whichever is higher" rule for views < 100
+                        // Calculate SBID based on L7_VIEWS ranges
                         $newBid = 2; // Default minimum
                         
-                        // Priority 1: If SCVR < 0.01% (including 0.00%), use ESBID
-                        if ($cvr < 0.01) {
-                            // For very low SCVR, keep current ESBID (matches frontend logic)
+                        if ($l7Views >= 0 && $l7Views < 50) {
+                            // 0-50: use ESBID
                             $newBid = $esbid;
-                        } 
-                        // Priority 2: Check SCVR ranges and apply "whichever is higher" rule with views < 100
-                        elseif ($cvr >= 0.01 && $cvr <= 1) {
-                            // Between 0.01-1%: SBID 8% or views < 100 then 8% (always 8%)
+                        } elseif ($l7Views >= 50 && $l7Views < 100) {
+                            $newBid = 9;
+                        } elseif ($l7Views >= 100 && $l7Views < 150) {
                             $newBid = 8;
-                        } elseif ($cvr >= 1.01 && $cvr <= 2) {
-                            // Between 1.01-2%: SBID 7% or views < 100 then 8% (whichever is higher)
-                            $newBid = $views < 100 ? 8 : 7;
-                        } elseif ($cvr >= 2.01 && $cvr <= 3) {
-                            // Between 2.01-3%: SBID 6% or views < 100 then 8% (whichever is higher)
-                            $newBid = $views < 100 ? 8 : 6;
-                        } elseif ($cvr >= 3.01 && $cvr <= 5) {
-                            // Between 3.01-5%: SBID 6% or views < 100 then 8% (whichever is higher)
-                            $newBid = $views < 100 ? 8 : 6;
-                        } elseif ($cvr >= 5.01 && $cvr <= 7) {
-                            // Between 5.01-7%: SBID 5% or views < 100 then 8% (whichever is higher)
-                            $newBid = $views < 100 ? 8 : 5;
-                        } elseif ($cvr >= 7.01 && $cvr <= 8) {
-                            // Between 7.01-8%: SBID 5% or views < 100 then 8% (whichever is higher)
-                            $newBid = $views < 100 ? 8 : 5;
-                        } elseif ($cvr >= 8.01 && $cvr <= 10) {
-                            // Between 8.01-10%: SBID 3% or views < 100 then 8% (whichever is higher)
-                            $newBid = $views < 100 ? 8 : 3;
-                        } elseif ($cvr >= 10.01 && $cvr <= 13) {
-                            // Between 10.01-13%: SBID 2% or views < 100 then 8% (whichever is higher)
-                            $newBid = $views < 100 ? 8 : 2;
-                        } elseif ($cvr > 13) {
-                            // Greater than 13%: SBID 3% or views < 100 then 8% (whichever is higher)
-                            $newBid = $views < 100 ? 8 : 3;
+                        } elseif ($l7Views >= 150 && $l7Views < 200) {
+                            $newBid = 7;
+                        } elseif ($l7Views >= 200 && $l7Views < 250) {
+                            $newBid = 6;
+                        } elseif ($l7Views >= 250 && $l7Views < 300) {
+                            $newBid = 5;
+                        } elseif ($l7Views >= 300 && $l7Views < 350) {
+                            $newBid = 4;
+                        } elseif ($l7Views >= 350 && $l7Views < 400) {
+                            $newBid = 3;
+                        } elseif ($l7Views >= 400) {
+                            $newBid = 2;
                         } else {
-                            // Fallback: default to 8
-                            $newBid = 8;
+                            // Fallback: use ESBID
+                            $newBid = $esbid;
                         }
                         
                         // Cap newBid to maximum of 15
@@ -231,7 +213,7 @@ class UpdateEbaySuggestedBid extends Command
                         
                         $listing->new_bid = $newBid;
                         $listing->sku = $pm->sku; // Store SKU for logging
-                        $this->info("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | Calculated SBID: {$newBid} | SCVR: " . number_format($cvr, 2) . "%");
+                        $this->info("SKU: {$pm->sku} | Listing ID: {$ebayMetric->item_id} | Calculated SBID: {$newBid} | L7_VIEWS: {$l7Views}");
                         $updatedListings++;
                     }
                 }
@@ -243,6 +225,39 @@ class UpdateEbaySuggestedBid extends Command
 
         if ($groupedByCampaign->isEmpty()) {
             $this->info('No campaign listings to update.');
+            return 0;
+        }
+
+        if ($dryRun) {
+            $this->info("\n=== DRY RUN SUMMARY ===");
+            $totalRequests = 0;
+            foreach ($groupedByCampaign as $campaignId => $listings) {
+                $requests = [];
+                $seenListingIds = [];
+
+                foreach ($listings as $listing) {
+                    if (isset($listing->new_bid) && $listing->new_bid > 0) {
+                        if (isset($seenListingIds[$listing->listing_id])) {
+                            $this->warn("Duplicate listing_id {$listing->listing_id} found. SKU: " . ($listing->sku ?? 'unknown') . " | Previous bid: {$seenListingIds[$listing->listing_id]}, New bid: {$listing->new_bid}");
+                        }
+                        $seenListingIds[$listing->listing_id] = $listing->new_bid;
+                        
+                        $requests[] = [
+                            'listingId' => $listing->listing_id,
+                            'bidPercentage' => (string) $listing->new_bid
+                        ];
+                        $sku = $listing->sku ?? 'unknown';
+                        $this->info("[DRY RUN] Would send to eBay - SKU: {$sku} | Listing ID: {$listing->listing_id} | Bid Percentage: {$listing->new_bid}");
+                    }
+                }
+
+                if (!empty($requests)) {
+                    $totalRequests += count($requests);
+                    $this->info("[DRY RUN] Campaign {$campaignId}: Would send " . count($requests) . " bid updates to eBay API");
+                }
+            }
+            $this->info("\n[DRY RUN] Total: {$totalRequests} bid updates would be sent across " . $groupedByCampaign->count() . " campaign(s)");
+            $this->warn("\n=== DRY RUN COMPLETE - No actual changes were made ===");
             return 0;
         }
 

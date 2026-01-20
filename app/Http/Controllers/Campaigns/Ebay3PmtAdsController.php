@@ -211,6 +211,7 @@ class Ebay3PmtAdsController extends Controller
             $row['price_lmpa'] = $ebayMetric->price_lmpa ?? null;
             $row['eBay_item_id'] = $ebayMetric->item_id ?? null;
             $row['ebay_views'] = $ebayMetric->views ?? 0;
+            $row['l7_views'] = $ebayMetric->l7_views ?? 0;
 
             if ($ebayMetric && isset($campaignListings[$ebayMetric->item_id])) {
                 $row['bid_percentage'] = $campaignListings[$ebayMetric->item_id]->bid_percentage ?? null;

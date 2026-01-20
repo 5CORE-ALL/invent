@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Log;
 class Ebay3PausePinkDilKwAds extends Command
 {
     protected $signature = 'ebay3:auto-pause-pink-dil-kw-ads {--dry-run : Run without actually pausing ads} {--campaign-id= : Test with specific campaign ID only}';
-    protected $description = 'Automatically pause eBay3 campaigns if DIL is pink (DIL > 50%). Ignore if ACOS < 7%. Only for RUNNING campaigns.';
+    protected $description = 'Automatically pause eBay3 campaigns if l7_views >= 50 AND acos >= 10. Only for RUNNING campaigns.';
 
     public function handle()
     {
@@ -78,10 +78,10 @@ class Ebay3PausePinkDilKwAds extends Command
             foreach ($campaigns as $index => $campaign) {
                 $campaignName = $campaign->campaignName ?? 'Unknown';
                 $campaignId = $campaign->campaign_id ?? 'N/A';
-                $dil = $campaign->dil ?? 0;
                 $acos = $campaign->acos ?? 0;
+                $l7Views = $campaign->l7_views ?? 0;
                 
-                $this->line("   " . ($index + 1) . ". Campaign: {$campaignName} | ID: {$campaignId} | DIL: " . number_format($dil, 2) . "% | ACOS: " . number_format($acos, 2) . "%");
+                $this->line("   " . ($index + 1) . ". Campaign: {$campaignName} | ID: {$campaignId} | ACOS: " . number_format($acos, 2) . "% | L7 Views: " . number_format($l7Views, 0));
             }
             
             $this->info("");
@@ -143,8 +143,8 @@ class Ebay3PausePinkDilKwAds extends Command
                                 $pausedCampaigns[] = [
                                     'campaign_id' => $campaignId,
                                     'campaign_name' => $campaignName,
-                                    'dil' => $campaign->dil ?? 0,
                                     'acos' => $campaign->acos ?? 0,
+                                    'l7_views' => $campaign->l7_views ?? 0,
                                     'paused_at' => now()->toDateTimeString()
                                 ];
                             }
@@ -236,16 +236,6 @@ class Ebay3PausePinkDilKwAds extends Command
                     continue;
                 }
 
-                // Calculate DIL: (L30 / INV) * 100
-                $inv = (float)($shopify->inv ?? 0);
-                $l30 = (float)($shopify->quantity ?? 0);
-                $dil = $inv > 0 ? ($l30 / $inv) * 100 : 0;
-
-                // DIL is pink if DIL > 50%
-                if ($dil <= 50) {
-                    continue;
-                }
-
                 $matchedReports = $reports->filter(function ($item) use ($normalizedSku, $normalizeSku) {
                     return $normalizeSku($item->campaign_name ?? '') === $normalizedSku;
                 });
@@ -264,10 +254,29 @@ class Ebay3PausePinkDilKwAds extends Command
                     if (!isset($campaignMap[$campaignId])) {
                         $adFees = (float) str_replace(['USD ', ','], '', $campaign->cpc_ad_fees_payout_currency ?? '0');
                         $sales = (float) str_replace(['USD ', ','], '', $campaign->cpc_sale_amount_payout_currency ?? '0');
-                        $acos = $sales > 0 ? round(($adFees / $sales) * 100, 2) : ($adFees > 0 ? 100 : 0);
+                        
+                        // Match controller ACOS calculation: if acos is 0, set it to 100 for display
+                        $acos = $sales > 0 ? round(($adFees / $sales) * 100, 2) : 0;
+                        if ($acos === 0) {
+                            $acos = 100;
+                        }
 
-                        // Ignore if ACOS < 7%
-                        if ($acos < 7) {
+                        // Get l7_views from ebay metrics with fallback (matching controller logic)
+                        $l7Views = 0;
+                        if ($ebay) {
+                            $l7Views = (float)($ebay->l7_views ?? 0);
+                        } else {
+                            // Fallback: Try to find by campaign name (matching controller fallback)
+                            $campaignName = $campaign->campaign_name ?? '';
+                            $ebayMetricByName = Ebay3Metric::where('sku', $campaignName)->first();
+                            if ($ebayMetricByName) {
+                                $l7Views = (float)($ebayMetricByName->l7_views ?? 0);
+                            }
+                        }
+
+                        // Include campaign if: l7_views >= 50 AND acos >= 10 (matching view filter logic)
+                        // Skip if: l7_views < 50 OR acos < 10
+                        if ($l7Views < 50 || $acos < 10) {
                             continue;
                         }
 
@@ -275,11 +284,96 @@ class Ebay3PausePinkDilKwAds extends Command
                             'sku' => $pm->sku,
                             'campaign_id' => $campaignId,
                             'campaignName' => $campaign->campaign_name ?? '',
-                            'dil' => $dil,
                             'acos' => $acos,
+                            'l7_views' => $l7Views,
                         ];
                     }
                 }
+            }
+
+            // Process additional RUNNING campaigns not in product_masters (matching controller logic)
+            $productMasterSkus = $productMasters->pluck('sku')->map(function($sku) use ($normalizeSku) {
+                return $normalizeSku($sku);
+            })->unique()->values()->all();
+
+            $additionalL7 = Ebay3PriorityReport::where('report_range', 'L7')
+                ->where('campaignStatus', 'RUNNING')
+                ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+                ->where('campaign_name', 'NOT LIKE', 'General - %')
+                ->where('campaign_name', 'NOT LIKE', 'Default%')
+                ->get()
+                ->pluck('campaign_name')
+                ->map(function($name) { 
+                    return strtoupper(trim($name)); 
+                });
+
+            $additionalL30 = Ebay3PriorityReport::where('report_range', 'L30')
+                ->where('campaignStatus', 'RUNNING')
+                ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+                ->where('campaign_name', 'NOT LIKE', 'General - %')
+                ->where('campaign_name', 'NOT LIKE', 'Default%')
+                ->get()
+                ->pluck('campaign_name')
+                ->map(function($name) { 
+                    return strtoupper(trim($name)); 
+                });
+
+            $additionalRunningCampaigns = $additionalL7->merge($additionalL30)
+                ->unique()
+                ->filter(function($campaignSku) use ($productMasterSkus) {
+                    return !in_array($campaignSku, $productMasterSkus);
+                })
+                ->values()
+                ->all();
+
+            $allL30Reports = Ebay3PriorityReport::where('report_range', 'L30')
+                ->where('campaignStatus', 'RUNNING')
+                ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+                ->where('campaign_name', 'NOT LIKE', 'General - %')
+                ->where('campaign_name', 'NOT LIKE', 'Default%')
+                ->get();
+
+            foreach ($additionalRunningCampaigns as $campaignSku) {
+                $matchedCampaignsL30 = $allL30Reports->filter(function ($item) use ($campaignSku) {
+                    return strtoupper(trim($item->campaign_name ?? '')) === $campaignSku;
+                });
+                $matchedCampaignL30 = $matchedCampaignsL30->first();
+
+                if (!$matchedCampaignL30 || $matchedCampaignL30->campaignStatus !== 'RUNNING') {
+                    continue;
+                }
+
+                $campaignId = $matchedCampaignL30->campaign_id ?? '';
+                if (empty($campaignId) || isset($campaignMap[$campaignId])) {
+                    continue;
+                }
+
+                $adFees = (float) str_replace(['USD ', ','], '', $matchedCampaignL30->cpc_ad_fees_payout_currency ?? '0');
+                $sales = (float) str_replace(['USD ', ','], '', $matchedCampaignL30->cpc_sale_amount_payout_currency ?? '0');
+                
+                // Match controller ACOS calculation: if acos is 0, set it to 100 for display
+                $acos = $sales > 0 ? round(($adFees / $sales) * 100, 2) : 0;
+                if ($acos === 0) {
+                    $acos = 100;
+                }
+
+                // Get l7_views from ebay metrics using campaign name as SKU
+                $ebayMetric = Ebay3Metric::where('sku', $matchedCampaignL30->campaign_name)->first();
+                $l7Views = $ebayMetric ? (float)($ebayMetric->l7_views ?? 0) : 0;
+
+                // Include campaign if: l7_views >= 50 AND acos >= 10 (matching view filter logic)
+                // Skip if: l7_views < 50 OR acos < 10
+                if ($l7Views < 50 || $acos < 10) {
+                    continue;
+                }
+
+                $campaignMap[$campaignId] = [
+                    'sku' => $matchedCampaignL30->campaign_name,
+                    'campaign_id' => $campaignId,
+                    'campaignName' => $matchedCampaignL30->campaign_name ?? '',
+                    'acos' => $acos,
+                    'l7_views' => $l7Views,
+                ];
             }
 
             // Convert map to result array

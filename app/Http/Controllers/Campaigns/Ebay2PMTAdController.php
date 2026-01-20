@@ -211,6 +211,7 @@ class Ebay2PMTAdController extends Controller
             $row['price_lmpa'] = $ebayMetric->price_lmpa ?? null;
             $row['eBay_item_id'] = $ebayMetric->item_id ?? null;
             $row['ebay_views'] = $ebayMetric->views ?? 0;
+            $row['l7_views'] = $ebayMetric->l7_views ?? 0;
             $row['campaign_id'] = ($ebayMetric && isset($listingToCampaignId[$ebayMetric->item_id])) 
                 ? $listingToCampaignId[$ebayMetric->item_id] : null;
 
