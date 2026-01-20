@@ -3164,6 +3164,7 @@
             $(document).on('click', '.verified-status-btn', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
+                e.stopImmediatePropagation();
                 
                 const $btn = $(this);
                 const sku = $btn.data('sku');
@@ -3187,46 +3188,27 @@
                     },
                     success: function(response) {
                         if (response.success) {
-                            // Find item in tableData by SKU and update both versions
+                            // Update only the button color - NOTHING ELSE
+                            const newColor = newVerified ? '#28a745' : '#dc3545'; // Green or Red
+                            const $icon = $btn.find('i.fa-circle');
+                            
+                            if ($icon.length > 0) {
+                                // Just change the icon color
+                                $icon.css('color', newColor);
+                            } else {
+                                // If icon not found, recreate it
+                                $btn.html(`<i class="fas fa-circle" style="color: ${newColor}; font-size: 12px;"></i>`);
+                            }
+                            
+                            // Update the data attribute for next toggle
+                            $btn.attr('data-verified', newVerified ? '1' : '0');
+                            
+                            // Update tableData silently (for export/other operations, but don't refresh UI)
                             const itemIndex = tableData.findIndex(item => item.SKU === sku);
                             if (itemIndex !== -1) {
                                 tableData[itemIndex].IS_VERIFIED = newVerified ? 1 : 0;
                                 tableData[itemIndex].is_verified = newVerified;
-                                // Update verified by first name from response
-                                if (response.verified_by_first_name) {
-                                    tableData[itemIndex].VERIFIED_BY_FIRST_NAME = response.verified_by_first_name;
-                                } else if (!newVerified) {
-                                    // Clear the name when unverifying
-                                    tableData[itemIndex].VERIFIED_BY_FIRST_NAME = null;
-                                }
                             }
-                            
-                            // Update button appearance
-                            if (newVerified) {
-                                // Show green dot when verified
-                                $btn.removeClass('btn-warning btn-success').css({
-                                    'background': 'none',
-                                    'border': 'none',
-                                    'padding': '0'
-                                });
-                                $btn.html('<i class="fas fa-circle" style="color: #28a745; font-size: 12px;"></i>');
-                                $btn.data('verified', '1');
-                            } else {
-                                // Show red dot when unverified
-                                $btn.removeClass('btn-warning btn-success').css({
-                                    'background': 'none',
-                                    'border': 'none',
-                                    'padding': '0'
-                                });
-                                $btn.html('<i class="fas fa-circle" style="color: #dc3545; font-size: 12px;"></i>');
-                                $btn.data('verified', '0');
-                            }
-                            
-                            // Update counts
-                            updateVerifiedCounts();
-                            
-                            // Apply all filters (unified)
-                            applyAllFilters();
                         }
                     },
                     error: function(xhr, status, error) {
@@ -3239,6 +3221,8 @@
                         $btn.prop('disabled', false);
                     }
                 });
+                
+                return false; // Prevent any default action
             });
 
             // Unified filter function that applies all filters together (AND logic)
