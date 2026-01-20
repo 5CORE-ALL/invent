@@ -93,7 +93,7 @@
                         <div class="row">
                             <div class="col-md-6">
                                 <label for="subtitle" class="form-label">Form Subtitle / Description</label>
-                                <textarea name="subtitle" id="subtitle" class="form-control" rows="3" placeholder="Enter form description"></textarea>
+                                <textarea name="subtitle" id="subtitle" class="form-control" rows="3" placeholder="Enter form description">5 Core, USA is currently exploring potential purchase of the product listed. This information will help us evaluate your product for procurement consideration.😊( 5 Core，美国目前正在探索对所列产品的潜在采购。 请提供完整准确的产品规格、价格、最小起订量 (MOQ) 和交易条款。这些信息将有助于我们评估您的产品以供采购参考。😊)</textarea>
                             </div>
                             <div class="col-md-2 d-flex flex-column align-item-center justify-content-center">
                                 <div class="form-check mb-2">
@@ -351,6 +351,9 @@
                                 <button class="btn btn-sm btn-success me-2 edit-btn" data-id="${rowData.id}" title="Edit" style="cursor:pointer;">
                                     <i class="fa-solid fa-pen-to-square"></i>
                                 </button>
+                                <button class="btn btn-sm btn-info me-2 copy-btn" data-id="${rowData.id}" title="Copy" style="cursor:pointer;">
+                                    <i class="fa-solid fa-copy"></i>
+                                </button>
                                 <button class="btn btn-sm btn-danger delete-btn" data-id="${rowData.id}" title="Delete" style="cursor:pointer;">
                                     <i class="fa-solid fa-trash"></i>
                                 </button>
@@ -422,6 +425,109 @@
                                     }
 
                                     let myModal = new bootstrap.Modal(document.getElementById('editRFQFormModal'));
+                                    myModal.show();
+                                } else {
+                                    alert('Failed to load form data');
+                                }
+                            })
+                            .catch(() => alert('Error loading form data'));
+                            return;
+                        }
+                        
+                        if(e.target.closest('.copy-btn')) {
+                            e.preventDefault();
+                            const btn = e.target.closest('.copy-btn');
+                            const id = btn.dataset.id;
+
+                            fetch(`/rfq-form/edit/${id}`)
+                            .then(res => res.json())
+                            .then(res => {
+                                if(res.success) {
+                                    const data = res.data;
+
+                                    // Set flag to prevent modal reset
+                                    isCopyAction = true;
+
+                                    // Populate create modal with form data
+                                    document.getElementById('rfq_form_name').value = data.name + ' (Copy)';
+                                    document.getElementById('title').value = data.title;
+                                    document.getElementById('subtitle').value = data.subtitle || '';
+
+                                    document.getElementById("checkbox1").checked = data.dimension_inner === true || data.dimension_inner === 1 || data.dimension_inner === "true";
+                                    document.getElementById("checkbox2").checked = data.product_dimension === true || data.product_dimension === 1 || data.product_dimension === "true";
+                                    document.getElementById("checkbox3").checked = data.package_dimension === true || data.package_dimension === 1 || data.package_dimension === "true";
+
+                                    // Clear image preview
+                                    document.getElementById('mainImagePreview').style.display = 'none';
+                                    document.getElementById('main_image').value = '';
+
+                                    // Dynamic fields
+                                    const wrapper = document.getElementById('dynamicFieldsWrapper');
+                                    wrapper.innerHTML = '';
+                                    if(data.fields && data.fields.length > 0) {
+                                        data.fields.forEach((field, index) => {
+                                            wrapper.insertAdjacentHTML('beforeend', `
+                                                <div class="row g-3 mb-2 field-item">
+                                                    <div class="col-md-3">
+                                                        <input type="text" name="fields[${index}][label]" class="form-control field-label" value="${field.label || ''}" required>
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <input type="text" name="fields[${index}][name]" class="form-control field-name" value="${field.name || ''}" readonly>
+                                                    </div>
+                                                    <div class="col-md-2">
+                                                        <select name="fields[${index}][type]" class="form-select field-type">
+                                                            <option value="text" ${field.type === 'text' ? 'selected':''}>Text</option>
+                                                            <option value="number" ${field.type === 'number' ? 'selected':''}>Number</option>
+                                                            <option value="select" ${field.type === 'select' ? 'selected':''}>Select</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="col-md-3 select-options-wrapper" style="${field.type === 'select' ? 'display:block':'display:none'};">
+                                                        <input type="text" name="fields[${index}][options]" class="form-control" value="${field.options || ''}">
+                                                    </div>
+                                                    <div class="col-md-1">
+                                                        <input type="checkbox" name="fields[${index}][required]" class="form-check-input mt-2" value="1" ${field.required ? 'checked':''}>
+                                                    </div>
+                                                    <div class="col-md-1">
+                                                        <button type="button" class="btn btn-danger btn-sm remove-field">X</button>
+                                                    </div>
+                                                </div>
+                                            `);
+                                        });
+                                    } else {
+                                        // Add one empty field if no fields exist
+                                        wrapper.insertAdjacentHTML('beforeend', `
+                                            <div class="row g-3 mb-2 field-item">
+                                                <div class="col-md-3">
+                                                    <input type="text" name="fields[0][label]" class="form-control field-label" placeholder="Field Label" required>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <input type="text" name="fields[0][name]" class="form-control field-name" placeholder="Field Name (auto)" readonly>
+                                                </div>
+                                                <div class="col-md-2">
+                                                    <select name="fields[0][type]" class="form-select field-type">
+                                                        <option value="text">Text</option>
+                                                        <option value="number">Number</option>
+                                                        <option value="select">Select</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-3 select-options-wrapper" style="display:none;">
+                                                    <input type="text" name="fields[0][options]" class="form-control" placeholder="Options (comma separated)">
+                                                </div>
+                                                <div class="col-md-1">
+                                                    <input type="checkbox" name="fields[0][required]" class="form-check-input mt-2" value="1"> Required
+                                                </div>
+                                                <div class="col-md-1">
+                                                    <button type="button" class="btn btn-danger btn-sm remove-field">X</button>
+                                                </div>
+                                            </div>
+                                        `);
+                                    }
+
+                                    // Update field count
+                                    fieldCount = data.fields && data.fields.length > 0 ? data.fields.length : 1;
+
+                                    // Open create modal
+                                    let myModal = new bootstrap.Modal(document.getElementById('createRFQFormModal'));
                                     myModal.show();
                                 } else {
                                     alert('Failed to load form data');
@@ -539,6 +645,57 @@
                 let nameInput = e.target.closest('.field-item').querySelector('.field-name');
                 nameInput.value = slugify(e.target.value);
             }
+        });
+
+        // Reset create modal when opened fresh (not from copy)
+        let isCopyAction = false;
+        const createModal = document.getElementById('createRFQFormModal');
+        createModal.addEventListener('show.bs.modal', function() {
+            if(!isCopyAction) {
+                // Reset form
+                document.getElementById('rfqFormCreate').reset();
+                document.getElementById('rfq_form_name').value = '';
+                document.getElementById('title').value = '';
+                document.getElementById('subtitle').value = '';
+                document.getElementById('main_image').value = '';
+                document.getElementById('mainImagePreview').style.display = 'none';
+                
+                // Reset checkboxes
+                document.getElementById("checkbox1").checked = false;
+                document.getElementById("checkbox2").checked = false;
+                document.getElementById("checkbox3").checked = false;
+                
+                // Reset fields wrapper to initial state
+                const wrapper = document.getElementById('dynamicFieldsWrapper');
+                wrapper.innerHTML = `
+                    <div class="row g-3 mb-2 field-item">
+                        <div class="col-md-3">
+                            <input type="text" name="fields[0][label]" class="form-control field-label" placeholder="Field Label" required>
+                        </div>
+                        <div class="col-md-3">
+                            <input type="text" name="fields[0][name]" class="form-control field-name" placeholder="Field Name (auto)" readonly>
+                        </div>
+                        <div class="col-md-2">
+                            <select name="fields[0][type]" class="form-select field-type">
+                                <option value="text">Text</option>
+                                <option value="number">Number</option>
+                                <option value="select">Select</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3 select-options-wrapper" style="display:none;">
+                            <input type="text" name="fields[0][options]" class="form-control" placeholder="Options (comma separated)">
+                        </div>
+                        <div class="col-md-1">
+                            <input type="checkbox" name="fields[0][required]" class="form-check-input mt-2" value="1"> Required
+                        </div>
+                        <div class="col-md-1">
+                            <button type="button" class="btn btn-danger btn-sm remove-field">X</button>
+                        </div>
+                    </div>
+                `;
+                fieldCount = 1;
+            }
+            isCopyAction = false; // Reset flag
         });
 
         // Update Submit
