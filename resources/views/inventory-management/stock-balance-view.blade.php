@@ -1066,7 +1066,7 @@
                         parentCell.textContent = item.Parent || '-';
                         row.appendChild(parentCell);
 
-                        // SKU with select button
+                        // SKU with copy icon and select button
                         const skuCell = document.createElement('td');
                         const skuContainer = document.createElement('div');
                         skuContainer.style.display = 'flex';
@@ -1077,6 +1077,24 @@
                         skuText.textContent = item.SKU || '-';
                         skuContainer.appendChild(skuText);
                         
+                        // Copy icon button
+                        const copyBtn = document.createElement('button');
+                        copyBtn.type = 'button';
+                        copyBtn.className = 'btn btn-sm p-0';
+                        copyBtn.style.border = 'none';
+                        copyBtn.style.background = 'none';
+                        copyBtn.style.cursor = 'pointer';
+                        copyBtn.innerHTML = '<i class="fas fa-copy text-secondary copy-sku-icon" style="font-size: 12px;"></i>';
+                        copyBtn.title = 'Copy SKU to clipboard';
+                        copyBtn.setAttribute('data-sku', item.SKU || '');
+                        copyBtn.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const skuToCopy = this.getAttribute('data-sku');
+                            copyToClipboard(skuToCopy, this.querySelector('i'));
+                        });
+                        skuContainer.appendChild(copyBtn);
+                        
                         // Small round button to select SKU
                         const selectBtn = document.createElement('button');
                         selectBtn.type = 'button';
@@ -1086,13 +1104,13 @@
                         selectBtn.style.fontSize = '10px';
                         selectBtn.style.lineHeight = '1';
                         selectBtn.innerHTML = '<i class="fas fa-arrow-right"></i>';
-                        selectBtn.title = 'Select as From SKU';
+                        selectBtn.title = 'Select as To SKU';
                         selectBtn.setAttribute('data-sku', item.SKU || '');
                         selectBtn.setAttribute('data-parent', item.Parent || '');
                         selectBtn.setAttribute('data-inv', item.INV || 0);
                         selectBtn.setAttribute('data-dil', item.DIL || 0);
                         
-                        // Click handler to auto-select SKU in form
+                        // Click handler to auto-select SKU in TO section
                         selectBtn.addEventListener('click', function() {
                             const sku = this.getAttribute('data-sku');
                             const parent = this.getAttribute('data-parent');
@@ -1105,44 +1123,36 @@
                                 formContainer.slideDown(300);
                             }
                             
-                            // Set the to_sku dropdown value (in FROM section)
+                            // Set the from_sku dropdown value (in TO section)
                             // Use Select2 API to properly set the value
-                            console.log('Arrow button clicked, setting SKU:', sku);
+                            console.log('Arrow button clicked, setting TO SKU:', sku);
                             
                             // Check if Select2 is initialized
-                            if ($('#to_sku').hasClass('select2-hidden-accessible')) {
+                            if ($('#from_sku').hasClass('select2-hidden-accessible')) {
                                 // Select2 is initialized, use its API
-                                $('#to_sku').val(sku).trigger('change.select2');
+                                $('#from_sku').val(sku).trigger('change.select2');
                             } else {
                                 // Select2 not initialized yet, use regular jQuery
-                                $('#to_sku').val(sku).trigger('change');
+                                $('#from_sku').val(sku).trigger('change');
                             }
                             
                             // Also trigger regular change event after a delay to ensure our handler fires
                             setTimeout(function() {
-                                console.log('Triggering change event for to_sku, current value:', $('#to_sku').val());
-                                $('#to_sku').trigger('change');
-                                
-                                // Fallback: If change event didn't fire, manually fetch history
-                                const currentSku = $('#to_sku').val();
-                                if (currentSku && currentSku === sku) {
-                                    console.log('Manually triggering history fetch as fallback');
-                                    // Manually call the history fetch function
-                                    fetchHistoryForSku(sku);
-                                }
+                                console.log('Triggering change event for from_sku, current value:', $('#from_sku').val());
+                                $('#from_sku').trigger('change');
                             }, 150);
                             
                             // Also set parent, available qty, and dil if not auto-filled
                             setTimeout(function() {
-                                if ($('#to_parent_name').val() === '') {
-                                    $('#to_parent_name').val(parent || '');
+                                if ($('#from_parent_name').val() === '') {
+                                    $('#from_parent_name').val(parent || '');
                                 }
-                                if ($('#to_available_qty').val() === '' || $('#to_available_qty').val() === '0') {
-                                    $('#to_available_qty').val(inv || 0);
+                                if ($('#from_available_qty').val() === '' || $('#from_available_qty').val() === '0') {
+                                    $('#from_available_qty').val(inv || 0);
                                 }
-                                if ($('#to_dil_percent').val() === '' || $('#to_dil_percent').val() === '0') {
+                                if ($('#from_dil_percent').val() === '' || $('#from_dil_percent').val() === '0') {
                                     const dilPercent = dil > 0 ? (dil * 100) : 0;
-                                    $('#to_dil_percent').val(dilPercent > 100 ? 100 : dilPercent);
+                                    $('#from_dil_percent').val(dilPercent > 100 ? 100 : dilPercent);
                                 }
                             }, 100);
                         });
@@ -2463,6 +2473,64 @@
                     clearTimeout(timeout);
                     timeout = setTimeout(() => func.apply(context, args), wait);
                 };
+            }
+
+            // Copy to clipboard function
+            function copyToClipboard(text, iconElement) {
+                // Try using the modern Clipboard API first
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).then(function() {
+                        // Success - update icon temporarily
+                        const $icon = $(iconElement);
+                        const originalClass = $icon.attr('class');
+                        $icon.removeClass('fa-copy').addClass('fa-check text-success');
+                        $icon.attr('title', 'Copied!');
+                        
+                        setTimeout(function() {
+                            $icon.attr('class', originalClass);
+                            $icon.attr('title', 'Copy SKU to clipboard');
+                        }, 2000);
+                    }).catch(function(err) {
+                        console.error('Failed to copy: ', err);
+                        // Fallback to old method
+                        copyToClipboardFallback(text, iconElement);
+                    });
+                } else {
+                    // Use fallback for older browsers
+                    copyToClipboardFallback(text, iconElement);
+                }
+            }
+
+            // Fallback copy method for older browsers
+            function copyToClipboardFallback(text, iconElement) {
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-999999px';
+                textArea.style.top = '-999999px';
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                
+                try {
+                    const successful = document.execCommand('copy');
+                    if (successful) {
+                        const $icon = $(iconElement);
+                        const originalClass = $icon.attr('class');
+                        $icon.removeClass('fa-copy').addClass('fa-check text-success');
+                        $icon.attr('title', 'Copied!');
+                        
+                        setTimeout(function() {
+                            $icon.attr('class', originalClass);
+                            $icon.attr('title', 'Copy SKU to clipboard');
+                        }, 2000);
+                    }
+                } catch (err) {
+                    console.error('Fallback copy failed: ', err);
+                    alert('Failed to copy SKU. Please copy manually: ' + text);
+                }
+                
+                document.body.removeChild(textArea);
             }
 
             function showError(message) {
