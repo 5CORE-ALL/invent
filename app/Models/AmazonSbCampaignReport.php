@@ -54,6 +54,6 @@ class AmazonSbCampaignReport extends Model
         'campaignBiddingStrategy', 'creativeType', 'tactic',
         'newToBrandDetailPageViewRate', 'newToBrandDetailPageViews', 'newToBrandDetailPageViewsClicks',
         'newToBrandECPDetailPageView', 'topOfSearchImpressionShare',
-        'sbid', 'yes_sbid', 'note', 'last_sbid', 'sbid_m',
+        'sbid', 'yes_sbid', 'note', 'last_sbid', 'sbid_m', 'pink_dil_paused_at',
     ];
 }

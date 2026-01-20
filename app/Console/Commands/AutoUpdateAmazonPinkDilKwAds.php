@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\DB;
 
 class AutoUpdateAmazonPinkDilKwAds extends Command
 {
-    protected $signature = 'amazon:auto-update-pink-dil-kw-ads';
+    protected $signature = 'amazon:auto-update-pink-dil-kw-ads {--dry-run : Run without making changes}';
     protected $description = 'Automatically update Amazon campaign pink dil bgt';
 
     public function __construct()
@@ -23,6 +23,10 @@ class AutoUpdateAmazonPinkDilKwAds extends Command
     public function handle()
     {
         try {
+            $dryRun = $this->option('dry-run');
+            if ($dryRun) {
+                $this->warn("=== DRY RUN MODE - No changes will be made ===");
+            }
             $this->info("Starting Amazon bgts auto-update...");
 
             // Check database connection (without creating persistent connection)
@@ -45,17 +49,53 @@ class AutoUpdateAmazonPinkDilKwAds extends Command
                 return 0;
             }
 
+            $this->info("Found " . count($campaigns) . " campaigns to process");
+
             // Separate campaigns to pause vs update budget
             $campaignsToPause = [];
             $campaignsToUpdate = [];
 
             foreach ($campaigns as $campaign) {
-                // Check if (dil is pink (dilPercent > 50) AND ACOS > 20%) OR (ratings < 3.5) OR (price < 10 AND units_ordered_l30 > 0)
+                // Check if (dil is pink (dilPercent > 50) AND ACOS > 35%) OR (ratings < 3.5) OR (price < 10 AND units_ordered_l30 > 0)
                 $rating = isset($campaign->rating) && $campaign->rating !== null ? (float) $campaign->rating : null;
                 $price = isset($campaign->price) ? (float) $campaign->price : null;
-                $unitsL30 = $campaign->A_L30 ?? 0;
-                $shouldPause = (($campaign->dilPercent ?? 0) > 50 && ($campaign->acos_L30 ?? 0) > 20) || ($rating !== null && $rating < 3.5) || ($price < 10 && $unitsL30 > 0);
+                $unitsL30 = $campaign->OV_L30 ?? 0; // Use OV L30 instead of A_L30
+                $dilPercent = $campaign->dilPercent ?? 0;
+                $acos = $campaign->acos_L30 ?? 0;
+                
+                // Check each condition separately for detailed logging
+                $condition1 = ($dilPercent > 50 && $acos > 20); // Pink dil AND ACOS > 20%
+                $condition2 = ($rating !== null && $rating < 3.5); // Rating < 3.5
+                $condition3 = ($price < 10 && $unitsL30 > 0); // Price < 10 AND units > 0
+                
+                $shouldPause = $condition1 || $condition2 || $condition3;
+                
                 if ($shouldPause) {
+                    // Determine which condition(s) triggered the pause
+                    $pauseReasons = [];
+                    if ($condition1) {
+                        $pauseReasons[] = "Dil Pink ($dilPercent% > 50%) AND ACOS High ($acos% > 20%)";
+                    }
+                    if ($condition2) {
+                        $pauseReasons[] = "Low Rating ($rating < 3.5)";
+                    }
+                    if ($condition3) {
+                        $pauseReasons[] = "Low Price (\$$price < \$10) AND Units Ordered ($unitsL30 > 0)";
+                    }
+                    
+                    $reason = implode(" OR ", $pauseReasons);
+                    
+                    // Log pause details with reason
+                    $this->info(sprintf(
+                        "PAUSE: Campaign: %s | Dil: %.2f%% | ACOS: %.2f%% | Rating: %s | Price: $%.2f | Units L30: %d | Reason: %s | Status: PAUSED",
+                        $campaign->campaignName ?? 'N/A',
+                        $dilPercent,
+                        $acos,
+                        $rating !== null ? number_format($rating, 2) : 'N/A',
+                        $price ?? 0,
+                        $unitsL30,
+                        $reason
+                    ));
                     $campaignsToPause[] = $campaign->campaign_id;
                 } else {
                     $campaignsToUpdate[] = $campaign;
@@ -64,17 +104,40 @@ class AutoUpdateAmazonPinkDilKwAds extends Command
 
             // Pause campaigns that meet the criteria
             if (!empty($campaignsToPause)) {
-                $pauseResult = $updatePinkDilKwAds->pauseCampaigns($campaignsToPause);
-                $this->info("Pause Result: " . json_encode($pauseResult));
+                $pauseCount = count($campaignsToPause);
+                if ($dryRun) {
+                    $this->warn(sprintf("DRY RUN: Would pause %d campaigns", $pauseCount));
+                    $this->info(sprintf("=== TOTAL PAUSED CAMPAIGNS: %d ===", $pauseCount));
+                } else {
+                    $pauseResult = $updatePinkDilKwAds->pauseCampaigns($campaignsToPause);
+                    $this->info("Pause Result: " . json_encode($pauseResult));
+                    $this->info(sprintf("=== TOTAL PAUSED CAMPAIGNS: %d ===", $pauseCount));
+                }
+            } else {
+                $this->info("=== TOTAL PAUSED CAMPAIGNS: 0 ===");
             }
 
             // Update budget for campaigns that don't meet pause criteria
             if (!empty($campaignsToUpdate)) {
-                $campaignIds = collect($campaignsToUpdate)->pluck('campaign_id')->toArray();
-                $newBgts = collect($campaignsToUpdate)->pluck('sbgt')->toArray();
+                // Log budget update details
+                foreach ($campaignsToUpdate as $campaign) {
+                    $this->info(sprintf(
+                        "BGT UPDATE: Campaign: %s | Old BGT: $%.2f | New BGT: $%.2f",
+                        $campaign->campaignName ?? 'N/A',
+                        $campaign->campaignBudgetAmount ?? 0,
+                        $campaign->sbgt ?? 0
+                    ));
+                }
+                
+                if ($dryRun) {
+                    $this->warn(sprintf("DRY RUN: Would update budget for %d campaigns", count($campaignsToUpdate)));
+                } else {
+                    $campaignIds = collect($campaignsToUpdate)->pluck('campaign_id')->toArray();
+                    $newBgts = collect($campaignsToUpdate)->pluck('sbgt')->toArray();
 
-                $result = $updatePinkDilKwAds->updateAutoAmazonCampaignBgt($campaignIds, $newBgts);
-                $this->info("Update Result: " . json_encode($result));
+                    $updateResult = $updatePinkDilKwAds->updateAutoAmazonCampaignBgt($campaignIds, $newBgts);
+                    $this->info("Update Result: " . json_encode($updateResult));
+                }
             }
             
         } catch (\Exception $e) {
@@ -150,30 +213,53 @@ class AutoUpdateAmazonPinkDilKwAds extends Command
                 }
             }
 
+        // Use LIKE to find campaigns that contain SKU names (not just exact matches)
+        // EXCLUDE: FBA campaigns, PT campaigns (only KW campaigns)
         $amazonSpCampaignReportsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L30')
-            ->whereIn('campaignName', $skus)
+            ->where(function ($q) use ($skus) {
+                foreach ($skus as $sku) {
+                    $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
+                }
+            })
             ->where(function ($q) {
-                $q->where('campaignName', 'NOT LIKE', '%PT%')
-                ->where('campaignName', 'NOT LIKE', '%PT.%');
+                // Exclude FBA campaigns
+                $q->where('campaignName', 'NOT LIKE', '%FBA%');
+                // Exclude PT campaigns (ending with PT or PT.)
+                $q->whereRaw("UPPER(TRIM(TRAILING '.' FROM campaignName)) NOT LIKE '% PT'");
+                $q->whereRaw("UPPER(TRIM(campaignName)) NOT LIKE '%PT.%'");
             })
             ->get();
 
         $amazonSpCampaignReportsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L7')
-            ->whereIn('campaignName', $skus)
+            ->where(function ($q) use ($skus) {
+                foreach ($skus as $sku) {
+                    $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
+                }
+            })
             ->where(function ($q) {
-                $q->where('campaignName', 'NOT LIKE', '%PT%')
-                ->where('campaignName', 'NOT LIKE', '%PT.%');
+                // Exclude FBA campaigns
+                $q->where('campaignName', 'NOT LIKE', '%FBA%');
+                // Exclude PT campaigns (ending with PT or PT.)
+                $q->whereRaw("UPPER(TRIM(TRAILING '.' FROM campaignName)) NOT LIKE '% PT'");
+                $q->whereRaw("UPPER(TRIM(campaignName)) NOT LIKE '%PT.%'");
             })
             ->get();
 
         $amazonSpCampaignReportsL1 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L1')
-            ->whereIn('campaignName', $skus)
+            ->where(function ($q) use ($skus) {
+                foreach ($skus as $sku) {
+                    $q->orWhere('campaignName', 'LIKE', '%' . strtoupper($sku) . '%');
+                }
+            })
             ->where(function ($q) {
-                $q->where('campaignName', 'NOT LIKE', '%PT%')
-                ->where('campaignName', 'NOT LIKE', '%PT.%');
+                // Exclude FBA campaigns
+                $q->where('campaignName', 'NOT LIKE', '%FBA%');
+                // Exclude PT campaigns (ending with PT or PT.)
+                $q->whereRaw("UPPER(TRIM(TRAILING '.' FROM campaignName)) NOT LIKE '% PT'");
+                $q->whereRaw("UPPER(TRIM(campaignName)) NOT LIKE '%PT.%'");
             })
             ->get();
 
@@ -186,41 +272,103 @@ class AutoUpdateAmazonPinkDilKwAds extends Command
             $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
             $shopify = $shopifyData[$pm->sku] ?? null;
 
-            $matchedCampaignL7 = $amazonSpCampaignReportsL7->firstWhere('campaignName', $sku);
-            $matchedCampaignL1 = $amazonSpCampaignReportsL1->firstWhere('campaignName', $sku);
-            $campaignId = ($matchedCampaignL7 ? $matchedCampaignL7->campaign_id : null) ?? ($matchedCampaignL1 ? $matchedCampaignL1->campaign_id : '');
+            // Match campaigns using same logic as utilized pages
+            // Normalize campaign name and use exact match (same as getAmazonUtilizedAdsData for KW)
+            // Also check L30 first in case campaign only exists in L30
+            $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
+                // Normalize campaign name: replace non-breaking spaces and multiple spaces (same as utilized pages)
+                $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
+                $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                $campaignName = strtoupper(trim(rtrim($campaignName, '.')));
+                $cleanSku = strtoupper(trim(rtrim($sku, '.')));
+                
+                // Exact match (same as utilized pages)
+                return $campaignName === $cleanSku;
+            });
             
-            // Get L30 data for ACOS calculation
-            $matchedCampaignL30 = !empty($campaignId) ? $amazonSpCampaignReportsL30->firstWhere('campaign_id', $campaignId) : null;
+            $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($sku) {
+                // Normalize campaign name: replace non-breaking spaces and multiple spaces (same as utilized pages)
+                $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
+                $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                $campaignName = strtoupper(trim(rtrim($campaignName, '.')));
+                $cleanSku = strtoupper(trim(rtrim($sku, '.')));
+                
+                // Exact match (same as utilized pages)
+                return $campaignName === $cleanSku;
+            });
+            
+            $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sku) {
+                // Normalize campaign name: replace non-breaking spaces and multiple spaces (same as utilized pages)
+                $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
+                $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                $campaignName = strtoupper(trim(rtrim($campaignName, '.')));
+                $cleanSku = strtoupper(trim(rtrim($sku, '.')));
+                
+                // Exact match (same as utilized pages)
+                return $campaignName === $cleanSku;
+            });
+            
+            // Skip if no campaign found in any range
+            if (!$matchedCampaignL30 && !$matchedCampaignL7 && !$matchedCampaignL1) {
+                $allCampaignsForSku = $amazonSpCampaignReportsL30->filter(function ($item) use ($sku) {
+                    return stripos($item->campaignName, $sku) !== false;
+                });
+                if ($allCampaignsForSku->isNotEmpty()) {
+                    $this->warn("SKU '{$sku}' found campaigns but no exact match: " . $allCampaignsForSku->pluck('campaignName')->implode(', '));
+                }
+                continue;
+            }
+
+            // Get campaign_id and name from any available range (prioritize L7, then L1, then L30)
+            $campaignId = ($matchedCampaignL7 ? $matchedCampaignL7->campaign_id : null) 
+                ?? ($matchedCampaignL1 ? $matchedCampaignL1->campaign_id : null)
+                ?? ($matchedCampaignL30 ? $matchedCampaignL30->campaign_id : '');
+            $campaignName = $matchedCampaignL7->campaignName 
+                ?? ($matchedCampaignL1->campaignName ?? ($matchedCampaignL30->campaignName ?? ''));
+            
+            // Use L30 data if we found it, otherwise try to find it by campaign_id
+            if (!$matchedCampaignL30 && !empty($campaignId)) {
+                $matchedCampaignL30 = $amazonSpCampaignReportsL30->firstWhere('campaign_id', $campaignId);
+            }
 
             $row = [];
             $row['INV']    = $shopify->inv ?? 0;
             $row['A_L30']  = $amazonSheet->units_ordered_l30 ?? 0;
+            $row['OV_L30'] = $shopify->quantity ?? 0; // OV L30 (overall L30 from Shopify)
             $row['price']  = $amazonSheet->price ?? null;
             $row['campaign_id'] = $campaignId;
-            $row['campaignName'] = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
+            $row['campaignName'] = $campaignName;
+            $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount 
+                ?? ($matchedCampaignL1->campaignBudgetAmount ?? ($matchedCampaignL30->campaignBudgetAmount ?? 0));
             $row['rating'] = $junglescoutData[$pm->sku] ?? null;
             $row['sbgt'] = 1;
 
-            if ($row['INV'] > 0 && !empty($row['campaignName'])) {
-                $dilPercent = $row['INV'] > 0 ? (($row['A_L30'] / $row['INV']) * 100) : 0;
+            // Process ALL campaigns, not just pink dil ones
+            // We need to check for pause conditions: (dilPercent > 50 AND ACOS > 35%) OR (rating < 3.5) OR (price < 10 AND units_ordered_l30 > 0)
+            if (!empty($row['campaignName'])) {
+                // Use OV L30 (overall L30) instead of A_L30 for dilPercent calculation
+                $dilPercent = $row['INV'] > 0 ? (($row['OV_L30'] / $row['INV']) * 100) : 0;
+                
+                // Calculate ACOS from L30 data
+                $sales = $matchedCampaignL30 ? ($matchedCampaignL30->sales30d ?? 0) : 0;
+                $spend = $matchedCampaignL30 ? ($matchedCampaignL30->spend ?? 0) : 0;
+                
+                if ($sales > 0) {
+                    $row['acos_L30'] = round(($spend / $sales) * 100, 2);
+                } elseif ($spend > 0) {
+                    $row['acos_L30'] = 100;
+                } else {
+                    $row['acos_L30'] = 0;
+                }
+                
+                // Only set dilPercent if it's pink (for logging purposes)
                 if ($dilPercent > 50) {
                     $row['dilPercent'] = round($dilPercent, 2);
-                    
-                    // Calculate ACOS from L30 data
-                    $sales = $matchedCampaignL30->sales30d ?? 0;
-                    $spend = $matchedCampaignL30->spend ?? 0;
-                    
-                    if ($sales > 0) {
-                        $row['acos_L30'] = round(($spend / $sales) * 100, 2);
-                    } elseif ($spend > 0) {
-                        $row['acos_L30'] = 100;
-                    } else {
-                        $row['acos_L30'] = 0;
-                    }
-                    
-                    $result[] = (object) $row;
+                } else {
+                    $row['dilPercent'] = round($dilPercent, 2);
                 }
+                
+                $result[] = (object) $row;
             }
             }
 

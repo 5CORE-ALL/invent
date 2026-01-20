@@ -388,7 +388,11 @@
                                             <div class="badge-count-item ra-card" id="ra-card" style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
                                                 <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">RA</span>
                                                 <span class="fw-bold" id="ra-count" style="font-size: 1.1rem;">0</span>
-                                    </div>
+                                            </div>
+                                            <div class="badge-count-item paused-campaigns-card" id="paused-campaigns-card" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;" title="Click to view paused campaigns">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">PINK DIL PAUSED</span>
+                                                <span class="fw-bold" id="paused-campaigns-count" style="font-size: 1.1rem;">0</span>
+                                            </div>
                                             <div class="badge-count-item utilization-card" data-type="7ub" style="background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s;">
                                                 <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">7UB</span>
                                                 <span class="fw-bold" id="7ub-count" style="font-size: 1.1rem;">0</span>
@@ -674,6 +678,7 @@
             let showCampaignOnly = false; // Filter for campaigns only
             let showNraOnly = false; // Filter for NRA only
             let showRaOnly = false; // Filter for RA only
+            let showPinkDilPausedOnly = false; // Filter for Pink DIL paused campaigns only
             let totalACOSValue = 0;
             let totalL30Spend = 0;
             let totalL30Sales = 0;
@@ -931,6 +936,21 @@
                 const raCountEl = document.getElementById('ra-count');
                 if (raCountEl) {
                     raCountEl.textContent = raCount;
+                }
+                
+                // Count paused campaigns (campaigns with pink_dil_paused_at) - count all, not just those with hasCampaign
+                let pausedCampaignsCount = 0;
+                allData.forEach(function(row) {
+                    // Count all campaigns with pink_dil_paused_at, regardless of hasCampaign
+                    if (row.pink_dil_paused_at) {
+                        pausedCampaignsCount++;
+                    }
+                });
+                
+                // Update paused campaigns count
+                const pausedCampaignsCountEl = document.getElementById('paused-campaigns-count');
+                if (pausedCampaignsCountEl) {
+                    pausedCampaignsCountEl.textContent = pausedCampaignsCount;
                 }
                 
                 // Update zero INV count
@@ -1282,11 +1302,45 @@
                     // Reset NRA filter
                     showNraOnly = false;
                     document.getElementById('nra-card').style.boxShadow = '';
+                    // Reset paused campaigns filter
+                    showPinkDilPausedOnly = false;
+                    document.getElementById('paused-campaigns-card').style.boxShadow = '';
                     this.style.boxShadow = '0 4px 12px rgba(34, 197, 94, 0.5)';
                 } else {
                     this.style.boxShadow = '';
                 }
                 
+                if (typeof table !== 'undefined' && table) {
+                    table.setFilter(combinedFilter);
+                    table.redraw(true);
+                    updateButtonCounts();
+                }
+            });
+
+            // Paused campaigns card click handler - filter table instead of showing modal
+            document.getElementById('paused-campaigns-card').addEventListener('click', function() {
+                showPinkDilPausedOnly = !showPinkDilPausedOnly;
+                if (showPinkDilPausedOnly) {
+                    // Reset dropdown to "All" when showing paused only
+                    document.getElementById('utilization-type-select').value = 'all';
+                    currentUtilizationType = 'all';
+                    // Reset other filters
+                    showMissingOnly = false;
+                    document.getElementById('missing-campaign-card').style.boxShadow = '';
+                    showNraMissingOnly = false;
+                    document.getElementById('nra-missing-card').style.boxShadow = '';
+                    showZeroInvOnly = false;
+                    document.getElementById('zero-inv-card').style.boxShadow = '';
+                    showCampaignOnly = false;
+                    document.getElementById('total-campaign-card').style.boxShadow = '';
+                    showNraOnly = false;
+                    document.getElementById('nra-card').style.boxShadow = '';
+                    showRaOnly = false;
+                    document.getElementById('ra-card').style.boxShadow = '';
+                    this.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.5)';
+                } else {
+                    this.style.boxShadow = '';
+                }
                 if (typeof table !== 'undefined' && table) {
                     table.setFilter(combinedFilter);
                     table.redraw(true);
@@ -2708,6 +2762,12 @@
                     if (hasCampaign) return false;
                     const nraValueForNraMissing = data.NRA ? data.NRA.trim() : "";
                     if (nraValueForNraMissing !== 'NRA') return false;
+                }
+
+                // Pink DIL Paused filter - show only campaigns that were paused by pink DIL cron (all paused campaigns, even without hasCampaign)
+                if (showPinkDilPausedOnly) {
+                    const pinkDilPausedAt = data.pink_dil_paused_at;
+                    if (!pinkDilPausedAt) return false; // Show only if pink_dil_paused_at is not null/empty
                 }
 
                 // Apply utilization type filter (Amazon rules)

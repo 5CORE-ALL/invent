@@ -2413,6 +2413,7 @@ class AmazonSpBudgetController extends Controller
                     'campaignName' => $campaignName,
                     'campaignBudgetAmount' => ($matchedCampaignL30 ? $matchedCampaignL30->campaignBudgetAmount : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignBudgetAmount : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignBudgetAmount : null) ?? 0)),
                     'campaignStatus' => ($matchedCampaignL30 ? $matchedCampaignL30->campaignStatus : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignStatus : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignStatus : null) ?? '')),
+                    'pink_dil_paused_at' => ($matchedCampaignL30 ? $matchedCampaignL30->pink_dil_paused_at : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->pink_dil_paused_at : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->pink_dil_paused_at : null) ?? null)),
                     'INV' => ($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0,
                     'FBA_INV' => isset($fbaData[$baseSku]) ? ($fbaData[$baseSku]->quantity_available ?? 0) : 0,
                     'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
@@ -2802,6 +2803,7 @@ class AmazonSpBudgetController extends Controller
                     'campaignName' => $campaignName,
                     'campaignBudgetAmount' => ($matchedCampaignL30 ? $matchedCampaignL30->campaignBudgetAmount : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignBudgetAmount : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignBudgetAmount : null) ?? 0)),
                     'campaignStatus' => ($matchedCampaignL30 ? $matchedCampaignL30->campaignStatus : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignStatus : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignStatus : null) ?? '')),
+                    'pink_dil_paused_at' => ($matchedCampaignL30 ? $matchedCampaignL30->pink_dil_paused_at : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->pink_dil_paused_at : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->pink_dil_paused_at : null) ?? null)),
                     'INV' => ($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0,
                     'FBA_INV' => isset($fbaData[$baseSku]) ? ($fbaData[$baseSku]->quantity_available ?? 0) : 0,
                     'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
@@ -3207,6 +3209,7 @@ class AmazonSpBudgetController extends Controller
                 'campaignName' => $campaignName,
                 'campaignBudgetAmount' => ($matchedCampaignL30 ? $matchedCampaignL30->campaignBudgetAmount : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignBudgetAmount : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignBudgetAmount : null) ?? 0)),
                 'campaignStatus' => ($matchedCampaignL30 ? $matchedCampaignL30->campaignStatus : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignStatus : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignStatus : null) ?? '')),
+                'pink_dil_paused_at' => ($matchedCampaignL30 ? $matchedCampaignL30->pink_dil_paused_at : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->pink_dil_paused_at : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->pink_dil_paused_at : null) ?? null)),
                 'INV' => ($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0,
                 'FBA_INV' => isset($fbaData[$baseSku]) ? ($fbaData[$baseSku]->quantity_available ?? 0) : 0,
                 'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
@@ -3233,10 +3236,13 @@ class AmazonSpBudgetController extends Controller
                 'SPFT' => $spft, // Keep both for backward compatibility
                 'SROI' => $calculatedSroi,
                 'has_custom_sprice' => $hasCustomSprice,
-                'SPRICE_STATUS' => $spriceStatus,
-            ];
+                    'SPRICE_STATUS' => $spriceStatus,
+                ];
             }
         }
+        
+        // Add pink_dil_paused_at to second loop result (PT/KW)
+        // This was already added above at line 3211, just ensuring it's there
 
         // Final check for HL campaigns - ensure ALL parent SKUs are present (after all processing)
         if ($campaignType === 'HL') {
@@ -3515,6 +3521,7 @@ class AmazonSpBudgetController extends Controller
                     'campaignName' => $campaignName,
                     'campaignBudgetAmount' => ($matchedCampaignL30 ? $matchedCampaignL30->campaignBudgetAmount : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignBudgetAmount : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignBudgetAmount : null) ?? 0)),
                     'campaignStatus' => ($matchedCampaignL30 ? $matchedCampaignL30->campaignStatus : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignStatus : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignStatus : null) ?? '')),
+                    'pink_dil_paused_at' => ($matchedCampaignL30 ? $matchedCampaignL30->pink_dil_paused_at : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->pink_dil_paused_at : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->pink_dil_paused_at : null) ?? null)),
                     'INV' => ($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0,
                     'FBA_INV' => isset($fbaData[$baseSku]) ? ($fbaData[$baseSku]->quantity_available ?? 0) : 0,
                     'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
@@ -3647,6 +3654,7 @@ class AmazonSpBudgetController extends Controller
                     $row['campaignName'] = $campaign->campaignName ?? '';
                     $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? 0);
                     $row['campaignStatus'] = $matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? '');
+                    $row['pink_dil_paused_at'] = $matchedCampaignL30 ? $matchedCampaignL30->pink_dil_paused_at : (($matchedCampaignL7 ? $matchedCampaignL7->pink_dil_paused_at : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->pink_dil_paused_at : null) ?? null));
                     $row['INV'] = 0;
                     $row['FBA_INV'] = 0;
                     $row['L30'] = 0;
@@ -3706,7 +3714,11 @@ class AmazonSpBudgetController extends Controller
         // For KW campaigns, add unmatched campaigns (similar to ACOS control)
         if ($campaignType === 'KW') {
             $matchedCampaignIds = array_unique(array_column($result, 'campaign_id'));
-            $allUniqueCampaigns = $amazonSpCampaignReportsL7->unique('campaign_id')->merge($amazonSpCampaignReportsL1->unique('campaign_id'));
+            // Include L30 campaigns as well to catch all paused campaigns
+            $allUniqueCampaigns = $amazonSpCampaignReportsL30->unique('campaign_id')
+                ->merge($amazonSpCampaignReportsL7->unique('campaign_id'))
+                ->merge($amazonSpCampaignReportsL1->unique('campaign_id'))
+                ->unique('campaign_id');
             
             foreach ($allUniqueCampaigns as $campaign) {
                 $campaignId = $campaign->campaign_id ?? '';
@@ -3732,19 +3744,32 @@ class AmazonSpBudgetController extends Controller
                     }
                 }
 
-                // If no SKU match found, add as unmatched campaign
+                // If no SKU match found, add as unmatched campaign (but only if it has pink_dil_paused_at to show all paused campaigns)
                 if (!$matchedSku) {
+                    // First check if this campaign has pink_dil_paused_at
                     $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($campaignId) {
                         return ($item->campaign_id ?? '') === $campaignId;
                     });
-
-                    $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($campaignId) {
+                    
+                    $checkCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($campaignId) {
                         return ($item->campaign_id ?? '') === $campaignId;
                     });
-
-                    $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($campaignId) {
+                    $checkCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($campaignId) {
                         return ($item->campaign_id ?? '') === $campaignId;
                     });
+                    
+                    $hasPinkDilPaused = ($matchedCampaignL30 && $matchedCampaignL30->pink_dil_paused_at) ||
+                                       ($checkCampaignL7 && $checkCampaignL7->pink_dil_paused_at) ||
+                                       ($checkCampaignL1 && $checkCampaignL1->pink_dil_paused_at);
+                    
+                    // Only add unmatched campaigns that are paused
+                    if (!$hasPinkDilPaused) {
+                        continue;
+                    }
+                    
+                    // Now get the matched campaigns for data
+                    $matchedCampaignL7 = $checkCampaignL7;
+                    $matchedCampaignL1 = $checkCampaignL1;
 
                     $matchedCampaignL15 = $amazonSpCampaignReportsL15->first(function ($item) use ($campaignId) {
                         return ($item->campaign_id ?? '') === $campaignId;
@@ -3757,6 +3782,7 @@ class AmazonSpBudgetController extends Controller
                     $row['campaignName'] = $campaign->campaignName ?? '';
                     $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? 0);
                     $row['campaignStatus'] = $matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? '');
+                    $row['pink_dil_paused_at'] = $matchedCampaignL30 ? $matchedCampaignL30->pink_dil_paused_at : (($matchedCampaignL7 ? $matchedCampaignL7->pink_dil_paused_at : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->pink_dil_paused_at : null) ?? null));
                     $row['INV'] = 0;
                     $row['FBA_INV'] = 0;
                     $row['L30'] = 0;

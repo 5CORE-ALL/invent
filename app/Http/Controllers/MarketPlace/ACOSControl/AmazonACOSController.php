@@ -1094,7 +1094,10 @@ class AmazonACOSController extends Controller
             // Update database after successful API call
             try {
                 AmazonSpCampaignReport::whereIn('campaign_id', $campaignIds)
-                    ->update(['campaignStatus' => 'PAUSED']);
+                    ->update([
+                        'campaignStatus' => 'PAUSED',
+                        'pink_dil_paused_at' => now()
+                    ]);
             } catch (\Exception $dbError) {
                 Log::warning('Error updating SP campaign status in database: ' . $dbError->getMessage());
             }
@@ -1166,8 +1169,18 @@ class AmazonACOSController extends Controller
             
             // Update database after successful API call
             try {
+                $updateData = ['campaignStatus' => $status];
+                
+                // Update pink_dil_paused_at based on status
+                if ($status === 'PAUSED') {
+                    $updateData['pink_dil_paused_at'] = now();
+                } else {
+                    // When enabling, clear pink_dil_paused_at
+                    $updateData['pink_dil_paused_at'] = null;
+                }
+                
                 AmazonSpCampaignReport::where('campaign_id', $campaignId)
-                    ->update(['campaignStatus' => $status]);
+                    ->update($updateData);
             } catch (\Exception $dbError) {
                 Log::warning('Error updating SP campaign status in database: ' . $dbError->getMessage());
                 // Continue even if DB update fails
@@ -1238,7 +1251,10 @@ class AmazonACOSController extends Controller
             // Update database after successful API call
             try {
                 AmazonSbCampaignReport::whereIn('campaign_id', $campaignIds)
-                    ->update(['campaignStatus' => 'PAUSED']);
+                    ->update([
+                        'campaignStatus' => 'PAUSED',
+                        'pink_dil_paused_at' => now()
+                    ]);
             } catch (\Exception $dbError) {
                 Log::warning('Error updating SB campaign status in database: ' . $dbError->getMessage());
             }
@@ -1310,8 +1326,18 @@ class AmazonACOSController extends Controller
             
             // Update database after successful API call
             try {
+                $updateData = ['campaignStatus' => $status];
+                
+                // Update pink_dil_paused_at based on status
+                if ($status === 'PAUSED') {
+                    $updateData['pink_dil_paused_at'] = now();
+                } else {
+                    // When enabling, clear pink_dil_paused_at
+                    $updateData['pink_dil_paused_at'] = null;
+                }
+                
                 AmazonSbCampaignReport::where('campaign_id', $campaignId)
-                    ->update(['campaignStatus' => $status]);
+                    ->update($updateData);
             } catch (\Exception $dbError) {
                 Log::warning('Error updating SB campaign status in database: ' . $dbError->getMessage());
                 // Continue even if DB update fails

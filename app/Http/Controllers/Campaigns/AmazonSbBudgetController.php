@@ -409,6 +409,7 @@ class AmazonSbBudgetController extends Controller
             $row['campaign_id'] = $matchedCampaignL7->campaign_id ?? '';
             $row['campaignName'] = $matchedCampaignL7->campaignName ?? '';
             $row['campaignStatus'] = $matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? '');
+            $row['pink_dil_paused_at'] = $matchedCampaignL7->pink_dil_paused_at ?? ($matchedCampaignL1->pink_dil_paused_at ?? null);
             $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? '');
             $row['sbid'] = $matchedCampaignL7->sbid ?? ($matchedCampaignL1->sbid ?? '');
             $row['crnt_bid'] = $matchedCampaignL7->currentSbBidPrice ?? ($matchedCampaignL1->currentSbBidPrice ?? '');
@@ -603,6 +604,7 @@ class AmazonSbBudgetController extends Controller
             $row['campaign_id'] = $matchedCampaignL7->campaign_id ?? '';
             $row['campaignName'] = $matchedCampaignL7->campaignName ?? '';
             $row['campaignStatus'] = $matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? '');
+            $row['pink_dil_paused_at'] = $matchedCampaignL7->pink_dil_paused_at ?? ($matchedCampaignL1->pink_dil_paused_at ?? null);
             $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? '');
             $row['sbid'] = $matchedCampaignL7->sbid ?? ($matchedCampaignL1->sbid ?? '');
             $row['crnt_bid'] = $matchedCampaignL7->currentUnderSbBidPrice ?? ($matchedCampaignL1->currentUnderSbBidPrice ?? '');
