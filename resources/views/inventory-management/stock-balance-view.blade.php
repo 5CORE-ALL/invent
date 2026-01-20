@@ -1066,7 +1066,7 @@
                         parentCell.textContent = item.Parent || '-';
                         row.appendChild(parentCell);
 
-                        // SKU with select button
+                        // SKU with copy icon and select button
                         const skuCell = document.createElement('td');
                         const skuContainer = document.createElement('div');
                         skuContainer.style.display = 'flex';
@@ -1076,6 +1076,24 @@
                         const skuText = document.createElement('span');
                         skuText.textContent = item.SKU || '-';
                         skuContainer.appendChild(skuText);
+                        
+                        // Copy icon button
+                        const copyBtn = document.createElement('button');
+                        copyBtn.type = 'button';
+                        copyBtn.className = 'btn btn-sm p-0';
+                        copyBtn.style.border = 'none';
+                        copyBtn.style.background = 'none';
+                        copyBtn.style.cursor = 'pointer';
+                        copyBtn.innerHTML = '<i class="fas fa-copy text-secondary copy-sku-icon" style="font-size: 12px;"></i>';
+                        copyBtn.title = 'Copy SKU to clipboard';
+                        copyBtn.setAttribute('data-sku', item.SKU || '');
+                        copyBtn.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const skuToCopy = this.getAttribute('data-sku');
+                            copyToClipboard(skuToCopy, this.querySelector('i'));
+                        });
+                        skuContainer.appendChild(copyBtn);
                         
                         // Small round button to select SKU
                         const selectBtn = document.createElement('button');
@@ -2463,6 +2481,64 @@
                     clearTimeout(timeout);
                     timeout = setTimeout(() => func.apply(context, args), wait);
                 };
+            }
+
+            // Copy to clipboard function
+            function copyToClipboard(text, iconElement) {
+                // Try using the modern Clipboard API first
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).then(function() {
+                        // Success - update icon temporarily
+                        const $icon = $(iconElement);
+                        const originalClass = $icon.attr('class');
+                        $icon.removeClass('fa-copy').addClass('fa-check text-success');
+                        $icon.attr('title', 'Copied!');
+                        
+                        setTimeout(function() {
+                            $icon.attr('class', originalClass);
+                            $icon.attr('title', 'Copy SKU to clipboard');
+                        }, 2000);
+                    }).catch(function(err) {
+                        console.error('Failed to copy: ', err);
+                        // Fallback to old method
+                        copyToClipboardFallback(text, iconElement);
+                    });
+                } else {
+                    // Use fallback for older browsers
+                    copyToClipboardFallback(text, iconElement);
+                }
+            }
+
+            // Fallback copy method for older browsers
+            function copyToClipboardFallback(text, iconElement) {
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-999999px';
+                textArea.style.top = '-999999px';
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                
+                try {
+                    const successful = document.execCommand('copy');
+                    if (successful) {
+                        const $icon = $(iconElement);
+                        const originalClass = $icon.attr('class');
+                        $icon.removeClass('fa-copy').addClass('fa-check text-success');
+                        $icon.attr('title', 'Copied!');
+                        
+                        setTimeout(function() {
+                            $icon.attr('class', originalClass);
+                            $icon.attr('title', 'Copy SKU to clipboard');
+                        }, 2000);
+                    }
+                } catch (err) {
+                    console.error('Fallback copy failed: ', err);
+                    alert('Failed to copy SKU. Please copy manually: ' + text);
+                }
+                
+                document.body.removeChild(textArea);
             }
 
             function showError(message) {
