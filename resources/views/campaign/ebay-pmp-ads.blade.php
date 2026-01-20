@@ -13,12 +13,14 @@
             overflow-y: visible;
             position: relative;
             max-height: 600px;
+            width: 100%;
         }
 
         .custom-resizable-table {
             width: 100%;
             border-collapse: collapse;
             margin: 0;
+            table-layout: auto;
         }
 
         .custom-resizable-table th,
@@ -29,6 +31,7 @@
             position: relative;
             white-space: nowrap;
             overflow: visible !important;
+            box-sizing: border-box;
         }
 
         .custom-resizable-table th {
@@ -280,7 +283,31 @@
 
         /* ========== CARD BODY ========== */
         .card-body {
+            padding: 1.5rem;
+            overflow-x: visible;
             position: relative;
+        }
+        
+        /* ========== FORM GROUP SPACING ========== */
+        .form-group {
+            margin-bottom: 0;
+        }
+        
+        .form-group label {
+            margin-bottom: 0.25rem;
+        }
+        
+        /* ========== RESPONSIVE FIXES ========== */
+        @media (max-width: 992px) {
+            .d-flex.justify-content-between.flex-wrap {
+                flex-direction: column;
+                align-items: flex-start !important;
+            }
+            
+            .d-flex.justify-content-between.flex-wrap > div {
+                width: 100%;
+                margin-bottom: 1rem;
+            }
         }
 
         /* ========== SEARCH DROPDOWNS ========== */
@@ -901,18 +928,21 @@
         .nr-hide {
             display: none !important;
         }
-        .inv_col, 
-        .ov_l30_col, 
-        .ov_dil_col, 
-        .el_30_col{
+
+        .inv_col,
+        .ov_l30_col,
+        .ov_dil_col,
+        .el_30_col {
             display: none !important;
         }
+
         .pft_col,
         .roi_col,
         .tpft_col,
-        .troi_col{
+        .troi_col {
             display: none !important;
         }
+
         /*popup modal style end */
     </style>
 @endsection
@@ -1015,7 +1045,8 @@
                     </div>
                     <div id="adupdates-edit-div" class="d-flex align-items-center" style="display: none !important;">
                         <div class="input-group" style="width: 150px;">
-                            <input type="number" id="updateAdUpdatesPercent" class="form-control" min="0" value="{{ $ebayAdPercentage }}"  step="any" placeholder="Ad Per" disabled />
+                            <input type="number" id="updateAdUpdatesPercent" class="form-control" min="0"
+                                value="{{ $ebayAdPercentage }}" step="any" placeholder="Ad Per" disabled />
                             <span class="input-group-text">%</span>
                         </div>
                         <button id="editAdUpdatesBtn" class="btn btn-outline-primary ms-2">
@@ -1023,7 +1054,8 @@
                         </button>
                     </div>
                     <div class="d-inline-flex align-items-center ms-2">
-                        <div class="badge bg-danger text-white px-3 py-2 me-2" style="font-size: 1rem; border-radius: 8px;">
+                        <div class="badge bg-danger text-white px-3 py-2 me-2"
+                            style="font-size: 1rem; border-radius: 8px;">
                             0 SOLD - <span id="zero-sold-count">0</span>
                         </div>
                         <div class="badge bg-primary text-white px-3 py-2 me-2"
@@ -1274,383 +1306,457 @@
                             data-bs-target="#createTaskModal">
                             <i class="bi bi-plus-circle me-2"></i>Create Task
                         </button>
+                    </div>
 
-                        <!-- for popup modal start Modal -->
-                        <div class="modal fade" id="createTaskModal" tabindex="-1"
-                            aria-labelledby="createTaskModalLabel" aria-hidden="true">
-                            <div class="modal-dialog modal-dialog-centered modal-lg">
-                                <div class="modal-content">
-                                    <div class="modal-header">
-                                        <h4 class="modal-title" id="createTaskModalLabel">📝 Create New Task Ebay to Task
-                                            Manager</h4>
-                                        <button type="button" class="btn-close" data-bs-dismiss="modal"
-                                            aria-label="Close"></button>
-                                    </div>
+                    <!-- Range Filter Section -->
+                    <div class="row g-3 align-items-end pt-2 mb-3">
+                        <div class="col-md-2">
+                            <label class="form-label fw-semibold mb-2"
+                                style="color: #475569; font-size: 0.8125rem;">
+                                T VIEWS Range
+                            </label>
+                            <div class="d-flex gap-2">
+                                <input type="number" id="t-views-filter-min"
+                                    class="form-control form-control-sm" placeholder="Min" step="1"
+                                    style="border-color: #e2e8f0;">
+                                <input type="number" id="t-views-filter-max"
+                                    class="form-control form-control-sm" placeholder="Max" step="1"
+                                    style="border-color: #e2e8f0;">
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label fw-semibold mb-2"
+                                style="color: #475569; font-size: 0.8125rem;">
+                                L7 Views Range
+                            </label>
+                            <div class="d-flex gap-2">
+                                <input type="number" id="l7-views-filter-min"
+                                    class="form-control form-control-sm" placeholder="Min" step="1"
+                                    style="border-color: #e2e8f0;">
+                                <input type="number" id="l7-views-filter-max"
+                                    class="form-control form-control-sm" placeholder="Max" step="1"
+                                    style="border-color: #e2e8f0;">
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label fw-semibold mb-2"
+                                style="color: #475569; font-size: 0.8125rem;">
+                                CBID Range
+                            </label>
+                            <div class="d-flex gap-2">
+                                <input type="number" id="cbid-filter-min"
+                                    class="form-control form-control-sm" placeholder="Min" step="0.01"
+                                    style="border-color: #e2e8f0;">
+                                <input type="number" id="cbid-filter-max"
+                                    class="form-control form-control-sm" placeholder="Max" step="0.01"
+                                    style="border-color: #e2e8f0;">
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label fw-semibold mb-2"
+                                style="color: #475569; font-size: 0.8125rem;">
+                                SCVR Range
+                            </label>
+                            <div class="d-flex gap-2">
+                                <input type="number" id="scvr-filter-min"
+                                    class="form-control form-control-sm" placeholder="Min" step="0.01"
+                                    style="border-color: #e2e8f0;">
+                                <input type="number" id="scvr-filter-max"
+                                    class="form-control form-control-sm" placeholder="Max" step="0.01"
+                                    style="border-color: #e2e8f0;">
+                            </div>
+                        </div>
+                        <div class="col-md-2 d-flex gap-2 align-items-end">
+                            <button id="apply-l7-views-filter-btn" class="btn btn-primary btn-sm flex-fill">
+                                <i class="fa-solid fa-filter me-1"></i>
+                                Apply
+                            </button>
+                            <button id="clear-l7-views-filter-btn" class="btn btn-secondary btn-sm flex-fill">
+                                <i class="fa-solid fa-times me-1"></i>
+                                Clear
+                            </button>
+                        </div>
+                    </div>
 
-                                    <div class="modal-body">
-                                        <form id="taskForm">
-                                            <div class="form-section">
-                                                <div class="row g-3">
-                                                    <div class="col-md-12">
-                                                        <label class="form-label">Group</label>
-                                                        <input type="text" class="form-control"
-                                                            placeholder="Enter Group">
-                                                    </div>
+                    <!-- for popup modal start Modal -->
+                    <div class="modal fade" id="createTaskModal" tabindex="-1" aria-labelledby="createTaskModalLabel"
+                        aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered modal-lg">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h4 class="modal-title" id="createTaskModalLabel">📝 Create New Task Ebay to Task
+                                        Manager</h4>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"
+                                        aria-label="Close"></button>
+                                </div>
 
-                                                    <div class="col-md-6">
-                                                        <label class="form-label">Title<span
-                                                                class="text-danger">*</span></label>
-                                                        <input type="text" class="form-control"
-                                                            placeholder="Enter Title">
-                                                    </div>
-                                                    <div class="col-md-6">
-                                                        <label class="form-label">Priority</label>
-                                                        <select class="form-select">
-                                                            <option>Low</option>
-                                                            <option>Medium</option>
-                                                            <option>High</option>
-                                                        </select>
-                                                    </div>
+                                <div class="modal-body">
+                                    <form id="taskForm">
+                                        <div class="form-section">
+                                            <div class="row g-3">
+                                                <div class="col-md-12">
+                                                    <label class="form-label">Group</label>
+                                                    <input type="text" class="form-control" placeholder="Enter Group">
+                                                </div>
+
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Title<span
+                                                            class="text-danger">*</span></label>
+                                                    <input type="text" class="form-control" placeholder="Enter Title">
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Priority</label>
+                                                    <select class="form-select">
+                                                        <option>Low</option>
+                                                        <option>Medium</option>
+                                                        <option>High</option>
+                                                    </select>
                                                 </div>
                                             </div>
+                                        </div>
 
-                                            <div class="form-section">
-                                                <div class="row g-3">
-                                                    <div class="col-md-6">
-                                                        <label class="form-label">Assignor<span
-                                                                class="text-danger">*</span></label>
-                                                        <select class="form-select">
-                                                            <option selected disabled>Select Assignor</option>
-                                                            <option>Srabani Ghosh</option>
-                                                            <option>Rahul Mehta</option>
-                                                            <option>Anjali Verma</option>
-                                                        </select>
-                                                    </div>
-                                                    <div class="col-md-6">
-                                                        <label class="form-label">Status</label>
-                                                        <select class="form-select">
-                                                            <option disabled selected>Select Status</option>
-                                                            <option value="Todo">Todo</option>
-                                                            <option value="Not Started">Not Started</option>
-                                                            <option value="Working">Working</option>
-                                                            <option value="In Progress">In Progress</option>
-                                                            <option value="Monitor">Monitor</option>
-                                                            <option value="Done">Done</option>
-                                                            <option value="Need Help">Need Help</option>
-                                                            <option value="Review">Review</option>
-                                                            <option value="Need Approval">Need Approval</option>
-                                                            <option value="Dependent">Dependent</option>
-                                                            <option value="Approved">Approved</option>
-                                                            <option value="Hold">Hold</option>
-                                                            <option value="Rework">Rework</option>
-                                                            <option value="Urgent">Urgent</option>
-                                                            <option value="Q-Task">Q-Task</option>
-                                                        </select>
-                                                    </div>
+                                        <div class="form-section">
+                                            <div class="row g-3">
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Assignor<span
+                                                            class="text-danger">*</span></label>
+                                                    <select class="form-select">
+                                                        <option selected disabled>Select Assignor</option>
+                                                        <option>Srabani Ghosh</option>
+                                                        <option>Rahul Mehta</option>
+                                                        <option>Anjali Verma</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Status</label>
+                                                    <select class="form-select">
+                                                        <option disabled selected>Select Status</option>
+                                                        <option value="Todo">Todo</option>
+                                                        <option value="Not Started">Not Started</option>
+                                                        <option value="Working">Working</option>
+                                                        <option value="In Progress">In Progress</option>
+                                                        <option value="Monitor">Monitor</option>
+                                                        <option value="Done">Done</option>
+                                                        <option value="Need Help">Need Help</option>
+                                                        <option value="Review">Review</option>
+                                                        <option value="Need Approval">Need Approval</option>
+                                                        <option value="Dependent">Dependent</option>
+                                                        <option value="Approved">Approved</option>
+                                                        <option value="Hold">Hold</option>
+                                                        <option value="Rework">Rework</option>
+                                                        <option value="Urgent">Urgent</option>
+                                                        <option value="Q-Task">Q-Task</option>
+                                                    </select>
+                                                </div>
 
-                                                    <div class="col-md-6">
-                                                        <label class="form-label">Assign To<span
-                                                                class="text-danger">*</span></label>
-                                                        <select class="form-select">
-                                                            <option>Please Select</option>
-                                                            <option>Dev Team</option>
-                                                            <option>QA Team</option>
-                                                        </select>
-                                                    </div>
-                                                    <div class="col-md-6">
-                                                        <label class="form-label">Duration<span
-                                                                class="text-danger">*</span></label>
-                                                        <input type="text" id="duration" class="form-control"
-                                                            placeholder="Select start and end date/time">
-                                                    </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Assign To<span
+                                                            class="text-danger">*</span></label>
+                                                    <select class="form-select">
+                                                        <option>Please Select</option>
+                                                        <option>Dev Team</option>
+                                                        <option>QA Team</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Duration<span
+                                                            class="text-danger">*</span></label>
+                                                    <input type="text" id="duration" class="form-control"
+                                                        placeholder="Select start and end date/time">
                                                 </div>
                                             </div>
+                                        </div>
 
-                                            <div class="form-section">
-                                                <div class="row g-3">
-                                                    <div class="col-md-6">
-                                                        <label class="form-label">L1</label>
-                                                        <input type="text" class="form-control"
-                                                            placeholder="Enter L1">
-                                                    </div>
-                                                    <div class="col-md-6">
-                                                        <label class="form-label">L2</label>
-                                                        <input type="text" class="form-control"
-                                                            placeholder="Enter L2">
-                                                    </div>
-                                                    <div class="col-md-6">
-                                                        <label class="form-label">Description</label>
-                                                        <textarea class="form-control" rows="4" placeholder="Enter Description"></textarea>
-                                                    </div>
-                                                    <div class="col-md-6">
-                                                        <label class="form-label">Image</label>
-                                                        <label class="choose-file">
-                                                            Choose File
-                                                            <input type="file" class="form-control d-none">
-                                                        </label>
-                                                    </div>
+                                        <div class="form-section">
+                                            <div class="row g-3">
+                                                <div class="col-md-6">
+                                                    <label class="form-label">L1</label>
+                                                    <input type="text" class="form-control" placeholder="Enter L1">
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">L2</label>
+                                                    <input type="text" class="form-control" placeholder="Enter L2">
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Description</label>
+                                                    <textarea class="form-control" rows="4" placeholder="Enter Description"></textarea>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Image</label>
+                                                    <label class="choose-file">
+                                                        Choose File
+                                                        <input type="file" class="form-control d-none">
+                                                    </label>
                                                 </div>
                                             </div>
-                                        </form>
-                                    </div>
+                                        </div>
+                                    </form>
+                                </div>
 
-                                    <div class="modal-footer">
-                                        <button type="button" class="btn btn-secondary"
-                                            data-bs-dismiss="modal">Cancel</button>
-                                        <button type="button" class="btn btn-warning text-white"
-                                            id="createBtn">Create</button>
-                                    </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary"
+                                        data-bs-dismiss="modal">Cancel</button>
+                                    <button type="button" class="btn btn-warning text-white"
+                                        id="createBtn">Create</button>
                                 </div>
                             </div>
                         </div>
-
-                        <!--for popup modal -->
-
-                        <!-- Close All Modals Button -->
-                        <button id="close-all-modals" class="btn btn-danger btn-sm" style="display: none;">
-                            <i class="fas fa-times"></i> Close All Modals
-                        </button>
                     </div>
 
+                    <!--for popup modal -->
+
+                    <!-- Close All Modals Button -->
+                    <button id="close-all-modals" class="btn btn-danger btn-sm" style="display: none;">
+                        <i class="fas fa-times"></i> Close All Modals
+                    </button>
+
                     <!-- play backward forwad  -->
-                    <div class="btn-group time-navigation-group" role="group" aria-label="Parent navigation">
-                        <button id="play-backward" class="btn btn-light rounded-circle" title="Previous parent">
-                            <i class="fas fa-step-backward"></i>
-                        </button>
-                        <button id="play-pause" class="btn btn-light rounded-circle" title="Show all products"
-                            style="display: none;">
-                            <i class="fas fa-pause"></i>
-                        </button>
-                        <button id="play-auto" class="btn btn-light rounded-circle" title="Show all products">
-                            <i class="fas fa-play"></i>
-                        </button>
-                        <button id="play-forward" class="btn btn-light rounded-circle" title="Next parent">
-                            <i class="fas fa-step-forward"></i>
-                        </button>
+                    <div class="d-flex justify-content-start mb-3 mt-3">
+                        <div class="btn-group time-navigation-group" role="group" aria-label="Parent navigation">
+                            <button id="play-backward" class="btn btn-light rounded-circle" title="Previous parent">
+                                <i class="fas fa-step-backward"></i>
+                            </button>
+                            <button id="play-pause" class="btn btn-light rounded-circle" title="Show all products"
+                                style="display: none;">
+                                <i class="fas fa-pause"></i>
+                            </button>
+                            <button id="play-auto" class="btn btn-light rounded-circle" title="Show all products">
+                                <i class="fas fa-play"></i>
+                            </button>
+                            <button id="play-forward" class="btn btn-light rounded-circle" title="Next parent">
+                                <i class="fas fa-step-forward"></i>
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Controls row -->
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <!-- Left side controls -->
-                        <div class="d-flex flex-column" style="gap: 8px;">
-                            <div class="d-flex" style="gap: 16px;">
-                                <div class="form-group mb-2">
-                                    <label for="ovl30-filter" class="mr-2">OV L30:</label>
-                                    <select id="ovl30-filter" class="form-control form-control-sm">
-                                        <option value="all">All</option>
-                                        <option value="0">0</option>
-                                        <option value="1-100+">1-100+</option>
-                                    </select>
-                                </div>
-                                <div class="form-group mb-2">
-                                    <label for="ovl30-filter" class="d-block mb-1">TOTAL ITEMS:</label>
-                                    <div class="badge bg-info text-white px-3 py-1" style="font-size: 1rem; border-radius: 8px;">
-                                        <span id="total-items-count">0</span>
-                                    </div>
-                                </div>
+                    <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap" style="gap: 16px;">
+                    <!-- Left side controls -->
+                    <div class="d-flex flex-column" style="gap: 8px; flex: 1 1 auto;">
+                        <div class="d-flex align-items-end flex-wrap" style="gap: 16px;">
+                            <div class="form-group mb-0">
+                                <label for="ovl30-filter" class="mb-1 d-block" style="font-size: 0.875rem; font-weight: 500;">OV L30:</label>
+                                <select id="ovl30-filter" class="form-control form-control-sm" style="min-width: 100px;">
+                                    <option value="all">All</option>
+                                    <option value="0">0</option>
+                                    <option value="1-100+">1-100+</option>
+                                </select>
                             </div>
-                            <div class="d-flex" style="gap: 16px;">
-                                <div class="form-group mb-2">
-                                    <label for="el30-filter" class="mr-2">EL 30:</label>
-                                    <select id="el30-filter" class="form-control form-control-sm">
-                                        <option value="all">All</option>
-                                        <option value="0">0</option>
-                                        <option value="1-100+">1-100+</option>
-                                    </select>
-                                </div>
-                                <div class="form-group mb-2">
-                                    <label for="nra-filter" class="mr-2">NRL:</label>
-                                    <select id="nra-filter" class="form-control form-control-sm">
-                                        <option value="all">All</option>
-                                        <option value="REQ">RL</option>
-                                        <option value="NR">NRL</option>
-                                        <option value="LATER">LATER</option>
-                                    </select>
-                                </div>
-                                <div class="form-group mb-2">
-                                    <label for="cvr-filter" class="mr-2">SCVR:</label>
-                                    <select id="cvr-filter" class="form-control form-control-sm">
-                                        <option value="all">All</option>
-                                        <option value="0">0.00%</option>
-                                        <option value="0.01-1">0.01% to 1%</option>
-                                        <option value="1.01-2">1.01% to 2%</option>
-                                        <option value="2.01-3">2.01% to 3%</option>
-                                        <option value="3.01-5">3.01% to 5%</option>
-                                        <option value="5.01-7">5.01% to 7%</option>
-                                        <option value="7.01-13">7.01% to 13%</option>
-                                        <option value="13+">Greater than 13%</option>
-                                    </select>
+                            <div class="form-group mb-0">
+                                <label class="mb-1 d-block" style="font-size: 0.875rem; font-weight: 500;">TOTAL ITEMS:</label>
+                                <div class="badge bg-info text-white px-3 py-1"
+                                    style="font-size: 1rem; border-radius: 8px; display: inline-block;">
+                                    <span id="total-items-count">0</span>
                                 </div>
                             </div>
                         </div>
-                        <div>
-                            <div class="d-flex justify-content-between">
-                                <div class="form-group mr-2 custom-dropdown">
-                                    <button id="hideColumnsBtn" class="btn btn-sm btn-outline-secondary">
-                                        Hide Columns
-                                    </button>
-                                    <div class="custom-dropdown-menu" id="columnToggleMenu">
-                                        <!-- Will be populated by JavaScript -->
-                                    </div>
-                                </div>
-                                <div class="form-group ms-2">
-                                    <button id="showAllColumns" class="btn btn-sm btn-outline-secondary">
-                                        Show All
-                                    </button>
-                                </div>
-                                <div class="form-group ms-2">
-                                    <a id="export-btn" class="btn btn-sm btn-success d-flex align-items-center justify-content-center">
-                                        <i class="fas fa-file-export me-1"></i> Export Excel/CSV
-                                    </a>
-                                </div>
+                        <div class="d-flex align-items-end flex-wrap" style="gap: 16px;">
+                            <div class="form-group mb-0">
+                                <label for="el30-filter" class="mb-1 d-block" style="font-size: 0.875rem; font-weight: 500;">EL 30:</label>
+                                <select id="el30-filter" class="form-control form-control-sm" style="min-width: 100px;">
+                                    <option value="all">All</option>
+                                    <option value="0">0</option>
+                                    <option value="1-100+">1-100+</option>
+                                </select>
+                            </div>
+                            <div class="form-group mb-0">
+                                <label for="nra-filter" class="mb-1 d-block" style="font-size: 0.875rem; font-weight: 500;">NRL:</label>
+                                <select id="nra-filter" class="form-control form-control-sm" style="min-width: 100px;">
+                                    <option value="all">All</option>
+                                    <option value="REQ">RL</option>
+                                    <option value="NR">NRL</option>
+                                    <option value="LATER">LATER</option>
+                                </select>
+                            </div>
+                            <div class="form-group mb-0">
+                                <label for="cvr-filter" class="mb-1 d-block" style="font-size: 0.875rem; font-weight: 500;">SCVR:</label>
+                                <select id="cvr-filter" class="form-control form-control-sm" style="min-width: 120px;">
+                                    <option value="all">All</option>
+                                    <option value="0">0.00%</option>
+                                    <option value="0.01-1">0.01% to 1%</option>
+                                    <option value="1.01-2">1.01% to 2%</option>
+                                    <option value="2.01-3">2.01% to 3%</option>
+                                    <option value="3.01-5">3.01% to 5%</option>
+                                    <option value="5.01-7">5.01% to 7%</option>
+                                    <option value="7.01-13">7.01% to 13%</option>
+                                    <option value="13+">Greater than 13%</option>
+                                </select>
                             </div>
                         </div>
+                    </div>
+                    <div class="d-flex align-items-center" style="gap: 8px;">
+                        <div class="custom-dropdown">
+                            <button id="hideColumnsBtn" class="btn btn-sm btn-outline-secondary">
+                                Hide Columns
+                            </button>
+                            <div class="custom-dropdown-menu" id="columnToggleMenu">
+                                <!-- Will be populated by JavaScript -->
+                            </div>
+                        </div>
+                        <button id="showAllColumns" class="btn btn-sm btn-outline-secondary">
+                            Show All
+                        </button>
+                        <a id="export-btn" class="btn btn-sm btn-success d-flex align-items-center justify-content-center">
+                            <i class="fas fa-file-export me-1"></i> Export Excel/CSV
+                        </a>
+                    </div>
 
-                        <!-- Search on right -->
-                        <div class="form-inline">
-                            <div class="form-group">
-                                <label for="search-input" class="mr-2">Search:</label>
-                                <input type="text" id="search-input" class="form-control form-control-sm"
-                                    placeholder="Search all columns...">
-                            </div>
-                        </div>
+                    <!-- Search on right -->
+                    <div class="form-inline d-flex align-items-center">
+                        <label for="search-input" class="mr-2 mb-0" style="font-size: 0.875rem; font-weight: 500;">Search:</label>
+                        <input type="text" id="search-input" class="form-control form-control-sm"
+                            placeholder="Search all columns..." style="min-width: 200px;">
+                    </div>
                     </div>
 
                     <div class="table-container">
-                        <table class="custom-resizable-table" id="ebay-table">
-                            <thead>
-                                <tr>
-                                    {{-- <th data-field="sl_no">SL No. <span class="sort-arrow">↓</span></th> --}}
-                                    <th data-field="sku" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center sortable">
-                                            <div class="d-flex align-items-center">
-                                                Sku <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div class="mt-1 dropdown-search-container">
-                                                <input type="text" class="form-control form-control-sm sku-search"
-                                                    placeholder="Search SKU..." id="skuSearch">
-                                                <div class="dropdown-search-results" id="skuSearchResults"></div>
-                                            </div>
+                    <table class="custom-resizable-table" id="ebay-table">
+                        <thead>
+                            <tr>
+                                {{-- <th data-field="sl_no">SL No. <span class="sort-arrow">↓</span></th> --}}
+                                <th data-field="sku" style="vertical-align: middle; white-space: nowrap;">
+                                    <div class="d-flex flex-column align-items-center sortable">
+                                        <div class="d-flex align-items-center">
+                                            Sku <span class="sort-arrow">↓</span>
                                         </div>
-                                    </th>
-                                    <th data-field="inv" class="inv_col" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                INV <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="inv-total">0</div>
+                                        <div class="mt-1 dropdown-search-container">
+                                            <input type="text" class="form-control form-control-sm sku-search"
+                                                placeholder="Search SKU..." id="skuSearch">
+                                            <div class="dropdown-search-results" id="skuSearchResults"></div>
                                         </div>
-                                    </th>
-                                    <th data-field="ov_l30" class="ov_l30_col" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                OV L30 <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="ovl30-total">0</div>
+                                    </div>
+                                </th>
+                                <th data-field="inv" class="inv_col"
+                                    style="vertical-align: middle; white-space: nowrap;">
+                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                        <div class="d-flex align-items-center">
+                                            INV <span class="sort-arrow">↓</span>
                                         </div>
-                                    </th>
-                                    <th data-field="ov_dil" class="ov_dil_col" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                OV DIL <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="ovdil-total">0%</div>
+                                        <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                        <div class="metric-total" id="inv-total">0</div>
+                                    </div>
+                                </th>
+                                <th data-field="ov_l30" class="ov_l30_col"
+                                    style="vertical-align: middle; white-space: nowrap;">
+                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                        <div class="d-flex align-items-center">
+                                            OV L30 <span class="sort-arrow">↓</span>
                                         </div>
-                                    </th>
-                                    <th data-field="el_30" class="el_30_col" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                E L30 <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="el30-total">0</div>
+                                        <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                        <div class="metric-total" id="ovl30-total">0</div>
+                                    </div>
+                                </th>
+                                <th data-field="ov_dil" class="ov_dil_col"
+                                    style="vertical-align: middle; white-space: nowrap;">
+                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                        <div class="d-flex align-items-center">
+                                            OV DIL <span class="sort-arrow">↓</span>
                                         </div>
-                                    </th>
-                                    <th data-field="c_bid" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                C BID <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            {{-- <div class="metric-total" id="ovdil-total">0%</div> --}}
+                                        <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                        <div class="metric-total" id="ovdil-total">0%</div>
+                                    </div>
+                                </th>
+                                <th data-field="el_30" class="el_30_col"
+                                    style="vertical-align: middle; white-space: nowrap;">
+                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                        <div class="d-flex align-items-center">
+                                            E L30 <span class="sort-arrow">↓</span>
                                         </div>
-                                    </th>
-                                    <th data-field="esbid">ES BID</th>
-                                    <th data-field="s_bid">S BID</th>
+                                        <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                        <div class="metric-total" id="el30-total">0</div>
+                                    </div>
+                                </th>
+                                <th data-field="c_bid" style="vertical-align: middle; white-space: nowrap;">
+                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                        <div class="d-flex align-items-center">
+                                            C BID <span class="sort-arrow">↓</span>
+                                        </div>
+                                        <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                        {{-- <div class="metric-total" id="ovdil-total">0%</div> --}}
+                                    </div>
+                                </th>
+                                <th data-field="esbid">ES BID</th>
+                                <th data-field="s_bid">S BID</th>
 
-                                    <th data-field="total_views" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                T VIEWS <span class="sort-arrow">↓</span>
-                                            </div>
+                                <th data-field="total_views" style="vertical-align: middle; white-space: nowrap;">
+                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                        <div class="d-flex align-items-center">
+                                            T VIEWS <span class="sort-arrow">↓</span>
                                         </div>
-                                    </th>
-                                    <th data-field="cvr" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                SCVR <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="cvr-total">0%</div>
+                                    </div>
+                                </th>
+                                <th data-field="l7_views" style="vertical-align: middle; white-space: nowrap;">
+                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                        <div class="d-flex align-items-center">
+                                            L7 VIEWS <span class="sort-arrow">↓</span>
                                         </div>
-                                    </th>
-                                    <th data-field="pmtclkl7" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                PmtClkL7 <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="pmtclkl7-total">0</div>
+                                    </div>
+                                </th>
+                                <th data-field="cvr" style="vertical-align: middle; white-space: nowrap;">
+                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                        <div class="d-flex align-items-center">
+                                            SCVR <span class="sort-arrow">↓</span>
                                         </div>
-                                    </th>
-                                    <th data-field="views" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                PmtClkL30 <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="views-total">0</div>
+                                        <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                        <div class="metric-total" id="cvr-total">0%</div>
+                                    </div>
+                                </th>
+                                <th data-field="pmtclkl7" style="vertical-align: middle; white-space: nowrap;">
+                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                        <div class="d-flex align-items-center">
+                                            PmtClkL7 <span class="sort-arrow">↓</span>
                                         </div>
-                                    </th>
-                                    <th data-field="price"
-                                        style="vertical-align: middle; white-space: nowrap; padding-right: 4px;">
-                                        <div class="d-flex flex-column align-items-center">
-                                            <div class="d-flex align-items-center">
-                                                PRICE <span class="sort-arrow">↓</span>
-                                            </div>
+                                        <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                        <div class="metric-total" id="pmtclkl7-total">0</div>
+                                    </div>
+                                </th>
+                                <th data-field="views" style="vertical-align: middle; white-space: nowrap;">
+                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                        <div class="d-flex align-items-center">
+                                            PmtClkL30 <span class="sort-arrow">↓</span>
                                         </div>
-                                    </th>
-                                    <th data-field="pft" class="pft_col" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                PFT <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="pft-total">0%</div>
+                                        <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                        <div class="metric-total" id="views-total">0</div>
+                                    </div>
+                                </th>
+                                <th data-field="price"
+                                    style="vertical-align: middle; white-space: nowrap; padding-right: 4px;">
+                                    <div class="d-flex flex-column align-items-center">
+                                        <div class="d-flex align-items-center">
+                                            PRICE <span class="sort-arrow">↓</span>
                                         </div>
-                                    </th>
-                                    <th data-field="roi" class="roi_col" style="vertical-align: middle; white-space: nowrap;">
-                                        <div class="d-flex flex-column align-items-center" style="gap: 4px">
-                                            <div class="d-flex align-items-center">
-                                                ROI <span class="sort-arrow">↓</span>
-                                            </div>
-                                            <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
-                                            <div class="metric-total" id="roi-total">0%</div>
+                                    </div>
+                                </th>
+                                <th data-field="pft" class="pft_col"
+                                    style="vertical-align: middle; white-space: nowrap;">
+                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                        <div class="d-flex align-items-center">
+                                            PFT <span class="sort-arrow">↓</span>
                                         </div>
-                                    </th>
-                                    <th data-field="tpft" class="tpft_col">TPFT %</th>
-                                    <th data-field="troi" class="troi_col">TROI %</th>
-                                    <th data-field="NRL">NRL/REQ</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- Data will be populated by JavaScript -->
-                            </tbody>
-                        </table>
-                    </div>
+                                        <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                        <div class="metric-total" id="pft-total">0%</div>
+                                    </div>
+                                </th>
+                                <th data-field="roi" class="roi_col"
+                                    style="vertical-align: middle; white-space: nowrap;">
+                                    <div class="d-flex flex-column align-items-center" style="gap: 4px">
+                                        <div class="d-flex align-items-center">
+                                            ROI <span class="sort-arrow">↓</span>
+                                        </div>
+                                        <div style="width: 100%; height: 5px; background-color: #9ec7f4;"></div>
+                                        <div class="metric-total" id="roi-total">0%</div>
+                                    </div>
+                                </th>
+                                <th data-field="tpft" class="tpft_col">TPFT %</th>
+                                <th data-field="troi" class="troi_col">TROI %</th>
+                                <th data-field="NRL">NRL/REQ</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Data will be populated by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
 
                     <!-- Pagination controls -->
                     <div class="pagination-controls mt-2">
@@ -1679,7 +1785,8 @@
     </div>
 
     <!-- Campaign Chart Modal -->
-    <div class="modal fade" id="campaignChartModal" tabindex="-1" aria-labelledby="campaignChartModalLabel" aria-hidden="true">
+    <div class="modal fade" id="campaignChartModal" tabindex="-1" aria-labelledby="campaignChartModalLabel"
+        aria-hidden="true">
         <div class="modal-dialog modal-xl">
             <div class="modal-content">
                 <div class="modal-header">
@@ -1701,7 +1808,7 @@
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
     <!-- SheetJS for Excel Export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    
+
     <script>
         // Chart initialization
         const ctx = document.getElementById('campaignChart').getContext('2d');
@@ -1710,8 +1817,7 @@
             type: 'line',
             data: {
                 labels: {!! json_encode($dates) !!},
-                datasets: [
-                    {
+                datasets: [{
                         label: 'Clicks',
                         data: {!! json_encode($clicks) !!},
                         borderColor: 'purple',
@@ -1794,16 +1900,23 @@
                         borderColor: "#ddd",
                         borderWidth: 1,
                         padding: 12,
-                        titleFont: { size: 14, weight: 'bold' },
-                        bodyFont: { size: 13 },
+                        titleFont: {
+                            size: 14,
+                            weight: 'bold'
+                        },
+                        bodyFont: {
+                            size: 13
+                        },
                         usePointStyle: true,
                         callbacks: {
                             label: function(context) {
                                 let value = context.raw;
-                                if (context.dataset.label.includes("Spent") || context.dataset.label.includes("Sales")) {
+                                if (context.dataset.label.includes("Spent") || context.dataset.label.includes(
+                                        "Sales")) {
                                     return `${context.dataset.label}: $${Number(value).toFixed(2)}`;
                                 }
-                                if (context.dataset.label.includes("ACOS") || context.dataset.label.includes("CVR")) {
+                                if (context.dataset.label.includes("ACOS") || context.dataset.label.includes(
+                                        "CVR")) {
                                     return `${context.dataset.label}: ${Number(value).toFixed(2)}%`;
                                 }
                                 return `${context.dataset.label}: ${value}`;
@@ -1874,7 +1987,7 @@
         document.getElementById('toggleChartBtn').addEventListener('click', function() {
             const container = document.getElementById('chartContainer');
             const arrow = document.getElementById('chartArrow');
-            
+
             if (container.style.display === 'none') {
                 container.style.display = 'block';
                 arrow.classList.remove('fa-chevron-down');
@@ -1899,16 +2012,19 @@
                 'Last 7 Days': [moment().subtract(6, 'days'), moment()],
                 'Last 30 Days': [moment().subtract(29, 'days'), moment()],
                 'This Month': [moment().startOf('month'), moment().endOf('month')],
-                'Last Month': [moment().subtract(1, 'month').startOf('month'), moment().subtract(1, 'month').endOf('month')]
+                'Last Month': [moment().subtract(1, 'month').startOf('month'), moment().subtract(1, 'month').endOf(
+                    'month')]
             },
             locale: {
                 format: 'YYYY-MM-DD'
             }
         }, function(start, end, label) {
-            $('#daterange-btn span').html('Date range: ' + start.format('YYYY-MM-DD') + ' - ' + end.format('YYYY-MM-DD'));
-            
+            $('#daterange-btn span').html('Date range: ' + start.format('YYYY-MM-DD') + ' - ' + end.format(
+                'YYYY-MM-DD'));
+
             // Fetch filtered data
-            fetch('/ebay/pmp/ads/filter?startDate=' + start.format('YYYY-MM-DD') + '&endDate=' + end.format('YYYY-MM-DD'))
+            fetch('/ebay/pmp/ads/filter?startDate=' + start.format('YYYY-MM-DD') + '&endDate=' + end.format(
+                    'YYYY-MM-DD'))
                 .then(response => response.json())
                 .then(data => {
                     // Update chart
@@ -1923,36 +2039,41 @@
 
                     // Update stat cards
                     document.querySelector('.card-clicks').innerHTML = data.totals.clicks.toLocaleString();
-                    document.querySelector('.card-spend').innerHTML = '$' + Number(data.totals.spend).toFixed(0);
-                    document.querySelector('.card-ad-sales').innerHTML = '$' + Number(data.totals.ad_sales).toFixed(0);
+                    document.querySelector('.card-spend').innerHTML = '$' + Number(data.totals.spend).toFixed(
+                    0);
+                    document.querySelector('.card-ad-sales').innerHTML = '$' + Number(data.totals.ad_sales)
+                        .toFixed(0);
                     document.querySelector('.card-ad-sold').innerHTML = data.totals.ad_sold.toLocaleString();
-                    
-                    const acosVal = data.totals.ad_sales > 0 ? (data.totals.spend / data.totals.ad_sales * 100) : 0;
+
+                    const acosVal = data.totals.ad_sales > 0 ? (data.totals.spend / data.totals.ad_sales *
+                        100) : 0;
                     document.querySelector('.card-acos').innerHTML = acosVal.toFixed(0) + '%';
-                    
-                    const cvrVal = data.totals.clicks > 0 ? (data.totals.ad_sold / data.totals.clicks * 100) : 0;
+
+                    const cvrVal = data.totals.clicks > 0 ? (data.totals.ad_sold / data.totals.clicks * 100) :
+                    0;
                     document.querySelector('.card-cvr').innerHTML = cvrVal.toFixed(1) + '%';
                 })
                 .catch(error => console.error('Error fetching filtered data:', error));
         });
 
         // Set initial text for date range button
-        $('#daterange-btn span').html('Date range: ' + startDate.format('YYYY-MM-DD') + ' - ' + endDate.format('YYYY-MM-DD'));
+        $('#daterange-btn span').html('Date range: ' + startDate.format('YYYY-MM-DD') + ' - ' + endDate.format(
+            'YYYY-MM-DD'));
 
         // Calculate and display initial totals
         const initialClicks = {!! json_encode(array_sum($clicks)) !!};
         const initialSpend = {!! json_encode(array_sum($spend)) !!};
         const initialAdSales = {!! json_encode(array_sum($adSales)) !!};
         const initialAdSold = {!! json_encode(array_sum($adSold)) !!};
-        
+
         document.querySelector('.card-clicks').textContent = initialClicks.toLocaleString();
         document.querySelector('.card-spend').textContent = '$' + Number(initialSpend).toFixed(0);
         document.querySelector('.card-ad-sales').textContent = '$' + Number(initialAdSales).toFixed(0);
         document.querySelector('.card-ad-sold').textContent = initialAdSold.toLocaleString();
-        
+
         const initialAcos = initialAdSales > 0 ? (initialSpend / initialAdSales * 100) : 0;
         document.querySelector('.card-acos').textContent = initialAcos.toFixed(0) + '%';
-        
+
         const initialCvr = initialClicks > 0 ? (initialAdSold / initialClicks * 100) : 0;
         document.querySelector('.card-cvr').textContent = initialCvr.toFixed(1) + '%';
     </script>
@@ -2045,7 +2166,7 @@
                         $input.val(originalValue); // Restore original value
                         return;
                     }
-                    
+
                     $.ajax({
                         url: '/update-ebay-pmt-percenatge',
                         type: 'POST',
@@ -2070,29 +2191,29 @@
                 }
             });
 
-            $(document).on("click", ".info-icon", function () {
+            $(document).on("click", ".info-icon", function() {
                 const $cols = $(".inv_col, .ov_l30_col, .ov_dil_col, .el_30_col");
 
                 if ($cols.first().css("display") === "none") {
-                    $cols.each(function () {
+                    $cols.each(function() {
                         this.style.setProperty("display", "table-cell", "important");
                     });
                 } else {
-                    $cols.each(function () {
+                    $cols.each(function() {
                         this.style.setProperty("display", "none", "important");
                     });
                 }
             });
 
-            $(document).on("click", ".price-view", function () {
+            $(document).on("click", ".price-view", function() {
                 const $cols = $(".pft_col, .roi_col, .tpft_col, .troi_col");
 
                 if ($cols.first().css("display") === "none") {
-                    $cols.each(function () {
+                    $cols.each(function() {
                         this.style.setProperty("display", "table-cell", "important");
                     });
                 } else {
-                    $cols.each(function () {
+                    $cols.each(function() {
                         this.style.setProperty("display", "none", "important");
                     });
                 }
@@ -2117,7 +2238,7 @@
                         $input.val(originalValue); // Restore original value
                         return;
                     }
-                    
+
                     $.ajax({
                         url: '/update-ebay-pmt-percenatge',
                         type: 'POST',
@@ -2142,7 +2263,7 @@
                 }
             });
 
-            $(document).on("click", "#export-btn", function () {
+            $(document).on("click", "#export-btn", function() {
                 exportData();
             });
 
@@ -2225,6 +2346,30 @@
                     'Tacos30': 'all',
                     'SCVR': 'all'
                 }
+            };
+
+            // T VIEWS range filter
+            let tViewsRangeFilter = {
+                min: null,
+                max: null
+            };
+            
+            // L7 Views range filter
+            let l7ViewsRangeFilter = {
+                min: null,
+                max: null
+            };
+            
+            // CBID range filter
+            let cbidRangeFilter = {
+                min: null,
+                max: null
+            };
+            
+            // SCVR range filter
+            let scvrRangeFilter = {
+                min: null,
+                max: null
             };
 
             // Modal System
@@ -2699,9 +2844,10 @@
                     success: function(response) {
                         // Log timestamp to verify fresh data
                         if (response.timestamp) {
-                            console.log('Data loaded at:', new Date(response.timestamp * 1000).toLocaleString());
+                            console.log('Data loaded at:', new Date(response.timestamp * 1000)
+                                .toLocaleString());
                         }
-                        
+
                         if (response && response.data) {
                             tableData = response.data.map((item, index) => {
                                 const inv = Number(item.INV) || 0;
@@ -2750,6 +2896,7 @@
                                     LP: item.LP_productmaster || 0,
                                     SHIP: item.Ship_productmaster || 0,
                                     VIEWS: item.ebay_views || 0,
+                                    L7_VIEWS: item.l7_views || 0,
                                     CBID: item.bid_percentage || 0,
                                     ESBID: item.suggested_bid || 0,
                                     TPFT: item.TPFT || 0,
@@ -2949,7 +3096,7 @@
                             style="margin-left:8px; cursor:pointer; color:#007bff;"
                             title="Show details"></i>
                         `);
-                        
+
                         // Add campaign chart button - temporarily show for all items for testing
                         // Later we'll add condition: if (item.campaign_id)
                         $skuCell.append(`
@@ -2967,7 +3114,9 @@
                     $row.append($('<td class="inv_col">').text(item.INV));
                     $row.append($('<td class="ov_l30_col">').text(item.L30));
 
-                    $row.append($(`<td class="ov_dil_col" data-field="ov_dil" data-value="${Math.round(item.ov_dil * 100)}">`).html(
+                    $row.append($(
+                        `<td class="ov_dil_col" data-field="ov_dil" data-value="${Math.round(item.ov_dil * 100)}">`
+                        ).html(
                         `<span class="dil-percent-value ${getDilColor(item.ov_dil)}">${Math.round(item.ov_dil * 100)}%</span>
                          <span class="text-info tooltip-icon wmpnm-view-trigger" 
                                data-bs-toggle="tooltip" 
@@ -2977,7 +3126,7 @@
                     ));
 
                     $row.append($('<td class="el_30_col">').text(item['eBay L30']));
-                    
+
                     $row.append($('<td data-field="cbid">').text(item.CBID));
 
                     $row.append($('<td data-field="esbid">').text(item.ESBID));
@@ -2993,11 +3142,11 @@
 
                     // Calculate SBID based on SCVR ranges
                     let sbidValue;
-                    
+
                     // Priority 1: If SCVR < 0.01% (including 0.00%), use ESBID
                     if (scvr < 0.01) {
                         sbidValue = parseFloat(item.ESBID) || 0; // Use ESBID for SCVR < 0.01%
-                    } 
+                    }
                     // Priority 2: Check SCVR ranges and apply "whichever is higher" rule with views < 100
                     else if (scvr >= 0.01 && scvr <= 1) {
                         // Between 0.01-1%: SBID 8% or views < 100 then 8% (always 8%)
@@ -3040,7 +3189,9 @@
                         </span>`
                     ));
 
-                    $row.append($('<td>').text(item.VIEWS));
+                    $row.append($('<td data-field="total_views">').text(item.VIEWS));
+
+                    $row.append($('<td data-field="l7_views">').text(item.L7_VIEWS || 0));
 
                     // CVR with color coding and tooltip
 
@@ -3079,25 +3230,25 @@
 
                     // $row.append($('<td>').html(
                     //     `<div style="display:flex;align-items:center">
-                    //         <span class="sPriceText" data-sku="${item.raw_data['Item ID']}" style="min-width:100px; display:inline-block;">
-                    //             ` + item['eBay Price'] + `
-                    //         </span>
-                    //         <input 
-                    //             value="` + item['eBay Price'] + `" 
-                    //             data-sku="` + item.raw_data['Item ID'] + `" 
-                    //             style="min-width:100px; display:none;" 
-                    //             type="number" 
-                    //             class="sPriceInput form-control"
-                    //         >
-                    //         <span class="tooltip-container" style="margin-left:8px">
-                    //             <i class="fas fa-tag text-warning price-view-trigger" 
-                    //                style="transform:translateY(1px)"
-                    //                data-bs-toggle="tooltip" 
-                    //                data-bs-placement="top-end" 
-                    //                title="Pricing view"
-                    //                data-item='${JSON.stringify(item.raw_data)}'></i>
-                    //         </span>
-                    //     </div>`
+                //         <span class="sPriceText" data-sku="${item.raw_data['Item ID']}" style="min-width:100px; display:inline-block;">
+                //             ` + item['eBay Price'] + `
+                //         </span>
+                //         <input 
+                //             value="` + item['eBay Price'] + `" 
+                //             data-sku="` + item.raw_data['Item ID'] + `" 
+                //             style="min-width:100px; display:none;" 
+                //             type="number" 
+                //             class="sPriceInput form-control"
+                //         >
+                //         <span class="tooltip-container" style="margin-left:8px">
+                //             <i class="fas fa-tag text-warning price-view-trigger" 
+                //                style="transform:translateY(1px)"
+                //                data-bs-toggle="tooltip" 
+                //                data-bs-placement="top-end" 
+                //                title="Pricing view"
+                //                data-item='${JSON.stringify(item.raw_data)}'></i>
+                //         </span>
+                //     </div>`
                     // ));
 
 
@@ -3121,7 +3272,8 @@
                     if (item.is_parent) {
                         $row.append($('<td>')); // Empty cell for parent
                     } else {
-                        let currentNR = (item.NRL === 'REQ' || item.NRL === 'NR' || item.NRL === 'LATER') ? item.NRL : 'REQ';
+                        let currentNR = (item.NRL === 'REQ' || item.NRL === 'NR' || item.NRL === 'LATER') ?
+                            item.NRL : 'REQ';
 
                         const $select = $(`
                             <select class="form-select form-select-sm nr-select" style="min-width: 100px;">
@@ -3349,7 +3501,8 @@
                             console.error('NRL Update Error:', xhr.responseText);
                             console.error('Status:', xhr.status);
                             console.error('Response JSON:', xhr.responseJSON);
-                            showNotification('danger', 'Failed to update NRL: ' + (xhr.responseJSON?.message || xhr.statusText));
+                            showNotification('danger', 'Failed to update NRL: ' + (xhr
+                                .responseJSON?.message || xhr.statusText));
                         }
                     });
                 });
@@ -4836,9 +4989,10 @@
                         e.stopPropagation();
                         return;
                     }
-                    
+
                     // Prevent sorting when clicking on resize handle
-                    if ($(e.target).hasClass('resize-handle') || $(e.target).closest('.resize-handle').length) {
+                    if ($(e.target).hasClass('resize-handle') || $(e.target).closest('.resize-handle')
+                        .length) {
                         return;
                     }
 
@@ -4850,7 +5004,7 @@
                     const th = $(this).closest('th');
                     const thField = th.data('field');
                     let dataField = thField === 'parent' ? 'Parent' : thField;
-                    
+
                     // Map field names to actual data property names
                     const fieldMapping = {
                         'inv': 'INV',
@@ -4862,6 +5016,7 @@
                         'esbid': 'ESBID',
                         's_bid': 'SBID', // S BID is calculated, not ESBID
                         'total_views': 'VIEWS',
+                        'l7_views': 'L7_VIEWS',
                         'cvr': 'SCVR', // SCVR is calculated dynamically
                         'pmtclkl7': 'PmtClkL7',
                         'views': 'PmtClkL30',
@@ -4871,7 +5026,7 @@
                         'tpft': 'TPFT',
                         'troi': 'Roi'
                     };
-                    
+
                     // Use mapped field name if available
                     const originalField = dataField;
                     if (fieldMapping[dataField]) {
@@ -4892,8 +5047,9 @@
 
                     // Function to calculate SCVR (same logic as in renderTable)
                     function calculateSCVR(item) {
-                        const ebayL30 = Number(item['eBay L30']) || 0;
-                        const views = Number(item.PmtClkL30) || 0;
+                        // Use the same formula as renderTable: (eBay L30 / VIEWS) * 100
+                        const ebayL30 = Number(item['eBay L30'] || item.raw_data?.['eBay L30'] || 0) || 0;
+                        const views = Number(item.VIEWS || item.ebay_views || 0) || 0;
                         return views > 0 ? (ebayL30 / views) * 100 : 0;
                     }
 
@@ -4902,13 +5058,13 @@
                         // Calculate SCVR first (same as renderTable)
                         const scvr = calculateSCVR(item);
                         const views = Number(item.VIEWS) || 0;
-                        
+
                         let sbidValue;
-                        
+
                         // Priority 1: If SCVR < 0.01% (including 0.00%), use ESBID
                         if (scvr < 0.01) {
                             sbidValue = parseFloat(item.ESBID || 0) || 0;
-                        } 
+                        }
                         // Priority 2: Check SCVR ranges and apply "whichever is higher" rule with views < 100
                         else if (scvr >= 0.01 && scvr <= 1) {
                             // Between 0.01-1%: SBID 8% or views < 100 then 8% (always 8%)
@@ -4941,24 +5097,25 @@
                             // Fallback: default to 8
                             sbidValue = 8;
                         }
-                        
+
                         // Cap sbidValue to maximum of 15
                         sbidValue = Math.min(sbidValue, 15);
-                        
+
                         return sbidValue;
                     }
 
                     // Pre-calculate if field is numeric (outside sort for performance)
                     const numericFieldsSet = new Set([
-                        'sl_no', 'INV', 'L30', 'ov_dil', 'eBay L30', 'E Dil%', 
+                        'sl_no', 'INV', 'L30', 'ov_dil', 'eBay L30', 'E Dil%',
                         'eBay Price', 'PFT %', 'Roi', 'Tacos30', 'SCVR', 'PmtClkL30', 'PmtClkL7',
-                        'SPRICE', 'SPFT', 'SROI', 'Sales L30', 'Profit', 'VIEWS',
+                        'SPRICE', 'SPFT', 'SROI', 'Sales L30', 'Profit', 'VIEWS', 'L7_VIEWS',
                         'CBID', 'ESBID', 'SBID', 'TPFT',
                         'inv', 'ov_l30', 'el_30', 'c_bid', 'cbid', 'esbid', 's_bid', 'total_views',
+                        'l7_views',
                         'cvr', 'pmtclkl7', 'views', 'price', 'pft', 'roi', 'tpft', 'troi'
                     ]);
                     const isNumeric = numericFieldsSet.has(dataField) || numericFieldsSet.has(originalField);
-                    
+
                     // Determine value extraction function based on field type
                     let getValue;
                     if (dataField === 'ov_dil' || originalField === 'ov_dil') {
@@ -4966,9 +5123,12 @@
                     } else if (dataField === 'SBID' || originalField === 's_bid') {
                         // S BID is calculated dynamically
                         getValue = (item) => calculateSBID(item);
-                    } else if (dataField === 'SCVR' || originalField === 'cvr') {
+                    } else if (dataField === 'SCVR' || originalField === 'cvr' || originalField === 'SCVR') {
                         // SCVR is calculated dynamically
-                        getValue = (item) => calculateSCVR(item);
+                        getValue = (item) => {
+                            const scvr = calculateSCVR(item);
+                            return isNaN(scvr) ? 0 : scvr;
+                        };
                     } else if (dataField === 'PmtClkL7' || originalField === 'pmtclkl7') {
                         // PmtClkL7 is in raw_data
                         getValue = (item) => parseFloat(item.raw_data?.PmtClkL7 || 0) || 0;
@@ -4990,7 +5150,7 @@
                     dataToSort.sort((a, b) => {
                         const valA = getValue(a);
                         const valB = getValue(b);
-                        
+
                         if (isNumeric) {
                             // Numeric comparison: direction 1 = ascending (lowest to highest), -1 = descending (highest to lowest)
                             return (valA - valB) * currentSort.direction;
@@ -5170,8 +5330,153 @@
                 });
             }
 
+            // Auto-filter on input change (debounced)
+            let rangeFilterTimeout;
+            function applyRangeFiltersOnChange() {
+                clearTimeout(rangeFilterTimeout);
+                rangeFilterTimeout = setTimeout(function() {
+                    applyRangeFilters();
+                }, 500); // 500ms debounce
+            }
+
+            // Add change event listeners to all range filter inputs for auto-filter
+            $('#t-views-filter-min, #t-views-filter-max, #l7-views-filter-min, #l7-views-filter-max, #cbid-filter-min, #cbid-filter-max, #scvr-filter-min, #scvr-filter-max').on('input change', function() {
+                applyRangeFiltersOnChange();
+            });
+
             // Add this script after your other filter initializations:
             $('#ovl30-filter, #el30-filter, #nra-filter, #cvr-filter').on('change', function() {
+                applyColumnFilters();
+            });
+
+            // Function to apply range filters (used by both manual apply and auto-filter)
+            function applyRangeFilters() {
+                // T VIEWS filter
+                const tViewsMinVal = $('#t-views-filter-min').val();
+                const tViewsMaxVal = $('#t-views-filter-max').val();
+
+                // Validate T VIEWS
+                if (tViewsMinVal !== '' && tViewsMaxVal !== '' && parseFloat(tViewsMinVal) > parseFloat(tViewsMaxVal)) {
+                    return; // Skip validation on auto-filter, just don't apply
+                }
+
+                // Set T VIEWS filter values
+                tViewsRangeFilter.min = tViewsMinVal !== '' ? parseFloat(tViewsMinVal) : null;
+                tViewsRangeFilter.max = tViewsMaxVal !== '' ? parseFloat(tViewsMaxVal) : null;
+
+                // L7 Views filter
+                const l7MinVal = $('#l7-views-filter-min').val();
+                const l7MaxVal = $('#l7-views-filter-max').val();
+
+                // Validate L7 Views
+                if (l7MinVal !== '' && l7MaxVal !== '' && parseFloat(l7MinVal) > parseFloat(l7MaxVal)) {
+                    return; // Skip validation on auto-filter, just don't apply
+                }
+
+                // Set L7 Views filter values
+                l7ViewsRangeFilter.min = l7MinVal !== '' ? parseFloat(l7MinVal) : null;
+                l7ViewsRangeFilter.max = l7MaxVal !== '' ? parseFloat(l7MaxVal) : null;
+
+                // CBID filter
+                const cbidMinVal = $('#cbid-filter-min').val();
+                const cbidMaxVal = $('#cbid-filter-max').val();
+
+                // Validate CBID
+                if (cbidMinVal !== '' && cbidMaxVal !== '' && parseFloat(cbidMinVal) > parseFloat(cbidMaxVal)) {
+                    return; // Skip validation on auto-filter, just don't apply
+                }
+
+                // Set CBID filter values
+                cbidRangeFilter.min = cbidMinVal !== '' ? parseFloat(cbidMinVal) : null;
+                cbidRangeFilter.max = cbidMaxVal !== '' ? parseFloat(cbidMaxVal) : null;
+
+                // SCVR filter
+                const scvrMinVal = $('#scvr-filter-min').val();
+                const scvrMaxVal = $('#scvr-filter-max').val();
+
+                // Validate SCVR
+                if (scvrMinVal !== '' && scvrMaxVal !== '' && parseFloat(scvrMinVal) > parseFloat(scvrMaxVal)) {
+                    return; // Skip validation on auto-filter, just don't apply
+                }
+
+                // Set SCVR filter values
+                scvrRangeFilter.min = scvrMinVal !== '' ? parseFloat(scvrMinVal) : null;
+                scvrRangeFilter.max = scvrMaxVal !== '' ? parseFloat(scvrMaxVal) : null;
+
+                // Apply filters
+                applyColumnFilters();
+            }
+
+            // T VIEWS, L7 Views and CBID range filter handlers
+            $('#apply-l7-views-filter-btn').on('click', function() {
+                // T VIEWS filter
+                const tViewsMinVal = $('#t-views-filter-min').val();
+                const tViewsMaxVal = $('#t-views-filter-max').val();
+
+                // Validate T VIEWS
+                if (tViewsMinVal !== '' && tViewsMaxVal !== '' && parseFloat(tViewsMinVal) > parseFloat(tViewsMaxVal)) {
+                    alert('T VIEWS: Minimum value cannot be greater than maximum value');
+                    return;
+                }
+
+                // L7 Views filter
+                const l7MinVal = $('#l7-views-filter-min').val();
+                const l7MaxVal = $('#l7-views-filter-max').val();
+
+                // Validate L7 Views
+                if (l7MinVal !== '' && l7MaxVal !== '' && parseFloat(l7MinVal) > parseFloat(l7MaxVal)) {
+                    alert('L7 Views: Minimum value cannot be greater than maximum value');
+                    return;
+                }
+
+                // CBID filter
+                const cbidMinVal = $('#cbid-filter-min').val();
+                const cbidMaxVal = $('#cbid-filter-max').val();
+
+                // Validate CBID
+                if (cbidMinVal !== '' && cbidMaxVal !== '' && parseFloat(cbidMinVal) > parseFloat(cbidMaxVal)) {
+                    alert('CBID: Minimum value cannot be greater than maximum value');
+                    return;
+                }
+
+                // Apply filters with validation
+                applyRangeFilters();
+            });
+
+            $('#clear-l7-views-filter-btn').on('click', function() {
+                // Clear T VIEWS filter values
+                tViewsRangeFilter.min = null;
+                tViewsRangeFilter.max = null;
+
+                // Clear T VIEWS input fields
+                $('#t-views-filter-min').val('');
+                $('#t-views-filter-max').val('');
+
+                // Clear L7 Views filter values
+                l7ViewsRangeFilter.min = null;
+                l7ViewsRangeFilter.max = null;
+
+                // Clear L7 Views input fields
+                $('#l7-views-filter-min').val('');
+                $('#l7-views-filter-max').val('');
+
+                // Clear CBID filter values
+                cbidRangeFilter.min = null;
+                cbidRangeFilter.max = null;
+
+                // Clear CBID input fields
+                $('#cbid-filter-min').val('');
+                $('#cbid-filter-max').val('');
+
+                // Clear SCVR filter values
+                scvrRangeFilter.min = null;
+                scvrRangeFilter.max = null;
+
+                // Clear SCVR input fields
+                $('#scvr-filter-min').val('');
+                $('#scvr-filter-max').val('');
+
+                // Apply filters
                 applyColumnFilters();
             });
 
@@ -5232,7 +5537,7 @@
                 if (cvrFilter && cvrFilter !== 'all') {
                     filteredData = filteredData.filter(item => {
                         const cvr = parseFloat(item['SCVR']) * 100 || 0;
-                        
+
                         if (cvrFilter === '0') {
                             return cvr === 0;
                         } else if (cvrFilter === '0.01-1') {
@@ -5254,6 +5559,70 @@
                     });
                 }
 
+                // Apply T VIEWS range filter
+                if (tViewsRangeFilter.min !== null || tViewsRangeFilter.max !== null) {
+                    filteredData = filteredData.filter(item => {
+                        const tViews = parseFloat(item.VIEWS || item.ebay_views || 0) || 0;
+
+                        if (tViewsRangeFilter.min !== null && tViews < tViewsRangeFilter.min) {
+                            return false;
+                        }
+                        if (tViewsRangeFilter.max !== null && tViews > tViewsRangeFilter.max) {
+                            return false;
+                        }
+                        return true;
+                    });
+                }
+
+                // Apply L7 Views range filter
+                if (l7ViewsRangeFilter.min !== null || l7ViewsRangeFilter.max !== null) {
+                    filteredData = filteredData.filter(item => {
+                        const l7Views = parseFloat(item.L7_VIEWS || item.l7_views || 0) || 0;
+
+                        if (l7ViewsRangeFilter.min !== null && l7Views < l7ViewsRangeFilter.min) {
+                            return false;
+                        }
+                        if (l7ViewsRangeFilter.max !== null && l7Views > l7ViewsRangeFilter.max) {
+                            return false;
+                        }
+                        return true;
+                    });
+                }
+
+                // Apply CBID range filter
+                if (cbidRangeFilter.min !== null || cbidRangeFilter.max !== null) {
+                    filteredData = filteredData.filter(item => {
+                        const cbid = parseFloat(item.CBID || item.cbid || 0) || 0;
+
+                        if (cbidRangeFilter.min !== null && cbid < cbidRangeFilter.min) {
+                            return false;
+                        }
+                        if (cbidRangeFilter.max !== null && cbid > cbidRangeFilter.max) {
+                            return false;
+                        }
+                        return true;
+                    });
+                }
+
+                // Apply SCVR range filter
+                if (scvrRangeFilter.min !== null || scvrRangeFilter.max !== null) {
+                    filteredData = filteredData.filter(item => {
+                        // SCVR is calculated dynamically: (eBay L30 / VIEWS) * 100
+                        // Use the same calculation as calculateSCVR function
+                        const ebayL30 = Number(item['eBay L30'] || item.raw_data?.['eBay L30'] || 0) || 0;
+                        const views = Number(item.VIEWS || item.ebay_views || 0) || 0;
+                        const scvrValue = views > 0 ? (ebayL30 / views) * 100 : 0;
+
+                        if (scvrRangeFilter.min !== null && scvrValue < scvrRangeFilter.min) {
+                            return false;
+                        }
+                        if (scvrRangeFilter.max !== null && scvrValue > scvrRangeFilter.max) {
+                            return false;
+                        }
+                        return true;
+                    });
+                }
+
                 // Apply other filters
                 Object.entries(state.filters).forEach(([column, filterValue]) => {
                     if (filterValue === 'all') return;
@@ -5263,6 +5632,125 @@
                         return color === filterValue;
                     });
                 });
+
+                // Reapply sorting if there's an active sort
+                if (currentSort.field) {
+                    const thField = currentSort.field;
+                    let dataField = thField === 'parent' ? 'Parent' : thField;
+
+                    // Map field names to actual data property names
+                    const fieldMapping = {
+                        'inv': 'INV',
+                        'ov_l30': 'L30',
+                        'ov_dil': 'ov_dil',
+                        'el_30': 'eBay L30',
+                        'c_bid': 'CBID',
+                        'cbid': 'CBID',
+                        'esbid': 'ESBID',
+                        's_bid': 'SBID',
+                        'total_views': 'VIEWS',
+                        'l7_views': 'L7_VIEWS',
+                        'cvr': 'SCVR',
+                        'pmtclkl7': 'PmtClkL7',
+                        'views': 'PmtClkL30',
+                        'price': 'eBay Price',
+                        'pft': 'PFT %',
+                        'roi': 'Roi',
+                        'tpft': 'TPFT',
+                        'troi': 'Roi'
+                    };
+
+                    const originalField = dataField;
+                    if (fieldMapping[dataField]) {
+                        dataField = fieldMapping[dataField];
+                    }
+
+                    // Function to calculate SCVR (same logic as in renderTable)
+                    function calculateSCVR(item) {
+                        // Use the same formula as renderTable: (eBay L30 / VIEWS) * 100
+                        const ebayL30 = Number(item['eBay L30'] || item.raw_data?.['eBay L30'] || 0) || 0;
+                        const views = Number(item.VIEWS || item.ebay_views || 0) || 0;
+                        return views > 0 ? (ebayL30 / views) * 100 : 0;
+                    }
+
+                    // Function to calculate SBID
+                    function calculateSBID(item) {
+                        const scvr = calculateSCVR(item);
+                        const views = Number(item.VIEWS) || 0;
+
+                        let sbidValue;
+                        if (scvr < 0.01) {
+                            sbidValue = parseFloat(item.ESBID || 0) || 0;
+                        } else if (scvr >= 0.01 && scvr <= 1) {
+                            sbidValue = 8;
+                        } else if (scvr >= 1.01 && scvr <= 2) {
+                            sbidValue = views < 100 ? 8 : 7;
+                        } else if (scvr >= 2.01 && scvr <= 3) {
+                            sbidValue = views < 100 ? 8 : 6;
+                        } else if (scvr >= 3.01 && scvr <= 5) {
+                            sbidValue = views < 100 ? 8 : 6;
+                        } else if (scvr >= 5.01 && scvr <= 7) {
+                            sbidValue = views < 100 ? 8 : 5;
+                        } else if (scvr >= 7.01 && scvr <= 8) {
+                            sbidValue = views < 100 ? 8 : 5;
+                        } else if (scvr >= 8.01 && scvr <= 10) {
+                            sbidValue = views < 100 ? 8 : 3;
+                        } else if (scvr >= 10.01 && scvr <= 13) {
+                            sbidValue = views < 100 ? 8 : 2;
+                        } else if (scvr > 13) {
+                            sbidValue = views < 100 ? 8 : 3;
+                        } else {
+                            sbidValue = 8;
+                        }
+                        return Math.min(sbidValue, 15);
+                    }
+
+                    const numericFieldsSet = new Set([
+                        'sl_no', 'INV', 'L30', 'ov_dil', 'eBay L30', 'E Dil%',
+                        'eBay Price', 'PFT %', 'Roi', 'Tacos30', 'SCVR', 'PmtClkL30', 'PmtClkL7',
+                        'SPRICE', 'SPFT', 'SROI', 'Sales L30', 'Profit', 'VIEWS', 'L7_VIEWS',
+                        'CBID', 'ESBID', 'SBID', 'TPFT',
+                        'inv', 'ov_l30', 'el_30', 'c_bid', 'cbid', 'esbid', 's_bid', 'total_views',
+                        'l7_views',
+                        'cvr', 'pmtclkl7', 'views', 'price', 'pft', 'roi', 'tpft', 'troi'
+                    ]);
+                    const isNumeric = numericFieldsSet.has(dataField) || numericFieldsSet.has(originalField);
+
+                    // Determine value extraction function
+                    let getValue;
+                    if (dataField === 'ov_dil' || originalField === 'ov_dil') {
+                        getValue = (item) => parseFloat(item.ov_dil || 0) || 0;
+                    } else if (dataField === 'SBID' || originalField === 's_bid') {
+                        getValue = (item) => calculateSBID(item);
+                    } else if (dataField === 'SCVR' || originalField === 'cvr' || originalField === 'SCVR') {
+                        getValue = (item) => {
+                            const scvr = calculateSCVR(item);
+                            return isNaN(scvr) ? 0 : scvr;
+                        };
+                    } else if (dataField === 'PmtClkL7' || originalField === 'pmtclkl7') {
+                        getValue = (item) => parseFloat(item.raw_data?.PmtClkL7 || 0) || 0;
+                    } else if (isNumeric) {
+                        getValue = (item) => {
+                            const value = item[dataField];
+                            if (value === null || value === undefined || value === '') return 0;
+                            const parsed = parseFloat(value);
+                            return isNaN(parsed) ? 0 : parsed;
+                        };
+                    } else {
+                        getValue = (item) => item[dataField] || '';
+                    }
+
+                    // Sort the filtered data
+                    filteredData.sort((a, b) => {
+                        const valA = getValue(a);
+                        const valB = getValue(b);
+
+                        if (isNumeric) {
+                            return (valA - valB) * currentSort.direction;
+                        }
+                        return String(valA).localeCompare(String(valB)) * currentSort.direction;
+                    });
+                }
 
                 currentPage = 1;
                 renderTable();
@@ -5279,7 +5767,7 @@
                 let exportData = [];
 
                 // Table ke rows loop karke sbid lete hain
-                $("#ebay-table tbody tr").each(function (index) {
+                $("#ebay-table tbody tr").each(function(index) {
                     let cbid = $(this).find('td[data-field="cbid"]').text().trim();
                     let esbid = $(this).find('td[data-field="esbid"]').text().trim();
                     let sbid = $(this).find('td[data-field="sbid"]').text().trim();
@@ -6170,11 +6658,11 @@
 
             // Campaign Chart Handler
             let campaignChart = null;
-            
+
             $(document).on('click', '.campaign-chart-btn', function(e) {
                 e.preventDefault();
                 const campaignId = $(this).data('campaign-id');
-                
+
                 // Fetch campaign chart data
                 fetch(`/ebay/pmp/ads/campaign-chart?campaign_id=${campaignId}`)
                     .then(response => response.json())
@@ -6190,8 +6678,7 @@
                             type: 'line',
                             data: {
                                 labels: data.dates,
-                                datasets: [
-                                    {
+                                datasets: [{
                                         label: 'Clicks',
                                         data: data.clicks,
                                         borderColor: 'rgb(153, 102, 255)',
@@ -6261,9 +6748,11 @@
                                                     label += ': ';
                                                 }
                                                 if (label.includes('$')) {
-                                                    label += '$' + context.parsed.y.toFixed(2);
+                                                    label += '$' + context.parsed.y.toFixed(
+                                                        2);
                                                 } else if (label.includes('%')) {
-                                                    label += context.parsed.y.toFixed(2) + '%';
+                                                    label += context.parsed.y.toFixed(2) +
+                                                        '%';
                                                 } else {
                                                     label += context.parsed.y;
                                                 }
@@ -6325,7 +6814,7 @@
                         alert('Failed to load campaign chart data');
                     });
             });
-            
+
         });
     </script>
 @endsection

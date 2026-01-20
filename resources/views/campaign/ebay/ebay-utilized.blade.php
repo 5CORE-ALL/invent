@@ -1855,6 +1855,17 @@
                         width: 70
                     },
                     {
+                        title: "L7 VIEWS",
+                        field: "l7_views",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            var value = parseInt(cell.getValue() || 0);
+                            return value.toLocaleString();
+                        },
+                        sorter: "number",
+                        width: 70
+                    },
+                    {
                         title: "CVR",
                         field: "cvr",
                         hozAlign: "center",

@@ -1284,6 +1284,7 @@ class EbayOverUtilizedBgtController extends Controller
                 $price = $ebay->ebay_price ?? 0;
                 $ebayL30 = $ebay->ebay_l30 ?? 0;
                 $views = $ebay->views ?? 0;
+                $l7Views = $ebay->l7_views ?? 0;
                 
                 // Track eBay SKU (if has eBay data with price > 0 or campaign)
                 if (($ebay && $price > 0) || $hasCampaign) {
@@ -1304,6 +1305,7 @@ class EbayOverUtilizedBgtController extends Controller
                     'price' => $price,
                     'ebay_l30' => $ebayL30,
                     'views' => (int)$views,
+                    'l7_views' => (int)$l7Views,
                     'l7_spend' => 0,
                     'l7_cpc' => 0,
                     'l1_spend' => 0,
@@ -1435,10 +1437,12 @@ class EbayOverUtilizedBgtController extends Controller
             $price = 0;
             $ebayL30 = 0;
             $views = 0;
+            $l7Views = 0;
             if ($ebay) {
                 $price = $ebay->ebay_price ?? 0;
                 $ebayL30 = $ebay->ebay_l30 ?? 0;
                 $views = $ebay->views ?? 0;
+                $l7Views = $ebay->l7_views ?? 0;
             } else {
                 // Try to find by campaign name
                 $ebayMetricByName = EbayMetric::where('sku', $campaignName)->first();
@@ -1446,6 +1450,7 @@ class EbayOverUtilizedBgtController extends Controller
                     $price = $ebayMetricByName->ebay_price ?? 0;
                     $ebayL30 = $ebayMetricByName->ebay_l30 ?? 0;
                     $views = $ebayMetricByName->views ?? 0;
+                    $l7Views = $ebayMetricByName->l7_views ?? 0;
                 }
             }
 
@@ -1469,6 +1474,7 @@ class EbayOverUtilizedBgtController extends Controller
                 'price' => $price,
                 'ebay_l30' => $ebayL30,
                 'views' => (int)$views,
+                'l7_views' => (int)$l7Views,
                 'l7_spend' => 0,
                 'l7_cpc' => 0,
                 'l1_spend' => 0,
