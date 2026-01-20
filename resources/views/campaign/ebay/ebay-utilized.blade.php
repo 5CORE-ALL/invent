@@ -4037,12 +4037,29 @@ document.getElementById("apr-all-sbid-btn").addEventListener("click", function()
             document.addEventListener("change", function(e) {
                 if(e.target.classList.contains("campaign-status-toggle")) {
                     let campaignId = e.target.getAttribute("data-campaign-id");
-                    let isEnabled = e.target.checked;
+                    let isEnabled = e.target.checked; // Checkbox state = what user wants
                     let newStatus = isEnabled ? 'ENABLED' : 'PAUSED';
-                    let originalChecked = isEnabled; // Store original state
+                    let originalChecked = isEnabled; // Store for error revert
                     
                     if(!campaignId) {
                         alert("Campaign ID not found!");
+                        e.target.checked = !isEnabled; // Revert toggle
+                        return;
+                    }
+                    
+                    // Find the row for updating
+                    let rows = table.getRows();
+                    let currentRow = null;
+                    for(let i = 0; i < rows.length; i++) {
+                        let rowData = rows[i].getData();
+                        if(rowData.campaign_id === campaignId) {
+                            currentRow = rows[i];
+                            break;
+                        }
+                    }
+                    
+                    if(!currentRow) {
+                        alert("Row not found!");
                         e.target.checked = !isEnabled; // Revert toggle
                         return;
                     }
@@ -4066,73 +4083,44 @@ document.getElementById("apr-all-sbid-btn").addEventListener("click", function()
                     .then(res => res.json())
                     .then(data => {
                         if(data.status === 200 || data.status === '200'){
+                            // Convert ENABLED to RUNNING for database, PAUSED stays PAUSED
+                            let dbStatus = newStatus === 'ENABLED' ? 'RUNNING' : 'PAUSED';
                             // Update the row data
-                            let rows = table.getRows();
-                            for(let i = 0; i < rows.length; i++) {
-                                let rowData = rows[i].getData();
-                                if(rowData.campaign_id === campaignId) {
-                                    let dbStatus = newStatus === 'ENABLED' ? 'RUNNING' : 'PAUSED';
-                                    // Preserve all row data and update status - ensure campaign_id and hasCampaign are preserved
-                                    let updatedData = Object.assign({}, rowData, {
-                                        campaignStatus: dbStatus,
-                                        campaign_id: rowData.campaign_id, // Preserve campaign_id
-                                        hasCampaign: rowData.hasCampaign !== undefined ? rowData.hasCampaign : (rowData.campaign_id && rowData.campaignName) // Preserve hasCampaign
-                                    });
-                                    rows[i].update(updatedData);
-                                    
-                                    // Function to update checkbox state
-                                    function updateCheckboxState() {
-                                        let statusCell = rows[i].getCell('campaignStatus');
-                                        if(statusCell) {
-                                            let cellElement = statusCell.getElement();
-                                            if(cellElement) {
-                                                let checkbox = cellElement.querySelector('.campaign-status-toggle');
-                                                if(checkbox) {
-                                                    checkbox.checked = (dbStatus === 'RUNNING');
-                                                    // Trigger change event to ensure UI updates
-                                                    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
-                                                }
-                                            }
+                            currentRow.update({campaignStatus: dbStatus});
+                            
+                            // Immediately update checkbox state before reformat
+                            // This ensures the checkbox reflects the new state right away
+                            e.target.checked = (dbStatus === 'RUNNING');
+                            
+                            // Force reformat to ensure formatter runs and creates new checkbox with correct state
+                            let statusCell = currentRow.getCell('campaignStatus');
+                            if(statusCell) {
+                                statusCell.reformat();
+                                // After reformat, ensure the new checkbox has correct state
+                                setTimeout(() => {
+                                    let cellElement = statusCell.getElement();
+                                    if(cellElement) {
+                                        let newCheckbox = cellElement.querySelector('.campaign-status-toggle');
+                                        if(newCheckbox) {
+                                            newCheckbox.checked = (dbStatus === 'RUNNING');
                                         }
                                     }
-                                    
-                                    // Reformat Status cell to refresh toggle
-                                    let statusCell = rows[i].getCell('campaignStatus');
-                                    if(statusCell) {
-                                        statusCell.reformat();
-                                        // Update checkbox immediately and after delays
-                                        setTimeout(updateCheckboxState, 10);
-                                        setTimeout(updateCheckboxState, 50);
-                                        setTimeout(updateCheckboxState, 100);
-                                    }
-                                    
-                                    // Reformat Missing cell to ensure correct dot color
-                                    let missingCell = rows[i].getCell('hasCampaign');
-                                    if(missingCell) {
-                                        missingCell.reformat();
-                                    }
-                                    
-                                    // Also reformat the entire row as backup
-                                    setTimeout(function() {
-                                        rows[i].reformat();
-                                        // Update checkbox after full row reformat
-                                        setTimeout(updateCheckboxState, 10);
-                                        setTimeout(updateCheckboxState, 50);
-                                    }, 100);
-                                    break;
-                                }
+                                }, 10);
                             }
+                            
                             // Show success message
                             showToast('success', data.message || 'Campaign status updated successfully');
                         } else {
                             showToast('error', data.message || "Failed to update campaign status");
-                            e.target.checked = !originalChecked; // Revert toggle to original state
+                            // Revert checkbox to original state (opposite of what user wanted)
+                            e.target.checked = !originalChecked;
                         }
                     })
                     .catch(err => {
                         console.error(err);
                         alert("Request failed: " + err.message);
-                        e.target.checked = !originalChecked; // Revert toggle to original state
+                        // Revert checkbox to original state
+                        e.target.checked = !originalChecked;
                     })
                     .finally(() => {
                         if (overlay) {

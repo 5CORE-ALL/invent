@@ -783,11 +783,202 @@
                             const currentType = urlParams.get('type') ? decodeURIComponent(urlParams.get('type').replace(/\+/g, ' ')) : '';
                             const currentSearch = urlParams.get('search') ? decodeURIComponent(urlParams.get('search').replace(/\+/g, ' ')) : '';
                             
-                            // Update table body with smooth fade-in
-                            $('#suppliers-table tbody').removeClass('fade-out').html(response.html).addClass('fade-in');
+                            // First, check if modals are actually in the response HTML
+                            const hasEditModals = response.html.indexOf('editSupplierModal') !== -1;
+                            const hasViewModals = response.html.indexOf('viewSupplierModal') !== -1;
+                            console.log('Response HTML contains edit modals:', hasEditModals);
+                            console.log('Response HTML contains view modals:', hasViewModals);
+                            
+                            // Extract modals from raw HTML string
+                            // Since modals are inside <tr> tags (invalid HTML), jQuery strips them
+                            // We need to extract them manually from the string
+                            const modalsToAppend = [];
+                            let cleanHtml = response.html;
+                            
+                            // Find all modal IDs first
+                            const idPattern = /id="(editSupplierModal\d+|viewSupplierModal\d+)"/g;
+                            const modalIds = [];
+                            let idMatch;
+                            const htmlStr = response.html;
+                            
+                            while ((idMatch = idPattern.exec(htmlStr)) !== null) {
+                                if (modalIds.indexOf(idMatch[1]) === -1) {
+                                    modalIds.push(idMatch[1]);
+                                }
+                            }
+                            
+                            console.log('Found modal IDs in HTML string:', modalIds.length, modalIds);
+                            
+                            // For each modal ID, extract the complete modal HTML
+                            modalIds.forEach(function(modalId) {
+                                // Find the position of the modal ID
+                                const idPos = htmlStr.indexOf('id="' + modalId + '"');
+                                if (idPos === -1) return;
+                                
+                                // Find the opening <div> tag that contains this ID
+                                // Go backwards to find the div with class="modal fade"
+                                let divStart = htmlStr.lastIndexOf('<div', idPos);
+                                let foundStart = false;
+                                
+                                // Keep going backwards until we find a div with "modal fade" class
+                                while (divStart !== -1 && divStart >= 0) {
+                                    const divTag = htmlStr.substring(divStart, htmlStr.indexOf('>', divStart) + 1);
+                                    if (divTag.indexOf('modal') !== -1 && divTag.indexOf('fade') !== -1) {
+                                        foundStart = true;
+                                        break;
+                                    }
+                                    divStart = htmlStr.lastIndexOf('<div', divStart - 1);
+                                }
+                                
+                                if (!foundStart) return;
+                                
+                                // Now find the matching closing </div> tags
+                                // Count div depth to find the correct closing tag
+                                let depth = 0;
+                                let pos = divStart;
+                                let modalEnd = -1;
+                                
+                                while (pos < htmlStr.length) {
+                                    const openDiv = htmlStr.indexOf('<div', pos);
+                                    const closeDiv = htmlStr.indexOf('</div>', pos);
+                                    
+                                    if (closeDiv === -1) break;
+                                    
+                                    if (openDiv !== -1 && openDiv < closeDiv) {
+                                        depth++;
+                                        pos = openDiv + 4;
+                                    } else {
+                                        depth--;
+                                        pos = closeDiv + 6;
+                                        if (depth === 0) {
+                                            modalEnd = pos;
+                                            break;
+                                        }
+                                    }
+                                }
+                                
+                                if (modalEnd !== -1) {
+                                    const modalHtml = htmlStr.substring(divStart, modalEnd);
+                                    // Parse with jQuery
+                                    const $modal = $(modalHtml.trim());
+                                    if ($modal.length > 0 && $modal.attr('id') === modalId) {
+                                        modalsToAppend.push($modal);
+                                        // Remove from clean HTML
+                                        cleanHtml = cleanHtml.replace(modalHtml, '');
+                                        console.log('Successfully extracted modal:', modalId);
+                                    }
+                                }
+                            });
+                            
+                            console.log('Total modals extracted:', modalsToAppend.length);
+                            
+                            // CRITICAL: Remove data-bs-toggle from buttons BEFORE inserting into DOM
+                            // This prevents Bootstrap from auto-initializing when HTML is inserted
+                            const cleanTempDiv = $('<div>').html(cleanHtml);
+                            cleanTempDiv.find('[data-bs-toggle="modal"][data-bs-target^="#editSupplierModal"], [data-bs-toggle="modal"][data-bs-target^="#viewSupplierModal"]').each(function() {
+                                $(this).removeAttr('data-bs-toggle');
+                                $(this).addClass('manual-modal-trigger');
+                            });
+                            
+                            // Update table body with rows (modals removed, data-bs-toggle already removed)
+                            $('#suppliers-table tbody').removeClass('fade-out').html(cleanTempDiv.html()).addClass('fade-in');
+                            
+                            // Store modal IDs from extracted modals (reuse the modalIds array from above)
+                            // modalIds already contains the IDs we found, but let's also verify from extracted modals
+                            const extractedModalIds = [];
+                            modalsToAppend.forEach(function($modal) {
+                                const modalId = $modal.attr('id');
+                                if (modalId) {
+                                    extractedModalIds.push(modalId);
+                                    console.log('Modal ID from extracted modal:', modalId);
+                                }
+                            });
+                            
+                            // Use the modalIds array that was already populated during extraction
+                            
+                            // Remove old modals from body (only if not currently shown and not in current set)
+                            $('body').find('[id^="editSupplierModal"], [id^="viewSupplierModal"]').each(function() {
+                                const modalId = $(this).attr('id');
+                                // Only remove if it's not in the current set of modals
+                                if (modalIds.indexOf(modalId) === -1 && extractedModalIds.indexOf(modalId) === -1 && !$(this).hasClass('show')) {
+                                    // Dispose Bootstrap instance if exists
+                                    try {
+                                        if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                                            const instance = bootstrap.Modal.getInstance(this);
+                                            if (instance) {
+                                                instance.dispose();
+                                            }
+                                        }
+                                    } catch (e) {
+                                        // Ignore errors
+                                    }
+                                    $(this).remove();
+                                }
+                            });
+                            
+                            // Append modals to body
+                            modalsToAppend.forEach(function($modal) {
+                                const modalId = $modal.attr('id');
+                                
+                                if (!modalId) {
+                                    console.warn('Modal has no ID, skipping');
+                                    return;
+                                }
+                                
+                                // Check if modal already exists in body
+                                const existingModal = $('body').find('#' + modalId);
+                                if (existingModal.length > 0) {
+                                    // Remove existing and replace with new one
+                                    existingModal.remove();
+                                }
+                                
+                                // Ensure modal has proper structure
+                                if ($modal.find('.modal-dialog').length > 0 && $modal.find('.modal-content').length > 0) {
+                                    // Ensure required attributes
+                                    if (!$modal.attr('tabindex')) {
+                                        $modal.attr('tabindex', '-1');
+                                    }
+                                    if (!$modal.attr('aria-hidden')) {
+                                        $modal.attr('aria-hidden', 'true');
+                                    }
+                                    if (!$modal.attr('role')) {
+                                        $modal.attr('role', 'dialog');
+                                    }
+                                    // Remove any existing Bootstrap instance data
+                                    $modal.removeData('bs.modal');
+                                    // Append to body
+                                    $('body').append($modal);
+                                    
+                                    // Verify modal was appended
+                                    const $verifyModal = $('body').find('#' + modalId);
+                                    if ($verifyModal.length === 0) {
+                                        console.error('Failed to append modal to body:', modalId);
+                                    } else {
+                                        console.log('Modal successfully appended to body:', modalId);
+                                    }
+                                } else {
+                                    console.warn('Modal structure incomplete, skipping:', modalId);
+                                }
+                            });
                             setTimeout(function() {
                                 $('#suppliers-table tbody').removeClass('fade-in');
                             }, 300);
+                            
+                            // Verify all modals are in body and ready (they were already appended above)
+                            setTimeout(function() {
+                                modalIds.forEach(function(modalId) {
+                                    const $modalInBody = $('body').find('#' + modalId);
+                                    if ($modalInBody.length === 0) {
+                                        console.warn('Modal not found in body after append:', modalId);
+                                        // Try to find it anywhere
+                                        const $modalAnywhere = $('#' + modalId);
+                                        if ($modalAnywhere.length > 0) {
+                                            console.log('Modal found elsewhere, moving to body:', modalId);
+                                            $modalAnywhere.detach().appendTo('body');
+                                        }
+                                    }
+                                });
+                            }, 100);
                             
                             // Update pagination with smooth fade-in
                             $('#pagination-wrapper').html(response.pagination).fadeIn(200);
@@ -943,6 +1134,9 @@
                             
                             // Re-bind rating modal buttons
                             bindRatingButtons();
+                            
+                            // Modals are already extracted and moved to body above
+                            // No additional action needed - Bootstrap will handle initialization via data attributes
                         }
                     },
                     error: function(xhr) {
@@ -1071,6 +1265,157 @@
         // Initial binding of rating modal buttons when document is ready
         $(document).ready(function() {
             bindRatingButtons();
+            
+            // Move initial page load modals to body (Bootstrap requirement)
+            // Modals should not be inside table structure
+            // Also remove data-bs-toggle from initial page load buttons
+            setTimeout(function() {
+                $('[id^="editSupplierModal"], [id^="viewSupplierModal"]').each(function() {
+                    const $modal = $(this);
+                    if ($modal.closest('tbody, table').length > 0) {
+                        $modal.detach().appendTo('body');
+                    }
+                });
+                
+                // Remove data-bs-toggle from initial page load buttons
+                $('[data-bs-toggle="modal"][data-bs-target^="#editSupplierModal"], [data-bs-toggle="modal"][data-bs-target^="#viewSupplierModal"]').each(function() {
+                    $(this).removeAttr('data-bs-toggle');
+                    $(this).addClass('manual-modal-trigger');
+                });
+            }, 50);
+            
+            // Handle modal button clicks manually (for buttons without data-bs-toggle)
+            // This prevents Bootstrap auto-initialization errors
+            $(document).on('click', '.manual-modal-trigger[data-bs-target^="#editSupplierModal"], .manual-modal-trigger[data-bs-target^="#viewSupplierModal"]', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const targetId = $(this).attr('data-bs-target');
+                if (!targetId) return false;
+                
+                // Extract modal ID from target (e.g., "#editSupplierModal118" -> "editSupplierModal118")
+                const modalId = targetId.replace('#', '');
+                
+                console.log('Looking for modal:', modalId, 'Target:', targetId);
+                
+                // Find the modal - search in body first (where they should be)
+                let $modal = $('body').find('#' + modalId);
+                console.log('Modal in body:', $modal.length);
+                
+                // If not found in body, search everywhere
+                if ($modal.length === 0) {
+                    $modal = $('#' + modalId);
+                    console.log('Modal anywhere:', $modal.length);
+                }
+                
+                // If still not found, try searching in table
+                if ($modal.length === 0) {
+                    $modal = $('#suppliers-table').find('#' + modalId);
+                    console.log('Modal in table:', $modal.length);
+                    if ($modal.length > 0) {
+                        console.log('Found modal in table, moving to body:', targetId);
+                    }
+                }
+                
+                // If still not found, list all modals in body for debugging
+                if ($modal.length === 0) {
+                    const allModals = $('body').find('[id^="editSupplierModal"], [id^="viewSupplierModal"]');
+                    console.warn('Modal not found:', modalId);
+                    console.log('All modals in body:', allModals.length);
+                    allModals.each(function() {
+                        console.log('  - Modal ID:', $(this).attr('id'));
+                    });
+                    
+                    // Wait a bit and try again (might be in process of being appended)
+                    setTimeout(function() {
+                        $modal = $('body').find('#' + modalId);
+                        if ($modal.length === 0) {
+                            $modal = $('#' + modalId);
+                        }
+                        if ($modal.length > 0) {
+                            console.log('Modal found after retry, opening:', modalId);
+                            // Retry opening modal by calling the handler again
+                            const $btn = $('[data-bs-target="' + targetId + '"]').first();
+                            if ($btn.length > 0) {
+                                $btn.trigger('click');
+                            }
+                        } else {
+                            console.error('Modal still not found after retry:', modalId);
+                        }
+                    }, 300);
+                    return false;
+                }
+                
+                // Ensure modal is in body (not in table)
+                if ($modal.closest('tbody, table').length > 0) {
+                    $modal.detach().appendTo('body');
+                    // Re-query after moving
+                    $modal = $(targetId);
+                    if ($modal.length === 0) {
+                        console.warn('Modal lost after moving:', targetId);
+                        return false;
+                    }
+                }
+                
+                // Ensure modal has proper structure
+                if ($modal.find('.modal-dialog').length === 0 || $modal.find('.modal-content').length === 0) {
+                    console.warn('Modal structure incomplete:', targetId);
+                    return false;
+                }
+                
+                // Get the modal element
+                const modalElement = $modal[0];
+                if (!modalElement || !modalElement.parentNode) {
+                    console.warn('Modal element not in DOM:', targetId);
+                    return false;
+                }
+                
+                // Initialize modal with proper error handling
+                try {
+                    if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                        // Dispose any existing instance
+                        const existingInstance = bootstrap.Modal.getInstance(modalElement);
+                        if (existingInstance) {
+                            try {
+                                existingInstance.dispose();
+                            } catch (disposeError) {
+                                // Ignore dispose errors
+                            }
+                        }
+                        
+                        // Verify element is still valid
+                        if (!modalElement || !modalElement.parentNode) {
+                            console.warn('Modal element invalid before initialization:', targetId);
+                            return false;
+                        }
+                        
+                        // Create new instance with explicit options
+                        const modalInstance = new bootstrap.Modal(modalElement, {
+                            backdrop: true,
+                            keyboard: true,
+                            focus: true
+                        });
+                        
+                        // Verify element is still valid before showing
+                        if (!modalElement || !modalElement.parentNode) {
+                            console.warn('Modal element invalid before showing:', targetId);
+                            return false;
+                        }
+                        
+                        // Show the modal
+                        modalInstance.show();
+                    } else {
+                        // Fallback to jQuery
+                        $modal.modal('show');
+                    }
+                } catch (error) {
+                    console.error('Error initializing modal:', error, targetId, modalElement);
+                    return false;
+                }
+                
+                return false;
+            });
+            
         });
 
         document.body.style.zoom = '90%';
