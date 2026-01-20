@@ -92,6 +92,14 @@ class StockBalanceController extends Controller
 
         return view('inventory-management.stock-balance-view', compact('warehouses', 'skus'));
     }
+    
+    /**
+     * Display the tabulator view
+     */
+    public function tabulatorView()
+    {
+        return view('inventory-management.stock-balance-tabulator');
+    }
 
     /**
      * Show the form for creating a new resource.

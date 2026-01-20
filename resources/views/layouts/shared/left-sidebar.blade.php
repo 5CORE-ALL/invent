@@ -1604,8 +1604,12 @@
                         <li>
                             <a href="{{ route('stock.transfer.view') }}">Stock Transfer (WH)</a>
                         </li>
-                        <li>
+                        {{-- <li>
                             <a href="{{ route('stock.balance.view') }}">Stock Balance / TRF</a>
+                        </li> --}}
+
+                        <li>
+                            <a href="{{ url('stock-balance-tabulator') }}">Stock Balance TRF</a>
                         </li>
                         <li>
                             <a href="{{ route('incoming.orders.view') }}">Incoming Orders</a>

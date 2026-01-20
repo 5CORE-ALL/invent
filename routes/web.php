@@ -567,6 +567,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     //Stock Balance
     Route::get('/stock-balance-view', [StockBalanceController::class, 'index'])->name('stock.balance.view');
+    Route::get('/stock-balance-tabulator', [StockBalanceController::class, 'tabulatorView'])->name('stock.balance.tabulator');
     Route::post('/stock-balance-store', [StockBalanceController::class, 'store'])->name('stock.balance.store');
     Route::get('/stock-balance-data-list', [StockBalanceController::class, 'list']);
     Route::get('/stock-balance-inventory-data', [StockBalanceController::class, 'getInventoryData']);

@@ -586,27 +586,26 @@
                         </div>
                     </div>
 
-                    <!-- Two Column Layout -->
+                    <!-- Full Width Table Layout -->
                     <div class="row">
-                        <!-- Left Column: Inventory Table (50%) -->
-                        <div class="col-md-6">
+                        <!-- Inventory Table (100% Width) -->
+                        <div class="col-12">
                             <div id="inventoryTableContainer" class="table-responsive mb-3">
                                 <table id="inventoryDataTable" class="table dt-responsive nowrap w-100">
                                     <thead>
                                         <tr>
+                                            <th style="width: 40px; text-align: center;">
+                                                <input type="checkbox" id="select-all-from-sku" title="Select All">
+                                            </th>
                                             <th class="sortable" data-column="img">IMG</th>
                                             <th class="sortable" data-column="parent">PARENT <span class="sort-icon">↕</span></th>
                                             <th class="sortable" data-column="sku">SKU <span class="sort-icon">↕</span></th>
                                             <th class="sortable" data-column="inv">INV <span class="sort-icon">↕</span></th>
                                             <th class="sortable" data-column="sold">SOLD <span class="sort-icon">↕</span></th>
                                             <th class="sortable" data-column="dil">DIL% <span class="sort-icon">↕</span></th>
+                                            <th style="background-color: #dc3545; color: white;">QTY TO TRANSFER</th>
                                             <th>R</th>
                                             <th>ACTION</th>
-                                            <th style="background-color: #28a745; color: white;">TO SKU</th>
-                                            <th style="background-color: #28a745; color: white;">TO Parent</th>
-                                            <th style="background-color: #28a745; color: white;">TO Qty Adj</th>
-                                            <th style="background-color: #ffc107; color: #212529;">Ratio</th>
-                                            <th style="background-color: #17a2b8; color: white;">Submit</th>
                                         </tr>
                                     </thead>
                                     <tbody id="inventory-data-table-body">
@@ -615,9 +614,11 @@
                                 </table>
                             </div>
                         </div>
+                    </div>
 
-                        <!-- Right Column: Stock Balance Form Container (50%) -->
-                        <div class="col-md-6">
+                    <!-- Stock Balance Form (Full Width, Hidden by Default) -->
+                    <div class="row mt-3">
+                        <div class="col-12">
                             <div id="stockBalanceFormContainer" class="stock-balance-form-container" style="display: none;">
                                 <div class="stock-balance-form-header">
                                     <h5 class="mb-0">Stock Balance</h5>
@@ -720,6 +721,97 @@
                                         </div>
 
                                     </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Multi-SKU Transfer Panel (Shows when SKUs are selected) -->
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <div id="multiTransferPanel" class="card" style="display: none; border: 3px solid #17a2b8;">
+                                <div class="card-header" style="background: linear-gradient(135deg, #17a2b8 0%, #138496 100%); color: white;">
+                                    <h5 class="mb-0 d-flex justify-content-between align-items-center">
+                                        <span>
+                                            <i class="fas fa-exchange-alt"></i> Multi-SKU Transfer 
+                                            <span id="selectedSkuCount" class="badge bg-warning text-dark ms-2">0 SKUs</span>
+                                        </span>
+                                        <button type="button" class="btn btn-sm btn-light" id="cancelMultiTransfer">
+                                            <i class="fas fa-times"></i> Cancel
+                                        </button>
+                                    </h5>
+                                </div>
+                                <div class="card-body" style="background-color: #f8f9fa;">
+                                    <div class="row">
+                                        <!-- FROM SKUs Section (Left) -->
+                                        <div class="col-md-5">
+                                            <div class="card border-danger">
+                                                <div class="card-header bg-danger text-white">
+                                                    <h6 class="mb-0"><strong>FROM (Selected SKUs)</strong></h6>
+                                                </div>
+                                                <div class="card-body p-2" style="max-height: 300px; overflow-y: auto; background-color: #fff;">
+                                                    <div id="selectedFromSkusList">
+                                                        <!-- Will be populated by JS -->
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Transfer Controls (Center) -->
+                                        <div class="col-md-2 text-center d-flex flex-column justify-content-center align-items-center">
+                                            <div class="mb-3 w-100">
+                                                <label class="form-label fw-bold" style="font-size: 16px;">Ratio</label>
+                                                <select id="multiTransferRatio" class="form-select" style="font-size: 18px; font-weight: bold;">
+                                                    <option value="1:4">1:4</option>
+                                                    <option value="1:2">1:2</option>
+                                                    <option value="1:1" selected>1:1</option>
+                                                    <option value="2:1">2:1</option>
+                                                    <option value="4:1">4:1</option>
+                                                </select>
+                                            </div>
+                                            <i class="fas fa-arrow-right fa-4x text-info mb-3"></i>
+                                            <div class="text-center">
+                                                <small class="text-muted">FROM → TO</small>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- TO SKU Section (Right) -->
+                                        <div class="col-md-5">
+                                            <div class="card border-success">
+                                                <div class="card-header bg-success text-white">
+                                                    <h6 class="mb-0"><strong>TO (Destination SKU)</strong></h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <div class="mb-3">
+                                                        <label class="form-label fw-bold">TO SKU</label>
+                                                        <select id="multiTransferToSku" class="form-select" style="font-size: 18px;">
+                                                            <option value="" selected>Select TO SKU</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="mb-3">
+                                                        <label class="form-label fw-bold">TO Parent</label>
+                                                        <input type="text" id="multiTransferToParent" class="form-control" readonly style="font-size: 18px; background-color: #e9ecef;">
+                                                    </div>
+                                                    <div class="mb-3">
+                                                        <label class="form-label fw-bold">TO Available INV</label>
+                                                        <input type="text" id="multiTransferToInv" class="form-control" readonly style="font-size: 18px; background-color: #e9ecef;">
+                                                    </div>
+                                                    <div class="mb-3">
+                                                        <label class="form-label fw-bold">Total TO Qty (Calculated)</label>
+                                                        <input type="text" id="multiTransferToQty" class="form-control text-success fw-bold" readonly style="font-size: 24px; background-color: #d4edda;">
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="row mt-3">
+                                        <div class="col-12 text-center">
+                                            <button type="button" class="btn btn-success btn-lg px-5" id="executeMultiTransfer" disabled style="font-size: 20px; font-weight: bold;">
+                                                <i class="fas fa-check-circle"></i> Execute Transfer
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1078,12 +1170,31 @@
                     }
 
                     if (dataToRender.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="13" class="text-center">No records found</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="10" class="text-center">No records found</td></tr>';
                         return;
                     }
 
                     dataToRender.forEach(item => {
                         const row = document.createElement('tr');
+                        
+                        // Store all data in row attributes for easy access
+                        row.setAttribute('data-sku', item.SKU || '');
+                        row.setAttribute('data-parent', item.Parent || '');
+                        row.setAttribute('data-inv', item.INV || 0);
+                        row.setAttribute('data-sold', item.SOLD || 0);
+                        row.setAttribute('data-dil', item.DIL || 0);
+                        row.setAttribute('data-image', item.IMAGE_URL || '');
+                        row.setAttribute('data-action', item.ACTION || '');
+                        
+                        // Checkbox for FROM SKU selection
+                        const checkboxCell = document.createElement('td');
+                        checkboxCell.style.textAlign = 'center';
+                        checkboxCell.style.verticalAlign = 'middle';
+                        const checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.className = 'from-sku-checkbox';
+                        checkboxCell.appendChild(checkbox);
+                        row.appendChild(checkboxCell);
                         
                         // IMG
                         const imgCell = document.createElement('td');
@@ -1213,6 +1324,21 @@
                             dilCell.innerHTML = `<span class="dil-percent-value ${dilClass}">${dilPercent}%</span>`;
                         }
                         row.appendChild(dilCell);
+
+                        // QTY TO TRANSFER input (enabled only when checkbox is checked)
+                        const qtyTransferCell = document.createElement('td');
+                        qtyTransferCell.style.textAlign = 'center';
+                        const qtyTransferInput = document.createElement('input');
+                        qtyTransferInput.type = 'number';
+                        qtyTransferInput.className = 'form-control form-control-sm qty-transfer-input';
+                        qtyTransferInput.style.width = '80px';
+                        qtyTransferInput.style.fontSize = '14px';
+                        qtyTransferInput.min = '1';
+                        qtyTransferInput.max = item.INV || 0;
+                        qtyTransferInput.placeholder = 'Qty';
+                        qtyTransferInput.disabled = true; // Enabled when checkbox is checked
+                        qtyTransferCell.appendChild(qtyTransferInput);
+                        row.appendChild(qtyTransferCell);
 
                         // R (Relationship) column
                         const rCell = document.createElement('td');
@@ -1532,223 +1658,259 @@
                     // Update sort indicators in header
                     updateSortIndicators();
                     
-                    // Initialize Select2 for FROM and TO SKU dropdowns in table
-                    setTimeout(function() {
-                        // Destroy any existing Select2 instances first
-                        $('.from-sku-select, .to-sku-select').each(function() {
-                            if ($(this).hasClass('select2-hidden-accessible')) {
-                                $(this).select2('destroy');
-                            }
-                        });
+                    // Setup multi-transfer functionality
+                    setupMultiTransfer();
+                }
+                
+                // Global state to track selected FROM SKUs
+                let selectedFromSkus = {};
+                
+                // Setup Multi-Transfer System
+                function setupMultiTransfer() {
+                    // Handle checkbox changes
+                    $('.from-sku-checkbox').off('change').on('change', function() {
+                        const $checkbox = $(this);
+                        const $row = $checkbox.closest('tr');
+                        const $qtyInput = $row.find('.qty-transfer-input');
+                        const sku = $row.attr('data-sku');
                         
-                        // Initialize FROM SKU dropdowns
-                        $('.from-sku-select').each(function() {
-                            const $this = $(this);
-                            $this.select2({
-                                placeholder: 'Select FROM SKU',
-                                allowClear: true,
-                                width: '100%',
-                                dropdownAutoWidth: false,
-                                minimumResultsForSearch: 0,
-                                containerCssClass: 'select2-container-inline'
-                            });
-                        });
-                        
-                        // Initialize TO SKU dropdowns
-                        $('.to-sku-select').each(function() {
-                            const $this = $(this);
-                            $this.select2({
-                                placeholder: 'Select TO SKU',
-                                allowClear: true,
-                                width: '100%',
-                                dropdownAutoWidth: false,
-                                minimumResultsForSearch: 0,
-                                containerCssClass: 'select2-container-inline'
-                            });
-                        });
-                        
-                        // Handle FROM SKU change
-                        $('.from-sku-select').off('change').on('change', function() {
-                            const $select = $(this);
-                            const $row = $select.closest('tr');
-                            const selectedOption = $select.find('option:selected');
-                            const fromInv = selectedOption.attr('data-inv') || 0;
+                        if ($checkbox.is(':checked')) {
+                            // AUTO-POPULATE: Enable qty input and set to available INV
+                            const maxInv = parseInt($row.attr('data-inv')) || 0;
+                            $qtyInput.prop('disabled', false).val(maxInv);
                             
-                            console.log('FROM SKU selected:', $select.val(), 'INV:', fromInv);
-                            
-                            // Set FROM Qty to available inventory
-                            $row.find('.from-qty-input').val(fromInv);
-                            
-                            // Enable submit button if both SKUs are selected
-                            updateSubmitButton($row);
-                            
-                            // Recalculate TO Qty based on ratio
-                            calculateInlineToQty($row);
-                        });
-                        
-                        // Handle TO SKU change
-                        $('.to-sku-select').off('change').on('change', function() {
-                            const $select = $(this);
-                            const $row = $select.closest('tr');
-                            
-                            console.log('TO SKU selected:', $select.val());
-                            
-                            // Enable submit button if both SKUs are selected
-                            updateSubmitButton($row);
-                            
-                            // Recalculate TO Qty based on ratio
-                            calculateInlineToQty($row);
-                        });
-                        
-                        // Handle FROM Qty input change
-                        $('.from-qty-input').off('input').on('input', function() {
-                            const $row = $(this).closest('tr');
-                            calculateInlineToQty($row);
-                        });
-                        
-                        // Handle Ratio change
-                        $('.ratio-select').off('change').on('change', function() {
-                            const $row = $(this).closest('tr');
-                            calculateInlineToQty($row);
-                        });
-                        
-                        // Handle Submit button click
-                        $('.submit-transfer-btn').off('click').on('click', function() {
-                            const $btn = $(this);
-                            const $row = $btn.closest('tr');
-                            const fromSku = $row.find('.from-sku-select').val();
-                            const toSku = $row.find('.to-sku-select').val();
-                            const fromQty = parseInt($row.find('.from-qty-input').val()) || 0;
-                            const toQty = parseInt($row.find('.to-qty-input').val()) || 0;
-                            const ratio = $row.find('.ratio-select').val();
-                            
-                            if (!fromSku) {
-                                alert('Please select a FROM SKU');
-                                return;
-                            }
-                            
-                            if (!toSku) {
-                                alert('Please select a TO SKU');
-                                return;
-                            }
-                            
-                            if (!fromQty || fromQty <= 0) {
-                                alert('FROM Qty must be greater than 0');
-                                return;
-                            }
-                            
-                            if (!toQty || toQty <= 0) {
-                                alert('TO Qty must be greater than 0');
-                                return;
-                            }
-                            
-                            // Get FROM SKU data
-                            const fromItem = inventoryData.find(i => i.SKU === fromSku);
-                            const fromInv = fromItem ? (fromItem.INV || 0) : 0;
-                            
-                            // Validate FROM inventory
-                            if (fromQty > fromInv) {
-                                alert(`Insufficient inventory for ${fromSku}.\nAvailable: ${fromInv}, Required: ${fromQty}`);
-                                return;
-                            }
-                            
-                            // Get TO SKU data
-                            const toItem = inventoryData.find(i => i.SKU === toSku);
-                            
-                            // Confirm before submitting
-                            if (!confirm(`Transfer ${fromQty} units from ${fromSku} to ${toQty} units to ${toSku}?`)) {
-                                return;
-                            }
-                            
-                            // Prepare form data matching the existing form structure
-                            const transferData = {
-                                to_sku: fromSku,
-                                to_parent_name: fromItem ? fromItem.Parent : '',
-                                to_available_qty: fromInv,
-                                to_dil_percent: fromItem ? (parseFloat(fromItem.DIL) * 100) : 0,
-                                to_adjust_qty: fromQty,
-                                from_sku: toSku,
-                                from_parent_name: toItem ? toItem.Parent : '',
-                                from_available_qty: toItem ? (toItem.INV || 0) : 0,
-                                from_dil_percent: toItem ? (parseFloat(toItem.DIL) * 100) : 0,
-                                from_adjust_qty: toQty,
-                                ratio: ratio,
-                                _token: $('meta[name="csrf-token"]').attr('content')
+                            // Store SKU data
+                            selectedFromSkus[sku] = {
+                                parent: $row.attr('data-parent'),
+                                inv: maxInv,
+                                sold: parseInt($row.attr('data-sold')) || 0,
+                                dil: parseFloat($row.attr('data-dil')) || 0,
+                                image: $row.attr('data-image'),
+                                action: $row.attr('data-action'),
+                                qty: maxInv
                             };
-                            
-                            // Disable button during processing
-                            $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
-                            
-                            // Submit using the same endpoint as the form
-                            $.ajax({
-                                url: '{{ route("stock.balance.store") }}',
-                                method: 'POST',
-                                data: $.param(transferData),
-                                timeout: 120000,
-                                success: function(response) {
-                                    alert(response.message || 'Transfer successful!');
-                                    // Reset the row
-                                    $row.find('.from-sku-select').val(null).trigger('change');
-                                    $row.find('.to-sku-select').val(null).trigger('change');
-                                    $row.find('.from-qty-input').val('');
-                                    $row.find('.to-qty-input').val('');
-                                    $row.find('.ratio-select').val('1:1');
-                                    $btn.prop('disabled', true).html('<i class="fas fa-check"></i>');
-                                    
-                                    // Reload inventory data
-                                    loadInventoryData();
-                                },
-                                error: function(xhr) {
-                                    $btn.prop('disabled', false).html('<i class="fas fa-check"></i>');
-                                    
-                                    let errorMsg = 'Failed to transfer stock';
-                                    if (xhr.responseJSON && xhr.responseJSON.error) {
-                                        errorMsg = xhr.responseJSON.error;
-                                    }
-                                    alert(errorMsg);
-                                }
-                            });
-                        });
-                        
-                    }, 100);
-                }
-                
-                // Update submit button enabled/disabled state
-                function updateSubmitButton($row) {
-                    const fromSku = $row.find('.from-sku-select').val();
-                    const toSku = $row.find('.to-sku-select').val();
-                    const fromQty = parseInt($row.find('.from-qty-input').val()) || 0;
-                    const submitBtn = $row.find('.submit-transfer-btn');
-                    
-                    // Enable only if both SKUs are selected and FROM Qty > 0
-                    if (fromSku && toSku && fromQty > 0) {
-                        submitBtn.prop('disabled', false);
-                    } else {
-                        submitBtn.prop('disabled', true);
-                    }
-                }
-                
-                // Calculate TO Qty based on FROM Qty and Ratio
-                function calculateInlineToQty($row) {
-                    const fromQty = parseInt($row.find('.from-qty-input').val()) || 0;
-                    const ratio = $row.find('.ratio-select').val();
-                    
-                    if (ratio && fromQty > 0) {
-                        const ratioParts = ratio.split(':');
-                        const firstRatio = parseFloat(ratioParts[0]);
-                        const secondRatio = parseFloat(ratioParts[1]);
-                        
-                        if (firstRatio > 0) {
-                            // Calculate: to_qty = from_qty * (second_ratio / first_ratio)
-                            const calculatedQty = Math.round(fromQty * (secondRatio / firstRatio));
-                            $row.find('.to-qty-input').val(calculatedQty);
+                        } else {
+                            // REMOVE: Disable and clear qty input
+                            $qtyInput.prop('disabled', true).val('');
+                            delete selectedFromSkus[sku];
                         }
-                    } else {
-                        $row.find('.to-qty-input').val('');
+                        
+                        // Update panel
+                        updateMultiTransferPanel(selectedFromSkus);
+                    });
+                    
+                    // Handle select all checkbox
+                    $('#select-all-from-sku').off('change').on('change', function() {
+                        const isChecked = $(this).is(':checked');
+                        $('.from-sku-checkbox').prop('checked', isChecked).trigger('change');
+                    });
+                    
+                    // Handle qty input changes
+                    $('.qty-transfer-input').off('input').on('input', function() {
+                        const $input = $(this);
+                        const $row = $input.closest('tr');
+                        const sku = $row.attr('data-sku');
+                        const qty = parseInt($input.val()) || 0;
+                        
+                        // Update stored qty
+                        if (selectedFromSkus[sku]) {
+                            selectedFromSkus[sku].qty = qty;
+                            updateMultiTransferPanel(selectedFromSkus);
+                        }
+                    });
+                    
+                    // Handle ratio change
+                    $('#multiTransferRatio').off('change').on('change', function() {
+                        const skus = Object.values(selectedFromSkus);
+                        if (skus.length > 0) {
+                            updateMultiTransferPanel(selectedFromSkus);
+                        }
+                    });
+                    
+                    // Handle TO SKU selection
+                    $('#multiTransferToSku').off('change').on('change', function() {
+                        const selectedSku = $(this).val();
+                        if (selectedSku) {
+                            const toItem = inventoryData.find(i => i.SKU === selectedSku);
+                            if (toItem) {
+                                $('#multiTransferToParent').val(toItem.Parent || '');
+                                $('#multiTransferToInv').val(toItem.INV || 0);
+                            }
+                        } else {
+                            $('#multiTransferToParent').val('');
+                            $('#multiTransferToInv').val('');
+                        }
+                        
+                        const skus = Object.values(selectedFromSkus);
+                        if (skus.length > 0) {
+                            updateMultiTransferPanel(selectedFromSkus);
+                        }
+                    });
+                    
+                    // Handle cancel button
+                    $('#cancelMultiTransfer').off('click').on('click', function() {
+                        $('.from-sku-checkbox').prop('checked', false).trigger('change');
+                        $('#select-all-from-sku').prop('checked', false);
+                    });
+                    
+                    // Handle execute transfer
+                    $('#executeMultiTransfer').off('click').on('click', function() {
+                        executeMultiTransfer(selectedFromSkus);
+                    });
+                }
+                
+                // Update Multi-Transfer Panel with selectedFromSkus data
+                function updateMultiTransferPanel(selectedFromSkus) {
+                    const skuKeys = Object.keys(selectedFromSkus);
+                    
+                    if (skuKeys.length === 0) {
+                        $('#multiTransferPanel').slideUp(300);
+                        return;
                     }
                     
-                    // Update submit button state after calculation
-                    updateSubmitButton($row);
+                    // Show panel
+                    $('#multiTransferPanel').slideDown(300);
+                    
+                    // Update SKU count badge
+                    $('#selectedSkuCount').text(skuKeys.length + ' SKU' + (skuKeys.length > 1 ? 's' : ''));
+                    
+                    // Calculate total FROM qty
+                    let totalFromQty = 0;
+                    let fromListHTML = '<table class="table table-sm table-bordered mb-0" style="font-size: 14px;"><thead><tr style="background-color: #dc3545; color: white;"><th>SKU</th><th>Parent</th><th>Available</th><th>Transfer Qty</th></tr></thead><tbody>';
+                    
+                    skuKeys.forEach(function(sku) {
+                        const data = selectedFromSkus[sku];
+                        totalFromQty += data.qty;
+                        fromListHTML += '<tr>' +
+                            '<td><strong>' + sku + '</strong></td>' +
+                            '<td>' + (data.parent || '-') + '</td>' +
+                            '<td>' + data.inv + '</td>' +
+                            '<td class="text-danger"><strong>' + data.qty + '</strong></td>' +
+                            '</tr>';
+                    });
+                    
+                    fromListHTML += '</tbody><tfoot><tr style="background-color: #fff3cd; font-weight: bold;"><td colspan="3" class="text-end">TOTAL:</td><td class="text-danger">' + totalFromQty + '</td></tr></tfoot></table>';
+                    $('#selectedFromSkusList').html(fromListHTML);
+                    
+                    // Calculate TO qty based on ratio
+                    const ratio = $('#multiTransferRatio').val() || '1:1';
+                    const ratioParts = ratio.split(':');
+                    const totalToQty = Math.round(totalFromQty * (parseFloat(ratioParts[1]) / parseFloat(ratioParts[0])));
+                    $('#multiTransferToQty').val(totalToQty);
+                    
+                    // Populate TO SKU dropdown if not already done
+                    if ($('#multiTransferToSku option').length <= 1) {
+                        inventoryData.forEach(function(item) {
+                            if (item.SKU) {
+                                $('#multiTransferToSku').append('<option value="' + item.SKU + '" data-parent="' + (item.Parent || '') + '" data-inv="' + (item.INV || 0) + '">' + item.SKU + '</option>');
+                            }
+                        });
+                    }
+                    
+                    // Enable/disable execute button
+                    const toSku = $('#multiTransferToSku').val();
+                    if (toSku && totalToQty > 0) {
+                        $('#executeMultiTransfer').prop('disabled', false);
+                    } else {
+                        $('#executeMultiTransfer').prop('disabled', true);
+                    }
+                }
+                
+                // Execute Multi-Transfer
+                function executeMultiTransfer(selectedFromSkus) {
+                    const skuKeys = Object.keys(selectedFromSkus);
+                    if (skuKeys.length === 0) {
+                        alert('Please select at least one FROM SKU');
+                        return;
+                    }
+                    
+                    const toSku = $('#multiTransferToSku').val();
+                    if (!toSku) {
+                        alert('Please select a TO SKU');
+                        return;
+                    }
+                    
+                    const ratio = $('#multiTransferRatio').val();
+                    const totalToQty = parseInt($('#multiTransferToQty').val()) || 0;
+                    
+                    // Calculate total FROM qty and validate
+                    let totalFromQty = 0;
+                    let skuListArray = [];
+                    
+                    for (let i = 0; i < skuKeys.length; i++) {
+                        const sku = skuKeys[i];
+                        const data = selectedFromSkus[sku];
+                        
+                        if (data.qty > data.inv) {
+                            alert('Insufficient inventory for ' + sku + '.\nAvailable: ' + data.inv + ', Required: ' + data.qty);
+                            return;
+                        }
+                        totalFromQty += data.qty;
+                        skuListArray.push(sku + ' (' + data.qty + ')');
+                    }
+                    
+                    // Get TO SKU data
+                    const toItem = inventoryData.find(function(i) { return i.SKU === toSku; });
+                    
+                    // Confirm transfer
+                    const skuList = skuListArray.join(', ');
+                    if (!confirm('Transfer from:\n' + skuList + '\n\nTo: ' + toSku + ' (' + totalToQty + ' units)\n\nProceed?')) {
+                        return;
+                    }
+                    
+                    // Use first SKU for the transfer (backend expects single from_sku)
+                    const firstSkuKey = skuKeys[0];
+                    const firstSkuData = selectedFromSkus[firstSkuKey];
+                    
+                    const transferData = {
+                        to_sku: firstSkuKey,
+                        to_parent_name: firstSkuData.parent,
+                        to_available_qty: firstSkuData.inv,
+                        to_dil_percent: firstSkuData.dil * 100,
+                        to_adjust_qty: totalFromQty,
+                        from_sku: toSku,
+                        from_parent_name: toItem ? toItem.Parent : '',
+                        from_available_qty: toItem ? (toItem.INV || 0) : 0,
+                        from_dil_percent: toItem ? (parseFloat(toItem.DIL) * 100) : 0,
+                        from_adjust_qty: totalToQty,
+                        ratio: ratio,
+                        _token: $('meta[name="csrf-token"]').attr('content')
+                    };
+                    
+                    // Disable button during processing
+                    $('#executeMultiTransfer').prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Processing...');
+                    
+                    // Submit transfer
+                    $.ajax({
+                        url: '{{ route("stock.balance.store") }}',
+                        method: 'POST',
+                        data: $.param(transferData),
+                        timeout: 120000,
+                        success: function(response) {
+                            alert(response.message || 'Transfer successful!');
+                            // Reset everything
+                            $('.from-sku-checkbox').prop('checked', false).trigger('change');
+                            $('#select-all-from-sku').prop('checked', false);
+                            $('#multiTransferToSku').val('');
+                            $('#multiTransferToParent').val('');
+                            $('#multiTransferToInv').val('');
+                            $('#multiTransferToQty').val('');
+                            $('#multiTransferPanel').slideUp(300);
+                            $('#executeMultiTransfer').prop('disabled', true).html('<i class="fas fa-check-circle"></i> Execute Transfer');
+                            
+                            // Reload inventory data
+                            loadInventoryData();
+                        },
+                        error: function(xhr) {
+                            $('#executeMultiTransfer').prop('disabled', false).html('<i class="fas fa-check-circle"></i> Execute Transfer');
+                            
+                            let errorMsg = 'Failed to transfer stock';
+                            if (xhr.responseJSON && xhr.responseJSON.error) {
+                                errorMsg = xhr.responseJSON.error;
+                            }
+                            showLargeErrorAlert('Transfer Failed', errorMsg);
+                        }
+                    });
                 }
 
                 // Update sort indicators in table header
