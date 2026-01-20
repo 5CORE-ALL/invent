@@ -402,6 +402,32 @@
             font-weight: bold;
         }
 
+        /* Select2 in table styling */
+        .select2-container-inline {
+            display: block !important;
+            width: 100% !important;
+        }
+        
+        .select2-container-inline .select2-selection--single {
+            height: 31px !important;
+            padding: 2px 8px !important;
+            font-size: 14px !important;
+        }
+        
+        .select2-container-inline .select2-selection__rendered {
+            line-height: 27px !important;
+            padding-left: 8px !important;
+        }
+        
+        .select2-container-inline .select2-selection__arrow {
+            height: 29px !important;
+        }
+        
+        /* Ensure Select2 dropdown displays properly */
+        .select2-container {
+            z-index: 9999 !important;
+        }
+
     </style>
 @endsection
 
@@ -1381,11 +1407,52 @@
                         actionCell.appendChild(actionSelect);
                         row.appendChild(actionCell);
 
+                        // FROM SKU Column (Dropdown with Select2)
+                        const fromSkuCell = document.createElement('td');
+                        const fromSkuSelect = document.createElement('select');
+                        fromSkuSelect.className = 'form-select form-select-sm from-sku-select';
+                        fromSkuSelect.style.minWidth = '180px';
+                        fromSkuSelect.style.fontSize = '14px';
+                        
+                        // Add placeholder option
+                        const fromSkuPlaceholder = document.createElement('option');
+                        fromSkuPlaceholder.value = '';
+                        fromSkuPlaceholder.textContent = 'Select FROM SKU';
+                        fromSkuPlaceholder.selected = true;
+                        fromSkuSelect.appendChild(fromSkuPlaceholder);
+                        
+                        // Add all SKU options from inventoryData
+                        inventoryData.forEach(function(invItem) {
+                            if (invItem.SKU && invItem.SKU !== item.SKU) {
+                                const option = document.createElement('option');
+                                option.value = invItem.SKU;
+                                option.textContent = invItem.SKU;
+                                option.setAttribute('data-parent', invItem.Parent || '');
+                                option.setAttribute('data-inv', invItem.INV || 0);
+                                option.setAttribute('data-dil', invItem.DIL || 0);
+                                fromSkuSelect.appendChild(option);
+                            }
+                        });
+                        
+                        fromSkuCell.appendChild(fromSkuSelect);
+                        row.appendChild(fromSkuCell);
+                        
+                        // FROM Qty Column (Number input)
+                        const fromQtyCell = document.createElement('td');
+                        const fromQtyInput = document.createElement('input');
+                        fromQtyInput.type = 'number';
+                        fromQtyInput.className = 'form-control form-control-sm from-qty-input';
+                        fromQtyInput.style.width = '80px';
+                        fromQtyInput.style.fontSize = '14px';
+                        fromQtyInput.min = '1';
+                        fromQtyInput.placeholder = 'Qty';
+                        fromQtyCell.appendChild(fromQtyInput);
+                        row.appendChild(fromQtyCell);
+                        
                         // TO SKU Column (Dropdown with Select2)
                         const toSkuCell = document.createElement('td');
                         const toSkuSelect = document.createElement('select');
                         toSkuSelect.className = 'form-select form-select-sm to-sku-select';
-                        toSkuSelect.setAttribute('data-row-sku', item.SKU || '');
                         toSkuSelect.style.minWidth = '180px';
                         toSkuSelect.style.fontSize = '14px';
                         
@@ -1394,12 +1461,11 @@
                         toSkuPlaceholder.value = '';
                         toSkuPlaceholder.textContent = 'Select TO SKU';
                         toSkuPlaceholder.selected = true;
-                        toSkuPlaceholder.disabled = true;
                         toSkuSelect.appendChild(toSkuPlaceholder);
                         
                         // Add all SKU options from inventoryData
                         inventoryData.forEach(function(invItem) {
-                            if (invItem.SKU && invItem.SKU !== item.SKU) { // Don't allow selecting same SKU
+                            if (invItem.SKU && invItem.SKU !== item.SKU) {
                                 const option = document.createElement('option');
                                 option.value = invItem.SKU;
                                 option.textContent = invItem.SKU;
@@ -1413,19 +1479,7 @@
                         toSkuCell.appendChild(toSkuSelect);
                         row.appendChild(toSkuCell);
                         
-                        // TO Parent Column (Read-only input)
-                        const toParentCell = document.createElement('td');
-                        const toParentInput = document.createElement('input');
-                        toParentInput.type = 'text';
-                        toParentInput.className = 'form-control form-control-sm to-parent-input';
-                        toParentInput.style.minWidth = '120px';
-                        toParentInput.style.fontSize = '14px';
-                        toParentInput.readOnly = true;
-                        toParentInput.placeholder = 'Auto-fill';
-                        toParentCell.appendChild(toParentInput);
-                        row.appendChild(toParentCell);
-                        
-                        // TO Qty Adj Column (Number input)
+                        // TO Qty Column (Number input - auto-calculated)
                         const toQtyCell = document.createElement('td');
                         const toQtyInput = document.createElement('input');
                         toQtyInput.type = 'number';
@@ -1433,8 +1487,8 @@
                         toQtyInput.style.width = '80px';
                         toQtyInput.style.fontSize = '14px';
                         toQtyInput.min = '1';
-                        toQtyInput.placeholder = 'Qty';
-                        toQtyInput.readOnly = true; // Will be calculated from ratio
+                        toQtyInput.placeholder = 'Auto';
+                        toQtyInput.readOnly = true; // Auto-calculated
                         toQtyCell.appendChild(toQtyInput);
                         row.appendChild(toQtyCell);
                         
@@ -1478,37 +1532,77 @@
                     // Update sort indicators in header
                     updateSortIndicators();
                     
-                    // Initialize Select2 for TO SKU dropdowns in table
+                    // Initialize Select2 for FROM and TO SKU dropdowns in table
                     setTimeout(function() {
-                        $('.to-sku-select').each(function() {
-                            if (!$(this).hasClass('select2-hidden-accessible')) {
-                                $(this).select2({
-                                    placeholder: 'Select TO SKU',
-                                    allowClear: true,
-                                    width: '180px'
-                                });
+                        // Destroy any existing Select2 instances first
+                        $('.from-sku-select, .to-sku-select').each(function() {
+                            if ($(this).hasClass('select2-hidden-accessible')) {
+                                $(this).select2('destroy');
                             }
+                        });
+                        
+                        // Initialize FROM SKU dropdowns
+                        $('.from-sku-select').each(function() {
+                            const $this = $(this);
+                            $this.select2({
+                                placeholder: 'Select FROM SKU',
+                                allowClear: true,
+                                width: '100%',
+                                dropdownAutoWidth: false,
+                                minimumResultsForSearch: 0,
+                                containerCssClass: 'select2-container-inline'
+                            });
+                        });
+                        
+                        // Initialize TO SKU dropdowns
+                        $('.to-sku-select').each(function() {
+                            const $this = $(this);
+                            $this.select2({
+                                placeholder: 'Select TO SKU',
+                                allowClear: true,
+                                width: '100%',
+                                dropdownAutoWidth: false,
+                                minimumResultsForSearch: 0,
+                                containerCssClass: 'select2-container-inline'
+                            });
+                        });
+                        
+                        // Handle FROM SKU change
+                        $('.from-sku-select').off('change').on('change', function() {
+                            const $select = $(this);
+                            const $row = $select.closest('tr');
+                            const selectedOption = $select.find('option:selected');
+                            const fromInv = selectedOption.attr('data-inv') || 0;
+                            
+                            console.log('FROM SKU selected:', $select.val(), 'INV:', fromInv);
+                            
+                            // Set FROM Qty to available inventory
+                            $row.find('.from-qty-input').val(fromInv);
+                            
+                            // Enable submit button if both SKUs are selected
+                            updateSubmitButton($row);
+                            
+                            // Recalculate TO Qty based on ratio
+                            calculateInlineToQty($row);
                         });
                         
                         // Handle TO SKU change
                         $('.to-sku-select').off('change').on('change', function() {
                             const $select = $(this);
                             const $row = $select.closest('tr');
-                            const selectedOption = $select.find('option:selected');
-                            const toParent = selectedOption.attr('data-parent') || '';
                             
-                            // Auto-fill TO Parent
-                            $row.find('.to-parent-input').val(toParent);
+                            console.log('TO SKU selected:', $select.val());
                             
-                            // Enable submit button if TO SKU is selected
-                            const submitBtn = $row.find('.submit-transfer-btn');
-                            if ($select.val()) {
-                                submitBtn.prop('disabled', false);
-                            } else {
-                                submitBtn.prop('disabled', true);
-                            }
+                            // Enable submit button if both SKUs are selected
+                            updateSubmitButton($row);
                             
                             // Recalculate TO Qty based on ratio
+                            calculateInlineToQty($row);
+                        });
+                        
+                        // Handle FROM Qty input change
+                        $('.from-qty-input').off('input').on('input', function() {
+                            const $row = $(this).closest('tr');
                             calculateInlineToQty($row);
                         });
                         
@@ -1522,13 +1616,24 @@
                         $('.submit-transfer-btn').off('click').on('click', function() {
                             const $btn = $(this);
                             const $row = $btn.closest('tr');
-                            const fromSku = $btn.attr('data-from-sku');
+                            const fromSku = $row.find('.from-sku-select').val();
                             const toSku = $row.find('.to-sku-select').val();
+                            const fromQty = parseInt($row.find('.from-qty-input').val()) || 0;
                             const toQty = parseInt($row.find('.to-qty-input').val()) || 0;
                             const ratio = $row.find('.ratio-select').val();
                             
+                            if (!fromSku) {
+                                alert('Please select a FROM SKU');
+                                return;
+                            }
+                            
                             if (!toSku) {
                                 alert('Please select a TO SKU');
+                                return;
+                            }
+                            
+                            if (!fromQty || fromQty <= 0) {
+                                alert('FROM Qty must be greater than 0');
                                 return;
                             }
                             
@@ -1536,10 +1641,6 @@
                                 alert('TO Qty must be greater than 0');
                                 return;
                             }
-                            
-                            // Calculate FROM qty based on ratio
-                            const ratioParts = ratio.split(':');
-                            const fromQty = Math.round(toQty * (parseFloat(ratioParts[0]) / parseFloat(ratioParts[1])));
                             
                             // Get FROM SKU data
                             const fromItem = inventoryData.find(i => i.SKU === fromSku);
@@ -1587,8 +1688,9 @@
                                 success: function(response) {
                                     alert(response.message || 'Transfer successful!');
                                     // Reset the row
+                                    $row.find('.from-sku-select').val(null).trigger('change');
                                     $row.find('.to-sku-select').val(null).trigger('change');
-                                    $row.find('.to-parent-input').val('');
+                                    $row.find('.from-qty-input').val('');
                                     $row.find('.to-qty-input').val('');
                                     $row.find('.ratio-select').val('1:1');
                                     $btn.prop('disabled', true).html('<i class="fas fa-check"></i>');
@@ -1611,25 +1713,42 @@
                     }, 100);
                 }
                 
-                // Calculate TO Qty based on FROM INV and Ratio
+                // Update submit button enabled/disabled state
+                function updateSubmitButton($row) {
+                    const fromSku = $row.find('.from-sku-select').val();
+                    const toSku = $row.find('.to-sku-select').val();
+                    const fromQty = parseInt($row.find('.from-qty-input').val()) || 0;
+                    const submitBtn = $row.find('.submit-transfer-btn');
+                    
+                    // Enable only if both SKUs are selected and FROM Qty > 0
+                    if (fromSku && toSku && fromQty > 0) {
+                        submitBtn.prop('disabled', false);
+                    } else {
+                        submitBtn.prop('disabled', true);
+                    }
+                }
+                
+                // Calculate TO Qty based on FROM Qty and Ratio
                 function calculateInlineToQty($row) {
-                    const fromSku = $row.find('.submit-transfer-btn').attr('data-from-sku');
-                    const fromItem = inventoryData.find(i => i.SKU === fromSku);
-                    const fromInv = fromItem ? (fromItem.INV || 0) : 0;
+                    const fromQty = parseInt($row.find('.from-qty-input').val()) || 0;
                     const ratio = $row.find('.ratio-select').val();
                     
-                    if (ratio && fromInv > 0) {
+                    if (ratio && fromQty > 0) {
                         const ratioParts = ratio.split(':');
                         const firstRatio = parseFloat(ratioParts[0]);
                         const secondRatio = parseFloat(ratioParts[1]);
                         
                         if (firstRatio > 0) {
                             // Calculate: to_qty = from_qty * (second_ratio / first_ratio)
-                            // Since FROM qty = INV, we use INV for calculation
-                            const calculatedQty = Math.round(fromInv * (secondRatio / firstRatio));
+                            const calculatedQty = Math.round(fromQty * (secondRatio / firstRatio));
                             $row.find('.to-qty-input').val(calculatedQty);
                         }
+                    } else {
+                        $row.find('.to-qty-input').val('');
                     }
+                    
+                    // Update submit button state after calculation
+                    updateSubmitButton($row);
                 }
 
                 // Update sort indicators in table header
