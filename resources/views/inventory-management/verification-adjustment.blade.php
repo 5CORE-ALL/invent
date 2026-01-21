@@ -3269,6 +3269,12 @@
                             const verified = item.IS_VERIFIED === 1 || item.IS_VERIFIED === true || item.is_verified === true || item.is_verified === 1;
                             return !verified;
                         });
+                        // Sort by INV (lowest to highest) when Unverified filter is active
+                        tempData.sort((a, b) => {
+                            const invA = parseInt(a.INV) || 0;
+                            const invB = parseInt(b.INV) || 0;
+                            return invA - invB;
+                        });
                     }
                 }
                 
@@ -3939,25 +3945,37 @@
                 // All SKUs from product_master will be exported
 
                 // Convert filteredData to flat JSON
-                const rows = filteredData.map(item => ({
-                    Parent: item.Parent,
-                    SKU: item.SKU,
-                    INV: item.INV,
-                    L30: item.L30,
-                    DIL: item.DIL,
-                    ON_HAND: item.ON_HAND,
-                    COMMITTED: item.COMMITTED,
-                    AVAILABLE_TO_SELL: item.AVAILABLE_TO_SELL,
-                    // VERIFIED_STOCK: item.VERIFIED_STOCK,
-                    // TO_ADJUST: item.TO_ADJUST,
-                    // REASON: item.REASON,
-                    // APPROVED: item.APPROVED ? "Yes" : "No",
-                    // APPROVED_BY: item.APPROVED_BY,
-                    // APPROVED_AT: item.APPROVED_AT,
-                    // LOSS_GAIN: item.LOSS_GAIN,
-                    // REMARK: item.REMARK || '',
-                    // LAST_APPROVED_AT: item.LAST_APPROVED_AT
-                }));
+                const rows = filteredData.map(item => {
+                    // Extract only date from HISTORY (remove time)
+                    let historyDate = '';
+                    if (item.HISTORY && item.HISTORY.includes(', ')) {
+                        // Split by comma to get date part only
+                        historyDate = item.HISTORY.split(', ')[0];
+                    } else if (item.HISTORY) {
+                        historyDate = item.HISTORY;
+                    }
+                    
+                    return {
+                        Parent: item.Parent,
+                        SKU: item.SKU,
+                        INV: item.INV,
+                        L30: item.L30,
+                        DIL: item.DIL,
+                        ON_HAND: item.ON_HAND,
+                        COMMITTED: item.COMMITTED,
+                        AVAILABLE_TO_SELL: item.AVAILABLE_TO_SELL,
+                        HISTORY: historyDate,
+                        // VERIFIED_STOCK: item.VERIFIED_STOCK,
+                        // TO_ADJUST: item.TO_ADJUST,
+                        // REASON: item.REASON,
+                        // APPROVED: item.APPROVED ? "Yes" : "No",
+                        // APPROVED_BY: item.APPROVED_BY,
+                        // APPROVED_AT: item.APPROVED_AT,
+                        // LOSS_GAIN: item.LOSS_GAIN,
+                        // REMARK: item.REMARK || '',
+                        // LAST_APPROVED_AT: item.LAST_APPROVED_AT
+                    };
+                });
 
                 const ws = XLSX.utils.json_to_sheet(rows);
                 const wb = XLSX.utils.book_new();
