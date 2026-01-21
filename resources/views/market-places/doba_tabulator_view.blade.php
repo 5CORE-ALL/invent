@@ -1350,7 +1350,7 @@
                         field: "l60_avg_price",
                         width: 90,
                         sorter: "number",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             if (value > 0) {
@@ -1364,7 +1364,7 @@
                         field: "l30_avg_price",
                         width: 90,
                         sorter: "number",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             if (value > 0) {
