@@ -895,6 +895,8 @@
                             const l30 = Number(item.L30) || 0;
                             const dobaL30 = Number(item['doba L30']) || 0;
                             const dobaL60 = Number(item['doba L60']) || 0;
+                            const quantityL7 = Number(item.quantity_l7) || 0;
+                            const quantityL7Prev = Number(item.quantity_l7_prev) || 0;
                             const ovDil = inv > 0 ? l30 / inv : 0;
                             const price = Number(item['doba Price']) || 0;
                             const ship = Number(item.Ship_productmaster) || 0;
@@ -923,6 +925,8 @@
                                 ov_dil: ovDil,
                                 'doba L30': dobaL30,
                                 'doba L60': dobaL60,
+                                quantity_l7: quantityL7,
+                                quantity_l7_prev: quantityL7Prev,
                                 'doba Price': price,
                                 Profit: item.Total_pft || item.Profit || 0,
                                 'Sales L30': dobaL30,
@@ -1059,7 +1063,36 @@
                         formatter: function(cell, formatterParams) {
                             return cell.getValue() || 0;
                         }
-                    },                    {
+                    },
+                    {
+                        title: "SOLD 7",
+                        field: "quantity_l7",
+                        width: 70,
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell, formatterParams) {
+                            const value = parseInt(cell.getValue()) || 0;
+                            if (value > 0) {
+                                return `<span style="color: #28a745; font-weight: bold;">${value}</span>`;
+                            }
+                            return value;
+                        }
+                    },
+                    {
+                        title: "P SOLD 7",
+                        field: "quantity_l7_prev",
+                        width: 70,
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell, formatterParams) {
+                            const value = parseInt(cell.getValue()) || 0;
+                            if (value > 0) {
+                                return `<span style="color: #3591dc; font-weight: bold;">${value}</span>`;
+                            }
+                            return value;
+                        }
+                    },
+                    {
                         title: "PROMO",
                         field: "Promo",
                         width: 80,

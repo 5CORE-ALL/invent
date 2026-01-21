@@ -156,6 +156,8 @@ class DobaController extends Controller
             //Doba Metrics - using quantity instead of order count for SOLD column
             $row["doba L30"] = $dobaMetric->quantity_l30 ?? 0;
             $row["doba L60"] = $dobaMetric->quantity_l60 ?? 0;
+            $row["quantity_l7"] = $dobaMetric->quantity_l7 ?? 0;
+            $row["quantity_l7_prev"] = $dobaMetric->quantity_l7_prev ?? 0;
             $row["doba Price"] = $dobaMetric->anticipated_income ?? 0;
             $row['doba_item_id'] = $dobaMetric->item_id ?? null;
             $row['self_pick_price'] = $dobaMetric->self_pick_price ?? 0;
