@@ -38,6 +38,29 @@
         .dil-yellow { color: #ffc107; font-weight: 600; }
         .dil-green { color: #28a745; font-weight: 600; }
         .dil-pink { color: #e83e8c; font-weight: 600; }
+        
+        /* Custom success toast styling */
+        .toast-container {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            z-index: 9999;
+        }
+        
+        .toast-success-big {
+            min-width: 400px;
+            background-color: #1a5928 !important;
+            border: 2px solid #0d3d1a !important;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
+        }
+        
+        .toast-success-big .toast-body {
+            font-size: 18px !important;
+            font-weight: 700 !important;
+            color: white !important;
+            padding: 20px 25px !important;
+            letter-spacing: 0.5px;
+        }
     </style>
 @endsection
 
@@ -176,11 +199,21 @@
         if (!toastContainer) return;
         
         const toast = document.createElement('div');
-        toast.className = 'toast align-items-center text-white bg-' + (type === 'error' ? 'danger' : type === 'success' ? 'success' : 'info') + ' border-0';
+        let toastClass = 'toast align-items-center text-white border-0';
+        
+        if (type === 'success') {
+            toastClass += ' toast-success-big';
+        } else if (type === 'error') {
+            toastClass += ' bg-danger';
+        } else {
+            toastClass += ' bg-info';
+        }
+        
+        toast.className = toastClass;
         toast.setAttribute('role', 'alert');
         toast.innerHTML = '<div class="d-flex"><div class="toast-body">' + message + '</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>';
         toastContainer.appendChild(toast);
-        const bsToast = new bootstrap.Toast(toast);
+        const bsToast = new bootstrap.Toast(toast, { delay: 5000 });
         bsToast.show();
         toast.addEventListener('hidden.bs.toast', function() { toast.remove(); });
     }
@@ -823,9 +856,10 @@
                         const currentSku = rowData.SKU;
                         let html = '<select class="form-select form-select-sm to-sku-select" data-from-sku="' + currentSku + '" style="width:230px;"><option value="">Search FROM SKU...</option>';
                         allTableData.forEach(function(item) {
-                            if (item.SKU && item.SKU !== currentSku) {
-                                // Show SKU (Parent) only, no INV
-                                const displayText = item.SKU + ' (' + (item.Parent || 'No Parent') + ')';
+                            // Exclude SKUs that contain "PARENT" in the SKU name
+                            if (item.SKU && item.SKU !== currentSku && item.SKU.toUpperCase().indexOf('PARENT') === -1) {
+                                // Show SKU only
+                                const displayText = item.SKU;
                                 html += '<option value="' + item.SKU + '" data-parent="' + (item.Parent || '') + '" data-inv="' + (item.INV || 0) + '" data-search="' + item.SKU + ' ' + (item.Parent || '') + '">' + displayText + '</option>';
                             }
                         });
