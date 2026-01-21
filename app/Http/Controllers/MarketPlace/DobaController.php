@@ -13,6 +13,7 @@ use App\Models\DobaMetric;
 use App\Models\MarketplacePercentage;
 use App\Models\ShopifySku;
 use App\Models\ProductMaster; // Add this at the top with other use statements
+use App\Models\AmazonDatasheet;
 use App\Services\DobaApiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -116,6 +117,9 @@ class DobaController extends Controller
             ->get()
             ->keyBy("sku");
         $nrValues = DobaDataView::whereIn("sku", $skus)->pluck("value", "sku");
+        
+        // Fetch Amazon prices for comparison
+        $amazonPrices = AmazonDatasheet::whereIn('sku', $skus)->pluck('price', 'sku');
 
         // 5. Aggregate S L30 from doba_daily_data - sum quantity by SKU for L30 period, excluding cancelled orders
         $dobaDailyL30 = DB::table('doba_daily_data')
@@ -197,6 +201,9 @@ class DobaController extends Controller
             $row['self_pick_price'] = $dobaMetric->self_pick_price ?? 0;
             $row['msrp'] = $dobaMetric->msrp ?? 0;
             $row['map'] = $dobaMetric->map ?? 0;
+            
+            // Amazon Price for comparison
+            $row['amazon_price'] = isset($amazonPrices[$pm->sku]) ? floatval($amazonPrices[$pm->sku]) : 0;
 
             // S L30 from doba_daily_data (excluding cancelled orders)
             $sL30Data = $dobaDailyL30[$pm->sku] ?? null;

@@ -263,6 +263,45 @@
                         </button>
                     </div>
 
+                    <!-- SPFT Filter -->
+                    <div class="d-flex align-items-center gap-1">
+                        <label class="mb-0 fw-bold" style="font-size: 12px;">SPFT %:</label>
+                        <input type="number" id="spft-min-filter" class="form-control form-control-sm" 
+                               placeholder="Min" style="width: 70px;" step="1">
+                        <span>-</span>
+                        <input type="number" id="spft-max-filter" class="form-control form-control-sm" 
+                               placeholder="Max" style="width: 70px;" step="1">
+                        <button id="clear-spft-filter" class="btn btn-sm btn-outline-secondary" style="padding: 2px 8px;">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+
+                    <!-- NPFT Filter -->
+                    <div class="d-flex align-items-center gap-1">
+                        <label class="mb-0 fw-bold" style="font-size: 12px;">NPFT %:</label>
+                        <input type="number" id="npft-min-filter" class="form-control form-control-sm" 
+                               placeholder="Min" style="width: 70px;" step="1">
+                        <span>-</span>
+                        <input type="number" id="npft-max-filter" class="form-control form-control-sm" 
+                               placeholder="Max" style="width: 70px;" step="1">
+                        <button id="clear-npft-filter" class="btn btn-sm btn-outline-secondary" style="padding: 2px 8px;">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+
+                    <!-- DISC VS AMZ Filter -->
+                    <div class="d-flex align-items-center gap-1">
+                        <label class="mb-0 fw-bold" style="font-size: 12px;">Disc AMZ %:</label>
+                        <input type="number" id="disc-amz-min-filter" class="form-control form-control-sm" 
+                               placeholder="Min" style="width: 70px;" step="1">
+                        <span>-</span>
+                        <input type="number" id="disc-amz-max-filter" class="form-control form-control-sm" 
+                               placeholder="Max" style="width: 70px;" step="1">
+                        <button id="clear-disc-amz-filter" class="btn btn-sm btn-outline-secondary" style="padding: 2px 8px;">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+
                     <!-- Column Visibility -->
                     <div class="dropdown">
                         <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" 
@@ -308,6 +347,7 @@
                         <span id="zero-sold-count" class="badge bg-danger p-2 fw-bold fs-6" style="color: white !important;">L30 0 Sold: 0</span>
                         <span id="sold-count" class="badge bg-success p-2 fw-bold fs-6" style="color: white !important;">SOLD: 0</span>
                         <span id="missing-count" class="badge p-2 fw-bold fs-6" style="background-color: #b02a37; color: white !important; cursor: pointer;" title="Click to filter missing items"><i class="fas fa-exclamation-triangle"></i> Missing: 0</span>
+                        <span id="disc-vs-amz-count" class="badge p-2 fw-bold fs-6" style="background-color: #dc3545; color: white !important; cursor: pointer;" title="Click to filter non-competitive items"><i class="fas fa-chart-line"></i> DISC VS AMZ: 0</span>
                         <span id="l60-sales-badge" class="badge fs-6 p-2" style="background-color: #495057; color: white; font-weight: bold;">L60 Sales: $0</span>
                         <span id="l30-sales-badge" class="badge fs-6 p-2" style="background-color: #0d6efd; color: white; font-weight: bold;">L30 Sales: $0</span>
                         <span id="growth-sales-badge" class="badge fs-6 p-2" style="background-color: #28a745; color: white; font-weight: bold;">GROWTH: 0%</span>
@@ -344,6 +384,12 @@
                         <button id="clear-sprice-selected-btn" class="btn btn-sm btn-danger">
                             <i class="fa fa-eraser"></i> Clear SPRICE
                         </button>
+                        <button id="sugg-amz-30-btn" class="btn btn-sm btn-warning">
+                            <i class="fab fa-amazon"></i> SUGG AMZ - 30%
+                        </button>
+                        <button id="sugg-amz-25-btn" class="btn btn-sm btn-info">
+                            <i class="fab fa-amazon"></i> SUGG AMZ - 25%
+                        </button>
                         <span id="selected-skus-count" class="text-muted ms-2"></span>
                     </div>
                 </div>
@@ -367,6 +413,7 @@
         let decreaseModeActive = false; // Track decrease mode state
         let increaseModeActive = false; // Track increase mode state
         let selectedSkus = new Set(); // Track selected SKUs across all pages
+        let discVsAmzFilterActive = false; // Track DISC VS AMZ filter state
 
         $(document).ready(function() {
 
@@ -736,6 +783,164 @@
                 }
             });
 
+            // SUGG AMZ - 30% button handler
+            $('#sugg-amz-30-btn').on('click', function() {
+                if (selectedSkus.size === 0) {
+                    showToast('danger', 'Please select SKUs first');
+                    return;
+                }
+
+                let appliedCount = 0;
+                let noAmazonPriceCount = 0;
+
+                selectedSkus.forEach(sku => {
+                    const rows = table.searchRows("(Child) sku", "=", sku);
+                    
+                    if (rows.length > 0) {
+                        const row = rows[0];
+                        const rowData = row.getData();
+                        const amazonPrice = parseFloat(rowData.amazon_price) || 0;
+                        
+                        if (amazonPrice === 0) {
+                            noAmazonPriceCount++;
+                            return; // Skip this SKU if no Amazon price
+                        }
+                        
+                        // Calculate suggested price: Amazon Price - 30%
+                        const suggestedPrice = amazonPrice * 0.70;
+                        const lp = parseFloat(rowData.LP_productmaster) || 0;
+                        const ship = parseFloat(rowData.Ship_productmaster) || 0;
+                        
+                        // Calculate SPFT and SROI
+                        const spftValue = suggestedPrice > 0 ? ((suggestedPrice * 0.95) - ship - lp) / suggestedPrice * 100 : 0;
+                        const sroiValue = lp > 0 ? (((suggestedPrice * 0.95) - ship - lp) / lp) * 100 : 0;
+                        const selfPickValue = suggestedPrice * 0.95;
+                        
+                        // Update row
+                        row.update({
+                            sprice: suggestedPrice.toFixed(2),
+                            spft: spftValue.toFixed(2),
+                            sroi: sroiValue.toFixed(2),
+                            s_self_pick: selfPickValue.toFixed(2)
+                        });
+                        
+                        row.reformat();
+                        
+                        // Save to database
+                        $.ajax({
+                            url: '/doba/save-sprice',
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                            },
+                            data: {
+                                sku: sku,
+                                sprice: suggestedPrice.toFixed(2),
+                                spft_percent: spftValue.toFixed(2),
+                                sroi_percent: sroiValue.toFixed(2),
+                                s_self_pick: selfPickValue.toFixed(2),
+                                push_status: null,
+                                _token: $('meta[name="csrf-token"]').attr('content')
+                            },
+                            success: function() {
+                                console.log('Amazon - 30% price applied for SKU:', sku);
+                            },
+                            error: function(xhr) {
+                                console.error('Failed to save Amazon - 30% price for SKU:', sku, xhr.responseText);
+                            }
+                        });
+                        
+                        appliedCount++;
+                    }
+                });
+
+                if (appliedCount > 0) {
+                    showToast('success', `Amazon - 30% price applied to ${appliedCount} SKU(s)`);
+                }
+                if (noAmazonPriceCount > 0) {
+                    showToast('warning', `${noAmazonPriceCount} SKU(s) skipped (no Amazon price)`);
+                }
+            });
+
+            // SUGG AMZ - 25% button handler
+            $('#sugg-amz-25-btn').on('click', function() {
+                if (selectedSkus.size === 0) {
+                    showToast('danger', 'Please select SKUs first');
+                    return;
+                }
+
+                let appliedCount = 0;
+                let noAmazonPriceCount = 0;
+
+                selectedSkus.forEach(sku => {
+                    const rows = table.searchRows("(Child) sku", "=", sku);
+                    
+                    if (rows.length > 0) {
+                        const row = rows[0];
+                        const rowData = row.getData();
+                        const amazonPrice = parseFloat(rowData.amazon_price) || 0;
+                        
+                        if (amazonPrice === 0) {
+                            noAmazonPriceCount++;
+                            return; // Skip this SKU if no Amazon price
+                        }
+                        
+                        // Calculate suggested price: Amazon Price - 25%
+                        const suggestedPrice = amazonPrice * 0.75;
+                        const lp = parseFloat(rowData.LP_productmaster) || 0;
+                        const ship = parseFloat(rowData.Ship_productmaster) || 0;
+                        
+                        // Calculate SPFT and SROI
+                        const spftValue = suggestedPrice > 0 ? ((suggestedPrice * 0.95) - ship - lp) / suggestedPrice * 100 : 0;
+                        const sroiValue = lp > 0 ? (((suggestedPrice * 0.95) - ship - lp) / lp) * 100 : 0;
+                        const selfPickValue = suggestedPrice * 0.95;
+                        
+                        // Update row
+                        row.update({
+                            sprice: suggestedPrice.toFixed(2),
+                            spft: spftValue.toFixed(2),
+                            sroi: sroiValue.toFixed(2),
+                            s_self_pick: selfPickValue.toFixed(2)
+                        });
+                        
+                        row.reformat();
+                        
+                        // Save to database
+                        $.ajax({
+                            url: '/doba/save-sprice',
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                            },
+                            data: {
+                                sku: sku,
+                                sprice: suggestedPrice.toFixed(2),
+                                spft_percent: spftValue.toFixed(2),
+                                sroi_percent: sroiValue.toFixed(2),
+                                s_self_pick: selfPickValue.toFixed(2),
+                                push_status: null,
+                                _token: $('meta[name="csrf-token"]').attr('content')
+                            },
+                            success: function() {
+                                console.log('Amazon - 25% price applied for SKU:', sku);
+                            },
+                            error: function(xhr) {
+                                console.error('Failed to save Amazon - 25% price for SKU:', sku, xhr.responseText);
+                            }
+                        });
+                        
+                        appliedCount++;
+                    }
+                });
+
+                if (appliedCount > 0) {
+                    showToast('success', `Amazon - 25% price applied to ${appliedCount} SKU(s)`);
+                }
+                if (noAmazonPriceCount > 0) {
+                    showToast('warning', `${noAmazonPriceCount} SKU(s) skipped (no Amazon price)`);
+                }
+            });
+
             // Save push status to database
             function savePushStatusToDatabase(sku, pushStatus, rowData) {
                 return $.ajax({
@@ -1069,8 +1274,16 @@
                             const quantityL7Prev = Number(item.quantity_l7_prev) || 0;
                             const ovDil = inv > 0 ? l30 / inv : 0;
                             const price = Number(item['doba Price']) || 0;
+                            const amazonPrice = Number(item.amazon_price) || 0;
                             const ship = Number(item.Ship_productmaster) || 0;
                             const lp = Number(item.LP_productmaster) || 0;
+                            
+                            // Calculate DISC VS AMZ for sorting
+                            let discVsAmz = 0;
+                            if (amazonPrice > 0 && price > 0) {
+                                discVsAmz = (price / amazonPrice * 100) - 100;
+                            }
+                            
                             // Use PFT_percentage and ROI_percentage from controller (already in percentage form)
                             const npft_pct = Number(item.PFT_percentage) || 0;
                             const roi_pct = Number(item.ROI_percentage) || 0;
@@ -1101,6 +1314,8 @@
                                 l30_avg_price: Number(item.l30_avg_price) || 0,
                                 l60_avg_price: Number(item.l60_avg_price) || 0,
                                 'doba Price': price,
+                                amazon_price: amazonPrice,
+                                disc_vs_amz: discVsAmz,
                                 Profit: item.Total_pft || item.Profit || 0,
                                 'Sales L30': dobaL30,
                                 Roi: item.ROI_percentage || 0,
@@ -1384,6 +1599,53 @@
                         }
                     },
                     {
+                        title: "AMZ PRICE",
+                        field: "amazon_price",
+                        width: 90,
+                        sorter: "number",
+                        formatter: function(cell, formatterParams) {
+                            const value = parseFloat(cell.getValue()) || 0;
+                            if (value === 0) {
+                                return '<span style="color: #6c757d;">-</span>';
+                            }
+                            return `<span style="color: #FF9900; font-weight: bold;">$${value.toFixed(2)}</span>`;
+                        }
+                    },
+                    {
+                        title: "DISC VS AMZ",
+                        field: "disc_vs_amz",
+                        width: 100,
+                        sorter: "number",
+                        formatter: function(cell, formatterParams) {
+                            const rowData = cell.getRow().getData();
+                            const dobaPrice = parseFloat(rowData['doba Price']) || 0;
+                            const amazonPrice = parseFloat(rowData.amazon_price) || 0;
+                            
+                            if (amazonPrice === 0 || dobaPrice === 0) {
+                                return '<span style="color: #6c757d;">-</span>';
+                            }
+                            
+                            // Calculate discount percentage: (Price / AMZ PRICE * 100) - 100
+                            // Negative = Doba is cheaper than Amazon
+                            // Positive = Doba is more expensive than Amazon
+                            const discountPercent = (dobaPrice / amazonPrice * 100) - 100;
+                            const discountRounded = Math.round(discountPercent);
+                            
+                            let color = '#6c757d'; // Gray for zero
+                            // Green: Doba is 30% or more cheaper than Amazon (very competitive)
+                            if (discountRounded <= -30) {
+                                color = '#28a745'; // Green - significantly cheaper
+                            } 
+                            // Red: Doba is less than 30% cheaper, equal, or more expensive
+                            else if (discountRounded > -30) {
+                                color = '#dc3545'; // Red - not competitive enough
+                            }
+                            
+                            const sign = discountRounded > 0 ? '+' : '';
+                            return `<span style="color: ${color}; font-weight: bold;">${sign}${discountRounded}%</span>`;
+                        }
+                    },
+                    {
                         title: "SHIP",
                         field: "Ship_productmaster",
                         width: 70,
@@ -1470,6 +1732,7 @@
                         field: "sprice",
                         width: 80,
                         sorter: "number",
+                        visible: true,
                         editor: "number",
                         editorParams: {
                             min: 0,
@@ -1477,7 +1740,7 @@
                         },
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
-                            return value > 0 ? `<span class="badge bg-primary">$${value.toFixed(2)}</span>` : '';
+                            return value > 0 ? `<span style="color: #000; font-weight: 600;">$${value.toFixed(2)}</span>` : '';
                         }
                     },
                     {
@@ -1495,6 +1758,7 @@
                         field: "spft",
                         width: 70,
                         sorter: "number",
+                        visible: true,
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             if (value === 0) return '';
@@ -1513,6 +1777,7 @@
                         field: "sroi",
                         width: 70,
                         sorter: "number",
+                        visible: true,
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             if (value === 0) return '';
@@ -1697,6 +1962,67 @@
                         return true;
                     });
                 }
+
+                // SPFT Filter
+                const spftMin = parseFloat($('#spft-min-filter').val());
+                const spftMax = parseFloat($('#spft-max-filter').val());
+                
+                if (!isNaN(spftMin) || !isNaN(spftMax)) {
+                    table.addFilter(function(data) {
+                        const spft = parseFloat(data.spft) || 0;
+                        
+                        if (!isNaN(spftMin) && spft < spftMin) return false;
+                        if (!isNaN(spftMax) && spft > spftMax) return false;
+                        return true;
+                    });
+                }
+
+                // NPFT Filter
+                const npftMin = parseFloat($('#npft-min-filter').val());
+                const npftMax = parseFloat($('#npft-max-filter').val());
+                
+                if (!isNaN(npftMin) || !isNaN(npftMax)) {
+                    table.addFilter(function(data) {
+                        const npft = parseFloat(data.NPFT_pct) || 0;
+                        
+                        if (!isNaN(npftMin) && npft < npftMin) return false;
+                        if (!isNaN(npftMax) && npft > npftMax) return false;
+                        return true;
+                    });
+                }
+
+                // DISC VS AMZ Min/Max Filter
+                const discAmzMin = parseFloat($('#disc-amz-min-filter').val());
+                const discAmzMax = parseFloat($('#disc-amz-max-filter').val());
+                
+                if (!isNaN(discAmzMin) || !isNaN(discAmzMax)) {
+                    table.addFilter(function(data) {
+                        const dobaPrice = parseFloat(data['doba Price']) || 0;
+                        const amazonPrice = parseFloat(data.amazon_price) || 0;
+                        
+                        if (amazonPrice === 0 || dobaPrice === 0) return false;
+                        
+                        const discountPercent = (dobaPrice / amazonPrice * 100) - 100;
+                        
+                        if (!isNaN(discAmzMin) && discountPercent < discAmzMin) return false;
+                        if (!isNaN(discAmzMax) && discountPercent > discAmzMax) return false;
+                        return true;
+                    });
+                }
+
+                // DISC VS AMZ Filter (show only non-competitive items)
+                if (discVsAmzFilterActive) {
+                    table.addFilter(function(data) {
+                        const dobaPrice = parseFloat(data['doba Price']) || 0;
+                        const amazonPrice = parseFloat(data.amazon_price) || 0;
+                        
+                        if (amazonPrice === 0 || dobaPrice === 0) return false;
+                        
+                        const discountPercent = (dobaPrice / amazonPrice * 100) - 100;
+                        // Show only items with discount > -30% (red color items)
+                        return discountPercent > -30;
+                    });
+                }
                 
                 // Update select all checkbox after filter is applied
                 setTimeout(function() {
@@ -1749,6 +2075,39 @@
                 applyFilters();
             });
 
+            // SPFT filter handlers
+            $('#spft-min-filter, #spft-max-filter').on('keyup change', function() {
+                applyFilters();
+            });
+
+            $('#clear-spft-filter').on('click', function() {
+                $('#spft-min-filter').val('');
+                $('#spft-max-filter').val('');
+                applyFilters();
+            });
+
+            // NPFT filter handlers
+            $('#npft-min-filter, #npft-max-filter').on('keyup change', function() {
+                applyFilters();
+            });
+
+            $('#clear-npft-filter').on('click', function() {
+                $('#npft-min-filter').val('');
+                $('#npft-max-filter').val('');
+                applyFilters();
+            });
+
+            // DISC VS AMZ filter handlers
+            $('#disc-amz-min-filter, #disc-amz-max-filter').on('keyup change', function() {
+                applyFilters();
+            });
+
+            $('#clear-disc-amz-filter').on('click', function() {
+                $('#disc-amz-min-filter').val('');
+                $('#disc-amz-max-filter').val('');
+                applyFilters();
+            });
+
             // DIL Filter click handlers
             $('.column-filter[data-column="dil_percent"]').on('click', function(e) {
                 e.preventDefault();
@@ -1796,6 +2155,7 @@
                 let l60ZeroSold = 0;
                 let sold = 0;
                 let missing = 0;
+                let discVsAmzCount = 0;
                 let totalL30Sales = 0;
                 let totalL60Sales = 0;
                 let totalL30COGS = 0;
@@ -1841,13 +2201,21 @@
                     totalL60Quantity += dobaL60;
                 });
 
-                // Calculate missing from all data (not filtered)
-                // Missing: Items with inventory but not selling (INV > 0 AND L30 = 0)
+                // Calculate missing and disc vs amz from all data (not filtered)
                 allNonParentData.forEach(row => {
                     const inv = parseFloat(row.INV) || 0;
                     const dobaL30 = parseFloat(row['doba L30']) || 0;
+                    const dobaPrice = parseFloat(row['doba Price']) || 0;
+                    const amazonPrice = parseFloat(row.amazon_price) || 0;
+                    
                     // Missing: Has inventory but no sales in L30 (items that need attention)
                     if (inv > 0 && dobaL30 === 0) missing++;
+                    
+                    // DISC VS AMZ: Count items with discount > -30% (red color items)
+                    if (amazonPrice > 0 && dobaPrice > 0) {
+                        const discountPercent = (dobaPrice / amazonPrice * 100) - 100;
+                        if (discountPercent > -30) discVsAmzCount++;
+                    }
                 });
 
                 // Calculate growth percentage
@@ -1928,6 +2296,7 @@
                 $('#zero-sold-count').text('L30 0 Sold: ' + l30ZeroSold);
                 $('#sold-count').text('SOLD: ' + sold);
                 $('#missing-count').html('<i class="fas fa-exclamation-triangle"></i> Missing: ' + missing);
+                $('#disc-vs-amz-count').html('<i class="fas fa-chart-line"></i> DISC VS AMZ: ' + discVsAmzCount);
                 $('#l30-sales-badge').text('L30 Sales: $' + Math.round(totalL30Sales).toLocaleString());
                 $('#l60-sales-badge').text('L60 Sales: $' + Math.round(totalL60Sales).toLocaleString());
                 
@@ -2158,8 +2527,8 @@
                     table.clearFilter();
                     $('#missing-filter').val('');
                     $(this).css({
-                        'background-color': '#ffc107',
-                        'color': '#000'
+                        'background-color': '#b02a37',
+                        'color': '#ffffff'
                     });
                     showToast('info', 'Showing all items');
                 } else {
@@ -2167,13 +2536,35 @@
                     table.setFilter("missing", "=", 1);
                     $('#missing-filter').val('missing');
                     $(this).css({
-                        'background-color': '#dc3545',
-                        'color': '#ffffff'
+                        'background-color': '#ffc107',
+                        'color': '#000'
                     });
                     const filteredCount = table.getData("active").length;
                     showToast('warning', `Filtered to ${filteredCount} missing items`);
                 }
                 missingFilterActive = !missingFilterActive;
+            });
+
+            // DISC VS AMZ filter toggle on badge click
+            $('#disc-vs-amz-count').on('click', function() {
+                discVsAmzFilterActive = !discVsAmzFilterActive;
+                
+                if (discVsAmzFilterActive) {
+                    $(this).css({
+                        'background-color': '#28a745',
+                        'color': '#ffffff'
+                    });
+                    applyFilters();
+                    const filteredCount = table.getData("active").filter(row => !row.is_parent).length;
+                    showToast('info', `Filtered to ${filteredCount} non-competitive items (discount > -30%)`);
+                } else {
+                    $(this).css({
+                        'background-color': '#dc3545',
+                        'color': '#ffffff'
+                    });
+                    applyFilters();
+                    showToast('info', 'Showing all items');
+                }
             });
         });
     </script>
