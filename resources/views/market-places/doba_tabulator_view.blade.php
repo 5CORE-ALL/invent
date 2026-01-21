@@ -289,6 +289,32 @@
                         </button>
                     </div>
 
+                    <!-- ROI Filter -->
+                    <div class="d-flex align-items-center gap-1">
+                        <label class="mb-0 fw-bold" style="font-size: 12px;">ROI %:</label>
+                        <input type="number" id="roi-min-filter" class="form-control form-control-sm" 
+                               placeholder="Min" style="width: 70px;" step="1">
+                        <span>-</span>
+                        <input type="number" id="roi-max-filter" class="form-control form-control-sm" 
+                               placeholder="Max" style="width: 70px;" step="1">
+                        <button id="clear-roi-filter" class="btn btn-sm btn-outline-secondary" style="padding: 2px 8px;">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+
+                    <!-- ROI Filter -->
+                    <div class="d-flex align-items-center gap-1">
+                        <label class="mb-0 fw-bold" style="font-size: 12px;">ROI %:</label>
+                        <input type="number" id="roi-min-filter" class="form-control form-control-sm" 
+                               placeholder="Min" style="width: 70px;" step="1">
+                        <span>-</span>
+                        <input type="number" id="roi-max-filter" class="form-control form-control-sm" 
+                               placeholder="Max" style="width: 70px;" step="1">
+                        <button id="clear-roi-filter" class="btn btn-sm btn-outline-secondary" style="padding: 2px 8px;">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+
                     <!-- DISC VS AMZ Filter -->
                     <div class="d-flex align-items-center gap-1">
                         <label class="mb-0 fw-bold" style="font-size: 12px;">Disc AMZ %:</label>
@@ -1522,6 +1548,7 @@
                         field: "Promo",
                         width: 80,
                         sorter: "number",
+                        visible: false,
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             return `<span style="color: #000; font-weight: bold;">$${value.toFixed(2)}</span>`;
@@ -1532,6 +1559,7 @@
                         field: "Promo_PU",
                         width: 90,
                         sorter: "number",
+                        visible: false,
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             return `<span style="color: #000; font-weight: bold;">$${value.toFixed(2)}</span>`;
@@ -1542,6 +1570,7 @@
                         field: "missing",
                         width: 80,
                         hozAlign: "center",
+                        visible: false,
                         formatter: function(cell, formatterParams) {
                             const rowData = cell.getRow().getData();
                             const inv = parseFloat(rowData.INV) || 0;
@@ -1650,6 +1679,7 @@
                         field: "Ship_productmaster",
                         width: 70,
                         sorter: "number",
+                        visible: false,
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             return value > 0 ? `$${value.toFixed(2)}` : '';
@@ -1660,6 +1690,7 @@
                         field: "self_pick_price",
                         width: 85,
                         sorter: "number",
+                        visible: false,
                         formatter: function(cell, formatterParams) {
                             const value = parseFloat(cell.getValue()) || 0;
                             return value > 0 ? `$${value.toFixed(2)}` : '';
@@ -1991,6 +2022,20 @@
                     });
                 }
 
+                // ROI Filter  
+                const roiMin = parseFloat($('#roi-min-filter').val());
+                const roiMax = parseFloat($('#roi-max-filter').val());
+                
+                if (!isNaN(roiMin) || !isNaN(roiMax)) {
+                    table.addFilter(function(data) {
+                        const roi = parseFloat(data.Roi) || 0;
+                        
+                        if (!isNaN(roiMin) && roi < roiMin) return false;
+                        if (!isNaN(roiMax) && roi > roiMax) return false;
+                        return true;
+                    });
+                }
+
                 // DISC VS AMZ Min/Max Filter
                 const discAmzMin = parseFloat($('#disc-amz-min-filter').val());
                 const discAmzMax = parseFloat($('#disc-amz-max-filter').val());
@@ -2094,6 +2139,17 @@
             $('#clear-npft-filter').on('click', function() {
                 $('#npft-min-filter').val('');
                 $('#npft-max-filter').val('');
+                applyFilters();
+            });
+
+            // ROI filter handlers
+            $('#roi-min-filter, #roi-max-filter').on('keyup change', function() {
+                applyFilters();
+            });
+
+            $('#clear-roi-filter').on('click', function() {
+                $('#roi-min-filter').val('');
+                $('#roi-max-filter').val('');
                 applyFilters();
             });
 
