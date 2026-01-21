@@ -483,17 +483,6 @@
                                         </div>
                                     </div>
                                 </div>
-                                    <div class="col-md-1 d-flex gap-2">
-                                        <div class="w-50">
-                                        </div>
-                                        <div class="w-50">
-                                            <button id="apr-all-sbgt-btn" class="btn btn-warning btn-sm w-100 d-none">
-                                                <i class="fa-solid fa-check-double me-1"></i>
-                                                APR ALL SBGT
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
                                 
                                 <!-- Multi-Range Filter Row -->
                                 <div class="row align-items-end g-2 mt-3 pt-3 border-top">
@@ -537,7 +526,7 @@
                                 </div>
                                 
                                 <!-- INC/DEC SBID Section and Action Buttons -->
-                                <div class="row g-3 align-items-end pt-3 border-top">
+                                <div class="row g-2 align-items-end pt-3 border-top">
                                     <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-calculator me-1" style="color: #64748b;"></i>INC/DEC SBID
@@ -545,9 +534,10 @@
                                         <div class="btn-group w-100" role="group">
                                             <button type="button" id="inc-dec-btn"
                                                 class="btn btn-warning btn-sm dropdown-toggle" data-bs-toggle="dropdown"
-                                                aria-expanded="false">
+                                                aria-expanded="false" style="font-size: 0.75rem;">
                                                 <i class="fa-solid fa-plus-minus me-1"></i>
-                                                INC/DEC (By Value)
+                                                <span class="d-none d-md-inline">INC/DEC</span>
+                                                <span class="d-md-none">INC/DEC</span>
                                             </button>
                                             <ul class="dropdown-menu" id="inc-dec-dropdown">
                                                 <li><a class="dropdown-item" href="#" data-type="value">By Value</a></li>
@@ -557,36 +547,39 @@
                                     </div>
                                     <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
-                                            <span id="inc-dec-label">Value/Percentage</span>
+                                            <span id="inc-dec-label" style="font-size: 0.75rem;">Value/Percentage</span>
                                         </label>
-                                        <input type="number" id="inc-dec-input" class="form-control form-control-md"
-                                            placeholder="Enter value (e.g., +0.5 or -0.5)" step="0.01"
-                                            style="border-color: #e2e8f0;">
+                                        <input type="number" id="inc-dec-input" class="form-control form-control-sm"
+                                            placeholder="Enter value" step="0.01"
+                                            style="border-color: #e2e8f0; font-size: 0.8rem;">
                                     </div>
-                                    <div class="col-md-2 d-flex gap-2 align-items-end">
-                                        <button id="apply-inc-dec-btn" class="btn btn-success btn-sm flex-fill">
+                                    <div class="col-md-2 d-flex gap-1 align-items-end">
+                                        <button id="apply-inc-dec-btn" class="btn btn-success btn-sm flex-fill" style="font-size: 0.75rem;">
                                             <i class="fa-solid fa-check me-1"></i>
                                             Apply
                                         </button>
-                                        <button id="clear-inc-dec-btn" class="btn btn-secondary btn-sm flex-fill">
+                                        <button id="clear-inc-dec-btn" class="btn btn-secondary btn-sm flex-fill" style="font-size: 0.75rem;">
                                             <i class="fa-solid fa-times me-1"></i>
-                                            Clear Input
+                                            Clear
                                         </button>
                                     </div>
                                     <div class="col-md-2 d-flex align-items-end">
-                                        <button id="clear-sbid-m-btn" class="btn btn-danger btn-sm w-100">
+                                        <button id="clear-sbid-m-btn" class="btn btn-danger btn-sm w-100" style="font-size: 0.75rem;">
                                             <i class="fa-solid fa-trash me-1"></i>
-                                            Clear SBID M (Selected)
+                                            <span class="d-none d-lg-inline">Clear SBID M</span>
+                                            <span class="d-lg-none">Clear</span>
                                         </button>
                                     </div>
-                                    <div class="col-md-4 d-flex gap-2 align-items-end">
-                                        <button id="apr-all-sbid-btn" class="btn btn-info btn-sm flex-fill d-none">
+                                    <div class="col-md-4 d-flex gap-1 align-items-end">
+                                        <button id="apr-all-sbid-btn" class="btn btn-info btn-sm flex-fill d-none" style="font-size: 0.75rem;">
                                             <i class="fa-solid fa-check-double me-1"></i>
-                                            APR ALL SBID
+                                            <span class="d-none d-lg-inline">APR ALL SBID</span>
+                                            <span class="d-lg-none">APR SBID</span>
                                         </button>
-                                        <button id="save-all-sbid-m-btn" class="btn btn-success btn-sm flex-fill d-none">
+                                        <button id="save-all-sbid-m-btn" class="btn btn-success btn-sm flex-fill d-none" style="font-size: 0.75rem;">
                                             <i class="fa-solid fa-save me-1"></i>
-                                            SAVE ALL SBID M
+                                            <span class="d-none d-lg-inline">SAVE ALL SBID M</span>
+                                            <span class="d-lg-none">SAVE SBID</span>
                                         </button>
                                     </div>
                                 </div>

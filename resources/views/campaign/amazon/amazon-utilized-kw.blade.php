@@ -3808,106 +3808,106 @@
             });
 
             // Batch APR SBGT handler
-            document.getElementById("apr-all-sbgt-btn").addEventListener("click", function() {
-                const overlay = document.getElementById("progress-overlay");
-                overlay.style.display = "flex";
+            // document.getElementById("apr-all-sbgt-btn").addEventListener("click", function() {
+            //     const overlay = document.getElementById("progress-overlay");
+            //     overlay.style.display = "flex";
 
-                var filteredData = table.getSelectedRows();
-                var campaignIds = [];
-                var bgts = [];
+            //     var filteredData = table.getSelectedRows();
+            //     var campaignIds = [];
+            //     var bgts = [];
 
-                filteredData.forEach(function(row) {
-                    var rowEl = row.getElement();
-                    if (rowEl && rowEl.offsetParent !== null) {
-                        var rowData = row.getData();
-                        var acos = parseFloat(rowData.acos || 0);
+            //     filteredData.forEach(function(row) {
+            //         var rowEl = row.getElement();
+            //         if (rowEl && rowEl.offsetParent !== null) {
+            //             var rowData = row.getData();
+            //             var acos = parseFloat(rowData.acos || 0);
 
-                        if (acos > 0) {
-                            // Compute SBGT based on ACOS (same rule as display)
-                            var sbgtValue;
-                            if (acos < 5) {
-                                sbgtValue = 8;
-                            } else if (acos < 10) {
-                                sbgtValue = 7;
-                            } else if (acos < 15) {
-                                sbgtValue = 6;
-                            } else if (acos < 20) {
-                                sbgtValue = 5;
-                            } else if (acos < 25) {
-                                sbgtValue = 4;
-                            } else if (acos < 30) {
-                                sbgtValue = 3;
-                            } else if (acos < 35) {
-                                sbgtValue = 2;
-                            } else {
-                                sbgtValue = 1;
-                            }
+            //             if (acos > 0) {
+            //                 // Compute SBGT based on ACOS (same rule as display)
+            //                 var sbgtValue;
+            //                 if (acos < 5) {
+            //                     sbgtValue = 8;
+            //                 } else if (acos < 10) {
+            //                     sbgtValue = 7;
+            //                 } else if (acos < 15) {
+            //                     sbgtValue = 6;
+            //                 } else if (acos < 20) {
+            //                     sbgtValue = 5;
+            //                 } else if (acos < 25) {
+            //                     sbgtValue = 4;
+            //                 } else if (acos < 30) {
+            //                     sbgtValue = 3;
+            //                 } else if (acos < 35) {
+            //                     sbgtValue = 2;
+            //                 } else {
+            //                     sbgtValue = 1;
+            //                 }
 
-                            campaignIds.push(rowData.campaign_id);
-                            bgts.push(sbgtValue);
-                        }
-                    }
-                });
+            //                 campaignIds.push(rowData.campaign_id);
+            //                 bgts.push(sbgtValue);
+            //             }
+            //         }
+            //     });
 
-                fetch('/update-amazon-campaign-bgt-price', {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                    },
-                    body: JSON.stringify({
-                        campaign_ids: campaignIds,
-                        bgts: bgts
-                    })
-                })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.status === 200) {
-                        alert("Campaign budget updated successfully!");
-                    } else {
-                        alert("Something went wrong: " + data.message);
-                    }
-                })
-                .catch(err => {
-                    console.error(err);
-                    alert("Request failed: " + err.message);
-                })
-                .finally(() => {
-                    overlay.style.display = "none";
-                });
-            });
+            //     fetch('/update-amazon-campaign-bgt-price', {
+            //         method: 'PUT',
+            //         headers: {
+            //             'Content-Type': 'application/json',
+            //             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+            //         },
+            //         body: JSON.stringify({
+            //             campaign_ids: campaignIds,
+            //             bgts: bgts
+            //         })
+            //     })
+            //     .then(res => res.json())
+            //     .then(data => {
+            //         if (data.status === 200) {
+            //             alert("Campaign budget updated successfully!");
+            //         } else {
+            //             alert("Something went wrong: " + data.message);
+            //         }
+            //     })
+            //     .catch(err => {
+            //         console.error(err);
+            //         alert("Request failed: " + err.message);
+            //     })
+            //     .finally(() => {
+            //         overlay.style.display = "none";
+            //     });
+            // });
 
-            function updateBgt(sbgtValue, campaignId) {
-                const overlay = document.getElementById("progress-overlay");
-                overlay.style.display = "flex";
+            // function updateBgt(sbgtValue, campaignId) {
+            //     const overlay = document.getElementById("progress-overlay");
+            //     overlay.style.display = "flex";
 
-                fetch('/update-amazon-campaign-bgt-price', {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                    },
-                    body: JSON.stringify({
-                        campaign_ids: [campaignId],
-                        bgts: [sbgtValue]
-                    })
-                })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.status === 200) {
-                        alert("Campaign budget updated successfully!");
-                    } else {
-                        alert("Something went wrong: " + data.message);
-                    }
-                })
-                .catch(err => {
-                    console.error(err);
-                    alert("Request failed: " + err.message);
-                })
-                .finally(() => {
-                    overlay.style.display = "none";
-                });
-            }
+            //     fetch('/update-amazon-campaign-bgt-price', {
+            //         method: 'PUT',
+            //         headers: {
+            //             'Content-Type': 'application/json',
+            //             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+            //         },
+            //         body: JSON.stringify({
+            //             campaign_ids: [campaignId],
+            //             bgts: [sbgtValue]
+            //         })
+            //     })
+            //     .then(res => res.json())
+            //     .then(data => {
+            //         if (data.status === 200) {
+            //             alert("Campaign budget updated successfully!");
+            //         } else {
+            //             alert("Something went wrong: " + data.message);
+            //         }
+            //     })
+            //     .catch(err => {
+            //         console.error(err);
+            //         alert("Request failed: " + err.message);
+            //     })
+            //     .finally(() => {
+            //         overlay.style.display = "none";
+            //     });
+            // }
 
             function updateBid(aprBid, campaignId) {
                 const overlay = document.getElementById("progress-overlay");
