@@ -169,6 +169,18 @@
         'sub_title' => 'Doba Listing',
     ])
     <div class="toast-container"></div>
+    
+    <!-- Large Visible Rows Counter Badge -->
+    <div class="row mb-2">
+        <div class="col-12">
+            <div class="d-flex justify-content-start">
+                <span id="visible-rows-badge" class="badge p-3" style="background-color: #0d6efd; color: white; font-size: 24px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                    Visible Rows: 0
+                </span>
+            </div>
+        </div>
+    </div>
+    
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
@@ -194,7 +206,8 @@
 
                     <!-- DIL Filter -->
                     <div class="dropdown manual-dropdown-container">
-                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="dilFilterDropdown">
+                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="dilFilterDropdown" 
+                                data-bs-toggle="dropdown" aria-expanded="false">
                             <span class="status-circle default"></span> DIL%
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="dilFilterDropdown">
@@ -209,6 +222,45 @@
                             <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="pink">
                                     <span class="status-circle pink"></span> Pink (50%+)</a></li>
                         </ul>
+                    </div>
+
+                    <!-- Growth Filter -->
+                    <div class="d-flex align-items-center gap-1">
+                        <label class="mb-0 fw-bold" style="font-size: 12px;">Growth %:</label>
+                        <input type="number" id="growth-min-filter" class="form-control form-control-sm" 
+                               placeholder="Min" style="width: 70px;" step="1">
+                        <span>-</span>
+                        <input type="number" id="growth-max-filter" class="form-control form-control-sm" 
+                               placeholder="Max" style="width: 70px;" step="1">
+                        <button id="clear-growth-filter" class="btn btn-sm btn-outline-secondary" style="padding: 2px 8px;">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+
+                    <!-- L30 Sold Filter -->
+                    <div class="d-flex align-items-center gap-1">
+                        <label class="mb-0 fw-bold" style="font-size: 12px;">L30 Sold:</label>
+                        <input type="number" id="l30-sold-min-filter" class="form-control form-control-sm" 
+                               placeholder="Min" style="width: 70px;" step="1" min="0">
+                        <span>-</span>
+                        <input type="number" id="l30-sold-max-filter" class="form-control form-control-sm" 
+                               placeholder="Max" style="width: 70px;" step="1" min="0">
+                        <button id="clear-l30-sold-filter" class="btn btn-sm btn-outline-secondary" style="padding: 2px 8px;">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+
+                    <!-- L60 Sold Filter -->
+                    <div class="d-flex align-items-center gap-1">
+                        <label class="mb-0 fw-bold" style="font-size: 12px;">L60 Sold:</label>
+                        <input type="number" id="l60-sold-min-filter" class="form-control form-control-sm" 
+                               placeholder="Min" style="width: 70px;" step="1" min="0">
+                        <span>-</span>
+                        <input type="number" id="l60-sold-max-filter" class="form-control form-control-sm" 
+                               placeholder="Max" style="width: 70px;" step="1" min="0">
+                        <button id="clear-l60-sold-filter" class="btn btn-sm btn-outline-secondary" style="padding: 2px 8px;">
+                            <i class="fas fa-times"></i>
+                        </button>
                     </div>
 
                     <!-- Column Visibility -->
@@ -252,13 +304,22 @@
                 <div id="summary-stats" class="mt-3 mb-2">
                     <div class="d-flex flex-wrap justify-content-center gap-2">
                         <span id="total-skus" class="badge bg-primary p-2 fw-bold fs-6" style="color: white !important;">Total SKUs: 0</span>
-                        <span id="zero-sold-count" class="badge bg-danger p-2 fw-bold fs-6" style="color: white !important;">0 SOLD: 0</span>
+                        <span id="l60-zero-sold-count" class="badge p-2 fw-bold fs-6" style="background-color: #d63384; color: white !important;">L60 0 Sold: 0</span>
+                        <span id="zero-sold-count" class="badge bg-danger p-2 fw-bold fs-6" style="color: white !important;">L30 0 Sold: 0</span>
                         <span id="sold-count" class="badge bg-success p-2 fw-bold fs-6" style="color: white !important;">SOLD: 0</span>
-                        <span id="missing-count" class="badge bg-warning p-2 fw-bold fs-6" style="color: black !important; cursor: pointer;" title="Click to filter missing items"><i class="fas fa-exclamation-triangle"></i> Missing: 0</span>
-                        <span id="total-sales-badge" class="badge fs-6 p-2" style="background-color: #17a2b8; color: white; font-weight: bold;">Total Sales: $0</span>
-                        <span id="pft-percentage-badge" class="badge bg-danger fs-6 p-2" style="color: white; font-weight: bold;">GPFT %: 0%</span>
-                        <span id="roi-percentage-badge" class="badge fs-6 p-2" style="background-color: purple; color: white; font-weight: bold;">ROI %: 0%</span>
-                        <span id="pft-total-badge" class="badge bg-dark fs-6 p-2" style="color: white; font-weight: bold;">GPFT Total: $0</span>
+                        <span id="missing-count" class="badge p-2 fw-bold fs-6" style="background-color: #b02a37; color: white !important; cursor: pointer;" title="Click to filter missing items"><i class="fas fa-exclamation-triangle"></i> Missing: 0</span>
+                        <span id="l60-sales-badge" class="badge fs-6 p-2" style="background-color: #495057; color: white; font-weight: bold;">L60 Sales: $0</span>
+                        <span id="l30-sales-badge" class="badge fs-6 p-2" style="background-color: #0d6efd; color: white; font-weight: bold;">L30 Sales: $0</span>
+                        <span id="growth-sales-badge" class="badge fs-6 p-2" style="background-color: #28a745; color: white; font-weight: bold;">GROWTH: 0%</span>
+                        <span id="l60-gpft-badge" class="badge fs-6 p-2" style="background-color: #e67e22; color: white; font-weight: bold;">L60 GPFT %: 0%</span>
+                        <span id="l60-roi-badge" class="badge fs-6 p-2" style="background-color: #6f42c1; color: white; font-weight: bold;">L60 ROI %: 0%</span>
+                        <span id="pft-percentage-badge" class="badge bg-danger fs-6 p-2" style="color: white; font-weight: bold;">L30 GPFT %: 0%</span>
+                        <span id="growth-gpft-percent-badge" class="badge fs-6 p-2" style="background-color: #198754; color: white; font-weight: bold;">GROWTH GPFT %: 0%</span>
+                        <span id="growth-aprice-percent-badge" class="badge fs-6 p-2" style="background-color: #0b5ed7; color: white; font-weight: bold;">GROWTH A PRICE %: 0%</span>
+                        <span id="roi-percentage-badge" class="badge fs-6 p-2" style="background-color: #6f42c1; color: white; font-weight: bold;">L30 ROI %: 0%</span>
+                        <span id="l60-gpft-total-badge" class="badge fs-6 p-2" style="background-color: #495057; color: white; font-weight: bold;">L60 GPFT: $0</span>
+                        <span id="pft-total-badge" class="badge bg-dark fs-6 p-2" style="color: white; font-weight: bold;">L30 GPFT: $0</span>
+                        <span id="growth-gpft-badge" class="badge fs-6 p-2" style="background-color: #28a745; color: white; font-weight: bold;">GROWTH GPFT: $0</span>
                         <span id="total-cogs-badge" class="badge bg-secondary fs-6 p-2" style="color: white; font-weight: bold;">Total COGS: $0</span>
                     </div>
                 </div>
@@ -1036,6 +1097,9 @@
                                 'doba L60': dobaL60,
                                 quantity_l7: quantityL7,
                                 quantity_l7_prev: quantityL7Prev,
+                                growth_percent: 0, // Calculated in formatter
+                                l30_avg_price: Number(item.l30_avg_price) || 0,
+                                l60_avg_price: Number(item.l60_avg_price) || 0,
                                 'doba Price': price,
                                 Profit: item.Total_pft || item.Profit || 0,
                                 'Sales L30': dobaL30,
@@ -1048,7 +1112,7 @@
                                 NPFT_pct: npft_pct,
                                 Promo: promo,
                                 Promo_PU: promo_pu,
-                                missing: (inv === 0 && dobaL30 === 0) ? 1 : 0, // Missing indicator
+                                missing: (inv > 0 && dobaL30 === 0) ? 1 : 0, // Missing indicator: has inventory but not selling
                                 LP_productmaster: lp,
                                 Ship_productmaster: ship,
                                 sprice: item.SPRICE || 0,
@@ -1125,7 +1189,7 @@
                         }
                     },
                     {
-                        title: "OV DIL",
+                        title: "DIL",
                         field: "ov_dil",
                         width: 80,
                         sorter: "number",
@@ -1142,7 +1206,17 @@
                         }
                     },
                     {
-                        title: "SOLD",
+                        title: "L60",
+                        field: "doba L60",
+                        width: 70,
+                        sorter: "number",
+                        visible: true,
+                        formatter: function(cell, formatterParams) {
+                            return cell.getValue() || 0;
+                        }
+                    },
+                    {
+                        title: "L30",
                         field: "doba L30",
                         width: 70,
                         sorter: "number",
@@ -1151,30 +1225,43 @@
                         }
                     },
                     {
-                        title: "S L30",
-                        field: "s_l30",
-                        width: 70,
+                        title: "Growth",
+                        field: "growth_percent",
+                        width: 80,
                         sorter: "number",
                         formatter: function(cell, formatterParams) {
-                            const value = parseInt(cell.getValue()) || 0;
-                            if (value > 0) {
-                                return `<span style="color: #28a745; font-weight: bold;">${value}</span>`;
+                            const rowData = cell.getRow().getData();
+                            const l30 = parseFloat(rowData['doba L30']) || 0;
+                            const l60 = parseFloat(rowData['doba L60']) || 0;
+                            
+                            // L60 is the previous 30 days (days 31-60)
+                            // L30 is the last 30 days (days 1-30)
+                            
+                            if (l60 === 0) {
+                                if (l30 > 0) {
+                                    return `<span style="color: #28a745; font-weight: bold;">+100%</span>`;
+                                }
+                                return '<span style="color: #6c757d;">0%</span>';
                             }
-                            return value;
+                            
+                            // Calculate growth percentage: (L30 - L60) / L60 * 100
+                            const growth = ((l30 - l60) / l60) * 100;
+                            const growthRounded = Math.round(growth);
+                            
+                            // Color code: green for positive, red for negative, gray for zero
+                            let color = '#6c757d'; // gray for 0
+                            if (growthRounded > 0) {
+                                color = '#28a745'; // green for positive
+                            } else if (growthRounded < 0) {
+                                color = '#dc3545'; // red for negative
+                            }
+                            
+                            const sign = growthRounded > 0 ? '+' : '';
+                            return `<span style="color: ${color}; font-weight: bold;">${sign}${growthRounded}%</span>`;
                         }
                     },
                     {
-                        title: "SOLD L60",
-                        field: "doba L60",
-                        width: 70,
-                        sorter: "number",
-                        visible: false,
-                        formatter: function(cell, formatterParams) {
-                            return cell.getValue() || 0;
-                        }
-                    },
-                    {
-                        title: "SOLD 7",
+                        title: "L7",
                         field: "quantity_l7",
                         width: 70,
                         sorter: "number",
@@ -1188,7 +1275,7 @@
                         }
                     },
                     {
-                        title: "P SOLD 7",
+                        title: "L7-14",
                         field: "quantity_l7_prev",
                         width: 70,
                         sorter: "number",
@@ -1197,6 +1284,20 @@
                             const value = parseInt(cell.getValue()) || 0;
                             if (value > 0) {
                                 return `<span style="color: #3591dc; font-weight: bold;">${value}</span>`;
+                            }
+                            return value;
+                        }
+                    },
+                    {
+                        title: "S L30",
+                        field: "s_l30",
+                        width: 70,
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell, formatterParams) {
+                            const value = parseInt(cell.getValue()) || 0;
+                            if (value > 0) {
+                                return `<span style="color: #28a745; font-weight: bold;">${value}</span>`;
                             }
                             return value;
                         }
@@ -1227,9 +1328,47 @@
                         width: 80,
                         hozAlign: "center",
                         formatter: function(cell, formatterParams) {
-                            const value = parseInt(cell.getValue()) || 0;
-                            if (value === 1) {
-                                return '<span class="badge bg-danger"><i class="fas fa-exclamation-triangle"></i></span>';
+                            const rowData = cell.getRow().getData();
+                            const inv = parseFloat(rowData.INV) || 0;
+                            const dobaL30 = parseFloat(rowData['doba L30']) || 0;
+                            
+                            // Red badge: Has inventory but not selling (INV > 0 AND L30 = 0)
+                            if (inv > 0 && dobaL30 === 0) {
+                                return '<span class="badge" style="background-color: #b02a37; color: white;"><i class="fas fa-exclamation-triangle"></i></span>';
+                            }
+                            
+                            // Yellow dot: 0 inventory (out of stock)
+                            if (inv === 0) {
+                                return '<span style="color: #ffc107; font-size: 24px; font-weight: bold;">●</span>';
+                            }
+                            
+                            return '';
+                        }
+                    },
+                    {
+                        title: "L60 A Price",
+                        field: "l60_avg_price",
+                        width: 90,
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell, formatterParams) {
+                            const value = parseFloat(cell.getValue()) || 0;
+                            if (value > 0) {
+                                return `<span style="color: #6c757d; font-weight: bold;">$${value.toFixed(2)}</span>`;
+                            }
+                            return '';
+                        }
+                    },
+                    {
+                        title: "L30 A Price",
+                        field: "l30_avg_price",
+                        width: 90,
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell, formatterParams) {
+                            const value = parseFloat(cell.getValue()) || 0;
+                            if (value > 0) {
+                                return `<span style="color: #17a2b8; font-weight: bold;">$${value.toFixed(2)}</span>`;
                             }
                             return '';
                         }
@@ -1485,7 +1624,13 @@
                 }
 
                 if (missingFilter === 'missing') {
-                    table.setFilter("missing", "=", 1);
+                    // Show items with inventory > 0 but no sales (exclude 0 inventory items)
+                    table.addFilter(function(data) {
+                        const inv = parseFloat(data['INV']) || 0;
+                        const dobaL30 = parseFloat(data['doba L30']) || 0;
+                        // Show items that have inventory but aren't selling
+                        return inv > 0 && dobaL30 === 0;
+                    });
                 }
 
                 // DIL Filter (based on inventory and L30)
@@ -1502,14 +1647,105 @@
                         return true;
                     });
                 }
+
+                // Growth Filter
+                const growthMin = parseFloat($('#growth-min-filter').val());
+                const growthMax = parseFloat($('#growth-max-filter').val());
+                
+                if (!isNaN(growthMin) || !isNaN(growthMax)) {
+                    table.addFilter(function(data) {
+                        const l30 = parseFloat(data['doba L30']) || 0;
+                        const l60 = parseFloat(data['doba L60']) || 0;
+                        
+                        let growth = 0;
+                        if (l60 > 0) {
+                            growth = ((l30 - l60) / l60) * 100;
+                        } else if (l30 > 0) {
+                            growth = 100;
+                        }
+                        
+                        if (!isNaN(growthMin) && growth < growthMin) return false;
+                        if (!isNaN(growthMax) && growth > growthMax) return false;
+                        return true;
+                    });
+                }
+
+                // L30 Sold Filter
+                const l30SoldMin = parseFloat($('#l30-sold-min-filter').val());
+                const l30SoldMax = parseFloat($('#l30-sold-max-filter').val());
+                
+                if (!isNaN(l30SoldMin) || !isNaN(l30SoldMax)) {
+                    table.addFilter(function(data) {
+                        const l30Sold = parseFloat(data['doba L30']) || 0;
+                        
+                        if (!isNaN(l30SoldMin) && l30Sold < l30SoldMin) return false;
+                        if (!isNaN(l30SoldMax) && l30Sold > l30SoldMax) return false;
+                        return true;
+                    });
+                }
+
+                // L60 Sold Filter
+                const l60SoldMin = parseFloat($('#l60-sold-min-filter').val());
+                const l60SoldMax = parseFloat($('#l60-sold-max-filter').val());
+                
+                if (!isNaN(l60SoldMin) || !isNaN(l60SoldMax)) {
+                    table.addFilter(function(data) {
+                        const l60Sold = parseFloat(data['doba L60']) || 0;
+                        
+                        if (!isNaN(l60SoldMin) && l60Sold < l60SoldMin) return false;
+                        if (!isNaN(l60SoldMax) && l60Sold > l60SoldMax) return false;
+                        return true;
+                    });
+                }
                 
                 // Update select all checkbox after filter is applied
                 setTimeout(function() {
                     updateSelectAllCheckbox();
+                    updateVisibleRowsCount();
                 }, 100);
+            }
+            
+            // Update visible rows count badge
+            function updateVisibleRowsCount() {
+                const visibleData = table.getData("active");
+                const visibleNonParentRows = visibleData.filter(row => !row.is_parent);
+                $('#visible-rows-badge').text('Visible Rows: ' + visibleNonParentRows.length);
             }
 
             $('#inventory-filter, #parent-filter, #missing-filter').on('change', function() {
+                applyFilters();
+            });
+
+            // Growth filter handlers
+            $('#growth-min-filter, #growth-max-filter').on('keyup change', function() {
+                applyFilters();
+            });
+
+            $('#clear-growth-filter').on('click', function() {
+                $('#growth-min-filter').val('');
+                $('#growth-max-filter').val('');
+                applyFilters();
+            });
+
+            // L30 Sold filter handlers
+            $('#l30-sold-min-filter, #l30-sold-max-filter').on('keyup change', function() {
+                applyFilters();
+            });
+
+            $('#clear-l30-sold-filter').on('click', function() {
+                $('#l30-sold-min-filter').val('');
+                $('#l30-sold-max-filter').val('');
+                applyFilters();
+            });
+
+            // L60 Sold filter handlers
+            $('#l60-sold-min-filter, #l60-sold-max-filter').on('keyup change', function() {
+                applyFilters();
+            });
+
+            $('#clear-l60-sold-filter').on('click', function() {
+                $('#l60-sold-min-filter').val('');
+                $('#l60-sold-max-filter').val('');
                 applyFilters();
             });
 
@@ -1534,10 +1770,9 @@
                     .then(result => {
                         if (result.success && result.data) {
                             const data = result.data;
-                            $('#total-sales-badge').text('Total Sales: $' + Math.round(parseFloat(data.total_sales)).toLocaleString());
-                            $('#pft-percentage-badge').text('GPFT %: ' + parseFloat(data.pft_percentage).toFixed(1) + '%');
-                            $('#roi-percentage-badge').text('ROI %: ' + parseFloat(data.roi_percentage).toFixed(1) + '%');
-                            $('#pft-total-badge').text('GPFT Total: $' + Math.round(parseFloat(data.total_pft)).toLocaleString());
+                            $('#pft-percentage-badge').text('L30 GPFT %: ' + parseFloat(data.pft_percentage).toFixed(1) + '%');
+                            $('#roi-percentage-badge').text('L30 ROI %: ' + Math.round(parseFloat(data.roi_percentage)) + '%');
+                            $('#pft-total-badge').text('L30 GPFT: $' + Math.round(parseFloat(data.total_pft)).toLocaleString());
                             $('#total-cogs-badge').text('Total COGS: $' + Math.round(parseFloat(data.total_cogs)).toLocaleString());
                             $('#metrics-date-badge').text('Date: ' + data.date);
                         }
@@ -1557,32 +1792,169 @@
                 const allNonParentData = allData.filter(row => !row.is_parent);
                 
                 const totalSkus = filteredData.length;
-                let zeroSold = 0;
+                let l30ZeroSold = 0;
+                let l60ZeroSold = 0;
                 let sold = 0;
                 let missing = 0;
+                let totalL30Sales = 0;
+                let totalL60Sales = 0;
+                let totalL30COGS = 0;
+                let totalL30Shipping = 0;
+                let totalL60COGS = 0;
+                let totalL60Shipping = 0;
+                let totalL30ActualSales = 0;
+                let totalL30Quantity = 0;
+                let totalL60ActualSales = 0;
+                let totalL60Quantity = 0;
 
                 filteredData.forEach(row => {
                     const inv = parseFloat(row.INV) || 0;
                     const dobaL30 = parseFloat(row['doba L30']) || 0;
+                    const dobaL60 = parseFloat(row['doba L60']) || 0;
+                    const dobaPrice = parseFloat(row['doba Price']) || 0;
+                    const lp = parseFloat(row.LP_productmaster) || 0;
+                    const ship = parseFloat(row.Ship_productmaster) || 0;
+                    const l30AvgPrice = parseFloat(row.l30_avg_price) || 0;
+                    const l60AvgPrice = parseFloat(row.l60_avg_price) || 0;
                     
-                    // 0 SOLD: doba L30 == 0, INV > 0
-                    if (dobaL30 === 0 && inv > 0) zeroSold++;
+                    // L30 0 SOLD: doba L30 == 0, INV > 0
+                    if (dobaL30 === 0 && inv > 0) l30ZeroSold++;
+                    // L60 0 SOLD: doba L60 == 0, INV > 0
+                    if (dobaL60 === 0 && inv > 0) l60ZeroSold++;
                     // SOLD: count all SKUs with any doba L30
                     if (dobaL30 > 0) sold++;
+                    
+                    // Calculate L30 and L60 Sales (quantity * price)
+                    totalL30Sales += dobaL30 * dobaPrice;
+                    totalL60Sales += dobaL60 * dobaPrice;
+                    
+                    // Calculate L30 and L60 COGS and Shipping for GPFT calculation
+                    totalL30COGS += dobaL30 * lp;
+                    totalL30Shipping += dobaL30 * ship;
+                    totalL60COGS += dobaL60 * lp;
+                    totalL60Shipping += dobaL60 * ship;
+                    
+                    // Calculate weighted average price data
+                    totalL30ActualSales += dobaL30 * l30AvgPrice;
+                    totalL30Quantity += dobaL30;
+                    totalL60ActualSales += dobaL60 * l60AvgPrice;
+                    totalL60Quantity += dobaL60;
                 });
 
                 // Calculate missing from all data (not filtered)
+                // Missing: Items with inventory but not selling (INV > 0 AND L30 = 0)
                 allNonParentData.forEach(row => {
                     const inv = parseFloat(row.INV) || 0;
                     const dobaL30 = parseFloat(row['doba L30']) || 0;
-                    // Missing: INV == 0 AND doba L30 == 0
-                    if (inv === 0 && dobaL30 === 0) missing++;
+                    // Missing: Has inventory but no sales in L30 (items that need attention)
+                    if (inv > 0 && dobaL30 === 0) missing++;
                 });
 
+                // Calculate growth percentage
+                let growthPercent = 0;
+                let growthColor = '#28a745'; // Default green
+                if (totalL60Sales > 0) {
+                    growthPercent = Math.round(((totalL30Sales - totalL60Sales) / totalL60Sales) * 100);
+                    if (growthPercent < 0) {
+                        growthColor = '#dc3545'; // Red for negative
+                    } else if (growthPercent === 0) {
+                        growthColor = '#6c757d'; // Gray for zero
+                    }
+                } else if (totalL30Sales > 0) {
+                    growthPercent = 100;
+                    growthColor = '#28a745'; // Green
+                }
+
+                // Calculate L30 GPFT and L30 GPFT %
+                const l30Profit = totalL30Sales - totalL30COGS - totalL30Shipping;
+                let l30GpftPercent = 0;
+                if (totalL30Sales > 0) {
+                    l30GpftPercent = (l30Profit / totalL30Sales) * 100;
+                }
+                
+                // Calculate L60 GPFT % = ((Revenue - COGS - Shipping) / Revenue) * 100
+                let l60GpftPercent = 0;
+                let l60RoiPercent = 0;
+                let l60GpftTotal = 0;
+                if (totalL60Sales > 0) {
+                    const l60Profit = totalL60Sales - totalL60COGS - totalL60Shipping;
+                    l60GpftTotal = l60Profit;
+                    l60GpftPercent = (l60Profit / totalL60Sales) * 100;
+                    
+                    // Calculate L60 ROI % = (Profit / COGS) * 100
+                    if (totalL60COGS > 0) {
+                        l60RoiPercent = (l60Profit / totalL60COGS) * 100;
+                    }
+                }
+
+                // Calculate GPFT % Growth (percentage point difference)
+                const gpftPercentGrowth = l30GpftPercent - l60GpftPercent;
+                let gpftPercentColor = '#6c757d'; // Gray for zero
+                if (gpftPercentGrowth > 0) {
+                    gpftPercentColor = '#28a745'; // Green for positive
+                } else if (gpftPercentGrowth < 0) {
+                    gpftPercentColor = '#dc3545'; // Red for negative
+                }
+
+                // Calculate Average Price Growth %
+                const l30AvgPrice = totalL30Quantity > 0 ? totalL30ActualSales / totalL30Quantity : 0;
+                const l60AvgPrice = totalL60Quantity > 0 ? totalL60ActualSales / totalL60Quantity : 0;
+                let aPriceGrowthPercent = 0;
+                let aPriceGrowthColor = '#6c757d'; // Gray for zero
+                
+                if (l60AvgPrice > 0) {
+                    aPriceGrowthPercent = ((l30AvgPrice - l60AvgPrice) / l60AvgPrice) * 100;
+                    if (aPriceGrowthPercent > 0) {
+                        aPriceGrowthColor = '#28a745'; // Green for positive
+                    } else if (aPriceGrowthPercent < 0) {
+                        aPriceGrowthColor = '#dc3545'; // Red for negative
+                    }
+                } else if (l30AvgPrice > 0) {
+                    aPriceGrowthPercent = 100;
+                    aPriceGrowthColor = '#28a745'; // Green
+                }
+
+                // Calculate GPFT Growth (in dollars)
+                const gpftGrowth = l30Profit - l60GpftTotal;
+                let gpftGrowthColor = '#6c757d'; // Gray for zero
+                if (gpftGrowth > 0) {
+                    gpftGrowthColor = '#28a745'; // Green for positive
+                } else if (gpftGrowth < 0) {
+                    gpftGrowthColor = '#dc3545'; // Red for negative
+                }
+
                 $('#total-skus').text('Total SKUs: ' + totalSkus);
-                $('#zero-sold-count').text('0 SOLD: ' + zeroSold);
+                $('#l60-zero-sold-count').text('L60 0 Sold: ' + l60ZeroSold);
+                $('#zero-sold-count').text('L30 0 Sold: ' + l30ZeroSold);
                 $('#sold-count').text('SOLD: ' + sold);
                 $('#missing-count').html('<i class="fas fa-exclamation-triangle"></i> Missing: ' + missing);
+                $('#l30-sales-badge').text('L30 Sales: $' + Math.round(totalL30Sales).toLocaleString());
+                $('#l60-sales-badge').text('L60 Sales: $' + Math.round(totalL60Sales).toLocaleString());
+                
+                const growthSign = growthPercent > 0 ? '+' : '';
+                $('#growth-sales-badge').text('GROWTH: ' + growthSign + growthPercent + '%');
+                $('#growth-sales-badge').css('background-color', growthColor);
+                
+                $('#l60-gpft-badge').text('L60 GPFT %: ' + l60GpftPercent.toFixed(1) + '%');
+                $('#l60-roi-badge').text('L60 ROI %: ' + Math.round(l60RoiPercent) + '%');
+                
+                $('#pft-percentage-badge').text('L30 GPFT %: ' + l30GpftPercent.toFixed(1) + '%');
+                
+                const gpftPercentSign = gpftPercentGrowth > 0 ? '+' : '';
+                $('#growth-gpft-percent-badge').text('GROWTH GPFT %: ' + gpftPercentSign + gpftPercentGrowth.toFixed(1) + '%');
+                $('#growth-gpft-percent-badge').css('background-color', gpftPercentColor);
+                
+                const aPriceGrowthSign = aPriceGrowthPercent > 0 ? '+' : '';
+                $('#growth-aprice-percent-badge').text('GROWTH A PRICE %: ' + aPriceGrowthSign + Math.round(aPriceGrowthPercent) + '%');
+                $('#growth-aprice-percent-badge').css('background-color', aPriceGrowthColor);
+                
+                $('#l60-gpft-total-badge').text('L60 GPFT: $' + Math.round(l60GpftTotal).toLocaleString());
+                $('#pft-total-badge').text('L30 GPFT: $' + Math.round(l30Profit).toLocaleString());
+                
+                const gpftGrowthSign = gpftGrowth > 0 ? '+$' : gpftGrowth < 0 ? '-$' : '$';
+                const gpftGrowthAbs = Math.abs(Math.round(gpftGrowth));
+                $('#growth-gpft-badge').text('GROWTH GPFT: ' + gpftGrowthSign + gpftGrowthAbs.toLocaleString());
+                $('#growth-gpft-badge').css('background-color', gpftGrowthColor);
             }
 
             // Build Column Visibility Dropdown
@@ -1683,6 +2055,7 @@
             table.on('dataLoaded', function() {
                 setTimeout(() => {
                     updateSummary();
+                    updateVisibleRowsCount();
                     fetchDobaSummaryMetrics(); // Fetch financial metrics from marketplace_daily_metrics
                     // Refresh checkboxes to reflect selectedSkus set
                     $('.sku-select-checkbox').each(function() {
@@ -1697,6 +2070,7 @@
             table.on('renderComplete', function() {
                 setTimeout(() => {
                     updateSummary();
+                    updateVisibleRowsCount();
                     // Refresh checkboxes to reflect selectedSkus set
                     $('.sku-select-checkbox').each(function() {
                         const sku = $(this).data('sku');
