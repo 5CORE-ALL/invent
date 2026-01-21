@@ -133,6 +133,40 @@ class DobaController extends Controller
             ->get()
             ->keyBy('sku');
 
+        // Calculate L30 Average Price from doba_daily_data
+        $l30AvgPrice = DB::table('doba_daily_data')
+            ->select(
+                'sku',
+                DB::raw('SUM(total_price) as total_sales'),
+                DB::raw('SUM(quantity) as total_quantity')
+            )
+            ->whereIn('sku', $skus)
+            ->whereRaw("LOWER(period) = 'l30'")
+            ->where(function($query) {
+                $query->whereNotIn('order_status', ['Canceled', 'Cancelled', 'CANCELED', 'CANCELLED', 'canceled', 'cancelled'])
+                      ->orWhereNull('order_status');
+            })
+            ->groupBy('sku')
+            ->get()
+            ->keyBy('sku');
+
+        // Calculate L60 Average Price from doba_daily_data
+        $l60AvgPrice = DB::table('doba_daily_data')
+            ->select(
+                'sku',
+                DB::raw('SUM(total_price) as total_sales'),
+                DB::raw('SUM(quantity) as total_quantity')
+            )
+            ->whereIn('sku', $skus)
+            ->whereRaw("LOWER(period) = 'l60'")
+            ->where(function($query) {
+                $query->whereNotIn('order_status', ['Canceled', 'Cancelled', 'CANCELED', 'CANCELLED', 'canceled', 'cancelled'])
+                      ->orWhereNull('order_status');
+            })
+            ->groupBy('sku')
+            ->get()
+            ->keyBy('sku');
+
         // 6. Get marketplace percentage (no cache)
         $percentage = (MarketplacePercentage::where("marketplace", "Doba")->value("percentage") ?? 100) / 100;
 
@@ -167,6 +201,20 @@ class DobaController extends Controller
             // S L30 from doba_daily_data (excluding cancelled orders)
             $sL30Data = $dobaDailyL30[$pm->sku] ?? null;
             $row["s_l30"] = $sL30Data ? (int) $sL30Data->s_l30_count : 0;
+
+            // Calculate L30 Average Price
+            $l30AvgData = $l30AvgPrice[$pm->sku] ?? null;
+            $row["l30_avg_price"] = 0;
+            if ($l30AvgData && $l30AvgData->total_quantity > 0) {
+                $row["l30_avg_price"] = round($l30AvgData->total_sales / $l30AvgData->total_quantity, 2);
+            }
+
+            // Calculate L60 Average Price
+            $l60AvgData = $l60AvgPrice[$pm->sku] ?? null;
+            $row["l60_avg_price"] = 0;
+            if ($l60AvgData && $l60AvgData->total_quantity > 0) {
+                $row["l60_avg_price"] = round($l60AvgData->total_sales / $l60AvgData->total_quantity, 2);
+            }
 
             // Values: LP & Ship
             $values = is_array($pm->Values)
