@@ -246,10 +246,95 @@
     </div>
 </div>
 
+{{-- Send to Supplier Modal --}}
+<div class="modal fade" id="sendToSupplierModal" tabindex="-1" aria-labelledby="sendToSupplierModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered shadow-none">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title fw-bold" id="sendToSupplierModalLabel">
+                    <i class="fas fa-envelope me-2"></i> Send RFQ Form to Supplier
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <form id="sendToSupplierForm" method="POST" autocomplete="off">
+                @csrf
+                <div class="modal-body">
+                    <input type="hidden" id="send_form_id" name="form_id">
+                    <input type="hidden" id="send_form_slug" name="form_slug">
+                    
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Form Name:</label>
+                        <p id="send_form_name" class="text-muted"></p>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="supplier_search" class="form-label">Search Supplier <span class="text-danger">*</span></label>
+                        <input type="text" id="supplier_search" class="form-control" placeholder="Type to search suppliers by name, company, or email...">
+                        <small class="text-muted">Start typing to search and select suppliers</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Selected Suppliers <span class="text-danger">*</span></label>
+                        <div id="selectedSuppliersList" class="border rounded p-3" style="min-height: 100px; max-height: 200px; overflow-y: auto;">
+                            <p class="text-muted text-center mb-0">No suppliers selected</p>
+                        </div>
+                        <input type="hidden" id="selected_supplier_ids" name="supplier_ids">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="email_subject" class="form-label">Email Subject <span class="text-danger">*</span></label>
+                        <input type="text" id="email_subject" name="email_subject" class="form-control" placeholder="RFQ Form - [Form Name]" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="email_message" class="form-label">Additional Message (Optional)</label>
+                        <textarea id="email_message" name="email_message" class="form-control" rows="4" placeholder="Add any additional message for suppliers..."></textarea>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="submit" class="btn btn-primary" id="sendEmailBtn">
+                        <i class="fas fa-paper-plane me-2"></i> Send Email
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 @endsection
 @section('script')
 <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
 <script>
+    // Toast notification helper function
+    function showToast(type, message) {
+        // Remove any existing toast
+        document.querySelectorAll('.custom-toast').forEach(t => t.remove());
+
+        const toast = document.createElement('div');
+        toast.className = `custom-toast toast align-items-center text-bg-${type} border-0 show position-fixed top-0 end-0 m-4`;
+        toast.style.zIndex = 2000;
+        toast.setAttribute('role', 'alert');
+        toast.setAttribute('aria-live', 'assertive');
+        toast.setAttribute('aria-atomic', 'true');
+        toast.innerHTML = `
+            <div class="d-flex">
+                <div class="toast-body">${message}</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+        `;
+        document.body.appendChild(toast);
+
+        const bsToast = new bootstrap.Toast(toast, { autohide: true, delay: 3000 });
+        bsToast.show();
+
+        toast.addEventListener('hidden.bs.toast', () => {
+            toast.remove();
+        });
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
 
         const table = new Tabulator("#rfq-form-table", {
@@ -263,13 +348,6 @@
             resizableColumns: true,
             height: "500px",
             columns: [
-                {
-                    title: "S.No",
-                    formatter: "rownum",
-                    hozAlign: "center",
-                    width: 80,
-                    headerHozAlign: "center",
-                },
                 {
                     title: "Form Name",
                     field: "name",
@@ -314,7 +392,7 @@
                         if(e.target.classList.contains('copy-btn')){
                             const slug = e.target.dataset.slug;
                             navigator.clipboard.writeText(slug).then(() => {
-                                alert('Link copied: ' + slug);
+                                showToast('success', 'Link copied successfully!');
                             }).catch(() => {
                                 alert('Failed to copy slug');
                             });
@@ -353,6 +431,9 @@
                                 </button>
                                 <button class="btn btn-sm btn-info me-2 copy-btn" data-id="${rowData.id}" title="Copy" style="cursor:pointer;">
                                     <i class="fa-solid fa-copy"></i>
+                                </button>
+                                <button class="btn btn-sm btn-primary me-2 send-email-btn" data-id="${rowData.id}" data-slug="${rowData.slug}" data-name="${rowData.name}" title="Send to Supplier" style="cursor:pointer;">
+                                    <i class="fa-solid fa-envelope"></i>
                                 </button>
                                 <button class="btn btn-sm btn-danger delete-btn" data-id="${rowData.id}" title="Delete" style="cursor:pointer;">
                                     <i class="fa-solid fa-trash"></i>
@@ -537,6 +618,30 @@
                             return;
                         }
                         
+                        if(e.target.closest('.send-email-btn')) {
+                            e.preventDefault();
+                            const btn = e.target.closest('.send-email-btn');
+                            const id = btn.dataset.id;
+                            const slug = btn.dataset.slug;
+                            const name = btn.dataset.name;
+
+                            document.getElementById('send_form_id').value = id;
+                            document.getElementById('send_form_slug').value = slug;
+                            document.getElementById('send_form_name').textContent = name;
+                            document.getElementById('email_subject').value = `RFQ Form - ${name}`;
+                            
+                            // Reset form
+                            document.getElementById('selectedSuppliersList').innerHTML = '<p class="text-muted text-center mb-0">No suppliers selected</p>';
+                            document.getElementById('selected_supplier_ids').value = '';
+                            document.getElementById('supplier_search').value = '';
+                            document.getElementById('email_message').value = '';
+                            selectedSuppliers = [];
+
+                            let myModal = new bootstrap.Modal(document.getElementById('sendToSupplierModal'));
+                            myModal.show();
+                            return;
+                        }
+                        
                         if(e.target.closest('.delete-btn')) {
                             e.preventDefault();
                             const btn = e.target.closest('.delete-btn');
@@ -554,7 +659,7 @@
                                 .then(r => {
                                     if(r.success) {
                                         cell.getRow().delete();
-                                        alert('Form deleted successfully!');
+                                        showToast('success', 'Form deleted successfully!');
                                     } else {
                                         alert('Failed to delete form: ' + r.message);
                                     }
@@ -685,17 +790,241 @@
                         <div class="col-md-3 select-options-wrapper" style="display:none;">
                             <input type="text" name="fields[0][options]" class="form-control" placeholder="Options (comma separated)">
                         </div>
-                        <div class="col-md-1">
+                        <div class="col-md-2">
                             <input type="checkbox" name="fields[0][required]" class="form-check-input mt-2" value="1"> Required
-                        </div>
-                        <div class="col-md-1">
-                            <button type="button" class="btn btn-danger btn-sm remove-field">X</button>
                         </div>
                     </div>
                 `;
                 fieldCount = 1;
             }
             isCopyAction = false; // Reset flag
+        });
+
+        // Supplier selection functionality
+        let selectedSuppliers = [];
+        let supplierSearchTimeout;
+
+        function setupSupplierSearch() {
+            const supplierSearchInput = document.getElementById('supplier_search');
+            if(!supplierSearchInput) return;
+            
+            // Remove existing listener if any
+            const newInput = supplierSearchInput.cloneNode(true);
+            supplierSearchInput.parentNode.replaceChild(newInput, supplierSearchInput);
+            
+            newInput.addEventListener('input', function(e) {
+                const searchTerm = e.target.value.trim();
+                
+                if(searchTerm.length < 2) {
+                    hideSupplierDropdown();
+                    return;
+                }
+
+                clearTimeout(supplierSearchTimeout);
+                supplierSearchTimeout = setTimeout(() => {
+                    const url = `{{ url('/rfq-form/suppliers/search') }}?q=${encodeURIComponent(searchTerm)}`;
+                    fetch(url, {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Content-Type': 'application/json'
+                        }
+                    })
+                        .then(res => {
+                            if(!res.ok) {
+                                throw new Error(`HTTP error! status: ${res.status}`);
+                            }
+                            return res.json();
+                        })
+                        .then(data => {
+                            if(data.success && data.suppliers && data.suppliers.length > 0) {
+                                showSupplierDropdown(data.suppliers);
+                            } else {
+                                hideSupplierDropdown();
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error searching suppliers:', error);
+                            hideSupplierDropdown();
+                        });
+                }, 300);
+            });
+        }
+
+        // Setup supplier search when modal is shown
+        const sendToSupplierModal = document.getElementById('sendToSupplierModal');
+        if(sendToSupplierModal) {
+            sendToSupplierModal.addEventListener('shown.bs.modal', function() {
+                setupSupplierSearch();
+            });
+        }
+
+        function showSupplierDropdown(suppliers) {
+            hideSupplierDropdown();
+            
+            const dropdown = document.createElement('div');
+            dropdown.id = 'supplierDropdown';
+            dropdown.className = 'list-group position-absolute w-100';
+            dropdown.style.cssText = 'z-index: 1050; max-height: 200px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px;';
+            
+            suppliers.forEach(supplier => {
+                if(selectedSuppliers.find(s => s.id === supplier.id)) return;
+                
+                const item = document.createElement('a');
+                item.href = '#';
+                item.className = 'list-group-item list-group-item-action';
+                item.innerHTML = `
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <strong>${supplier.name || 'N/A'}</strong>
+                            ${supplier.company ? `<br><small class="text-muted">${supplier.company}</small>` : ''}
+                        </div>
+                        <div class="text-end">
+                            <small class="text-muted">${supplier.email || 'No email'}</small>
+                        </div>
+                    </div>
+                `;
+                item.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    if(supplier.email) {
+                        addSupplier(supplier);
+                        hideSupplierDropdown();
+                        document.getElementById('supplier_search').value = '';
+                    } else {
+                        alert('This supplier does not have an email address.');
+                    }
+                });
+                dropdown.appendChild(item);
+            });
+            
+            const searchInput = document.getElementById('supplier_search');
+            searchInput.parentElement.style.position = 'relative';
+            searchInput.parentElement.appendChild(dropdown);
+        }
+
+        function hideSupplierDropdown() {
+            const dropdown = document.getElementById('supplierDropdown');
+            if(dropdown) dropdown.remove();
+        }
+
+        function addSupplier(supplier) {
+            if(selectedSuppliers.find(s => s.id === supplier.id)) return;
+            
+            selectedSuppliers.push(supplier);
+            updateSelectedSuppliersList();
+            updateSupplierIdsInput();
+        }
+
+        function removeSupplier(supplierId) {
+            selectedSuppliers = selectedSuppliers.filter(s => s.id !== supplierId);
+            updateSelectedSuppliersList();
+            updateSupplierIdsInput();
+        }
+
+        function updateSelectedSuppliersList() {
+            const listDiv = document.getElementById('selectedSuppliersList');
+            
+            if(selectedSuppliers.length === 0) {
+                listDiv.innerHTML = '<p class="text-muted text-center mb-0">No suppliers selected</p>';
+                return;
+            }
+            
+            listDiv.innerHTML = selectedSuppliers.map(supplier => `
+                <div class="d-flex justify-content-between align-items-center mb-2 p-2 border rounded">
+                    <div>
+                        <strong>${supplier.name || 'N/A'}</strong>
+                        ${supplier.company ? `<br><small class="text-muted">${supplier.company}</small>` : ''}
+                        <br><small class="text-muted">${supplier.email}</small>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-danger" onclick="removeSupplier(${supplier.id})">
+                        <i class="fa-solid fa-times"></i>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function updateSupplierIdsInput() {
+            document.getElementById('selected_supplier_ids').value = selectedSuppliers.map(s => s.id).join(',');
+        }
+
+        // Make removeSupplier available globally
+        window.removeSupplier = removeSupplier;
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            if(!e.target.closest('#supplier_search') && !e.target.closest('#supplierDropdown')) {
+                hideSupplierDropdown();
+            }
+        });
+
+        // Send to Supplier Form Submit
+        document.getElementById('sendToSupplierForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            if(selectedSuppliers.length === 0) {
+                alert('Please select at least one supplier.');
+                return;
+            }
+
+            const formData = new FormData(this);
+            const sendBtn = document.getElementById('sendEmailBtn');
+            const originalText = sendBtn.innerHTML;
+            sendBtn.disabled = true;
+            sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Sending...';
+
+            fetch('{{ url('/rfq-form/send-email') }}', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                }
+            })
+            .then(async res => {
+                const contentType = res.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const text = await res.text();
+                    throw new Error(`Server returned non-JSON response (${res.status}): ${text.substring(0, 200)}`);
+                }
+                
+                if(!res.ok) {
+                    const errorData = await res.json().catch(() => ({}));
+                    throw new Error(errorData.message || `HTTP error! status: ${res.status}`);
+                }
+                return res.json();
+            })
+            .then(res => {
+                if(res.success) {
+                    let message = 'Email sent successfully to ' + res.sent_count + ' supplier(s)!';
+                    if(res.failed_count > 0) {
+                        message += ' (' + res.failed_count + ' email(s) failed to send)';
+                    }
+                    showToast('success', message);
+                    bootstrap.Modal.getInstance(document.getElementById('sendToSupplierModal')).hide();
+                } else {
+                    let errorMsg = res.message || 'Unknown error';
+                    if(res.errors && res.errors.length > 0) {
+                        errorMsg += '\n\nErrors:\n' + res.errors.slice(0, 3).join('\n');
+                    }
+                    alert('Failed to send email: ' + errorMsg);
+                }
+            })
+            .catch(error => {
+                console.error('Error sending email:', error);
+                let errorMsg = 'Error sending email. ';
+                if(error.message) {
+                    errorMsg += error.message;
+                } else {
+                    errorMsg += 'Please check your internet connection and try again.';
+                }
+                alert(errorMsg);
+            })
+            .finally(() => {
+                sendBtn.disabled = false;
+                sendBtn.innerHTML = originalText;
+            });
         });
 
         // Update Submit
@@ -728,8 +1057,10 @@
             .then(res => res.json())
             .then(res => {
                 if(res.success){
-                    alert("Form updated successfully!");
-                    location.reload();
+                    showToast('success', 'Form updated successfully!');
+                    setTimeout(() => {
+                        location.reload();
+                    }, 1000);
                 } else {
                     alert("Update failed: " + res.message);
                 }

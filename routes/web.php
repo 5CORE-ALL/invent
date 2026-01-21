@@ -657,6 +657,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         //form reports
         Route::get('/rfq-form/reports/{id}', 'rfqReports')->name('rfq-form.reports');
         Route::get('/rfq-form/reports-data/{id}', 'getRfqReportsData')->name('rfq-form.reports.data');
+        
+        //supplier email
+        Route::get('/rfq-form/suppliers/search', 'searchSuppliers')->name('rfq-form.suppliers.search');
+        Route::post('/rfq-form/send-email', 'sendEmailToSuppliers')->name('rfq-form.send-email');
     });
 
     //Sourcingƒvies
