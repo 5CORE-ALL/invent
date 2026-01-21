@@ -3955,6 +3955,15 @@
                         historyDate = item.HISTORY;
                     }
                     
+                    // Determine if item is verified (green = ✓, red = ✗)
+                    const isVerified = item.IS_VERIFIED === 1 || item.IS_VERIFIED === true || 
+                                      item.is_verified === true || item.is_verified === 1 || 
+                                      item.is_verified === '1';
+                    const verifiedStatus = isVerified ? '✓' : '✗';
+                    
+                    // Get user who verified (first name)
+                    const lastVerifiedBy = item.VERIFIED_BY_FIRST_NAME || item.verified_by_first_name || '';
+                    
                     return {
                         Parent: item.Parent,
                         SKU: item.SKU,
@@ -3964,6 +3973,8 @@
                         ON_HAND: item.ON_HAND,
                         COMMITTED: item.COMMITTED,
                         AVAILABLE_TO_SELL: item.AVAILABLE_TO_SELL,
+                        VERIFIED: verifiedStatus,
+                        'Last Verified By': lastVerifiedBy,
                         HISTORY: historyDate,
                         // VERIFIED_STOCK: item.VERIFIED_STOCK,
                         // TO_ADJUST: item.TO_ADJUST,
