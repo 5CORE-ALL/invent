@@ -263,6 +263,15 @@
     let increaseModeActive = false;
     let selectedSkus = new Set();
     
+    // Badge filter state variables
+    let zeroSoldFilterActive = false;
+    let moreSoldFilterActive = false;
+    let missingFilterActive = false;
+    let mapFilterActive = false;
+    let invStockFilterActive = false;
+    let lessAmzFilterActive = false;
+    let moreAmzFilterActive = false;
+    
     // Toast notification function
     function showToast(message, type = 'info') {
         const toastContainer = document.querySelector('.toast-container');
@@ -285,298 +294,122 @@
         toast.addEventListener('hidden.bs.toast', () => toast.remove());
     }
 
-    $(document).ready(function() {
-        // Discount type dropdown change handler
-        $('#discount-type-select').on('change', function() {
-            const discountType = $(this).val();
-            const $input = $('#discount-percentage-input');
+    // Background retry storage key
+    const BACKGROUND_RETRY_KEY = 'ebay3_failed_price_pushes';
+    
+    // Save failed SKU to localStorage for background retry
+    function saveFailedSkuForRetry(sku, price, retryCount = 0) {
+        try {
+            const failedSkus = JSON.parse(localStorage.getItem(BACKGROUND_RETRY_KEY) || '{}');
+            failedSkus[sku] = {
+                sku: sku,
+                price: price,
+                retryCount: retryCount,
+                timestamp: Date.now()
+            };
+            localStorage.setItem(BACKGROUND_RETRY_KEY, JSON.stringify(failedSkus));
+        } catch (e) {
+            console.error('Error saving failed SKU to localStorage:', e);
+        }
+    }
+    
+    // Remove SKU from background retry list
+    function removeFailedSkuFromRetry(sku) {
+        try {
+            const failedSkus = JSON.parse(localStorage.getItem(BACKGROUND_RETRY_KEY) || '{}');
+            delete failedSkus[sku];
+            localStorage.setItem(BACKGROUND_RETRY_KEY, JSON.stringify(failedSkus));
+        } catch (e) {
+            console.error('Error removing SKU from localStorage:', e);
+        }
+    }
+    
+    // Background retry function (runs even after page refresh)
+    async function backgroundRetryFailedSkus() {
+        try {
+            const failedSkus = JSON.parse(localStorage.getItem(BACKGROUND_RETRY_KEY) || '{}');
+            const skuKeys = Object.keys(failedSkus);
             
-            if (discountType === 'percentage') {
-                $input.attr('placeholder', 'Enter %');
-            } else {
-                $input.attr('placeholder', 'Enter $');
-            }
-        });
-
-        // Decrease button toggle
-        $('#decrease-btn').on('click', function() {
-            decreaseModeActive = !decreaseModeActive;
-            increaseModeActive = false;
-            const selectColumn = table.getColumn('_select');
+            if (skuKeys.length === 0) return;
             
-            if (decreaseModeActive) {
-                selectColumn.show();
-                $(this).removeClass('btn-warning').addClass('btn-danger');
-                $(this).html('<i class="fas fa-times"></i> Cancel Decrease');
-                $('#increase-btn').removeClass('btn-danger').addClass('btn-success').html('<i class="fas fa-arrow-up"></i> Increase Mode');
-            } else {
-                selectColumn.hide();
-                $(this).removeClass('btn-danger').addClass('btn-warning');
-                $(this).html('<i class="fas fa-arrow-down"></i> Decrease Mode');
-                selectedSkus.clear();
-                updateSelectedCount();
-                updateSelectAllCheckbox();
-            }
-        });
-        
-        // Increase Mode Toggle
-        $('#increase-btn').on('click', function() {
-            increaseModeActive = !increaseModeActive;
-            decreaseModeActive = false;
-            const selectColumn = table.getColumn('_select');
+            console.log(`Found ${skuKeys.length} failed SKU(s) to retry in background`);
             
-            if (increaseModeActive) {
-                selectColumn.show();
-                $(this).removeClass('btn-success').addClass('btn-danger');
-                $(this).html('<i class="fas fa-times"></i> Cancel Increase');
-                $('#decrease-btn').removeClass('btn-danger').addClass('btn-warning').html('<i class="fas fa-arrow-down"></i> Decrease Mode');
-            } else {
-                selectColumn.hide();
-                selectedSkus.clear();
-                $(this).removeClass('btn-danger').addClass('btn-success');
-                $(this).html('<i class="fas fa-arrow-up"></i> Increase Mode');
-                updateSelectedCount();
-                updateSelectAllCheckbox();
-            }
-        });
-
-        // Clear All SPRICE button handler
-        $('#clear-all-sprice-btn').on('click', function() {
-            if (!confirm('Are you sure you want to clear ALL SPRICE data? This action cannot be undone.')) {
-                return;
-            }
-            
-            const btn = $(this);
-            btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Clearing...');
-            
-            $.ajax({
-                url: '/clear-all-sprice-ebay3',
-                type: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                },
-                success: function(response) {
-                    showToast('All SPRICE data cleared successfully!', 'success');
-                    // Refresh the table to show updated data
-                    table.setData('/ebay3-data-json');
-                },
-                error: function(xhr) {
-                    showToast('Failed to clear SPRICE data: ' + (xhr.responseJSON?.error || 'Unknown error'), 'error');
-                },
-                complete: function() {
-                    btn.prop('disabled', false).html('<i class="fas fa-trash"></i> Clear All SPRICE');
+            for (const sku of skuKeys) {
+                const failedData = failedSkus[sku];
+                
+                // Skip if already retried 5 times
+                if (failedData.retryCount >= 5) {
+                    console.log(`SKU ${sku} has reached max retries (5), removing from retry list`);
+                    removeFailedSkuFromRetry(sku);
+                    continue;
                 }
-            });
-        });
-
-        // Select all checkbox handler
-        $(document).on('change', '#select-all-checkbox', function() {
-            const isChecked = $(this).prop('checked');
-            
-            const filteredData = table.getData('active').filter(row => !(row.Parent && row.Parent.startsWith('PARENT')));
-            
-            filteredData.forEach(row => {
-                const sku = row['(Child) sku'];
-                if (sku) {
-                    if (isChecked) {
-                        selectedSkus.add(sku);
-                    } else {
-                        selectedSkus.delete(sku);
+                
+                // Skip if account is restricted
+                let isAccountRestricted = false;
+                if (table) {
+                    try {
+                        const rows = table.getRows();
+                        for (let i = 0; i < rows.length; i++) {
+                            const rowData = rows[i].getData();
+                            if (rowData['(Child) sku'] === sku) {
+                                if (rowData.SPRICE_STATUS === 'account_restricted') {
+                                    isAccountRestricted = true;
+                                }
+                                break;
+                            }
+                        }
+                    } catch (e) {
+                        // Continue if table check fails
                     }
                 }
-            });
-            
-            $('.sku-select-checkbox').each(function() {
-                const sku = $(this).data('sku');
-                $(this).prop('checked', selectedSkus.has(sku));
-            });
-            
-            updateSelectedCount();
-        });
-
-        // Individual checkbox handler
-        $(document).on('change', '.sku-select-checkbox', function() {
-            const sku = $(this).data('sku');
-            if ($(this).prop('checked')) {
-                selectedSkus.add(sku);
-            } else {
-                selectedSkus.delete(sku);
+                
+                if (isAccountRestricted) {
+                    console.log(`SKU ${sku} is account restricted, skipping background retry`);
+                    removeFailedSkuFromRetry(sku);
+                    continue;
+                }
+                
+                // Try to find the cell in the table for UI update
+                let cell = null;
+                if (table) {
+                    try {
+                        const rows = table.getRows();
+                        for (let i = 0; i < rows.length; i++) {
+                            const rowData = rows[i].getData();
+                            if (rowData['(Child) sku'] === sku) {
+                                cell = rows[i].getCell('_accept');
+                                break;
+                            }
+                        }
+                    } catch (e) {
+                        // Table might not be ready, continue without UI update
+                    }
+                }
+                
+                // Retry the price push once (background retry)
+                const success = await applyPriceWithRetry(sku, failedData.price, cell, 0, true);
+                
+                if (!success) {
+                    // Increment retry count if still failed
+                    failedData.retryCount++;
+                    saveFailedSkuForRetry(sku, failedData.price, failedData.retryCount);
+                    console.log(`Background retry ${failedData.retryCount}/5 failed for SKU: ${sku}`);
+                } else {
+                    // Success - already removed from retry list in applyPriceWithRetry
+                    // Update table if it's loaded
+                    if (table) {
+                        setTimeout(() => {
+                            table.replaceData();
+                        }, 1000);
+                    }
+                }
+                
+                // Small delay between SKUs to avoid burst calls
+                await new Promise(resolve => setTimeout(resolve, 1000));
             }
-            updateSelectedCount();
-            updateSelectAllCheckbox();
-        });
-
-        // Apply discount button
-        $('#apply-discount-btn').on('click', function() {
-            applyDiscount();
-        });
-
-        // Apply discount on Enter key
-        $('#discount-percentage-input').on('keypress', function(e) {
-            if (e.which === 13) {
-                applyDiscount();
-            }
-        });
-
-        // Sugg Amz Prc button
-        $('#sugg-amz-prc-btn').on('click', function() {
-            applySuggestAmazonPrice();
-        });
-
-        // Clear SPRICE button
-        $('#clear-sprice-btn').on('click', function() {
-            clearSpriceForSelected();
-        });
-
-        // 0 Sold badge click handler - filter to show only 0 sold items
-        let zeroSoldFilterActive = false;
-        $('#zero-sold-count-badge').on('click', function() {
-            zeroSoldFilterActive = !zeroSoldFilterActive;
-            moreSoldFilterActive = false; // Deactivate the other filter
-            applyFilters();
-            updateBadgeStyles();
-        });
-
-        // > 0 Sold badge click handler - filter to show items with sales > 0
-        let moreSoldFilterActive = false;
-        $('#more-sold-count-badge').on('click', function() {
-            moreSoldFilterActive = !moreSoldFilterActive;
-            zeroSoldFilterActive = false; // Deactivate the other filter
-            applyFilters();
-            updateBadgeStyles();
-        });
-
-        // < Amz badge click handler - filter prices less than Amazon
-        let lessAmzFilterActive = false;
-        $('#less-amz-badge').on('click', function() {
-            lessAmzFilterActive = !lessAmzFilterActive;
-            moreAmzFilterActive = false; // Deactivate the other filter
-            applyFilters();
-            updateBadgeStyles();
-        });
-
-        // > Amz badge click handler - filter prices greater than Amazon
-        let moreAmzFilterActive = false;
-        $('#more-amz-badge').on('click', function() {
-            moreAmzFilterActive = !moreAmzFilterActive;
-            lessAmzFilterActive = false; // Deactivate the other filter
-            applyFilters();
-            updateBadgeStyles();
-        });
-
-        // Missing badge click handler - filter SKUs missing in eBay
-        let missingFilterActive = false;
-        $('#missing-count-badge').on('click', function() {
-            missingFilterActive = !missingFilterActive;
-            mapFilterActive = false; // Deactivate other filters
-            invStockFilterActive = false;
-            applyFilters();
-            updateBadgeStyles();
-        });
-
-        // Map badge click handler - filter SKUs where INV = Stock
-        let mapFilterActive = false;
-        $('#map-count-badge').on('click', function() {
-            mapFilterActive = !mapFilterActive;
-            missingFilterActive = false; // Deactivate other filters
-            invStockFilterActive = false;
-            applyFilters();
-            updateBadgeStyles();
-        });
-
-        // INV > Stock badge click handler - filter SKUs where INV > Stock
-        let invStockFilterActive = false;
-        $('#inv-stock-badge').on('click', function() {
-            invStockFilterActive = !invStockFilterActive;
-            missingFilterActive = false; // Deactivate other filters
-            mapFilterActive = false;
-            applyFilters();
-            updateBadgeStyles();
-        });
-
-        // Update badge styles based on active filters
-        function updateBadgeStyles() {
-            // 0 Sold badge
-            if (zeroSoldFilterActive) {
-                $('#zero-sold-count-badge').css('opacity', '1').css('box-shadow', '0 0 10px rgba(220, 53, 69, 0.8)');
-            } else {
-                $('#zero-sold-count-badge').css('opacity', '0.8').css('box-shadow', 'none');
-            }
-
-            // > 0 Sold badge
-            if (moreSoldFilterActive) {
-                $('#more-sold-count-badge').css('opacity', '1').css('box-shadow', '0 0 10px rgba(40, 167, 69, 0.8)');
-            } else {
-                $('#more-sold-count-badge').css('opacity', '0.8').css('box-shadow', 'none');
-            }
-
-            // < Amz badge
-            if (lessAmzFilterActive) {
-                $('#less-amz-badge').css('opacity', '1').css('box-shadow', '0 0 10px rgba(220, 53, 69, 0.8)');
-            } else {
-                $('#less-amz-badge').css('opacity', '0.8').css('box-shadow', 'none');
-            }
-
-            // > Amz badge
-            if (moreAmzFilterActive) {
-                $('#more-amz-badge').css('opacity', '1').css('box-shadow', '0 0 10px rgba(40, 167, 69, 0.8)');
-            } else {
-                $('#more-amz-badge').css('opacity', '0.8').css('box-shadow', 'none');
-            }
-
-            // Missing badge
-            if (missingFilterActive) {
-                $('#missing-count-badge').css('opacity', '1').css('box-shadow', '0 0 10px rgba(220, 53, 69, 0.8)');
-            } else {
-                $('#missing-count-badge').css('opacity', '0.8').css('box-shadow', 'none');
-            }
-
-            // Map badge
-            if (mapFilterActive) {
-                $('#map-count-badge').css('opacity', '1').css('box-shadow', '0 0 10px rgba(40, 167, 69, 0.8)');
-            } else {
-                $('#map-count-badge').css('opacity', '0.8').css('box-shadow', 'none');
-            }
-
-            // INV > Stock badge
-            if (invStockFilterActive) {
-                $('#inv-stock-badge').css('opacity', '1').css('box-shadow', '0 0 10px rgba(255, 193, 7, 0.8)');
-            } else {
-                $('#inv-stock-badge').css('opacity', '0.8').css('box-shadow', 'none');
-            }
+        } catch (e) {
+            console.error('Error in background retry:', e);
         }
-
-        // Apply All button handler
-        $(document).on('click', '#apply-all-btn', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            window.applyAllSelectedPrices();
-        });
-
-        // Update selected count display
-        function updateSelectedCount() {
-            const count = selectedSkus.size;
-            $('#selected-skus-count').text(`${count} SKU${count !== 1 ? 's' : ''} selected`);
-            $('#discount-input-container').toggle(count > 0);
-        }
-
-        // Update select all checkbox state
-        function updateSelectAllCheckbox() {
-            if (!table) return;
-            
-            const filteredData = table.getData('active').filter(row => !(row.Parent && row.Parent.startsWith('PARENT')));
-            
-            if (filteredData.length === 0) {
-                $('#select-all-checkbox').prop('checked', false);
-                return;
-            }
-            
-            const filteredSkus = new Set(filteredData.map(row => row['(Child) sku']).filter(sku => sku));
-            
-            const allFilteredSelected = filteredSkus.size > 0 && 
-                Array.from(filteredSkus).every(sku => selectedSkus.has(sku));
-            
-            $('#select-all-checkbox').prop('checked', allFilteredSelected);
         }
 
         // Retry function for saving SPRICE
@@ -629,22 +462,14 @@
             });
         }
 
-        // Apply price with retry logic
-        async function applyPriceWithRetry(sku, price, cell, retries = 0) {
+    // Apply price with retry logic (for pushing to eBay3)
+    async function applyPriceWithRetry(sku, price, cell, retries = 0, isBackgroundRetry = false) {
             const $btn = cell ? $(cell.getElement()).find('.apply-price-btn') : null;
             const row = cell ? cell.getRow() : null;
             const rowData = row ? row.getData() : null;
 
-            if (retries === 0 && cell && $btn && row) {
-                $btn.prop('disabled', true);
-                $btn.html('<i class="fas fa-spinner fa-spin"></i>');
-                $btn.attr('style', 'border: none; background: none; color: #ffc107; padding: 0;');
-                if (rowData) {
-                    rowData.SPRICE_STATUS = 'processing';
-                    row.update(rowData);
-                }
-            }
-
+        // Background mode: single attempt, no internal recursion (global max 5 handled via retryCount)
+        if (isBackgroundRetry) {
             try {
                 const response = await $.ajax({
                     url: '/push-ebay3-price-tabulator',
@@ -659,6 +484,74 @@
                     throw new Error(response.errors[0].message || 'API error');
                 }
 
+                // Success - update UI and remove from retry list
+                if (rowData) {
+                    rowData.SPRICE_STATUS = 'pushed';
+                    row.update(rowData);
+                }
+                if ($btn && cell) {
+                    $btn.prop('disabled', false);
+                    $btn.html('<i class="fa-solid fa-check-double"></i>');
+                    $btn.attr('style', 'border: none; background: none; color: #28a745; padding: 0;');
+                }
+                removeFailedSkuFromRetry(sku);
+                return true;
+            } catch (e) {
+                // Background failure is handled by retryCount in backgroundRetryFailedSkus
+                if (rowData) {
+                    rowData.SPRICE_STATUS = 'error';
+                    row.update(rowData);
+                }
+                if ($btn && cell) {
+                    $btn.prop('disabled', false);
+                    $btn.html('<i class="fa-solid fa-x"></i>');
+                    $btn.attr('style', 'border: none; background: none; color: #dc3545; padding: 0;');
+                }
+                return false;
+            }
+        }
+
+        // Foreground mode (user click): up to 5 immediate retries with spinner UI
+            if (retries === 0 && cell && $btn && row) {
+                $btn.prop('disabled', true);
+                $btn.html('<i class="fas fa-spinner fa-spin"></i>');
+                $btn.attr('style', 'border: none; background: none; color: #ffc107; padding: 0;');
+                if (rowData) {
+                    rowData.SPRICE_STATUS = 'processing';
+                    row.update(rowData);
+                }
+            }
+
+            try {
+                console.log(`🚀 eBay3 API Request - Push Price`, {
+                    sku: sku,
+                    price: price,
+                    url: '/push-ebay3-price-tabulator',
+                    timestamp: new Date().toISOString()
+                });
+                
+                const response = await $.ajax({
+                    url: '/push-ebay3-price-tabulator',
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    data: { sku: sku, price: price }
+                });
+
+                console.log(`✅ eBay3 API Response - Success`, {
+                    sku: sku,
+                    price: price,
+                    response: response,
+                    rlogId: response.rlogId || 'N/A',
+                    timestamp: new Date().toISOString()
+                });
+
+                if (response.errors && response.errors.length > 0) {
+                    throw new Error(response.errors[0].message || 'API error');
+                }
+
+                // Success - update UI
                 if (rowData) {
                     rowData.SPRICE_STATUS = 'pushed';
                     row.update(rowData);
@@ -670,18 +563,56 @@
                     $btn.attr('style', 'border: none; background: none; color: #28a745; padding: 0;');
                 }
                 
-                showToast(`Price $${price.toFixed(2)} pushed successfully for SKU: ${sku}`, 'success');
+                if (!isBackgroundRetry) {
+                    showToast(`Price $${price.toFixed(2)} pushed successfully for SKU: ${sku}`, 'success');
+                }
                 
                 return true;
             } catch (xhr) {
                 const errorMsg = xhr.responseJSON?.errors?.[0]?.message || xhr.responseJSON?.error || xhr.responseJSON?.message || 'Failed to apply price';
-                console.error(`Attempt ${retries + 1} for SKU ${sku} failed:`, errorMsg);
+                const errorCode = xhr.responseJSON?.errors?.[0]?.code || '';
+                const rlogId = xhr.responseJSON?.rlogId || 'N/A';
+                
+                console.error(`❌ eBay3 API Response - Error (Attempt ${retries + 1})`, {
+                    sku: sku,
+                    price: price,
+                    errorCode: errorCode,
+                    errorMessage: errorMsg,
+                    rlogId: rlogId,
+                    fullResponse: xhr.responseJSON,
+                    timestamp: new Date().toISOString()
+                });
+
+                // Check if this is an account restriction error (don't retry)
+                const isAccountRestricted = errorCode === 'AccountRestricted' || 
+                                            errorMsg.includes('ACCOUNT RESTRICTION') ||
+                                            errorMsg.includes('account is restricted') ||
+                                            errorMsg.includes('embargoed country');
+            
+            if (isAccountRestricted) {
+                // Account restriction - don't retry, mark as account_restricted
+                if (rowData) {
+                    rowData.SPRICE_STATUS = 'account_restricted';
+                    row.update(rowData);
+                }
+                
+                if ($btn && cell) {
+                    $btn.prop('disabled', false);
+                    $btn.html('<i class="fa-solid fa-ban"></i>');
+                    $btn.attr('style', 'border: none; background: none; color: #ff6b00; padding: 0;');
+                    $btn.attr('title', 'Account restricted - cannot update price');
+                }
+                
+                showToast(`Account restriction detected for SKU: ${sku}. Please resolve account restrictions in eBay before updating prices.`, 'error');
+                return false;
+            }
 
                 if (retries < 5) {
                     console.log(`Retrying SKU ${sku} in 5 seconds...`);
                     await new Promise(resolve => setTimeout(resolve, 5000));
-                    return applyPriceWithRetry(sku, price, cell, retries + 1);
+                return applyPriceWithRetry(sku, price, cell, retries + 1, isBackgroundRetry);
                 } else {
+                // Final failure - mark error and save for background retry
                     if (rowData) {
                         rowData.SPRICE_STATUS = 'error';
                         row.update(rowData);
@@ -693,12 +624,109 @@
                         $btn.attr('style', 'border: none; background: none; color: #dc3545; padding: 0;');
                     }
                     
-                    showToast(`Failed to apply price for SKU: ${sku} after multiple retries.`, 'error');
+                // Save for background retry (only if not already a background retry)
+                saveFailedSkuForRetry(sku, price, 0);
+                showToast(`Failed to apply price for SKU: ${sku} after multiple retries. Will retry in background (max 5 times).`, 'error');
                     
                     return false;
                 }
             }
         }
+
+    // Retry function for applying price with up to 5 attempts (Promise-based for Apply All)
+    function applyPriceWithRetryPromise(sku, price, maxRetries = 5, delay = 5000) {
+        return new Promise((resolve, reject) => {
+            let attempt = 0;
+            
+            function attemptApply() {
+                attempt++;
+                
+                $.ajax({
+                    url: '/push-ebay3-price-tabulator',
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    data: {
+                        sku: sku,
+                        price: price,
+                        _token: '{{ csrf_token() }}'
+                    },
+                    success: function(response) {
+                        if (response.errors && response.errors.length > 0) {
+                            const errorMsg = response.errors[0].message || 'Unknown error';
+                            const errorCode = response.errors[0].code || '';
+                            console.error(`Attempt ${attempt} for SKU ${sku} failed:`, errorMsg, 'Code:', errorCode);
+                            
+                            if (attempt < maxRetries) {
+                                console.log(`Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`);
+                                setTimeout(attemptApply, delay);
+                            } else {
+                                console.error(`Max retries reached for SKU ${sku}`);
+                                reject({ error: true, response: response });
+                            }
+                        } else {
+                            console.log(`Successfully pushed price for SKU ${sku} on attempt ${attempt}`);
+                            resolve({ success: true, response: response });
+                        }
+                    },
+                    error: function(xhr) {
+                        const errorMsg = xhr.responseJSON?.errors?.[0]?.message || xhr.responseJSON?.error || xhr.responseText || 'Network error';
+                        console.error(`Attempt ${attempt} for SKU ${sku} failed:`, errorMsg);
+                        
+                        if (attempt < maxRetries) {
+                            console.log(`Retry attempt ${attempt} for SKU ${sku} after ${delay/1000} seconds...`);
+                            setTimeout(attemptApply, delay);
+                        } else {
+                            console.error(`Max retries reached for SKU ${sku}`);
+                            reject({ error: true, xhr: xhr });
+                        }
+                    }
+                });
+            }
+            
+            attemptApply();
+        });
+    }
+
+    // Update selected count display
+    function updateSelectedCount() {
+        const count = selectedSkus.size;
+        $('#selected-skus-count').text(`${count} SKU${count !== 1 ? 's' : ''} selected`);
+        $('#discount-input-container').toggle(count > 0);
+    }
+
+    // Update select all checkbox state
+    function updateSelectAllCheckbox() {
+        if (!table) return;
+        
+        const filteredData = table.getData('active').filter(row => !(row.Parent && row.Parent.startsWith('PARENT')));
+        
+        if (filteredData.length === 0) {
+            $('#select-all-checkbox').prop('checked', false);
+            return;
+        }
+        
+        const filteredSkus = new Set(filteredData.map(row => row['(Child) sku']).filter(sku => sku));
+        
+        const allFilteredSelected = filteredSkus.size > 0 && 
+            Array.from(filteredSkus).every(sku => selectedSkus.has(sku));
+        
+        $('#select-all-checkbox').prop('checked', allFilteredSelected);
+    }
+
+    $(document).ready(function() {
+        // Discount type dropdown change handler
+        $('#discount-type-select').on('change', function() {
+            const discountType = $(this).val();
+            const $input = $('#discount-percentage-input');
+            
+            if (discountType === 'percentage') {
+                $input.attr('placeholder', 'Enter %');
+            } else {
+                $input.attr('placeholder', 'Enter $');
+            }
+        });
 
         // Apply all selected prices
         window.applyAllSelectedPrices = function() {
@@ -708,17 +736,26 @@
             }
             
             const $btn = $('#apply-all-btn');
-            if ($btn.length === 0 || $btn.prop('disabled')) {
+            if ($btn.length === 0) {
+                showToast('Apply All button not found', 'error');
+                return;
+            }
+            
+            if ($btn.prop('disabled')) {
                 return;
             }
             
             const originalHtml = $btn.html();
+            
+            // Disable button and show loading state
             $btn.prop('disabled', true);
             $btn.html('<i class="fas fa-spinner fa-spin" style="color: #ffc107;"></i>');
             
+            // Get all table data to find SPRICE for selected SKUs
             const tableData = table.getData('all');
             const skusToProcess = [];
             
+            // Build list of SKUs with their prices
             selectedSkus.forEach(sku => {
                 const row = tableData.find(r => r['(Child) sku'] === sku);
                 if (row) {
@@ -740,14 +777,18 @@
             let errorCount = 0;
             let currentIndex = 0;
             
+            // Process SKUs sequentially (one by one) with delay to avoid rate limiting
             function processNextSku() {
                 if (currentIndex >= skusToProcess.length) {
+                    // All SKUs processed
                     $btn.prop('disabled', false);
                     
                     if (errorCount === 0) {
+                        // All successful
                         $btn.html(`<i class="fas fa-check-double" style="color: #28a745;"></i>`);
                         showToast(`Successfully applied prices to ${successCount} SKU${successCount > 1 ? 's' : ''}`, 'success');
                         
+                        // Reset to original state after 3 seconds
                         setTimeout(() => {
                             $btn.html(originalHtml);
                         }, 3000);
@@ -760,6 +801,7 @@
                 
                 const { sku, price } = skusToProcess[currentIndex];
                 
+                // Find the row and update button to show spinner
                 const row = table.getRows().find(r => r.getData()['(Child) sku'] === sku);
                 if (row) {
                     const acceptCell = row.getCell('_accept');
@@ -774,6 +816,9 @@
                     }
                 }
                 
+                // First save to database (like SPRICE edit does), then push to eBay3
+                console.log(`Processing SKU ${sku} (${currentIndex + 1}/${skusToProcess.length}): Saving SPRICE ${price} to database...`);
+                
                 $.ajax({
                     url: '/ebay3/save-sprice',
                     method: 'POST',
@@ -783,35 +828,50 @@
                         _token: '{{ csrf_token() }}'
                     },
                     success: function(saveResponse) {
+                        console.log(`SKU ${sku}: Database save successful`, saveResponse);
                         if (saveResponse.error) {
+                            console.error(`Failed to save SPRICE for SKU ${sku}:`, saveResponse.error);
                             errorCount++;
+                            
+                            // Update row data with error status
                             if (row) {
                                 const rowData = row.getData();
                                 rowData.SPRICE_STATUS = 'error';
                                 row.update(rowData);
+                                
+                                const acceptCell = row.getCell('_accept');
+                                if (acceptCell) {
+                                    const $cellElement = $(acceptCell.getElement());
+                                    const $btnInCell = $cellElement.find('.apply-price-btn');
+                                    if ($btnInCell.length) {
+                                        $btnInCell.prop('disabled', false);
+                                        $btnInCell.html('<i class="fa-solid fa-x"></i>');
+                                        $btnInCell.attr('style', 'border: none; background: none; color: #dc3545; padding: 0;');
+                                    }
+                                }
                             }
+                            
+                            // Process next SKU
                             currentIndex++;
-                            setTimeout(processNextSku, 2000);
+                            setTimeout(() => {
+                                processNextSku();
+                            }, 2000);
                             return;
                         }
                         
-                        $.ajax({
-                            url: '/push-ebay3-price-tabulator',
-                            method: 'POST',
-                            headers: {
-                                'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-                            },
-                            data: { sku: sku, price: price }
-                        }).then(function(result) {
-                            if (result.errors && result.errors.length > 0) {
-                                throw new Error(result.errors[0].message);
-                            }
+                        // After saving, push to eBay3 using retry function
+                        console.log(`SKU ${sku}: Starting eBay3 price push...`);
+                        applyPriceWithRetryPromise(sku, price, 5, 5000)
+                            .then((result) => {
                             successCount++;
+                                
+                                // Update row data with pushed status instantly
                             if (row) {
                                 const rowData = row.getData();
                                 rowData.SPRICE_STATUS = 'pushed';
                                 row.update(rowData);
                                 
+                                    // Update button to show green check-double
                                 const acceptCell = row.getCell('_accept');
                                 if (acceptCell) {
                                     const $cellElement = $(acceptCell.getElement());
@@ -823,32 +883,77 @@
                                     }
                                 }
                             }
+                                
+                                // Process next SKU with delay to avoid rate limiting (2 seconds between requests)
                             currentIndex++;
-                            setTimeout(processNextSku, 2000);
-                        }).catch(function(error) {
+                                setTimeout(() => {
+                                    processNextSku();
+                                }, 2000);
+                            })
+                            .catch((error) => {
                             errorCount++;
+                                
+                                // Update row data with error status
                             if (row) {
                                 const rowData = row.getData();
                                 rowData.SPRICE_STATUS = 'error';
                                 row.update(rowData);
-                            }
+                                    
+                                    // Update button to show error icon
+                                    const acceptCell = row.getCell('_accept');
+                                    if (acceptCell) {
+                                        const $cellElement = $(acceptCell.getElement());
+                                        const $btnInCell = $cellElement.find('.apply-price-btn');
+                                        if ($btnInCell.length) {
+                                            $btnInCell.prop('disabled', false);
+                                            $btnInCell.html('<i class="fa-solid fa-x"></i>');
+                                            $btnInCell.attr('style', 'border: none; background: none; color: #dc3545; padding: 0;');
+                                        }
+                                    }
+                                }
+                                
+                                // Save for background retry
+                                saveFailedSkuForRetry(sku, price, 0);
+                                
+                                // Process next SKU with delay to avoid rate limiting
                             currentIndex++;
-                            setTimeout(processNextSku, 2000);
+                                setTimeout(() => {
+                                    processNextSku();
+                                }, 2000);
                         });
                     },
                     error: function(xhr) {
+                        console.error(`Failed to save SPRICE for SKU ${sku}:`, xhr.responseJSON || xhr.responseText);
                         errorCount++;
+                        
+                        // Update row data with error status
                         if (row) {
                             const rowData = row.getData();
                             rowData.SPRICE_STATUS = 'error';
                             row.update(rowData);
+                            
+                            const acceptCell = row.getCell('_accept');
+                            if (acceptCell) {
+                                const $cellElement = $(acceptCell.getElement());
+                                const $btnInCell = $cellElement.find('.apply-price-btn');
+                                if ($btnInCell.length) {
+                                    $btnInCell.prop('disabled', false);
+                                    $btnInCell.html('<i class="fa-solid fa-x"></i>');
+                                    $btnInCell.attr('style', 'border: none; background: none; color: #dc3545; padding: 0;');
+                                }
+                            }
                         }
+                        
+                        // Process next SKU
                         currentIndex++;
-                        setTimeout(processNextSku, 2000);
+                        setTimeout(() => {
+                            processNextSku();
+                        }, 2000);
                     }
                 });
             }
             
+            // Start processing
             processNextSku();
         };
 
@@ -1044,6 +1149,104 @@
                     }
                 }
             });
+        }
+
+        // Badge click handlers
+        $('#zero-sold-count-badge').on('click', function() {
+            zeroSoldFilterActive = !zeroSoldFilterActive;
+            moreSoldFilterActive = false;
+            applyFilters();
+            updateBadgeStyles();
+        });
+
+        $('#more-sold-count-badge').on('click', function() {
+            moreSoldFilterActive = !moreSoldFilterActive;
+            zeroSoldFilterActive = false;
+            applyFilters();
+            updateBadgeStyles();
+        });
+
+        $('#less-amz-badge').on('click', function() {
+            lessAmzFilterActive = !lessAmzFilterActive;
+            moreAmzFilterActive = false;
+            applyFilters();
+            updateBadgeStyles();
+        });
+
+        $('#more-amz-badge').on('click', function() {
+            moreAmzFilterActive = !moreAmzFilterActive;
+            lessAmzFilterActive = false;
+            applyFilters();
+            updateBadgeStyles();
+        });
+
+        $('#missing-count-badge').on('click', function() {
+            missingFilterActive = !missingFilterActive;
+            mapFilterActive = false;
+            invStockFilterActive = false;
+            applyFilters();
+            updateBadgeStyles();
+        });
+
+        $('#map-count-badge').on('click', function() {
+            mapFilterActive = !mapFilterActive;
+            missingFilterActive = false;
+            invStockFilterActive = false;
+            applyFilters();
+            updateBadgeStyles();
+        });
+
+        $('#inv-stock-badge').on('click', function() {
+            invStockFilterActive = !invStockFilterActive;
+            missingFilterActive = false;
+            mapFilterActive = false;
+            applyFilters();
+            updateBadgeStyles();
+        });
+
+        // Update badge styles based on active filters
+        function updateBadgeStyles() {
+            if (zeroSoldFilterActive) {
+                $('#zero-sold-count-badge').css('opacity', '1').css('box-shadow', '0 0 10px rgba(220, 53, 69, 0.8)');
+            } else {
+                $('#zero-sold-count-badge').css('opacity', '0.8').css('box-shadow', 'none');
+            }
+
+            if (moreSoldFilterActive) {
+                $('#more-sold-count-badge').css('opacity', '1').css('box-shadow', '0 0 10px rgba(40, 167, 69, 0.8)');
+            } else {
+                $('#more-sold-count-badge').css('opacity', '0.8').css('box-shadow', 'none');
+            }
+
+            if (lessAmzFilterActive) {
+                $('#less-amz-badge').css('opacity', '1').css('box-shadow', '0 0 10px rgba(220, 53, 69, 0.8)');
+            } else {
+                $('#less-amz-badge').css('opacity', '0.8').css('box-shadow', 'none');
+            }
+
+            if (moreAmzFilterActive) {
+                $('#more-amz-badge').css('opacity', '1').css('box-shadow', '0 0 10px rgba(40, 167, 69, 0.8)');
+            } else {
+                $('#more-amz-badge').css('opacity', '0.8').css('box-shadow', 'none');
+            }
+
+            if (missingFilterActive) {
+                $('#missing-count-badge').css('opacity', '1').css('box-shadow', '0 0 10px rgba(220, 53, 69, 0.8)');
+            } else {
+                $('#missing-count-badge').css('opacity', '0.8').css('box-shadow', 'none');
+            }
+
+            if (mapFilterActive) {
+                $('#map-count-badge').css('opacity', '1').css('box-shadow', '0 0 10px rgba(40, 167, 69, 0.8)');
+            } else {
+                $('#map-count-badge').css('opacity', '0.8').css('box-shadow', 'none');
+            }
+
+            if (invStockFilterActive) {
+                $('#inv-stock-badge').css('opacity', '1').css('box-shadow', '0 0 10px rgba(255, 193, 7, 0.8)');
+            } else {
+                $('#inv-stock-badge').css('opacity', '0.8').css('box-shadow', 'none');
+            }
         }
 
         // Store all unfiltered data for summary calculations
@@ -1597,7 +1800,11 @@
                         } else if (status === 'pushed') {
                             icon = '<i class="fa-solid fa-check-double"></i>';
                             iconColor = '#28a745';
-                            titleText = 'Price pushed to eBay3';
+                            titleText = 'Price pushed to eBay3 (Double-click to mark as Applied)';
+                        } else if (status === 'applied') {
+                            icon = '<i class="fa-solid fa-check-double"></i>';
+                            iconColor = '#28a745';
+                            titleText = 'Price applied to eBay3 (Double-click to change)';
                         } else if (status === 'saved') {
                             icon = '<i class="fa-solid fa-check-double"></i>';
                             iconColor = '#28a745';
@@ -1606,6 +1813,10 @@
                             icon = '<i class="fa-solid fa-x"></i>';
                             iconColor = '#dc3545';
                             titleText = 'Error applying price to eBay3';
+                        } else if (status === 'account_restricted') {
+                            icon = '<i class="fa-solid fa-ban"></i>';
+                            iconColor = '#ff6b00';
+                            titleText = 'Account restricted - Cannot update price. Please resolve account restrictions in eBay.';
                         }
 
                         return `<button type="button" class="btn btn-sm apply-price-btn btn-circle" data-sku="${sku}" data-price="${sprice}" data-status="${status || ''}" title="${titleText}" style="border: none; background: none; color: ${iconColor}; padding: 0;">
@@ -1614,6 +1825,31 @@
                     },
                     cellClick: function(e, cell) {
                         const $target = $(e.target);
+                        
+                        // Handle double-click to change status from 'pushed' to 'applied'
+                        if (e.originalEvent && e.originalEvent.detail === 2) {
+                            const $btn = $target.hasClass('apply-price-btn') ? $target : $target.closest('.apply-price-btn');
+                            const currentStatus = $btn.attr('data-status') || '';
+                            
+                            if (currentStatus === 'pushed') {
+                                const sku = $btn.attr('data-sku') || $btn.data('sku');
+                                $.ajax({
+                                    url: '/update-ebay3-sprice-status',
+                                    method: 'POST',
+                                    headers: {
+                                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                                    },
+                                    data: { sku: sku, status: 'applied' },
+                                    success: function(response) {
+                                        if (response.success) {
+                                            table.replaceData();
+                                            showToast('Status updated to Applied', 'success');
+                                        }
+                                    }
+                                });
+                            }
+                            return;
+                        }
                         
                         if ($target.hasClass('apply-price-btn') || $target.closest('.apply-price-btn').length) {
                             e.stopPropagation();
@@ -1627,12 +1863,14 @@
                                 return;
                             }
                             
+                            // If status is 'saved' or null, first save SPRICE, then push to eBay3
                             if (currentStatus === 'saved' || !currentStatus) {
                                 const row = cell.getRow();
                                 row.update({ SPRICE_STATUS: 'processing' });
                                 
                                 saveSpriceWithRetry(sku, price, row)
                                     .then((response) => {
+                                        // After saving, push to eBay3
                                         applyPriceWithRetry(sku, price, cell, 0);
                                     })
                                     .catch((error) => {
@@ -1640,6 +1878,7 @@
                                         showToast('Failed to save SPRICE', 'error');
                                     });
                             } else {
+                                // If already saved, just push to eBay3
                                 applyPriceWithRetry(sku, price, cell, 0);
                             }
                         }
@@ -2408,6 +2647,11 @@
             applyColumnVisibilityFromServer();
             buildColumnDropdown();
             applyFilters();
+            
+            // Set up periodic background retry check (every 30 seconds)
+            setInterval(() => {
+                backgroundRetryFailedSkus();
+            }, 30000);
         });
 
         table.on('dataLoaded', function() {

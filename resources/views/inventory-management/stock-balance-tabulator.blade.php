@@ -44,6 +44,8 @@
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 @endsection
 
 @section('content')
@@ -397,22 +399,33 @@
             if (transferModeActive) {
                 $(this).removeClass('btn-primary').addClass('btn-danger').html('<i class="fas fa-exchange-alt"></i> Transfer ON');
                 // Show transfer columns
-                table.getColumn('to_sku_display').show();
-                table.getColumn('from_sku').show();
-                table.getColumn('from_parent').show();
+                // table.getColumn('from_sku_display').show(); // TO SKU - Hidden per request
                 table.getColumn('from_qty').show();
+                table.getColumn('to_sku').show();
+                // table.getColumn('to_parent').show(); // FROM Parent - Hidden per request
+                // table.getColumn('from_inv_display').show(); // FROM INV - Hidden per request
+                table.getColumn('from_sold_display').show();
+                table.getColumn('from_dil_display').show();
                 table.getColumn('to_qty_calc').show();
                 table.getColumn('ratio').show();
                 table.getColumn('submit').show();
                 // Reduce ACTION column width to save space
                 table.getColumn('ACTION').updateDefinition({width: 100});
+                
+                // Initialize Select2 immediately when Transfer Mode is activated
+                setTimeout(function() {
+                    initializeSelect2FromSku();
+                }, 100);
             } else {
                 $(this).removeClass('btn-danger').addClass('btn-primary').html('<i class="fas fa-exchange-alt"></i> Transfer Mode');
                 // Hide transfer columns
-                table.getColumn('to_sku_display').hide();
-                table.getColumn('from_sku').hide();
-                table.getColumn('from_parent').hide();
+                // table.getColumn('from_sku_display').hide(); // Already hidden
                 table.getColumn('from_qty').hide();
+                table.getColumn('to_sku').hide();
+                // table.getColumn('to_parent').hide(); // Already hidden
+                // table.getColumn('from_inv_display').hide(); // Already hidden
+                table.getColumn('from_sold_display').hide();
+                table.getColumn('from_dil_display').hide();
                 table.getColumn('to_qty_calc').hide();
                 table.getColumn('ratio').hide();
                 table.getColumn('submit').hide();
@@ -466,43 +479,91 @@
         });
         
         // FROM SKU dropdown change handler (inline in table)
-        $(document).on('change', '.from-sku-select', function() {
+        $(document).on('change', '.to-sku-select', function() {
             const $select = $(this);
             const $row = $select.closest('.tabulator-row');
+            const row = table.getRow($row[0]);
+            const rowData = row.getData();
+            const toSku = rowData.SKU; // Current row's SKU (TO SKU)
+            const fromSku = $select.val();
             
-            const selectedOption = $select.find('option:selected');
-            const fromParent = selectedOption.attr('data-parent') || '';
-            const fromInv = parseInt(selectedOption.attr('data-inv')) || 0;
-            
-            // Auto-fill FROM Parent and FROM Qty
-            $row.find('.from-parent-display').val(fromParent);
-            $row.find('.from-qty-input').val(fromInv);
-            
-            // Recalculate TO Qty based on ratio
-            calculateToQty($row);
+            if (fromSku) {
+                // Save FROM SKU specifically for this TO SKU
+                const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
+                savedData.fromSku = fromSku;
+                localStorage.setItem('transfer_' + toSku, JSON.stringify(savedData));
+                
+                const selectedOption = $select.find('option:selected');
+                const fromParent = selectedOption.attr('data-parent') || '';
+                const fromInv = selectedOption.attr('data-inv') || 0;
+                
+                // Get FROM SKU data for SOLD, DIL%, and set FROM Qty
+                const fromItem = allTableData.find(function(i) { return i.SKU === fromSku; });
+                const fromSold = fromItem ? (fromItem.SOLD || 0) : 0;
+                const fromDil = fromItem ? (parseFloat(fromItem.DIL) || 0) : 0;
+                const fromDilPercent = Math.round(fromDil * 100);
+                
+                // Auto-fill FROM fields
+                $row.find('.to-parent-display').val(fromParent);
+                $row.find('.from-inv-display').val(fromInv);
+                $row.find('.from-sold-display').val(fromSold);
+                $row.find('.from-qty-input').val(fromInv); // Set FROM Qty to FROM SKU's INV
+                
+                // Set FROM DIL% with color coding
+                const $dilSpan = $row.find('.from-dil-percent');
+                let dilClass = '';
+                if (fromDilPercent < 16.66) dilClass = 'dil-red';
+                else if (fromDilPercent >= 16.66 && fromDilPercent < 25) dilClass = 'dil-yellow';
+                else if (fromDilPercent >= 25 && fromDilPercent < 50) dilClass = 'dil-green';
+                else dilClass = 'dil-pink';
+                
+                $dilSpan.attr('class', 'from-dil-percent ' + dilClass).text(fromDilPercent + '%');
+            } else {
+                // Clear fields if no FROM SKU selected
+                $row.find('.to-parent-display').val('');
+                $row.find('.from-inv-display').val('');
+                $row.find('.from-sold-display').val('');
+                $row.find('.from-qty-input').val('');
+                $row.find('.from-dil-percent').attr('class', 'from-dil-percent').text('-');
+            }
         });
         
         // Ratio change handler (inline in table)
         $(document).on('change', '.ratio-select', function() {
             const $select = $(this);
             const $row = $select.closest('.tabulator-row');
+            const row = table.getRow($row[0]);
+            const rowData = row.getData();
+            const toSku = rowData.SKU; // Current row's SKU (TO SKU)
+            const ratio = $select.val();
+            
+            // Save Ratio specifically for this TO SKU
+            const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
+            savedData.ratio = ratio;
+            localStorage.setItem('transfer_' + toSku, JSON.stringify(savedData));
+            
+            // Recalculate TO Qty
             calculateToQty($row);
         });
         
         // FROM Qty input change handler
         $(document).on('input', '.from-qty-input', function() {
-            const $input = $(this);
-            const $row = $input.closest('.tabulator-row');
+            const $row = $(this).closest('.tabulator-row');
             calculateToQty($row);
         });
         
-        // Calculate TO Qty for a row (FROM Qty × Ratio = TO Qty)
+        // Calculate TO Qty based on FROM Qty × Ratio
         function calculateToQty($row) {
             const fromQty = parseInt($row.find('.from-qty-input').val()) || 0;
             const ratio = $row.find('.ratio-select').val() || '1:1';
-            const ratioParts = ratio.split(':');
-            const toQty = Math.round(fromQty * (parseFloat(ratioParts[1]) / parseFloat(ratioParts[0])));
-            $row.find('.to-qty-display').val(toQty);
+            
+            if (fromQty > 0) {
+                const ratioParts = ratio.split(':');
+                const toQty = Math.round(fromQty * (parseFloat(ratioParts[1]) / parseFloat(ratioParts[0])));
+                $row.find('.to-qty-display').val(toQty);
+            } else {
+                $row.find('.to-qty-display').val('');
+            }
         }
         
         // Submit transfer button handler (inline in table)
@@ -520,12 +581,12 @@
             const toParent = rowData.Parent || '';
             const toInv = parseInt(rowData.INV) || 0;
             const toDil = parseFloat(rowData.DIL) || 0;
-            
-            // User selects FROM SKU manually
-            const fromSku = $row.find('.from-sku-select').val();
-            const fromParent = $row.find('.from-parent-display').val();
-            const fromQty = parseInt($row.find('.from-qty-input').val()) || 0;
             const toQty = parseInt($row.find('.to-qty-display').val()) || 0;
+            
+            // User selects FROM SKU manually (from dropdown)
+            const fromSku = $row.find('.to-sku-select').val();
+            const fromParent = $row.find('.to-parent-display').val();
+            const fromQty = parseInt($row.find('.from-qty-input').val()) || 0;
             const ratio = $row.find('.ratio-select').val();
             
             // Validation
@@ -559,18 +620,21 @@
                 return;
             }
             
-            // Prepare transfer data (backend expects to_sku as source, from_sku as destination)
+            // Prepare transfer data
+            // Backend: to_sku = destination, from_sku = source (SWAPPING SKUs!)
+            // UI: FROM SKU (source), TO SKU (destination)
+            // Transfer: Deduct FROM Qty from FROM SKU, Add TO Qty to TO SKU
             const transferData = {
-                to_sku: fromSku,
-                to_parent_name: fromParent,
-                to_available_qty: fromInv,
-                to_dil_percent: fromDil * 100,
-                to_adjust_qty: fromQty,
-                from_sku: toSku,
-                from_parent_name: toParent,
-                from_available_qty: toInv,
-                from_dil_percent: toDil * 100,
-                from_adjust_qty: toQty,
+                to_sku: toSku,             // TO SKU (destination - add TO here)
+                to_parent_name: toParent,
+                to_available_qty: toInv,
+                to_dil_percent: toDil * 100,
+                to_adjust_qty: toQty,      // Add TO Qty
+                from_sku: fromSku,         // FROM SKU (source - deduct FROM here)
+                from_parent_name: fromParent,
+                from_available_qty: fromInv,
+                from_dil_percent: fromDil * 100,
+                from_adjust_qty: fromQty,  // Deduct FROM Qty
                 ratio: ratio,
                 _token: $('meta[name="csrf-token"]').attr('content')
             };
@@ -584,16 +648,20 @@
                 timeout: 120000,
                 success: function(response) {
                     showToast(response.message || 'Transfer successful!', 'success');
-                    // Reset the row
-                    $row.find('.from-sku-select').val('');
-                    $row.find('.from-parent-display').val('');
-                    $row.find('.from-qty-input').val('');
-                    $row.find('.to-qty-display').val('');
-                    $row.find('.ratio-select').val('1:1');
-                    $btn.prop('disabled', false).html('<i class="fas fa-check"></i>');
                     
-                    // Reload table
-                    table.setData();
+                    // Keep per-SKU preferences saved (don't clear)
+                    // Each row will remember its own FROM SKU and Ratio
+                    
+                    // Reload table to get fresh inventory data
+                    table.setData().then(function() {
+                        if (transferModeActive) {
+                            setTimeout(function() {
+                                initializeSelect2FromSku();
+                            }, 100);
+                        }
+                    });
+                    
+                    $btn.prop('disabled', false).html('<i class="fas fa-check"></i>');
                 },
                 error: function(xhr) {
                     $btn.prop('disabled', false).html('<i class="fas fa-check"></i>');
@@ -650,7 +718,8 @@
                     field: "Parent",
                     headerFilter: "input",
                     width: 150,
-                    frozen: true
+                    frozen: true,
+                    visible: false
                 },
                 {
                     title: "SKU",
@@ -733,7 +802,7 @@
                 },
                 {
                     title: "TO SKU",
-                    field: "to_sku_display",
+                    field: "from_sku_display",
                     hozAlign: "center",
                     width: 150,
                     visible: false,
@@ -745,17 +814,19 @@
                 },
                 {
                     title: "FROM SKU",
-                    field: "from_sku",
+                    field: "to_sku",
                     hozAlign: "center",
-                    width: 180,
+                    width: 240,
                     visible: false,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const currentSku = rowData.SKU;
-                        let html = '<select class="form-select form-select-sm from-sku-select" data-to-sku="' + currentSku + '" style="width:170px;"><option value="">Select FROM SKU</option>';
+                        let html = '<select class="form-select form-select-sm to-sku-select" data-from-sku="' + currentSku + '" style="width:230px;"><option value="">Search FROM SKU...</option>';
                         allTableData.forEach(function(item) {
                             if (item.SKU && item.SKU !== currentSku) {
-                                html += '<option value="' + item.SKU + '" data-parent="' + (item.Parent || '') + '" data-inv="' + (item.INV || 0) + '">' + item.SKU + '</option>';
+                                // Show SKU (Parent) only, no INV
+                                const displayText = item.SKU + ' (' + (item.Parent || 'No Parent') + ')';
+                                html += '<option value="' + item.SKU + '" data-parent="' + (item.Parent || '') + '" data-inv="' + (item.INV || 0) + '" data-search="' + item.SKU + ' ' + (item.Parent || '') + '">' + displayText + '</option>';
                             }
                         });
                         html += '</select>';
@@ -764,12 +835,42 @@
                 },
                 {
                     title: "FROM Parent",
-                    field: "from_parent",
+                    field: "to_parent",
                     hozAlign: "center",
                     width: 120,
                     visible: false,
                     formatter: function(cell) {
-                        return '<input type="text" class="form-control form-control-sm from-parent-display" readonly style="width:110px;">';
+                        return '<input type="text" class="form-control form-control-sm to-parent-display" readonly style="width:110px;">';
+                    }
+                },
+                {
+                    title: "FROM INV",
+                    field: "from_inv_display",
+                    hozAlign: "center",
+                    width: 70,
+                    visible: false,
+                    formatter: function(cell) {
+                        return '<input type="text" class="form-control form-control-sm from-inv-display" readonly style="width:60px;">';
+                    }
+                },
+                {
+                    title: "FROM SOLD",
+                    field: "from_sold_display",
+                    hozAlign: "center",
+                    width: 80,
+                    visible: false,
+                    formatter: function(cell) {
+                        return '<input type="text" class="form-control form-control-sm from-sold-display" readonly style="width:70px;">';
+                    }
+                },
+                {
+                    title: "FROM DIL%",
+                    field: "from_dil_display",
+                    hozAlign: "center",
+                    width: 80,
+                    visible: false,
+                    formatter: function(cell) {
+                        return '<span class="from-dil-percent" style="font-weight:600;">-</span>';
                     }
                 },
                 {
@@ -779,7 +880,7 @@
                     width: 80,
                     visible: false,
                     formatter: function(cell) {
-                        return '<input type="number" class="form-control form-control-sm from-qty-input" min="1" style="width:70px;">';
+                        return '<input type="number" class="form-control form-control-sm from-qty-input" min="1" value="" placeholder="Select FROM SKU first" style="width:70px;">';
                     }
                 },
                 {
@@ -789,17 +890,17 @@
                     width: 70,
                     visible: false,
                     formatter: function(cell) {
-                        return '<input type="text" class="form-control form-control-sm to-qty-display" readonly style="width:60px;">';
+                        return '<input type="text" class="form-control form-control-sm to-qty-display" readonly placeholder="Calc" style="width:60px; background-color:#d4edda; font-weight:bold;">';
                     }
                 },
                 {
                     title: "Ratio",
                     field: "ratio",
                     hozAlign: "center",
-                    width: 80,
+                    width: 100,
                     visible: false,
                     formatter: function(cell) {
-                        return '<select class="form-select form-select-sm ratio-select" style="width:70px;"><option value="1:4">1:4</option><option value="1:2">1:2</option><option value="1:1" selected>1:1</option><option value="2:1">2:1</option><option value="4:1">4:1</option></select>';
+                        return '<select class="form-select form-select-sm ratio-select" style="width:90px; font-size:14px;"><option value="1:4">1:4</option><option value="1:2">1:2</option><option value="1:1" selected>1:1</option><option value="2:1">2:1</option><option value="4:1">4:1</option></select>';
                     }
                 },
                 {
@@ -810,7 +911,7 @@
                     visible: false,
                     headerSort: false,
                     formatter: function(cell) {
-                        return '<button class="btn btn-success btn-sm submit-transfer-btn" title="Execute Transfer"><i class="fas fa-check"></i></button>';
+                        return '<button class="btn btn-success btn submit-transfer-btn" title="Execute Transfer"><i class="fas fa-check"></i></button>';
                     }
                 }
             ]
@@ -901,9 +1002,66 @@
             applyAllFilters();
         });
         
+        // Initialize Select2 on FROM SKU dropdowns
+        function initializeSelect2FromSku() {
+            $('.to-sku-select').each(function() {
+                const $select = $(this);
+                const $row = $select.closest('.tabulator-row');
+                const row = table.getRow($row[0]);
+                const rowData = row.getData();
+                const toSku = rowData.SKU; // Current row's SKU (TO SKU)
+                
+                // Load saved data for THIS specific TO SKU
+                const savedData = JSON.parse(localStorage.getItem('transfer_' + toSku) || '{}');
+                const savedFromSku = savedData.fromSku || null;
+                const savedRatio = savedData.ratio || '1:1';
+                
+                // Destroy existing Select2 if any
+                if ($select.hasClass('select2-hidden-accessible')) {
+                    $select.select2('destroy');
+                }
+                
+                // Initialize Select2
+                $select.select2({
+                    placeholder: 'Search FROM SKU...',
+                    allowClear: true,
+                    width: '230px',
+                    dropdownAutoWidth: false,
+                    matcher: function(params, data) {
+                        // If no search term, return all
+                        if ($.trim(params.term) === '') {
+                            return data;
+                        }
+                        
+                        // Search in both SKU and Parent
+                        const searchTerm = params.term.toLowerCase();
+                        const text = (data.text || '').toLowerCase();
+                        const searchData = $(data.element).attr('data-search') || '';
+                        
+                        if (text.indexOf(searchTerm) > -1 || searchData.toLowerCase().indexOf(searchTerm) > -1) {
+                            return data;
+                        }
+                        
+                        return null;
+                    }
+                });
+                
+                // Auto-load saved FROM SKU for THIS specific row
+                if (savedFromSku) {
+                    $select.val(savedFromSku).trigger('change');
+                }
+                
+                // Set saved ratio for THIS row
+                $row.find('.ratio-select').val(savedRatio);
+            });
+        }
+        
         // Update table on render complete
         table.on('renderComplete', function() {
-            // Table rendered
+            // Initialize Select2 when Transfer Mode is active
+            if (transferModeActive) {
+                initializeSelect2FromSku();
+            }
         });
         
     });

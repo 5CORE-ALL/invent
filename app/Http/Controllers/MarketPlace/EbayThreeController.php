@@ -532,13 +532,28 @@ class EbayThreeController extends Controller
                     // Check for saved SPRICE
                     $savedSprice = $spriceValues[$sku] ?? null;
                     
+                    // Check for SPRICE_STATUS in database (pushed/applied/error/account_restricted)
+                    $savedStatus = null;
+                    if (isset($ebayDataViews[$sku])) {
+                        $raw = is_array($ebayDataViews[$sku]->value) 
+                            ? $ebayDataViews[$sku]->value 
+                            : (json_decode($ebayDataViews[$sku]->value, true) ?? []);
+                        if (isset($raw['SPRICE_STATUS'])) {
+                            $savedStatus = $raw['SPRICE_STATUS'];
+                        }
+                    }
+                    
                     // Use saved SPRICE if it exists and differs from calculated
                     if ($savedSprice !== null && abs($savedSprice - $calculatedSprice) > 0.01) {
                         $row['SPRICE'] = $savedSprice;
                         $row['has_custom_sprice'] = true;
+                        // Use saved status if exists (pushed/applied/error/account_restricted), otherwise 'saved'
+                        $row['SPRICE_STATUS'] = $savedStatus ?: 'saved';
                     } else {
                         $row['SPRICE'] = $calculatedSprice;
                         $row['has_custom_sprice'] = false;
+                        // Use saved status if exists, otherwise null
+                        $row['SPRICE_STATUS'] = $savedStatus;
                     }
                     
                     // Calculate SGPFT based on actual SPRICE being used
@@ -563,6 +578,7 @@ class EbayThreeController extends Controller
                     $row['SROI'] = null;
                     $row['SGPFT'] = null;
                     $row['has_custom_sprice'] = false;
+                    $row['SPRICE_STATUS'] = null;
                 }
 
                 // Image
@@ -775,6 +791,7 @@ class EbayThreeController extends Controller
         $price = $request->input('price');
 
         if (empty($sku)) {
+            $this->saveSpriceStatus($sku, 'error');
             return response()->json([
                 'errors' => [['code' => 'InvalidInput', 'message' => 'SKU is required.']]
             ], 400);
@@ -783,6 +800,7 @@ class EbayThreeController extends Controller
         // Validate price
         $priceFloat = floatval($price);
         if (!is_numeric($price) || $priceFloat <= 0) {
+            $this->saveSpriceStatus($sku, 'error');
             return response()->json([
                 'errors' => [['code' => 'InvalidInput', 'message' => 'Price must be a positive number.']]
             ], 400);
@@ -790,6 +808,7 @@ class EbayThreeController extends Controller
 
         // Validate price range
         if ($priceFloat < 0.01 || $priceFloat > 10000) {
+            $this->saveSpriceStatus($sku, 'error');
             return response()->json([
                 'errors' => [['code' => 'InvalidInput', 'message' => 'Price must be between $0.01 and $10,000.']]
             ], 400);
@@ -802,6 +821,7 @@ class EbayThreeController extends Controller
             $ebayMetric = Ebay3Metric::where('sku', $sku)->first();
 
             if (!$ebayMetric || !$ebayMetric->item_id) {
+                $this->saveSpriceStatus($sku, 'error');
                 Log::error('eBay3 item_id not found', ['sku' => $sku]);
                 return response()->json([
                     'errors' => [['code' => 'NotFound', 'message' => 'eBay3 listing not found for SKU: ' . $sku]]
@@ -813,17 +833,144 @@ class EbayThreeController extends Controller
             $result = $ebayService->reviseFixedPriceItem($ebayMetric->item_id, $priceFloat);
 
             if (isset($result['success']) && $result['success']) {
+                $this->saveSpriceStatus($sku, 'pushed');
                 Log::info('eBay3 price update successful', ['sku' => $sku, 'price' => $priceFloat, 'item_id' => $ebayMetric->item_id]);
                 return response()->json(['success' => true, 'message' => 'Price updated successfully']);
             } else {
+                // Check if account is restricted
+                $isAccountRestricted = isset($result['accountRestricted']) && $result['accountRestricted'];
+                
+                if ($isAccountRestricted) {
+                    $this->saveSpriceStatus($sku, 'account_restricted');
+                } else {
+                    $this->saveSpriceStatus($sku, 'error');
+                }
+                
                 $errors = $result['errors'] ?? [['code' => 'UnknownError', 'message' => 'Failed to update price']];
-                Log::error('eBay3 price update failed', ['sku' => $sku, 'price' => $priceFloat, 'errors' => $errors]);
-                return response()->json(['errors' => $errors], 400);
+                
+                // Enhanced error handling for account restrictions
+                $errorMessages = [];
+                $hasLvisError = false;
+                
+                // Normalize errors to array format
+                if (!is_array($errors)) {
+                    $errors = [$errors];
+                }
+                
+                foreach ($errors as $error) {
+                    $errorCode = is_array($error) ? ($error['ErrorCode'] ?? '') : '';
+                    $errorMsg = is_array($error) ? ($error['LongMessage'] ?? $error['ShortMessage'] ?? 'Unknown error') : (string)$error;
+                    $errorParams = is_array($error) ? ($error['ErrorParameters'] ?? []) : [];
+                    
+                    // Extract error parameter messages
+                    $paramMessages = [];
+                    if (is_array($errorParams)) {
+                        foreach ($errorParams as $param) {
+                            if (is_array($param) && isset($param['Value'])) {
+                                $paramMessages[] = strip_tags($param['Value']);
+                            }
+                        }
+                    }
+                    $fullErrorText = $errorMsg . ' ' . implode(' ', $paramMessages);
+                    
+                    // Check for account restriction errors
+                    $isAccountRestricted = false;
+                    $isEmbargoedCountry = false;
+                    
+                    if (stripos($fullErrorText, 'account is restricted') !== false || 
+                        stripos($fullErrorText, 'restrictions on your account') !== false ||
+                        stripos($fullErrorText, 'embargoed country') !== false) {
+                        $isAccountRestricted = true;
+                        $isEmbargoedCountry = stripos($fullErrorText, 'embargoed country') !== false;
+                    }
+                    
+                    if ($errorCode == '21916293' || strpos($errorMsg, 'Lvis') !== false || $isAccountRestricted) {
+                        $hasLvisError = true;
+                        
+                        if ($isAccountRestricted) {
+                            if ($isEmbargoedCountry) {
+                                $errorMessages[] = [
+                                    'code' => $errorCode ?: 'AccountRestricted',
+                                    'message' => 'ACCOUNT RESTRICTION: Your eBay account is restricted due to country/embargo restrictions. Please check your eBay Messages for "Your eBay account is restricted" and resolve the account restrictions before updating prices. This cannot be bypassed programmatically.'
+                                ];
+                            } else {
+                                $errorMessages[] = [
+                                    'code' => $errorCode ?: 'AccountRestricted',
+                                    'message' => 'ACCOUNT RESTRICTION: Your eBay account has restrictions that prevent price updates. Please check your eBay Messages for "Your eBay account is restricted" and provide the requested information to remove restrictions. Contact eBay Customer Service if you believe this is an error.'
+                                ];
+                            }
+                        } else {
+                            $errorMessages[] = [
+                                'code' => $errorCode ?: 'LvisBlocked',
+                                'message' => 'Listing validation blocked: This listing may have policy violations or restrictions. Please check the listing status in eBay Seller Hub and resolve any issues before updating the price.'
+                            ];
+                        }
+                    } else {
+                        // Check for business policy warning (non-blocking)
+                        if ($errorCode == '21919456' || stripos($errorMsg, 'business policies') !== false) {
+                            Log::warning('eBay3 business policy warning (non-blocking)', [
+                                'sku' => $sku,
+                                'error' => $errorMsg
+                            ]);
+                            // Don't add to errorMessages as it's just a warning
+                        } else {
+                            $errorMessages[] = [
+                                'code' => $errorCode ?: 'APIError',
+                                'message' => $errorMsg
+                            ];
+                        }
+                    }
+                }
+                
+                Log::error('eBay3 price update failed', [
+                    'sku' => $sku,
+                    'price' => $priceFloat,
+                    'item_id' => $ebayMetric->item_id,
+                    'errors' => $errors,
+                    'hasLvisError' => $hasLvisError
+                ]);
+                
+                return response()->json(['errors' => $errorMessages], 400);
             }
         } catch (\Exception $e) {
-            Log::error('Exception in pushEbay3Price', ['sku' => $sku, 'price' => $priceFloat, 'error' => $e->getMessage()]);
+            $this->saveSpriceStatus($sku, 'error');
+            Log::error('Exception in pushEbay3Price', ['sku' => $sku, 'price' => $priceFloat, 'error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return response()->json(['errors' => [['code' => 'Exception', 'message' => 'An error occurred: ' . $e->getMessage()]]], 500);
         }
+    }
+
+    private function saveSpriceStatus($sku, $status)
+    {
+        try {
+            $ebayThreeDataView = EbayThreeDataView::firstOrNew(['sku' => $sku]);
+            
+            $existing = is_array($ebayThreeDataView->value)
+                ? $ebayThreeDataView->value
+                : (json_decode($ebayThreeDataView->value, true) ?: []);
+
+            $merged = array_merge($existing, [
+                'SPRICE_STATUS' => $status,
+                'SPRICE_STATUS_UPDATED_AT' => now()->toDateTimeString()
+            ]);
+
+            $ebayThreeDataView->value = $merged;
+            $ebayThreeDataView->save();
+        } catch (\Exception $e) {
+            Log::error('Error saving SPRICE_STATUS', ['sku' => $sku, 'status' => $status, 'error' => $e->getMessage()]);
+        }
+    }
+
+    public function updateEbay3SpriceStatus(Request $request)
+    {
+        $sku = strtoupper(trim($request->input('sku')));
+        $status = $request->input('status');
+
+        if (empty($sku) || !in_array($status, ['pushed', 'applied', 'error'])) {
+            return response()->json(['success' => false, 'error' => 'Invalid SKU or status'], 400);
+        }
+
+        $this->saveSpriceStatus($sku, $status);
+        return response()->json(['success' => true, 'message' => 'Status updated successfully']);
     }
 
     public function overallthreeEbay(Request $request)
