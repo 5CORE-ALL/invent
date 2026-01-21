@@ -56,6 +56,37 @@
             color: #6c757d;
         }
 
+        /* Status circles for DIL filter */
+        .status-circle {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+        .status-circle.default {
+            background-color: #6c757d;
+        }
+        .status-circle.red {
+            background-color: #dc3545;
+        }
+        .status-circle.yellow {
+            background-color: #ffc107;
+        }
+        .status-circle.green {
+            background-color: #28a745;
+        }
+        .status-circle.pink {
+            background-color: #e83e8c;
+        }
+        .manual-dropdown-container .dropdown-menu {
+            z-index: 1050;
+        }
+        .column-filter.active {
+            background-color: #e7f3ff;
+            font-weight: bold;
+        }
+
         /* SKU Tooltips */
         .sku-tooltip-container {
             position: relative;
@@ -161,6 +192,25 @@
                         <option value="missing">Missing Only</option>
                     </select>
 
+                    <!-- DIL Filter -->
+                    <div class="dropdown manual-dropdown-container">
+                        <button class="btn btn-light btn-sm dropdown-toggle" type="button" id="dilFilterDropdown">
+                            <span class="status-circle default"></span> DIL%
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="dilFilterDropdown">
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="all">
+                                    <span class="status-circle default"></span> All DIL</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="red">
+                                    <span class="status-circle red"></span> Red (&lt;16.7%)</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="yellow">
+                                    <span class="status-circle yellow"></span> Yellow (16.7-25%)</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="green">
+                                    <span class="status-circle green"></span> Green (25-50%)</a></li>
+                            <li><a class="dropdown-item column-filter" href="#" data-column="dil_percent" data-color="pink">
+                                    <span class="status-circle pink"></span> Pink (50%+)</a></li>
+                        </ul>
+                    </div>
+
                     <!-- Column Visibility -->
                     <div class="dropdown">
                         <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" 
@@ -229,6 +279,9 @@
                             style="width: 150px; display: inline-block;">
                         <button id="apply-discount-btn" class="btn btn-sm btn-primary">
                             <i class="fas fa-check"></i> Apply
+                        </button>
+                        <button id="clear-sprice-selected-btn" class="btn btn-sm btn-danger">
+                            <i class="fa fa-eraser"></i> Clear SPRICE
                         </button>
                         <span id="selected-skus-count" class="text-muted ms-2"></span>
                     </div>
@@ -566,6 +619,62 @@
                 }
             });
 
+            // Clear SPRICE button handler
+            $('#clear-sprice-selected-btn').on('click', function() {
+                if (selectedSkus.size === 0) {
+                    showToast('danger', 'Please select SKUs first');
+                    return;
+                }
+
+                if (confirm('Are you sure you want to clear SPRICE for ' + selectedSkus.size + ' selected SKU(s)?')) {
+                    let clearedCount = 0;
+
+                    selectedSkus.forEach(sku => {
+                        const rows = table.searchRows("(Child) sku", "=", sku);
+                        
+                        if (rows.length > 0) {
+                            const row = rows[0];
+                            row.update({
+                                sprice: 0,
+                                spft: 0,
+                                sroi: 0,
+                                s_self_pick: 0
+                            });
+                            
+                            row.reformat();
+                            
+                            // Save to database
+                            $.ajax({
+                                url: '/doba/save-sprice',
+                                method: 'POST',
+                                headers: {
+                                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                                },
+                                data: {
+                                    sku: sku,
+                                    sprice: 0,
+                                    spft_percent: 0,
+                                    sroi_percent: 0,
+                                    s_self_pick: 0,
+                                    push_status: null,
+                                    _token: $('meta[name="csrf-token"]').attr('content')
+                                },
+                                success: function() {
+                                    console.log('SPRICE cleared for SKU:', sku);
+                                },
+                                error: function(xhr) {
+                                    console.error('Failed to clear SPRICE for SKU:', sku, xhr.responseText);
+                                }
+                            });
+                            
+                            clearedCount++;
+                        }
+                    });
+
+                    showToast('success', 'SPRICE cleared for ' + clearedCount + ' SKU(s)');
+                }
+            });
+
             // Save push status to database
             function savePushStatusToDatabase(sku, pushStatus, rowData) {
                 return $.ajax({
@@ -895,6 +1004,8 @@
                             const l30 = Number(item.L30) || 0;
                             const dobaL30 = Number(item['doba L30']) || 0;
                             const dobaL60 = Number(item['doba L60']) || 0;
+                            const quantityL7 = Number(item.quantity_l7) || 0;
+                            const quantityL7Prev = Number(item.quantity_l7_prev) || 0;
                             const ovDil = inv > 0 ? l30 / inv : 0;
                             const price = Number(item['doba Price']) || 0;
                             const ship = Number(item.Ship_productmaster) || 0;
@@ -923,6 +1034,8 @@
                                 ov_dil: ovDil,
                                 'doba L30': dobaL30,
                                 'doba L60': dobaL60,
+                                quantity_l7: quantityL7,
+                                quantity_l7_prev: quantityL7Prev,
                                 'doba Price': price,
                                 Profit: item.Total_pft || item.Profit || 0,
                                 'Sales L30': dobaL30,
@@ -1059,7 +1172,36 @@
                         formatter: function(cell, formatterParams) {
                             return cell.getValue() || 0;
                         }
-                    },                    {
+                    },
+                    {
+                        title: "SOLD 7",
+                        field: "quantity_l7",
+                        width: 70,
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell, formatterParams) {
+                            const value = parseInt(cell.getValue()) || 0;
+                            if (value > 0) {
+                                return `<span style="color: #28a745; font-weight: bold;">${value}</span>`;
+                            }
+                            return value;
+                        }
+                    },
+                    {
+                        title: "P SOLD 7",
+                        field: "quantity_l7_prev",
+                        width: 70,
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell, formatterParams) {
+                            const value = parseInt(cell.getValue()) || 0;
+                            if (value > 0) {
+                                return `<span style="color: #3591dc; font-weight: bold;">${value}</span>`;
+                            }
+                            return value;
+                        }
+                    },
+                    {
                         title: "PROMO",
                         field: "Promo",
                         width: 80,
@@ -1326,6 +1468,7 @@
                 const inventoryFilter = $('#inventory-filter').val();
                 const parentFilter = $('#parent-filter').val();
                 const missingFilter = $('#missing-filter').val();
+                const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
                 
                 table.clearFilter(true);
                 
@@ -1344,6 +1487,21 @@
                 if (missingFilter === 'missing') {
                     table.setFilter("missing", "=", 1);
                 }
+
+                // DIL Filter (based on inventory and L30)
+                if (dilFilter !== 'all') {
+                    table.addFilter(function(data) {
+                        const inv = parseFloat(data['INV']) || 0;
+                        const l30 = parseFloat(data['L30']) || 0;
+                        const dil = inv === 0 ? 0 : (l30 / inv) * 100;
+                        
+                        if (dilFilter === 'red') return dil < 16.66;
+                        if (dilFilter === 'yellow') return dil >= 16.66 && dil < 25;
+                        if (dilFilter === 'green') return dil >= 25 && dil < 50;
+                        if (dilFilter === 'pink') return dil >= 50;
+                        return true;
+                    });
+                }
                 
                 // Update select all checkbox after filter is applied
                 setTimeout(function() {
@@ -1352,6 +1510,20 @@
             }
 
             $('#inventory-filter, #parent-filter, #missing-filter').on('change', function() {
+                applyFilters();
+            });
+
+            // DIL Filter click handlers
+            $('.column-filter[data-column="dil_percent"]').on('click', function(e) {
+                e.preventDefault();
+                $('.column-filter[data-column="dil_percent"]').removeClass('active');
+                $(this).addClass('active');
+                
+                const color = $(this).data('color');
+                const circle = $(this).find('.status-circle').clone();
+                const text = color === 'all' ? 'DIL%' : $(this).text().trim();
+                $('#dilFilterDropdown').html(circle[0].outerHTML + ' ' + text.split(' ')[0]);
+                
                 applyFilters();
             });
 

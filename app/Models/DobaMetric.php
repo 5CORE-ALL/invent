@@ -14,6 +14,8 @@ class DobaMetric extends Model
         'item_id',
         'quantity_l30',
         'quantity_l60',
+        'quantity_l7',
+        'quantity_l7_prev',
         'anticipated_income',
         'self_pick_price',
         'msrp',
@@ -22,5 +24,7 @@ class DobaMetric extends Model
         'clicks',
         'order_count_l30',
         'order_count_l60',
+        'order_count_l7',
+        'order_count_l7_prev',
     ];
 }

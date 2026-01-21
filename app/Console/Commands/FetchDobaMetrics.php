@@ -24,7 +24,7 @@ class FetchDobaMetrics extends Command
      *
      * @var string
      */
-    protected $description = 'Command description';
+    protected $description = 'Fetch Doba metrics including prices, L30/L60/L7/L7Prev quantities and order counts';
 
     /**
      * Execute the console command.
@@ -36,7 +36,7 @@ class FetchDobaMetrics extends Command
         // First fetch prices from API
         $this->fetchPricesFromApi();
         
-        // Then calculate L30/L60 quantities from daily data
+        // Then calculate L30/L60/L7/L7Prev quantities from daily data
         $this->getQuantity();
         
         $this->info("Doba metrics updated successfully!");
@@ -116,15 +116,27 @@ class FetchDobaMetrics extends Command
 
     private function getQuantity()
     {
-        $this->info("Calculating Doba L30/L60 from doba_daily_data using period column..."); 
+        $this->info("Calculating Doba L30/L60/L7/L7Prev from doba_daily_data..."); 
+        
+        // Calculate date ranges for L7 and L7 Prev
+        $yesterday = Carbon::yesterday();
+        
+        // L7: Last 7 days (yesterday back to 6 days ago)
+        $l7_end = $yesterday->copy()->endOfDay();
+        $l7_start = $yesterday->copy()->subDays(6)->startOfDay();
+        
+        // L7 Prev: Previous 7 days (8 days ago back to 14 days ago)
+        $l7prev_end = $yesterday->copy()->subDays(7)->endOfDay();
+        $l7prev_start = $yesterday->copy()->subDays(13)->startOfDay();
+        
+        $this->info("L7: {$l7_start->format('Y-m-d')} to {$l7_end->format('Y-m-d')}");
+        $this->info("L7 Prev: {$l7prev_start->format('Y-m-d')} to {$l7prev_end->format('Y-m-d')}");
         
         // Aggregate L30 data from doba_daily_data using period column (set by doba:daily command)
         $l30Data = DB::table('doba_daily_data')
             ->select('sku', 
                 DB::raw('SUM(quantity) as total_quantity'),
-                DB::raw('COUNT(DISTINCT order_no) as order_count'),
-                DB::raw('SUM(total_price) as total_sales'),
-                DB::raw('AVG(item_price) as avg_price'))
+                DB::raw('COUNT(DISTINCT order_no) as order_count'))
             ->whereNotNull('sku')
             ->whereRaw("LOWER(period) = 'l30'")
             ->whereNotIn('order_status', ['Cancelled', 'Canceled', 'cancelled', 'canceled', 'CANCELLED', 'CANCELED'])
@@ -136,9 +148,7 @@ class FetchDobaMetrics extends Command
         $l60Data = DB::table('doba_daily_data')
             ->select('sku', 
                 DB::raw('SUM(quantity) as total_quantity'),
-                DB::raw('COUNT(DISTINCT order_no) as order_count'),
-                DB::raw('SUM(total_price) as total_sales'),
-                DB::raw('AVG(item_price) as avg_price'))
+                DB::raw('COUNT(DISTINCT order_no) as order_count'))
             ->whereNotNull('sku')
             ->whereRaw("LOWER(period) = 'l60'")
             ->whereNotIn('order_status', ['Cancelled', 'Canceled', 'cancelled', 'canceled', 'CANCELLED', 'CANCELED'])
@@ -146,20 +156,52 @@ class FetchDobaMetrics extends Command
             ->get()
             ->keyBy('sku');
         
+        // Aggregate L7 data from doba_daily_data using date range
+        $l7Data = DB::table('doba_daily_data')
+            ->select('sku', 
+                DB::raw('SUM(quantity) as total_quantity'),
+                DB::raw('COUNT(DISTINCT order_no) as order_count'))
+            ->whereNotNull('sku')
+            ->whereBetween('order_time', [$l7_start, $l7_end])
+            ->whereNotIn('order_status', ['Cancelled', 'Canceled', 'cancelled', 'canceled', 'CANCELLED', 'CANCELED'])
+            ->groupBy('sku')
+            ->get()
+            ->keyBy('sku');
+        
+        // Aggregate L7 Prev data from doba_daily_data using date range
+        $l7prevData = DB::table('doba_daily_data')
+            ->select('sku', 
+                DB::raw('SUM(quantity) as total_quantity'),
+                DB::raw('COUNT(DISTINCT order_no) as order_count'))
+            ->whereNotNull('sku')
+            ->whereBetween('order_time', [$l7prev_start, $l7prev_end])
+            ->whereNotIn('order_status', ['Cancelled', 'Canceled', 'cancelled', 'canceled', 'CANCELLED', 'CANCELED'])
+            ->groupBy('sku')
+            ->get()
+            ->keyBy('sku');
+        
         $this->info("Found L30 data for " . $l30Data->count() . " SKUs");
         $this->info("Found L60 data for " . $l60Data->count() . " SKUs");
+        $this->info("Found L7 data for " . $l7Data->count() . " SKUs");
+        $this->info("Found L7 Prev data for " . $l7prevData->count() . " SKUs");
         
-        // Get all unique SKUs from both periods
-        $allSkus = $l30Data->keys()->merge($l60Data->keys())->unique();
+        // Get all unique SKUs from all periods
+        $allSkus = $l30Data->keys()
+            ->merge($l60Data->keys())
+            ->merge($l7Data->keys())
+            ->merge($l7prevData->keys())
+            ->unique();
         
-        // Update doba_metrics with aggregated quantities, order counts, and price data
+        // Update doba_metrics with aggregated quantities and order counts
         foreach ($allSkus as $sku) {
-            $l30Qty = $l30Data->get($sku)->total_quantity ?? 0;
-            $l60Qty = $l60Data->get($sku)->total_quantity ?? 0;
-            $l30Count = $l30Data->get($sku)->order_count ?? 0;
-            $l60Count = $l60Data->get($sku)->order_count ?? 0;
-            $avgPrice = $l30Data->get($sku)->avg_price ?? ($l60Data->get($sku)->avg_price ?? 0);
-            $totalSales = $l30Data->get($sku)->total_sales ?? 0;
+            $l30Qty = $l30Data->get($sku)?->total_quantity ?? 0;
+            $l60Qty = $l60Data->get($sku)?->total_quantity ?? 0;
+            $l30Count = $l30Data->get($sku)?->order_count ?? 0;
+            $l60Count = $l60Data->get($sku)?->order_count ?? 0;
+            $l7Qty = $l7Data->get($sku)?->total_quantity ?? 0;
+            $l7prevQty = $l7prevData->get($sku)?->total_quantity ?? 0;
+            $l7Count = $l7Data->get($sku)?->order_count ?? 0;
+            $l7prevCount = $l7prevData->get($sku)?->order_count ?? 0;
             
             DobaMetric::updateOrCreate(
                 ['sku' => $sku],
@@ -168,7 +210,11 @@ class FetchDobaMetrics extends Command
                     'quantity_l60' => (int) $l60Qty,
                     'order_count_l30' => (int) $l30Count,
                     'order_count_l60' => (int) $l60Count,
-                    'anticipated_income' => round($avgPrice, 2),
+                    'quantity_l7' => (int) $l7Qty,
+                    'quantity_l7_prev' => (int) $l7prevQty,
+                    'order_count_l7' => (int) $l7Count,
+                    'order_count_l7_prev' => (int) $l7prevCount,
+                    // Don't overwrite anticipated_income - it comes from the API in fetchPricesFromApi()
                 ]
             );
         }
