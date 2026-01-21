@@ -543,8 +543,13 @@
                     sku: sku,
                     price: price,
                     response: response,
-                    rlogId: response.rlogId || 'N/A',
-                    timestamp: new Date().toISOString()
+                    trackingIds: {
+                        rlogId: response.rlogId || 'N/A',
+                        correlationId: response.correlationId || 'N/A',
+                        build: response.build || 'N/A',
+                        timestamp: response.timestamp || 'N/A'
+                    },
+                    requestTimestamp: new Date().toISOString()
                 });
 
                 if (response.errors && response.errors.length > 0) {
@@ -578,9 +583,14 @@
                     price: price,
                     errorCode: errorCode,
                     errorMessage: errorMsg,
-                    rlogId: rlogId,
+                    trackingIds: {
+                        rlogId: xhr.responseJSON?.rlogId || rlogId || 'N/A',
+                        correlationId: xhr.responseJSON?.correlationId || 'N/A',
+                        build: xhr.responseJSON?.build || 'N/A',
+                        timestamp: xhr.responseJSON?.timestamp || 'N/A'
+                    },
                     fullResponse: xhr.responseJSON,
-                    timestamp: new Date().toISOString()
+                    requestTimestamp: new Date().toISOString()
                 });
 
                 // Check if this is an account restriction error (don't retry)

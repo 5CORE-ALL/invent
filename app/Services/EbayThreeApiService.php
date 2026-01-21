@@ -211,22 +211,33 @@ class EbayThreeApiService
             ->post($this->endpoint);
 
         $body = $response->body();
-        $rlogId = $response->header('X-EBAY-API-RLOG-ID');
         
-        // Log response details
-        \Illuminate\Support\Facades\Log::info('eBay3 API Response - ReviseFixedPriceItem', [
-            'itemId' => $itemId,
-            'price' => $price,
-            'statusCode' => $response->status(),
-            'rlogId' => $rlogId,
-            'responseBody' => substr($body, 0, 2000) // First 2000 chars
-        ]);
-
-        // Parse XML response
+        // Try multiple header names for RlogID (eBay uses lowercase 'rlogid')
+        $rlogId = $response->header('rlogid')
+               ?? $response->header('X-EBAY-API-SERVER-LOG-ID') 
+               ?? $response->header('X-EBAY-API-RLOG-ID')
+               ?? $response->header('X-Ebay-Api-Server-Log-Id')
+               ?? 'Not provided by eBay';
+        
+        // Decode RlogID if it's URL encoded
+        if ($rlogId && $rlogId !== 'Not provided by eBay') {
+            $rlogId = urldecode($rlogId);
+        }
+        
+        // Log ALL response headers to see what eBay is sending
+        $allHeaders = $response->headers();
+        
+        // Parse XML response first to get all details
         libxml_use_internal_errors(true);
         $xmlResp = simplexml_load_string($body);
         
         if ($xmlResp === false) {
+            \Illuminate\Support\Facades\Log::error('❌ eBay3 Invalid XML Response', [
+                'itemId' => $itemId,
+                'price' => $price,
+                'statusCode' => $response->status(),
+                'rawBody' => $body
+            ]);
             return [
                 'success' => false,
                 'message' => 'Invalid XML response',
@@ -236,13 +247,36 @@ class EbayThreeApiService
 
         $responseArray = json_decode(json_encode($xmlResp), true);
         $ack = $responseArray['Ack'] ?? 'Failure';
+        
+        // Extract CorrelationID and Build from XML response (eBay's tracking IDs)
+        $correlationId = $responseArray['CorrelationID'] ?? null;
+        $build = $responseArray['Build'] ?? null;
+        $timestamp = $responseArray['Timestamp'] ?? null;
+        
+        // Log complete response details with all tracking IDs
+        \Illuminate\Support\Facades\Log::info('eBay3 API Response - ReviseFixedPriceItem', [
+            'itemId' => $itemId,
+            'price' => $price,
+            'statusCode' => $response->status(),
+            'ack' => $ack,
+            'rlogId_header' => $rlogId,
+            'correlationId' => $correlationId,
+            'build' => $build,
+            'timestamp' => $timestamp,
+            'allHeaders' => $allHeaders,
+            'fullResponse' => $responseArray,
+            'responseBody' => $body
+        ]);
 
         if ($ack === 'Success' || $ack === 'Warning') {
             \Illuminate\Support\Facades\Log::info('✅ eBay3 Price Updated Successfully', [
                 'itemId' => $itemId,
                 'price' => $price,
                 'ack' => $ack,
-                'rlogId' => $rlogId,
+                'rlogId_header' => $rlogId,
+                'correlationId' => $correlationId,
+                'build' => $build,
+                'timestamp' => $timestamp,
                 'response' => $responseArray
             ]);
             
@@ -250,7 +284,10 @@ class EbayThreeApiService
                 'success' => true,
                 'message' => 'Item updated successfully.',
                 'data' => $responseArray,
-                'rlogId' => $rlogId
+                'rlogId' => $rlogId,
+                'correlationId' => $correlationId,
+                'build' => $build,
+                'timestamp' => $timestamp
             ];
         } else {
             // Check for Lvis error (ErrorCode 21916293)
@@ -269,7 +306,10 @@ class EbayThreeApiService
                 'itemId' => $itemId,
                 'price' => $price,
                 'ack' => $ack,
-                'rlogId' => $rlogId,
+                'rlogId_header' => $rlogId,
+                'correlationId' => $correlationId,
+                'build' => $build,
+                'timestamp' => $timestamp,
                 'errors' => $errors,
                 'fullResponse' => $responseArray
             ]);
@@ -429,13 +469,25 @@ class EbayThreeApiService
                 ->post($this->endpoint);
             
             $body = $response->body();
-            $rlogId = $response->header('X-EBAY-API-RLOG-ID');
+            
+            // Try multiple header names for RlogID (eBay uses lowercase 'rlogid')
+            $rlogId = $response->header('rlogid')
+                   ?? $response->header('X-EBAY-API-SERVER-LOG-ID') 
+                   ?? $response->header('X-EBAY-API-RLOG-ID')
+                   ?? $response->header('X-Ebay-Api-Server-Log-Id')
+                   ?? 'Not provided by eBay';
+            
+            // Decode RlogID if it's URL encoded
+            if ($rlogId && $rlogId !== 'Not provided by eBay') {
+                $rlogId = urldecode($rlogId);
+            }
             
             // Log alternative method response
             \Illuminate\Support\Facades\Log::info('eBay3 API Response - ReviseItem (Alternative)', [
                 'itemId' => $itemId,
                 'statusCode' => $response->status(),
                 'rlogId' => $rlogId,
+                'allHeaders' => $response->headers(),
                 'responseBody' => substr($body, 0, 2000)
             ]);
             
@@ -547,13 +599,25 @@ class EbayThreeApiService
                 ->post($this->endpoint);
             
             $body = $response->body();
-            $rlogId = $response->header('X-EBAY-API-RLOG-ID');
+            
+            // Try multiple header names for RlogID (eBay uses lowercase 'rlogid')
+            $rlogId = $response->header('rlogid')
+                   ?? $response->header('X-EBAY-API-SERVER-LOG-ID') 
+                   ?? $response->header('X-EBAY-API-RLOG-ID')
+                   ?? $response->header('X-Ebay-Api-Server-Log-Id')
+                   ?? 'Not provided by eBay';
+            
+            // Decode RlogID if it's URL encoded
+            if ($rlogId && $rlogId !== 'Not provided by eBay') {
+                $rlogId = urldecode($rlogId);
+            }
             
             // Log minimal method response
             \Illuminate\Support\Facades\Log::info('eBay3 API Response - ReviseItem (Minimal)', [
                 'itemId' => $itemId,
                 'statusCode' => $response->status(),
                 'rlogId' => $rlogId,
+                'allHeaders' => $response->headers(),
                 'responseBody' => substr($body, 0, 2000)
             ]);
             

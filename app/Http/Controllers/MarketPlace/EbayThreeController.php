@@ -834,8 +834,21 @@ class EbayThreeController extends Controller
 
             if (isset($result['success']) && $result['success']) {
                 $this->saveSpriceStatus($sku, 'pushed');
-                Log::info('eBay3 price update successful', ['sku' => $sku, 'price' => $priceFloat, 'item_id' => $ebayMetric->item_id]);
-                return response()->json(['success' => true, 'message' => 'Price updated successfully']);
+                Log::info('eBay3 price update successful', [
+                    'sku' => $sku, 
+                    'price' => $priceFloat, 
+                    'item_id' => $ebayMetric->item_id,
+                    'rlogId' => $result['rlogId'] ?? 'N/A',
+                    'correlationId' => $result['correlationId'] ?? 'N/A'
+                ]);
+                return response()->json([
+                    'success' => true, 
+                    'message' => 'Price updated successfully',
+                    'rlogId' => $result['rlogId'] ?? null,
+                    'correlationId' => $result['correlationId'] ?? null,
+                    'build' => $result['build'] ?? null,
+                    'timestamp' => $result['timestamp'] ?? null
+                ]);
             } else {
                 // Check if account is restricted
                 $isAccountRestricted = isset($result['accountRestricted']) && $result['accountRestricted'];
@@ -927,10 +940,18 @@ class EbayThreeController extends Controller
                     'price' => $priceFloat,
                     'item_id' => $ebayMetric->item_id,
                     'errors' => $errors,
-                    'hasLvisError' => $hasLvisError
+                    'hasLvisError' => $hasLvisError,
+                    'rlogId' => $result['rlogId'] ?? 'N/A',
+                    'correlationId' => $result['correlationId'] ?? 'N/A'
                 ]);
                 
-                return response()->json(['errors' => $errorMessages], 400);
+                return response()->json([
+                    'errors' => $errorMessages,
+                    'rlogId' => $result['rlogId'] ?? null,
+                    'correlationId' => $result['correlationId'] ?? null,
+                    'build' => $result['build'] ?? null,
+                    'timestamp' => $result['timestamp'] ?? null
+                ], 400);
             }
         } catch (\Exception $e) {
             $this->saveSpriceStatus($sku, 'error');
