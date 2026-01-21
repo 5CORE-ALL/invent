@@ -122,9 +122,7 @@ class FetchDobaMetrics extends Command
         $l30Data = DB::table('doba_daily_data')
             ->select('sku', 
                 DB::raw('SUM(quantity) as total_quantity'),
-                DB::raw('COUNT(DISTINCT order_no) as order_count'),
-                DB::raw('SUM(total_price) as total_sales'),
-                DB::raw('AVG(item_price) as avg_price'))
+                DB::raw('COUNT(DISTINCT order_no) as order_count'))
             ->whereNotNull('sku')
             ->whereRaw("LOWER(period) = 'l30'")
             ->whereNotIn('order_status', ['Cancelled', 'Canceled', 'cancelled', 'canceled', 'CANCELLED', 'CANCELED'])
@@ -136,9 +134,7 @@ class FetchDobaMetrics extends Command
         $l60Data = DB::table('doba_daily_data')
             ->select('sku', 
                 DB::raw('SUM(quantity) as total_quantity'),
-                DB::raw('COUNT(DISTINCT order_no) as order_count'),
-                DB::raw('SUM(total_price) as total_sales'),
-                DB::raw('AVG(item_price) as avg_price'))
+                DB::raw('COUNT(DISTINCT order_no) as order_count'))
             ->whereNotNull('sku')
             ->whereRaw("LOWER(period) = 'l60'")
             ->whereNotIn('order_status', ['Cancelled', 'Canceled', 'cancelled', 'canceled', 'CANCELLED', 'CANCELED'])
@@ -152,14 +148,12 @@ class FetchDobaMetrics extends Command
         // Get all unique SKUs from both periods
         $allSkus = $l30Data->keys()->merge($l60Data->keys())->unique();
         
-        // Update doba_metrics with aggregated quantities, order counts, and price data
+        // Update doba_metrics with aggregated quantities and order counts
         foreach ($allSkus as $sku) {
             $l30Qty = $l30Data->get($sku)->total_quantity ?? 0;
             $l60Qty = $l60Data->get($sku)->total_quantity ?? 0;
             $l30Count = $l30Data->get($sku)->order_count ?? 0;
             $l60Count = $l60Data->get($sku)->order_count ?? 0;
-            $avgPrice = $l30Data->get($sku)->avg_price ?? ($l60Data->get($sku)->avg_price ?? 0);
-            $totalSales = $l30Data->get($sku)->total_sales ?? 0;
             
             DobaMetric::updateOrCreate(
                 ['sku' => $sku],
@@ -168,7 +162,7 @@ class FetchDobaMetrics extends Command
                     'quantity_l60' => (int) $l60Qty,
                     'order_count_l30' => (int) $l30Count,
                     'order_count_l60' => (int) $l60Count,
-                    'anticipated_income' => round($avgPrice, 2),
+                    // Don't overwrite anticipated_income - it comes from the API in fetchPricesFromApi()
                 ]
             );
         }
