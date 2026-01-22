@@ -113,7 +113,7 @@
                         <i class="fas fa-file-excel"></i> Export CSV
                     </button>
                     
-                    <button id="transfer-mode-btn" class="btn btn-sm btn-primary">
+                    <button id="transfer-mode-btn" class="btn btn-sm btn-primary" style="display: none;">
                         <i class="fas fa-exchange-alt"></i> Transfer Mode
                     </button>
                     
@@ -432,11 +432,11 @@
             if (transferModeActive) {
                 $(this).removeClass('btn-primary').addClass('btn-danger').html('<i class="fas fa-exchange-alt"></i> Transfer ON');
                 // Show transfer columns
-                // table.getColumn('from_sku_display').show(); // TO SKU - Hidden per request
+                table.getColumn('Parent').show();
                 table.getColumn('from_qty').show();
                 table.getColumn('to_sku').show();
-                // table.getColumn('to_parent').show(); // FROM Parent - Hidden per request
-                // table.getColumn('from_inv_display').show(); // FROM INV - Hidden per request
+                table.getColumn('to_parent').show();
+                table.getColumn('from_inv_display').show();
                 table.getColumn('from_sold_display').show();
                 table.getColumn('from_dil_display').show();
                 table.getColumn('to_qty_calc').show();
@@ -452,11 +452,11 @@
             } else {
                 $(this).removeClass('btn-danger').addClass('btn-primary').html('<i class="fas fa-exchange-alt"></i> Transfer Mode');
                 // Hide transfer columns
-                // table.getColumn('from_sku_display').hide(); // Already hidden
+                table.getColumn('Parent').hide();
                 table.getColumn('from_qty').hide();
                 table.getColumn('to_sku').hide();
-                // table.getColumn('to_parent').hide(); // Already hidden
-                // table.getColumn('from_inv_display').hide(); // Already hidden
+                table.getColumn('to_parent').hide();
+                table.getColumn('from_inv_display').hide();
                 table.getColumn('from_sold_display').hide();
                 table.getColumn('from_dil_display').hide();
                 table.getColumn('to_qty_calc').hide();
@@ -747,7 +747,7 @@
                     headerFilter: "input",
                     width: 150,
                     frozen: true,
-                    visible: false
+                    visible: true
                 },
                 {
                     title: "SKU",
@@ -828,31 +828,7 @@
                         e.stopPropagation();
                     }
                 },
-                {
-                    title: "Last Updt",
-                    field: "LAST_UPDATE",
-                    hozAlign: "left",
-                    width: 280,
-                    headerSort: false,
-                    formatter: function(cell) {
-                        const data = cell.getValue();
-                        if (!data) {
-                            return '<span style="color:#999;">No history</span>';
-                        }
-                        
-                        const directionColor = data.direction === 'IN' ? '#28a745' : '#dc3545';
-                        const directionIcon = data.direction === 'IN' ? '↓' : '↑';
-                        const directionText = data.direction === 'IN' ? 'IN' : 'OUT';
-                        
-                        return '<div style="font-size:12px; line-height:1.3;">' +
-                            '<span style="font-weight:bold; color:' + directionColor + ';">' + directionIcon + ' ' + directionText + '</span> ' +
-                            '<span style="font-weight:600;">' + data.qty + '</span> ' +
-                            '<span style="color:#666;">' + (data.direction === 'IN' ? 'from' : 'to') + '</span> ' +
-                            '<span style="font-weight:500;">' + data.other_sku + '</span><br>' +
-                            '<span style="color:#999; font-size:11px;">' + data.date + ' • ' + data.by + '</span>' +
-                            '</div>';
-                    }
-                },
+              
                 {
                     title: "TO SKU",
                     field: "from_sku_display",
@@ -870,7 +846,7 @@
                     field: "to_sku",
                     hozAlign: "center",
                     width: 240,
-                    visible: false,
+                    visible: true,
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const currentSku = rowData.SKU;
@@ -912,7 +888,7 @@
                     field: "from_sold_display",
                     hozAlign: "center",
                     width: 80,
-                    visible: false,
+                    visible: true,
                     formatter: function(cell) {
                         return '<input type="text" class="form-control form-control-sm from-sold-display" readonly style="width:70px;">';
                     }
@@ -922,7 +898,7 @@
                     field: "from_dil_display",
                     hozAlign: "center",
                     width: 80,
-                    visible: false,
+                    visible: true,
                     formatter: function(cell) {
                         return '<span class="from-dil-percent" style="font-weight:600;">-</span>';
                     }
@@ -932,7 +908,7 @@
                     field: "from_qty",
                     hozAlign: "center",
                     width: 80,
-                    visible: false,
+                    visible: true,
                     formatter: function(cell) {
                         return '<input type="number" class="form-control form-control-sm from-qty-input" min="1" value="" placeholder="Select FROM SKU first" style="width:70px;">';
                     }
@@ -942,7 +918,7 @@
                     field: "to_qty_calc",
                     hozAlign: "center",
                     width: 70,
-                    visible: false,
+                    visible: true,
                     formatter: function(cell) {
                         return '<input type="text" class="form-control form-control-sm to-qty-display" readonly placeholder="Calc" style="width:60px; background-color:#d4edda; font-weight:bold;">';
                     }
@@ -952,7 +928,7 @@
                     field: "ratio",
                     hozAlign: "center",
                     width: 100,
-                    visible: false,
+                    visible: true,
                     formatter: function(cell) {
                         return '<select class="form-select form-select-sm ratio-select" style="width:90px; font-size:14px;"><option value="1:4">1:4</option><option value="1:2">1:2</option><option value="1:1" selected>1:1</option><option value="2:1">2:1</option><option value="4:1">4:1</option></select>';
                     }
@@ -962,12 +938,37 @@
                     field: "submit",
                     hozAlign: "center",
                     width: 70,
-                    visible: false,
+                    visible: true,
                     headerSort: false,
                     formatter: function(cell) {
                         return '<button class="btn btn-success btn submit-transfer-btn" title="Execute Transfer"><i class="fas fa-check"></i></button>';
                     }
-                }
+                },
+                {
+                    title: "Last Updt",
+                    field: "LAST_UPDATE",
+                    hozAlign: "center",
+                    width: 250,
+                    headerSort: false,
+                    formatter: function(cell) {
+                        const data = cell.getValue();
+                        if (!data) {
+                            return '<span style="color:#999;">No history</span>';
+                        }
+                        
+                        const directionColor = data.direction === 'IN' ? '#28a745' : '#dc3545';
+                        const directionIcon = data.direction === 'IN' ? '↓' : '↑';
+                        const directionText = data.direction === 'IN' ? 'IN' : 'OUT';
+                        
+                        return '<div style="font-size:12px; line-height:1.3;">' +
+                            '<span style="font-weight:bold; color:' + directionColor + ';">' + directionIcon + ' ' + directionText + '</span> ' +
+                            '<span style="font-weight:600;">' + data.qty + '</span> ' +
+                            '<span style="color:#666;">' + (data.direction === 'IN' ? 'from' : 'to') + '</span> ' +
+                            '<span style="font-weight:500;">' + data.other_sku + '</span><br>' +
+                            '<span style="color:#999; font-size:11px;">' + data.date + ' • ' + data.by + '</span>' +
+                            '</div>';
+                    }
+                },
             ]
         });
         
@@ -1112,10 +1113,8 @@
         
         // Update table on render complete
         table.on('renderComplete', function() {
-            // Initialize Select2 when Transfer Mode is active
-            if (transferModeActive) {
-                initializeSelect2FromSku();
-            }
+            // Always initialize Select2 for FROM SKU search dropdown
+            initializeSelect2FromSku();
         });
         
     });
