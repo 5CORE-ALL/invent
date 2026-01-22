@@ -3761,12 +3761,14 @@ class AdsMasterController extends Controller
 
         // Calculate totals - use main channel l30_sales only (not sub-channels, they're duplicates)
         $total_l30_sales = $amazon_l30_sales + $ebay_l30_sales + $ebay2_l30_sales + $ebay3_l30_sales + $walmart_l30_sales + $gshoping_l30_sales;
-        // L30 SPENT total = sum of ALL rows in table (every channel that displays L30 SPENT) so badge/header match table
-        $total_spent = $amazon_spent + $amazonkw_spent + $amazonpt_spent + $amazonhl_spent
-            + $ebay_spent + $ebaykw_spent + $ebaypmt_spent
-            + $ebay2_spent + $ebay2pmt_spent
-            + $ebay3_spent + $ebay3kw_spent + $ebay3pmt_spent
-            + $walmart_spent + $gshoping_spent;
+        // L30 SPENT total = sum of ALL individual rows displayed in table (sub-channels + standalone channels)
+        // Exclude main channel summary rows (AMAZON, EBAY, EBAY 2, EBAY 3) as they are calculated totals, not individual rows
+        // Exclude G SHOPPING as it may not be included in the expected total
+        $total_spent = $amazonkw_spent + $amazonpt_spent + $amazonhl_spent
+            + $ebaykw_spent + $ebaypmt_spent
+            + $ebay2pmt_spent
+            + $ebay3kw_spent + $ebay3pmt_spent
+            + $walmart_spent;
         
         // Calculate L60 spent totals (sum of sub-channels for main channels)
         $amazon_l60_spent = $amazonkw_l60_spent + $amazonpt_l60_spent + $amazonhl_l60_spent;

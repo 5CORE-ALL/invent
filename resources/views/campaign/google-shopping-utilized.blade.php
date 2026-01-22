@@ -31,7 +31,6 @@
             justify-content: center;
             height: 120px;
             padding: 10px 5px;
-            box-sizing: border-box;
         }
 
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder {
@@ -40,10 +39,6 @@
             transform: rotate(180deg);
             white-space: nowrap;
             line-height: 1.5;
-            overflow: hidden;
-            word-break: keep-all;
-            width: 100%;
-            box-sizing: border-box;
         }
 
         .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
@@ -52,18 +47,8 @@
             transform: rotate(180deg);
             white-space: nowrap;
             line-height: 1.5;
-            overflow: hidden;
-            word-break: keep-all;
-            width: 100%;
-            box-sizing: border-box;
         }
 
-        /* Ensure columns don't shrink too much */
-        .tabulator .tabulator-header .tabulator-col {
-            min-width: 80px;
-            overflow: hidden;
-            box-sizing: border-box;
-        }
 
         /* Specific width for AD SOLD L30 column header - prevent overflow */
         .tabulator .tabulator-header .tabulator-col[data-field="ad_sold_L30"] {
@@ -527,6 +512,50 @@
                                             <i class="fa-solid fa-check-double me-1"></i>
                                             APR ALL SBID
                                         </button>
+                                    </div>
+                                </div>
+
+                                <!-- Multi-Range Filter Row (single row) -->
+                                <div class="row align-items-end g-2 mt-3 pt-3 border-top">
+                                    <div class="col">
+                                        <label class="form-label fw-semibold mb-1" style="color: #475569; font-size: 0.7rem;">1UB (%)</label>
+                                        <div class="d-flex gap-1 align-items-center">
+                                            <input type="number" id="1ub-min" class="form-control form-control-sm" placeholder="Min" step="0.1" style="font-size: 0.7rem; width: 52px; padding: 0.15rem 0.25rem;">
+                                            <span style="color: #64748b; font-size: 0.7rem;">-</span>
+                                            <input type="number" id="1ub-max" class="form-control form-control-sm" placeholder="Max" step="0.1" style="font-size: 0.7rem; width: 52px; padding: 0.15rem 0.25rem;">
+                                        </div>
+                                    </div>
+                                    <div class="col">
+                                        <label class="form-label fw-semibold mb-1" style="color: #475569; font-size: 0.7rem;">7UB (%)</label>
+                                        <div class="d-flex gap-1 align-items-center">
+                                            <input type="number" id="7ub-min" class="form-control form-control-sm" placeholder="Min" step="0.1" style="font-size: 0.7rem; width: 52px; padding: 0.15rem 0.25rem;">
+                                            <span style="color: #64748b; font-size: 0.7rem;">-</span>
+                                            <input type="number" id="7ub-max" class="form-control form-control-sm" placeholder="Max" step="0.1" style="font-size: 0.7rem; width: 52px; padding: 0.15rem 0.25rem;">
+                                        </div>
+                                    </div>
+                                    <div class="col">
+                                        <label class="form-label fw-semibold mb-1" style="color: #475569; font-size: 0.7rem;">SBID ($)</label>
+                                        <div class="d-flex gap-1 align-items-center">
+                                            <input type="number" id="sbid-min" class="form-control form-control-sm" placeholder="Min" step="0.01" style="font-size: 0.7rem; width: 52px; padding: 0.15rem 0.25rem;">
+                                            <span style="color: #64748b; font-size: 0.7rem;">-</span>
+                                            <input type="number" id="sbid-max" class="form-control form-control-sm" placeholder="Max" step="0.01" style="font-size: 0.7rem; width: 52px; padding: 0.15rem 0.25rem;">
+                                        </div>
+                                    </div>
+                                    <div class="col">
+                                        <label class="form-label fw-semibold mb-1" style="color: #475569; font-size: 0.7rem;">ACOS L30 (%)</label>
+                                        <div class="d-flex gap-1 align-items-center">
+                                            <input type="number" id="acos-min" class="form-control form-control-sm" placeholder="Min" step="0.1" style="font-size: 0.7rem; width: 52px; padding: 0.15rem 0.25rem;">
+                                            <span style="color: #64748b; font-size: 0.7rem;">-</span>
+                                            <input type="number" id="acos-max" class="form-control form-control-sm" placeholder="Max" step="0.1" style="font-size: 0.7rem; width: 52px; padding: 0.15rem 0.25rem;">
+                                        </div>
+                                    </div>
+                                    <div class="col">
+                                        <label class="form-label fw-semibold mb-1" style="color: #475569; font-size: 0.7rem;">Price ($)</label>
+                                        <div class="d-flex gap-1 align-items-center">
+                                            <input type="number" id="price-min" class="form-control form-control-sm" placeholder="Min" step="0.01" style="font-size: 0.7rem; width: 52px; padding: 0.15rem 0.25rem;">
+                                            <span style="color: #64748b; font-size: 0.7rem;">-</span>
+                                            <input type="number" id="price-max" class="form-control form-control-sm" placeholder="Max" step="0.01" style="font-size: 0.7rem; width: 52px; padding: 0.15rem 0.25rem;">
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1710,6 +1739,63 @@
                         return false;
                     }
 
+                // Apply multi-range filters
+                // 1UB range filter
+                let ub1Min = $("#1ub-min").val();
+                let ub1Max = $("#1ub-max").val();
+                if (ub1Min || ub1Max) {
+                    if (ub1Min && ub1 < parseFloat(ub1Min)) return false;
+                    if (ub1Max && ub1 > parseFloat(ub1Max)) return false;
+                }
+
+                // 7UB range filter
+                let ub7Min = $("#7ub-min").val();
+                let ub7Max = $("#7ub-max").val();
+                if (ub7Min || ub7Max) {
+                    if (ub7Min && ub7 < parseFloat(ub7Min)) return false;
+                    if (ub7Max && ub7 > parseFloat(ub7Max)) return false;
+                }
+
+                // SBID range filter
+                let sbidMin = $("#sbid-min").val();
+                let sbidMax = $("#sbid-max").val();
+                if (sbidMin || sbidMax) {
+                    let sbid = parseFloat(data.sbid || 0);
+                    if (isNaN(sbid)) sbid = 0;
+                    
+                    if (sbidMin && sbid < parseFloat(sbidMin)) return false;
+                    if (sbidMax && sbid > parseFloat(sbidMax)) return false;
+                }
+
+                // ACOS L30 range filter
+                let acosMin = $("#acos-min").val();
+                let acosMax = $("#acos-max").val();
+                if (acosMin || acosMax) {
+                    let spend_L30 = parseFloat(data.spend_L30 || 0);
+                    let sales_L30 = parseFloat(data.ad_sales_L30 || 0);
+                    let acos = 0;
+                    
+                    if (sales_L30 > 0) {
+                        acos = (spend_L30 / sales_L30) * 100;
+                    } else if (spend_L30 > 0 && sales_L30 == 0) {
+                        acos = 100;
+                    }
+                    
+                    if (acosMin && acos < parseFloat(acosMin)) return false;
+                    if (acosMax && acos > parseFloat(acosMax)) return false;
+                }
+
+                // Price range filter
+                let priceMin = $("#price-min").val();
+                let priceMax = $("#price-max").val();
+                if (priceMin || priceMax) {
+                    let price = parseFloat(data.price || 0);
+                    if (isNaN(price)) price = 0;
+                    
+                    if (priceMin && price < parseFloat(priceMin)) return false;
+                    if (priceMax && price > parseFloat(priceMax)) return false;
+                }
+
                 // Apply zero INV filter first (if enabled)
                 let inv = parseFloat(data.INV || 0);
                 if (showZeroInvOnly) {
@@ -1909,6 +1995,14 @@
                     table.setFilter(combinedFilter);
                     setTimeout(function() {
                     updateButtonCounts();
+                    }, 300);
+                });
+
+                // Range filter event listeners
+                $("#1ub-min, #1ub-max, #7ub-min, #7ub-max, #sbid-min, #sbid-max, #acos-min, #acos-max, #price-min, #price-max").on("input", function() {
+                    table.setFilter(combinedFilter);
+                    setTimeout(function() {
+                        updateButtonCounts();
                     }, 300);
                 });
 
