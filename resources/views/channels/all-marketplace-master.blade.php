@@ -399,6 +399,59 @@
             </div>
         </div>
     </div>
+
+    <!-- Clicks Breakdown Modal -->
+    <div class="modal fade" id="clicksBreakdownModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title">
+                        <i class="fas fa-mouse-pointer me-2"></i> 
+                        <span id="clicksModalChannelName">Channel</span> - Advertising Breakdown
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Type</th>
+                                    <th class="text-end">Clicks</th>
+                                    <th class="text-end">Ad Sales</th>
+                                    <th class="text-end">ACOS</th>
+                                    <th class="text-end">TACOS</th>
+                                    <th class="text-end">Ad Sold</th>
+                                    <th class="text-end">CVR</th>
+                                    <th class="text-end">Missing Ads</th>
+                                </tr>
+                            </thead>
+                            <tbody id="clicksBreakdownTableBody">
+                                <tr>
+                                    <td colspan="8" class="text-center">Loading...</td>
+                                </tr>
+                            </tbody>
+                            <tfoot class="table-secondary">
+                                <tr>
+                                    <th>Total</th>
+                                    <th class="text-end" id="clicksBreakdownTotalClicks">0</th>
+                                    <th class="text-end" id="clicksBreakdownTotalAdSales">$0</th>
+                                    <th class="text-end" id="clicksBreakdownTotalAcos">-</th>
+                                    <th class="text-end" id="clicksBreakdownTotalTacos">-</th>
+                                    <th class="text-end" id="clicksBreakdownTotalAdSold">0</th>
+                                    <th class="text-end" id="clicksBreakdownTotalCvr">-</th>
+                                    <th class="text-end" id="clicksBreakdownTotalMissingAds">0</th>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script')
@@ -635,8 +688,25 @@
                         sorter: "number",
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
+                            
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;">${value.toLocaleString('en-US')}</span>`;
+                            
+                            // Add info icon for channels that might have PT/KW/HL breakdown
+                            const infoIcon = `<i class="fas fa-info-circle clicks-info-icon ms-1" 
+                                data-channel="${channel}" 
+                                style="cursor:pointer;color:#17a2b8;font-size:12px;" 
+                                title="View Clicks Breakdown"></i>`;
+                            
+                            return `<span style="font-weight:600;">${value.toLocaleString('en-US')}</span>${infoIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('clicks-info-icon')) {
+                                e.stopPropagation();
+                                const channelName = $(e.target).data('channel');
+                                showClicksBreakdown(channelName);
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -1240,6 +1310,96 @@
                 const channelName = $(this).data('channel');
                 showChannelHistoryGraph(channelName);
             });
+
+            // Show clicks breakdown modal - Fetch data from adv_masters_datas table
+            function showClicksBreakdown(channelName) {
+                console.log('Opening clicks breakdown for:', channelName);
+                
+                // Set modal title
+                $('#clicksModalChannelName').text(channelName);
+                
+                // Show loading state
+                $('#clicksBreakdownTableBody').html('<tr><td colspan="8" class="text-center"><div class="spinner-border spinner-border-sm text-info" role="status"><span class="visually-hidden">Loading...</span></div> Loading...</td></tr>');
+                
+                // Reset totals
+                $('#clicksBreakdownTotalClicks').text('0');
+                $('#clicksBreakdownTotalAdSales').text('$0');
+                $('#clicksBreakdownTotalAcos').text('-');
+                $('#clicksBreakdownTotalTacos').text('-');
+                $('#clicksBreakdownTotalAdSold').text('0');
+                $('#clicksBreakdownTotalCvr').text('-');
+                $('#clicksBreakdownTotalMissingAds').text('0');
+                
+                // Show modal
+                const modal = new bootstrap.Modal(document.getElementById('clicksBreakdownModal'));
+                modal.show();
+                
+                // Fetch breakdown data from backend
+                $.ajax({
+                    url: '/channel-clicks-breakdown',
+                    method: 'GET',
+                    data: { channel: channelName },
+                    success: function(response) {
+                        console.log('Clicks breakdown response:', response);
+                        
+                        if (response.success && response.data && response.data.length > 0) {
+                            let html = '';
+                            let totalClicks = 0;
+                            let totalAdSales = 0;
+                            let totalAdSold = 0;
+                            let totalMissingAds = 0;
+                            
+                            // Sort by type (PT, KW, HL)
+                            response.data.sort((a, b) => {
+                                const orderMap = { 'PT': 1, 'KW': 2, 'HL': 3 };
+                                return (orderMap[a.type] || 4) - (orderMap[b.type] || 4);
+                            });
+                            
+                            response.data.forEach(item => {
+                                const clicks = parseInt(item.clicks) || 0;
+                                const adSales = parseFloat(item.ad_sales) || 0;
+                                const acos = parseFloat(item.acos) || 0;
+                                const tacos = parseFloat(item.tacos) || 0;
+                                const adSold = parseInt(item.ad_sold) || 0;
+                                const cvr = parseFloat(item.cvr) || 0;
+                                const missingAds = parseInt(item.missing_ads) || 0;
+                                
+                                totalClicks += clicks;
+                                totalAdSales += adSales;
+                                totalAdSold += adSold;
+                                totalMissingAds += missingAds;
+                                
+                                html += `
+                                    <tr>
+                                        <td><strong>${item.type}</strong> <small class="text-muted">(${item.channel})</small></td>
+                                        <td class="text-end"><strong>${clicks > 0 ? clicks.toLocaleString('en-US') : '0'}</strong></td>
+                                        <td class="text-end">$${adSales > 0 ? adSales.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '0.00'}</td>
+                                        <td class="text-end">${acos > 0 ? acos.toFixed(2) + '%' : '-'}</td>
+                                        <td class="text-end">${tacos > 0 ? tacos.toFixed(2) + '%' : '-'}</td>
+                                        <td class="text-end">${adSold > 0 ? adSold.toLocaleString('en-US') : '0'}</td>
+                                        <td class="text-end">${cvr > 0 ? cvr.toFixed(2) + '%' : '-'}</td>
+                                        <td class="text-end">${missingAds > 0 ? missingAds.toLocaleString('en-US') : '0'}</td>
+                                    </tr>
+                                `;
+                            });
+                            
+                            $('#clicksBreakdownTableBody').html(html);
+                            
+                            // Update totals
+                            $('#clicksBreakdownTotalClicks').text(totalClicks.toLocaleString('en-US'));
+                            $('#clicksBreakdownTotalAdSales').text('$' + totalAdSales.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}));
+                            $('#clicksBreakdownTotalAdSold').text(totalAdSold.toLocaleString('en-US'));
+                            $('#clicksBreakdownTotalMissingAds').text(totalMissingAds.toLocaleString('en-US'));
+                        } else {
+                            $('#clicksBreakdownTableBody').html('<tr><td colspan="8" class="text-center text-muted">No PT/KW/HL breakdown available for this channel</td></tr>');
+                        }
+                    },
+                    error: function(xhr) {
+                        console.error('Error fetching clicks breakdown:', xhr);
+                        $('#clicksBreakdownTableBody').html('<tr><td colspan="8" class="text-center text-danger">Error loading data</td></tr>');
+                    }
+                });
+            }
 
             // Edit channel button handler
             $(document).on('click', '.edit-channel-btn', function(e) {
