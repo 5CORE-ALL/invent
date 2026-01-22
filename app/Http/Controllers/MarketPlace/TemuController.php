@@ -114,9 +114,9 @@ class TemuController extends Controller
             // Get Amazon pricing data
             $amazonData = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy('sku');
 
-            // Get marketplace percentage
-            $marketplaceData = ChannelMaster::where('channel', 'Temu')->first();
-            $percentage = $marketplaceData ? $marketplaceData->channel_percentage : 100;
+            // Get marketplace percentage from marketplace_percentages table
+            $marketplaceData = MarketplacePercentage::where('marketplace', 'Temu')->first();
+            $percentage = $marketplaceData ? $marketplaceData->percentage : 87;
             $percentageValue = $percentage / 100;
 
             // Process data
