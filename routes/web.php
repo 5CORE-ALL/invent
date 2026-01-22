@@ -140,6 +140,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\RoutingController;
 use App\Http\Controllers\MarketPlace\ReverbController;
 use App\Http\Controllers\MarketPlace\ReverbZeroController;
+use App\Http\Controllers\MarketPlace\CvrMasterController;
 use App\Http\Controllers\MarketPlace\TikTokPricingController;
 use App\Http\Controllers\PurchaseMaster\ChinaLoadController;
 use App\Http\Controllers\PurchaseMaster\MFRGInProgressController;
@@ -578,6 +579,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/stock-balance-delete-relationship', [StockBalanceController::class, 'deleteRelationship']);
     Route::get('/stock-balance-get-skus-autocomplete', [StockBalanceController::class, 'getSkusForAutocomplete']);
     Route::get('/stock-balance-get-recent-history', [StockBalanceController::class, 'getRecentHistory']);
+    
+    //Multi-SKU Stock Balance
+    Route::get('/stock-balance-multi-sku', [StockBalanceController::class, 'multiSkuView'])->name('stock.balance.multi.sku');
+    Route::post('/stock-balance-multi-sku-data', [StockBalanceController::class, 'getMultiSkuInventoryData']);
 
     //channel Movement Analysis
     Route::get('/channel-movement-analysis', [ChannelMovementAnalysisController::class, 'index'])->name('channel.movement.analysis');
@@ -845,6 +850,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/reverb-save-sprice', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'saveSpriceUpdates'])->name('reverb.save.sprice');
     Route::get('/reverb-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'getColumnVisibility'])->name('reverb.pricing.column.get');
     Route::post('/reverb-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\ReverbController::class, 'setColumnVisibility'])->name('reverb.pricing.column.set');
+
+    // CVR Master Routes (Tabulator)
+    Route::get('/cvr-master', [CvrMasterController::class, 'index'])->name('cvr.master');
+    Route::get('/cvr-master-data-json', [CvrMasterController::class, 'getCvrDataJson'])->name('cvr.master.data.json');
+    Route::get('/cvr-master-breakdown/{sku}', [CvrMasterController::class, 'getBreakdownData'])->name('cvr.master.breakdown');
+    Route::get('/cvr-master-column-visibility', [CvrMasterController::class, 'getColumnVisibility'])->name('cvr.master.column.get');
+    Route::post('/cvr-master-column-visibility', [CvrMasterController::class, 'saveColumnVisibility'])->name('cvr.master.column.set');
 
     // TikTok Pricing Routes (Tabulator)
     Route::get('/tiktok-pricing', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktokTabulatorView'])->name('tiktok.pricing');
