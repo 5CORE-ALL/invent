@@ -4229,6 +4229,10 @@ class ChannelMasterController extends Controller
         ]);
         // Save Data to Database
         try {
+            // Set default status to 'Active' if not provided
+            if (!isset($validatedData['status'])) {
+                $validatedData['status'] = 'Active';
+            }
             $channel = ChannelMaster::create($validatedData);
 
             return response()->json([

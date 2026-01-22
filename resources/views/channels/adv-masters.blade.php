@@ -69,22 +69,23 @@
 
         /* Improved Search Bar */
         #search-input {
-            border-radius: 12px;
-            border: 2px solid var(--border-color);
-            padding: 12px 20px;
-            font-size: 14px;
-            transition: all 0.3s ease;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            padding: 8px 32px 8px 12px;
+            font-size: 13px;
+            transition: all 0.2s ease;
             background: white;
         }
 
         #search-input:focus {
             outline: none;
             border-color: var(--primary-color);
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
         }
 
         #search-input::placeholder {
             color: var(--text-secondary);
+            font-size: 13px;
         }
 
         /* Table Styling */
@@ -149,6 +150,23 @@
 
         .tabulator .tabulator-row:hover {
             background-color: #f8f9fa;
+        }
+
+        /* Header sort & filter */
+        .tabulator .tabulator-col .tabulator-header-filter input,
+        .tabulator .tabulator-col input[type="text"] {
+            width: 100%;
+            max-width: 140px;
+            padding: 4px 8px;
+            font-size: 12px;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            background: #fff;
+        }
+        .tabulator .tabulator-col .tabulator-header-filter input:focus,
+        .tabulator .tabulator-col input[type="text"]:focus {
+            border-color: #4361ee;
+            outline: none;
         }
 
         #adv-master-table thead th {
@@ -533,23 +551,85 @@
         <div class="table-container">
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <div>
-                    <h3 class="mb-0" style="color: var(--text-primary); font-weight: 700;">ADV Masters Dashboard</h3>
-                    <div class="d-flex align-items-center gap-2 mt-2">
-                        <span class="badge bg-primary" style="font-size: 14px; padding: 8px 12px;">
-                            L30 Ad Spend: ${{ number_format($total_spent, 2) }}
+                <h3 class="mb-0" style="color: var(--text-primary); font-weight: 700;">ADV Masters Dashboard</h3>
+                    <div class="d-flex align-items-center gap-2 mt-2 flex-wrap">
+                        <span class="badge bg-primary" style="font-size: 13px; padding: 6px 12px; font-weight: 500;">
+                            L30 Ad Spend: $<span id="badge-l30-spend">{{ number_format($total_spent, 2) }}</span>
                         </span>
-                        <span class="badge bg-info" style="font-size: 14px; padding: 8px 12px;">
-                            L60 Ad Spend: ${{ number_format($total_l60_spent ?? 0, 2) }}
+                        <span class="badge bg-info" style="font-size: 13px; padding: 6px 12px; font-weight: 500;">
+                            L60 Ad Spend: $<span id="badge-l60-spend">{{ number_format($total_l60_spent ?? 0, 2) }}</span>
+                        </span>
+                        <span class="badge bg-success" style="font-size: 13px; padding: 6px 12px; font-weight: 500;">
+                            @php
+                                $total_cvr = 0;
+                                $total_cvr_60_val = 0;
+                                if(($total_clicks ?? 0) > 0){
+                                    $total_cvr = (($total_ad_sold ?? 0) / ($total_clicks ?? 1)) * 100;
+                                }
+                                if(($total_l60_clicks ?? 0) > 0){
+                                    $total_cvr_60_val = (($total_l60_ad_sold ?? 0) / ($total_l60_clicks ?? 1)) * 100;
+                                }
+                                if($total_cvr_60_val > 0){
+                                    $total_grw_cvr = (($total_cvr - $total_cvr_60_val) / $total_cvr_60_val) * 100;
+                                }else{
+                                    $total_grw_cvr = 0;
+                                }
+                                $total_cvr = number_format($total_cvr, 2);
+                                $total_grw_cvr = number_format($total_grw_cvr, 2);
+                                $grw_cvr_color = ($total_grw_cvr >= 0) ? '#28a745' : '#dc3545';
+                            @endphp
+                            CVR: <span id="badge-cvr">{{ $total_cvr }}</span>% 
+                            <span id="badge-cvr-grw" style="color: {{ $grw_cvr_color }}; font-weight: 600;">
+                                (Grw: {{ $total_grw_cvr >= 0 ? '+' : '' }}{{ $total_grw_cvr }}%)
+                            </span>
+                        </span>
+                        <span class="badge bg-secondary" style="font-size: 13px; padding: 6px 12px; font-weight: 500;">
+                            @php
+                                $total_grw_clks = (($total_l60_clicks ?? 0) > 0) ? ($total_clicks / ($total_l60_clicks ?? 1)) * 100 : 0;
+                                $total_grw_clks = number_format($total_grw_clks, 2);
+                                $grw_clks_color = ($total_grw_clks >= 0) ? '#28a745' : '#dc3545';
+                            @endphp
+                            Clicks: <span id="badge-clicks">{{ number_format($total_clicks ?? 0, 0) }}</span>
+                            <span id="badge-clicks-grw" style="color: {{ $grw_clks_color }}; font-weight: 600;">
+                                (Grw: {{ $total_grw_clks >= 0 ? '+' : '' }}{{ $total_grw_clks }}%)
+                            </span>
+                        </span>
+                        <span class="badge bg-warning text-dark" style="font-size: 13px; padding: 6px 12px; font-weight: 500;">
+                            Missing Data: <span id="badge-missing">{{ number_format($total_missing ?? 0, 0) }}</span>
                         </span>
                     </div>
                 </div>
-                <div class="d-flex align-items-center gap-3">
-                    <div class="position-relative" style="width: 300px;">
-                        <input type="text" class="form-control" id="search-input" placeholder="🔍 Search channels..." />
+                <div class="d-flex align-items-center gap-3 flex-wrap">
+                    <div class="d-flex align-items-center gap-2">
+                        <label class="mb-0 small fw-semibold text-nowrap">View:</label>
+                        <select class="form-select form-select-sm" id="adv-view-mode" style="width: auto;">
+                            <option value="all">All channels</option>
+                            <option value="channel-wise">Channel-wise</option>
+                        </select>
+                        <select class="form-select form-select-sm" id="adv-channel-select" style="width: auto; display: none;">
+                            <option value="">Select channel</option>
+                            @foreach(['AMAZON','EBAY','EBAY 2','EBAY 3','WALMART','G SHOPPING'] as $ch)
+                                <option value="{{ $ch }}">{{ $ch }}</option>
+                            @endforeach
+                            @if(isset($additionalChannelsData) && count($additionalChannelsData) > 0)
+                                @foreach($additionalChannelsData as $chData)
+                                    <option value="{{ $chData['channel'] }}">{{ $chData['channel'] }}</option>
+                                @endforeach
+                            @endif
+                        </select>
+                        <a href="{{ route('all.marketplace.master') }}" class="btn btn-sm btn-outline-primary" title="Active Channels view">Active Channels</a>
                     </div>
-                    <button type="button" class="btn btn-primary" id="add-channel-btn" title="Add New Channel">
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="margin-right: 6px; vertical-align: middle;">
-                            <path d="M8 0L10.5 6L16 8L10.5 10L8 16L5.5 10L0 8L5.5 6L8 0Z"/>
+                    <div class="position-relative" style="width: 280px;">
+                        <input type="text" class="form-control form-control-sm" id="search-input" placeholder="🔍 Search channels..." style="border-radius: 8px;" />
+                        <span class="position-absolute top-50 end-0 translate-middle-y me-2" style="pointer-events: none; opacity: 0.5;">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/>
+                            </svg>
+                        </span>
+                    </div>
+                    <button type="button" class="btn btn-primary btn-sm" id="add-channel-btn" data-bs-toggle="modal" data-bs-target="#addChannelModal" title="Add New Channel" style="border-radius: 8px; font-weight: 500;">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style="margin-right: 4px; vertical-align: middle;">
+                            <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
                         </svg>
                         Add Channel
                     </button>
@@ -561,10 +641,13 @@
                     <thead>
                         <tr>
                             <th class="text-center th-horizontal" style="width: 110px;">CHANNELS</th>
+                            <th class="text-center th-horizontal" style="width: 90px;">Ad Type</th>
+                            <th class="text-center th-horizontal" style="width: 70px;">Tab</th>
+                            <th class="text-center th-horizontal" style="width: 70px;">Graph</th>
                             <th class="text-center th-horizontal">L30 SALES <br><hr> {{ $total_l30_sales}}</th>
                             <th class="text-center th-horizontal">GPFT <br><hr> 0</th>
                             <th class="text-center th-vertical">TPFT <br><hr> 0</th>
-                            <th class="text-center th-vertical">L30 SPENT <br><hr> {{ $total_spent}}</th>
+                            <th class="text-center th-vertical">L30 SPENT <br><hr> {{ number_format($total_spent, 2) }}</th>
                             <th class="text-center th-vertical">L60 SPENT <br><hr> {{ $total_l60_spent ?? 0}}</th>
                             <th class="text-center th-vertical">GRW <br><hr> 
                                 @php
@@ -647,6 +730,9 @@
                                     </button>
                                 </div>
                             </td>
+                            <td class="text-center"></td>
+                            <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
+                            <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
                             <td class="text-center">{{ $amazon_l30_sales }}</td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
@@ -769,6 +855,9 @@
                         <tr class="accordion-body">
                             <td class="text-center"><a href="{{ route('amazon.kw.ads') }}" target="_blank" style="text-decoration:none; color:#000000;">AMZ KW</a></td>
                             <td class="text-center"></td>
+                            <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
+                            <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
+                            <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $amazonkw_spent }}</td>
@@ -877,6 +966,9 @@
 
                          <tr class="accordion-body">
                             <td class="text-center"><a href="{{ route('amazon.pt.ads') }}" target="_blank" style="text-decoration:none; color:#000000;">AMZ PT</a></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
+                            <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
@@ -987,6 +1079,9 @@
                         <tr class="accordion-body">
                             <td class="text-center"><a href="{{ route('amazon.hl.ads') }}" target="_blank" style="text-decoration:none; color:#000000;">AMZ HL</a></td>
                             <td class="text-center"></td>
+                            <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
+                            <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
+                            <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $amazonhl_spent }}</td>
@@ -1083,7 +1178,7 @@
                                 @endphp
                                 {{ $grw_cvr.' %' }}
                             </td>
-                            <td class="text-center"></td>
+                            <td class="text-center">{{ $amazonhl_missing_ads }}</td>
                             <td class="text-center">
                                 <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="AMZ HL" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -1104,6 +1199,9 @@
                                     </button>
                                 </div>
                             </td>
+                            <td class="text-center"></td>
+                            <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
+                            <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
                             <td class="text-center">{{ $ebay_l30_sales }}</td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
@@ -1226,6 +1324,9 @@
                         <tr class="accordion-body">
                             <td class="text-center"><a href="{{ route('ebay.keywords.ads') }}" target="_blank" style="text-decoration:none; color:#000000;">EB KW</a></td>
                             <td class="text-center"></td>
+                            <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
+                            <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
+                            <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $ebaykw_spent }}</td>
@@ -1335,6 +1436,9 @@
                         <tr class="accordion-body">
                             <td class="text-center"><a href="{{ route('ebay.pmp.ads') }}" target="_blank" style="text-decoration:none; color:#000000;">EB PMT</a></td>
                             <td class="text-center"></td>
+                            <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
+                            <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
+                            <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $ebaypmt_spent }}</td>
@@ -1443,6 +1547,9 @@
 
                         <tr style="background-color:#cfe2f3;" class="accordion-header">
                             <td class="text-center"><b>EBAY 2</b></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
+                            <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
                             <td class="text-center">{{ $ebay2_l30_sales }}</td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
@@ -1564,6 +1671,9 @@
                         <tr class="accordion-body">
                             <td class="text-center">EB PMT</td>
                             <td class="text-center"></td>
+                            <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
+                            <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
+                            <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $ebay2pmt_spent }}</td>
@@ -1672,6 +1782,9 @@
 
                         <tr style="background-color:#cfe2f3;" class="accordion-header">
                             <td class="text-center"><b>EBAY 3</b></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
+                            <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
                             <td class="text-center">{{ $ebay3_l30_sales }}</td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
@@ -1793,6 +1906,9 @@
                          <tr class="accordion-body">
                             <td class="text-center">EB KW</td>
                             <td class="text-center"></td>
+                            <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
+                            <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
+                            <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $ebay3kw_spent }}</td>
@@ -1901,6 +2017,9 @@
 
                         <tr class="accordion-body">
                             <td class="text-center">EB PMT</td>
+                            <td class="text-center"></td>
+                            <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
+                            <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
@@ -2011,6 +2130,9 @@
                         <tr style="background-color:#cfe2f3;" class="accordion-header">
                             <td class="text-center"><b>WALMART</b></td>
                             <td class="text-center"></td>
+                            <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
+                            <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
+                            <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $walmart_spent }}</td>
@@ -2109,7 +2231,7 @@
                                 @endphp
                                 {{ $grw_cvr.' %' }}
                             </td>
-                            <td class="text-center"></td>
+                            <td class="text-center">{{ $walmart_missing_ads }}</td>
                             <td class="text-center">
                                 <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="WALMART" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -2122,7 +2244,8 @@
                         <tr style="background-color:#cfe2f3;" class="accordion-header">
                             <td class="text-center"><b>SHOPIFY</b></td>
                             <td class="text-center"></td>
-                            <td class="text-center"></td>
+                            <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
+                            <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
@@ -2151,6 +2274,9 @@
 
                          <tr class="accordion-body">
                             <td class="text-center">G SHOPPING</td>
+                            <td class="text-center"></td>
+                            <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
+                            <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
@@ -2248,7 +2374,7 @@
                                 @endphp
                                 {{ $grw_cvr.' %' }}
                             </td>
-                            <td class="text-center"></td>
+                            <td class="text-center">{{ $gshoping_missing_ads }}</td>
                             <td class="text-center">
                                 <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="G SHOPPING" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -2260,6 +2386,12 @@
 
                          <tr class="accordion-body">
                             <td class="text-center">G SERP</td>
+                            <td class="text-center"></td>
+                            <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
+                            <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
@@ -2291,6 +2423,13 @@
                         <tr class="accordion-body">
                             <td class="text-center">FB CARAOUSAL</td>
                             <td class="text-center"></td>
+                            <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
+                            <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
@@ -2320,6 +2459,10 @@
 
                         <tr class="accordion-body">
                             <td class="text-center">FB VIDEO</td>
+                            <td class="text-center"></td>
+                            <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
+                            <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
+                            <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
@@ -2351,6 +2494,10 @@
                         <tr class="accordion-body">
                             <td class="text-center">INSTA CARAOUSAL</td>
                             <td class="text-center"></td>
+                            <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
+                            <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
@@ -2380,6 +2527,10 @@
 
                         <tr class="accordion-body">
                             <td class="text-center">INSTA VIDEO</td>
+                            <td class="text-center"></td>
+                            <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
+                            <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
+                            <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
@@ -2411,6 +2562,10 @@
                         <tr class="accordion-body">
                             <td class="text-center">YOUTUBE</td>
                             <td class="text-center"></td>
+                            <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
+                            <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
@@ -2441,7 +2596,8 @@
                         <tr style="background-color:#cfe2f3;" class="accordion-header">
                             <td class="text-center"><b>TIKTOK</b></td>
                             <td class="text-center"></td>
-                            <td class="text-center"></td>
+                            <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
+                            <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
@@ -2466,7 +2622,55 @@
                                 </button>
                             </td>
                         </tr>
-                    
+
+                        @if(isset($additionalChannelsData) && count($additionalChannelsData) > 0)
+                            @foreach($additionalChannelsData as $chData)
+                                @php
+                                    $ch = $chData['channel'];
+                                    $grw = ($chData['l60_spent'] > 0) ? ($chData['spent'] / $chData['l60_spent']) * 100 : 0;
+                                    $grw_clks = ($chData['l60_clicks'] > 0) ? ($chData['clicks'] / $chData['l60_clicks']) * 100 : 0;
+                                    $l30_acos = ($chData['ad_sales'] > 0) ? ($chData['spent'] / $chData['ad_sales']) * 100 : 0;
+                                    $l60_acos = ($chData['l60_ad_sold'] > 0 && $chData['l60_clicks'] > 0) ? (($chData['l60_spent'] / ($chData['l60_ad_sold'] ?? 1)) * 100) : 0;
+                                    $ctrl_acos = ($l60_acos > 0) ? (($l30_acos - $l60_acos) / $l60_acos) * 100 : 0;
+                                    $cvr = ($chData['clicks'] > 0) ? ($chData['ad_sold'] / $chData['clicks']) * 100 : 0;
+                                    $cvr_60 = ($chData['l60_clicks'] > 0) ? ($chData['l60_ad_sold'] / $chData['l60_clicks']) * 100 : 0;
+                                    $grw_cvr = ($cvr_60 > 0) ? (($cvr - $cvr_60) / $cvr_60) * 100 : 0;
+                                @endphp
+                                <tr style="background-color:#cfe2f3;" class="accordion-header">
+                                    <td class="text-center"><b>{{ $ch }}</b></td>
+                                    <td class="text-center"></td>
+                                    <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
+                                    <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
+                                    <td class="text-center">{{ number_format($chData['l30_sales'], 0) }}</td>
+                                    <td class="text-center"></td>
+                                    <td class="text-center"></td>
+                                    <td class="text-center">{{ number_format($chData['spent'], 2) }}</td>
+                                    <td class="text-center">{{ number_format($chData['l60_spent'], 2) }}</td>
+                                    <td class="text-center">{{ number_format($grw, 2) }}%</td>
+                                    <td class="text-center">{{ number_format($chData['clicks'], 0) }}</td>
+                                    <td class="text-center">{{ number_format($chData['l60_clicks'], 0) }}</td>
+                                    <td class="text-center">{{ number_format($grw_clks, 2) }}%</td>
+                                    <td class="text-center">{{ number_format($chData['ad_sales'], 2) }}</td>
+                                    <td class="text-center">{{ number_format($l30_acos, 2) }}%</td>
+                                    <td class="text-center">{{ number_format($l60_acos, 2) }}%</td>
+                                    <td class="text-center" style="color: {{ $ctrl_acos < 0 ? '#006400' : '#8B0000' }}">{{ number_format($ctrl_acos, 2) }}%</td>
+                                    <td class="text-center">0</td>
+                                    <td class="text-center">{{ number_format($chData['ad_sold'], 0) }}</td>
+                                    <td class="text-center">{{ number_format($cvr, 2) }}%</td>
+                                    <td class="text-center">{{ number_format($cvr_60, 2) }}%</td>
+                                    <td class="text-center">{{ number_format($grw_cvr, 2) }}%</td>
+                                    <td class="text-center">{{ number_format($chData['missing_ads'], 0) }}</td>
+                                    <td class="text-center">
+                                        <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="{{ $ch }}" title="Edit Channel">
+                                            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                                <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                                            </svg>
+                                        </button>
+                                    </td>
+                                </tr>
+                            @endforeach
+                        @endif
+
                     </tbody>
                 </table>
             </div>
@@ -2654,6 +2858,108 @@
     </div>
     <!-- END EBAY LARGE MODAL -->
 
+    <!-- L60 Data Table Modal (stacked tabular) -->
+    <div class="modal fade" id="adv-l60-tab-modal" tabindex="-1" aria-labelledby="adv-l60-tab-modal-label" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="adv-l60-tab-modal-label">L60 Data – All Rows</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <div class="table-responsive" style="max-height: 70vh;">
+                        <table class="table table-bordered table-striped mb-0" id="adv-l60-tab-table">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th>#</th>
+                                    <th>Channel</th>
+                                    <th class="text-end">L60 SPENT</th>
+                                    <th class="text-end">L60 CLICKS</th>
+                                    <th class="text-end">CVR 60</th>
+                                    <th class="text-end">Grw CVR</th>
+                                </tr>
+                            </thead>
+                            <tbody id="adv-l60-tab-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- L60 Data Graph Modal (stacked line graph) -->
+    <div class="modal fade" id="adv-l60-graph-modal" tabindex="-1" aria-labelledby="adv-l60-graph-modal-label" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="adv-l60-graph-modal-label">L60 Data – Line Graph (All Channels)</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <label class="form-label">Select Metric:</label>
+                            <select class="form-select" id="l60-graph-metric">
+                                <option value="l60_spent">L60 SPENT</option>
+                                <option value="l60_clicks">L60 CLICKS</option>
+                                <option value="cvr_60">CVR 60</option>
+                                <option value="grw_cvr">Grw CVR</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="chart-container" style="position: relative; height: 500px;">
+                        <canvas id="adv-l60-graph-canvas"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Channel Modal -->
+    <div class="modal fade" id="addChannelModal" tabindex="-1" aria-labelledby="addChannelModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="addChannelModalLabel">
+                        <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" class="me-2" style="vertical-align: middle;">
+                            <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
+                        </svg>
+                        Add New Channel
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addChannelForm">
+                        @csrf
+                        <div class="mb-3">
+                            <label for="addChannelName" class="form-label">Channel Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="addChannelName" name="channel" required placeholder="e.g. AMAZON, EBAY" autocomplete="off">
+                        </div>
+                        <div class="mb-3">
+                            <label for="addChannelSheetLink" class="form-label">Sheet Link</label>
+                            <input type="url" class="form-control" id="addChannelSheetLink" name="sheet_link" placeholder="https://..." autocomplete="off">
+                        </div>
+                        <div class="mb-3">
+                            <label for="addChannelType" class="form-label">Type</label>
+                            <select class="form-select" id="addChannelType" name="type">
+                                <option value="">Select type (optional)</option>
+                                <option value="B2B">B2B</option>
+                                <option value="B2C">B2C</option>
+                                <option value="Dropship">Dropship</option>
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="saveChannelBtn">
+                        <span class="btn-text">Save Channel</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
 @endsection
 
 @section('script')
@@ -2661,6 +2967,8 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+window.advMasterChannelWiseTotals = @json($channelWiseTotals ?? []);
+
 $(document).ready(function() {
 
     /** Start Ebay Chart Ajax **/
@@ -3537,11 +3845,7 @@ $(document).ready(function() {
         }
     });
 
-    $(".accordion-body").hide();
-    $(".accordion-header").click(function() {
-        $(this).nextUntil(".accordion-header").slideToggle(200);
-    });
-   
+    /* Accordion handled by Tabulator rowClick; table is replaced by Tabulator */
     setTimeout(function() {
         var tabulatorScript = document.createElement('script');
         tabulatorScript.src = "https://unpkg.com/tabulator-tables@5.5.2/dist/js/tabulator.min.js";
@@ -3577,6 +3881,22 @@ $(document).ready(function() {
                     tableData.push(rowData);
                 });
 
+                // Helpers for sort/filter (strip HTML, parse numbers)
+                function stripHtml(html) {
+                    if (html == null || html === undefined) return '';
+                    var div = document.createElement('div');
+                    div.innerHTML = String(html);
+                    return (div.textContent || div.innerText || '').trim();
+                }
+                function parseNum(val) {
+                    var s = stripHtml(val).replace(/[,\s%$]/g, '');
+                    var n = parseFloat(s);
+                    return isNaN(n) ? null : n;
+                }
+                // Numeric columns: L30 SALES(4) through MISSING ADS(22). 0-3: CHANNELS, Ad Type, Tab, Graph. 23: ACTIONS.
+                var numericColIndices = {};
+                for (var i = 4; i <= 22; i++) numericColIndices[i] = true;
+
                 // Extract column definitions from header
                 var columns = [];
                 var headerRow = tableElement.querySelector('thead tr');
@@ -3584,16 +3904,38 @@ $(document).ready(function() {
                 
                 headerCells.forEach(function(header, index) {
                     var headerHtml = header.innerHTML;
-                    columns.push({
+                    var colDef = {
                         title: headerHtml,
                         field: 'col' + index,
                         formatter: 'html',
-                        headerSort: false,
+                        headerSort: true,
                         resizable: true,
                         width: index === 0 ? 110 : undefined,
                         minWidth: 80,
-                        headerTooltip: true
-                    });
+                        headerTooltip: true,
+                        headerFilter: 'input',
+                        headerFilterPlaceholder: 'Filter..',
+                        headerFilterFunc: function(filterInputVal, cellValue) {
+                            if (!filterInputVal) return true;
+                            var text = stripHtml(cellValue).toLowerCase();
+                            return text.indexOf(String(filterInputVal).toLowerCase()) !== -1;
+                        }
+                    };
+                    if (numericColIndices[index]) {
+                        colDef.sorter = function(a, b) {
+                            var na = parseNum(a), nb = parseNum(b);
+                            if (na == null && nb == null) return 0;
+                            if (na == null) return 1;
+                            if (nb == null) return -1;
+                            return na - nb;
+                        };
+                    } else {
+                        colDef.sorter = function(a, b) {
+                            var sa = stripHtml(a).toLowerCase(), sb = stripHtml(b).toLowerCase();
+                            return sa.localeCompare(sb);
+                        };
+                    }
+                    columns.push(colDef);
                 });
 
                 // Create a container div for Tabulator
@@ -3614,6 +3956,7 @@ $(document).ready(function() {
                     headerVisible: true,
                     height: "auto",
                     placeholder: "No Data Available",
+                    headerFilterLiveFilter: true,
                     rowFormatter: function(row) {
                         var rowData = row.getData();
                         var rowElement = row.getElement();
@@ -3637,24 +3980,36 @@ $(document).ready(function() {
                     }
                 });
 
-                // Search functionality - search across all columns
+                // Search functionality - search across all columns (works alongside header filters)
+                var globalSearchFilter = null;
+                var searchTimeout;
                 $('#search-input').on('keyup', function() {
-                    var searchValue = this.value.toLowerCase();
-                    if (searchValue === '') {
-                        table.clearFilter();
-                    } else {
-                        table.setFilter(function(data) {
-                            // Search across all columns
-                            for (var key in data) {
-                                if (key.startsWith('col') && typeof data[key] === 'string') {
-                                    if (data[key].toLowerCase().includes(searchValue)) {
-                                        return true;
+                    var searchInput = this;
+                    clearTimeout(searchTimeout);
+                    searchTimeout = setTimeout(function() {
+                        var searchValue = searchInput.value.toLowerCase().trim();
+                        // Remove previous global search filter
+                        if (globalSearchFilter) {
+                            table.removeFilter(globalSearchFilter);
+                            globalSearchFilter = null;
+                        }
+                        if (searchValue !== '') {
+                            // Add global search filter (header filters remain active)
+                            globalSearchFilter = function(data) {
+                                var searchText = searchValue;
+                                for (var key in data) {
+                                    if (key.startsWith('col') && typeof data[key] === 'string') {
+                                        var cellText = stripHtml(data[key]).toLowerCase();
+                                        if (cellText.indexOf(searchText) !== -1) {
+                                            return true;
+                                        }
                                     }
                                 }
-                            }
-                            return false;
-                        });
-                    }
+                                return false;
+                            };
+                            table.addFilter(globalSearchFilter);
+                        }
+                    }, 300);
                 });
 
                 // Accordion functionality
@@ -3718,9 +4073,92 @@ $(document).ready(function() {
                     }
                 });
 
-                // Add channel button handler
-                $('#add-channel-btn').on('click', function() {
-                    alert('Add Channel functionality - to be implemented');
+                // Add Channel: opens modal via data-bs-toggle/data-bs-target
+
+                // Save Channel (Add Channel modal form submit)
+                $(document).on('click', '#saveChannelBtn', function() {
+                    var btn = $('#saveChannelBtn');
+                    var name = $('#addChannelName').val().trim();
+                    var sheetLink = $('#addChannelSheetLink').val().trim();
+                    var type = $('#addChannelType').val() || '';
+
+                    if (!name) {
+                        alert('Channel name is required.');
+                        $('#addChannelName').focus();
+                        return;
+                    }
+                    var token = $('meta[name="csrf-token"]').attr('content') || $('input[name="_token"]').val();
+                    if (!token) {
+                        alert('CSRF token missing. Please refresh the page.');
+                        return;
+                    }
+                    btn.prop('disabled', true);
+                    btn.find('.btn-text').text('Saving...');
+                    $.ajax({
+                        url: '{{ route("channel_master.store") }}',
+                        method: 'POST',
+                        data: {
+                            channel: name,
+                            sheet_link: sheetLink || '',
+                            type: type,
+                            _token: token
+                        },
+                        success: function(res) {
+                            var modalEl = document.getElementById('addChannelModal');
+                            if (modalEl && typeof bootstrap !== 'undefined') {
+                                var modal = bootstrap.Modal.getInstance(modalEl);
+                                if (modal) modal.hide();
+                            }
+                            $('#addChannelForm')[0].reset();
+                            var channelName = name;
+                            try {
+                                var editBtnHtml = '<button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="' + channelName.replace(/"/g, '&quot;') + '" title="Edit Channel">' +
+                                    '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">' +
+                                    '<path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>' +
+                                    '</svg></button>';
+                                var tabLink = '<a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a>';
+                                var graphLink = '<a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a>';
+                                var newRow = {
+                                    col0: '<b>' + channelName.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') + '</b>',
+                                    col1: '',
+                                    col2: tabLink,
+                                    col3: graphLink,
+                                    col4: '', col5: '', col6: '', col7: '', col8: '', col9: '', col10: '', col11: '', col12: '',
+                                    col13: '', col14: '', col15: '', col16: '', col17: '', col18: '', col19: '', col20: '', col21: '', col22: '',
+                                    col23: editBtnHtml,
+                                    _isAccordionHeader: true,
+                                    _isAccordionBody: false,
+                                    _rowStyle: 'background-color:#cfe2f3;'
+                                };
+                                table.addRow(newRow, false);
+                                var rows = table.getRows();
+                                if (rows.length) rows[rows.length - 1].getElement().scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                            } catch (e) {
+                                console.warn('Could not add row to table:', e);
+                            }
+                            if (typeof window.showToast === 'function') {
+                                window.showToast('success', res.message || 'Channel added successfully. Please refresh the page to see it in the table.');
+                            } else {
+                                alert(res.message || 'Channel added successfully. Please refresh the page to see it in the table.');
+                            }
+                        },
+                        error: function(xhr) {
+                            var msg = 'Failed to add channel. Please try again.';
+                            if (xhr.responseJSON && xhr.responseJSON.message) {
+                                msg = xhr.responseJSON.message;
+                            } else if (xhr.status === 419) {
+                                msg = 'Session expired. Please refresh the page and try again.';
+                            } else if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON.errors) {
+                                var errs = xhr.responseJSON.errors;
+                                msg = (errs.channel && errs.channel[0]) || (errs.sheet_link && errs.sheet_link[0]) || msg;
+                            }
+                            alert(msg);
+                        },
+                        complete: function() {
+                            btn.prop('disabled', false);
+                            btn.find('.btn-text').text('Save Channel');
+                        }
+                    });
                 });
 
                 // Edit channel button handler (delegated event)
@@ -3729,6 +4167,228 @@ $(document).ready(function() {
                     alert('Edit Channel: ' + channelName);
                 });
 
+                // View mode & Channel-wise: update badges + header totals
+                var channelWise = window.advMasterChannelWiseTotals || {};
+                function fmtNum(n) {
+                    if (n == null || n === undefined || n === '') return '0';
+                    return parseFloat(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                }
+                function fmtInt(n) {
+                    if (n == null || n === undefined || n === '') return '0';
+                    return parseInt(n, 10).toLocaleString('en-US');
+                }
+                function updateBadgesAndHeaders(key) {
+                    var t = channelWise[key];
+                    if (!t) return;
+                    $('#badge-l30-spend').text(fmtNum(t.spent || 0));
+                    $('#badge-l60-spend').text(fmtNum(t.l60_spent || 0));
+                    var cvrVal = parseFloat(t.cvr || 0);
+                    $('#badge-cvr').text(cvrVal.toFixed(2));
+                    var grwCvrVal = parseFloat(t.grw_cvr || 0);
+                    var grwSign = (grwCvrVal >= 0) ? '+' : '';
+                    var grwColor = (grwCvrVal >= 0) ? '#28a745' : '#dc3545';
+                    $('#badge-cvr-grw').html('(Grw: ' + grwSign + grwCvrVal.toFixed(2) + '%)').css('color', grwColor);
+                    $('#badge-clicks').text(fmtInt(t.clicks || 0));
+                    var grwClksVal = parseFloat(t.grw_clks || 0);
+                    var grwClksSign = (grwClksVal >= 0) ? '+' : '';
+                    var grwClksColor = (grwClksVal >= 0) ? '#28a745' : '#dc3545';
+                    $('#badge-clicks-grw').html('(Grw: ' + grwClksSign + grwClksVal.toFixed(2) + '%)').css('color', grwClksColor);
+                    $('#badge-missing').text(fmtInt(t.missing || 0));
+
+                    var headerMap = [
+                        null, // 0: CHANNELS
+                        null, // 1: Ad Type
+                        null, // 2: Tab
+                        null, // 3: Graph
+                        { label: 'L30 SALES <br><hr> ', key: 'l30_sales' }, // 4
+                        { label: 'GPFT <br><hr> ', val: '0' }, // 5
+                        { label: 'TPFT <br><hr> ', val: '0' }, // 6
+                        { label: 'L30 SPENT <br><hr> ', key: 'spent' }, // 7
+                        { label: 'L60 SPENT <br><hr> ', key: 'l60_spent' }, // 8
+                        { label: 'GRW <br><hr> ', key: 'grw', pct: true }, // 9
+                        { label: 'L30 CLKS <br><hr> ', key: 'clicks' }, // 10
+                        { label: 'L60 CLICKS <br><hr> ', key: 'l60_clicks' }, // 11
+                        { label: 'GRW CLKS <br><hr> ', key: 'grw_clks', pct: true }, // 12
+                        { label: 'AD SALES <br><hr> ', key: 'ad_sales' }, // 13
+                        { label: 'L30 ACOS% <br><hr> ', key: 'l30_acos', pct: true }, // 14
+                        { label: 'L60 ACOS% <br><hr> ', key: 'l60_acos', pct: true }, // 15
+                        { label: 'Ctrl ACOS% <br><hr> ', key: 'ctrl_acos', pct: true }, // 16
+                        { label: 'TACOS <br><hr> ', val: '0' }, // 17
+                        { label: 'AD SOLD <br><hr> ', key: 'ad_sold' }, // 18
+                        { label: 'CVR <br><hr> ', key: 'cvr', pct: true }, // 19
+                        { label: 'CVR 60 <br><hr> ', key: 'cvr_60', pct: true }, // 20
+                        { label: 'Grw CVR <br><hr> ', key: 'grw_cvr', pct: true }, // 21
+                        { label: 'MISSING ADS <br><hr> ', key: 'missing' }, // 22
+                        null // 23: ACTIONS
+                    ];
+                    headerMap.forEach(function(opts, i) {
+                        if (!opts) return;
+                        var v = opts.val != null ? opts.val : (opts.key ? t[opts.key] : '');
+                        if (opts.pct && v !== '' && v != null) v = v + ' %';
+                        else if (opts.key === 'missing') v = fmtInt(v);
+                        else if (opts.key && ['spent','l60_spent','l30_sales','clicks','l60_clicks','ad_sales','ad_sold'].indexOf(opts.key) >= 0) v = fmtNum(v);
+                        var title = opts.label + (v != null && v !== '' ? String(v) : '0');
+                        try { table.updateColumnDefinition('col' + i, { title: title }); } catch (e) {}
+                    });
+                }
+
+                $('#adv-view-mode').on('change', function() {
+                    var isChannelWise = $(this).val() === 'channel-wise';
+                    $('#adv-channel-select').toggle(isChannelWise);
+                    if (!isChannelWise) {
+                        $('#adv-channel-select').val('');
+                        updateBadgesAndHeaders('all');
+                    } else {
+                        var ch = $('#adv-channel-select').val();
+                        if (ch) updateBadgesAndHeaders(ch);
+                    }
+                });
+
+                $('#adv-channel-select').on('change', function() {
+                    var ch = $(this).val();
+                    if (ch) updateBadgesAndHeaders(ch);
+                });
+
+                // L60 Tab: table handler
+                function escapeHtml(str) {
+                    if (str == null || str === undefined) return '';
+                    var div = document.createElement('div');
+                    div.textContent = str;
+                    return div.innerHTML;
+                }
+                function fmtNumCell(v) {
+                    if (v == null || v === undefined || v === '') return '—';
+                    var n = parseFloat(v);
+                    return isNaN(n) ? '—' : n.toFixed(2);
+                }
+                $(document).on('click', '.adv-l60-tab-link', function(e) {
+                    e.preventDefault();
+                    var channelWise = window.advMasterChannelWiseTotals || {};
+                    var channels = ['AMAZON', 'EBAY', 'EBAY 2', 'EBAY 3', 'WALMART', 'G SHOPPING'];
+                    var tbody = document.getElementById('adv-l60-tab-tbody');
+                    if (!tbody) return;
+                    tbody.innerHTML = '';
+                    channels.forEach(function(ch, i) {
+                        var chData = channelWise[ch];
+                        if (chData) {
+                            var tr = document.createElement('tr');
+                            var cvr60 = chData.cvr_60 != null && chData.cvr_60 !== '' ? parseFloat(chData.cvr_60).toFixed(2) + '%' : '—';
+                            var grwCvr = chData.grw_cvr != null && chData.grw_cvr !== '' ? parseFloat(chData.grw_cvr).toFixed(2) + '%' : '—';
+                            tr.innerHTML = 
+                                '<td>' + (i + 1) + '</td>' +
+                                '<td>' + escapeHtml(ch) + '</td>' +
+                                '<td class="text-end">' + fmtNumCell(chData.l60_spent) + '</td>' +
+                                '<td class="text-end">' + fmtNumCell(chData.l60_clicks) + '</td>' +
+                                '<td class="text-end">' + cvr60 + '</td>' +
+                                '<td class="text-end">' + grwCvr + '</td>';
+                            tbody.appendChild(tr);
+                        }
+                    });
+                    var modalEl = document.getElementById('adv-l60-tab-modal');
+                    if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                        var modal = new bootstrap.Modal(modalEl);
+                        modal.show();
+                    } else {
+                        modalEl.classList.add('show');
+                        modalEl.style.display = 'block';
+                        modalEl.setAttribute('aria-hidden', 'false');
+                    }
+                });
+
+                // L60 Graph: line graph handler
+                var l60GraphChart = null;
+                function renderL60Graph(metric) {
+                    var channelWise = window.advMasterChannelWiseTotals || {};
+                    var channels = ['AMAZON', 'EBAY', 'EBAY 2', 'EBAY 3', 'WALMART', 'G SHOPPING'];
+                    var labels = [];
+                    var data = [];
+                    var colors = ['#4361ee', '#3f37c9', '#7209b7', '#560bad', '#480ca8', '#3a0ca3'];
+                    channels.forEach(function(ch, i) {
+                        var chData = channelWise[ch];
+                        if (chData) {
+                            labels.push(ch);
+                            var val = chData[metric] || 0;
+                            data.push(parseFloat(val) || 0);
+                        }
+                    });
+                    var ctx = document.getElementById('adv-l60-graph-canvas');
+                    if (!ctx) return;
+                    if (l60GraphChart) l60GraphChart.destroy();
+                    var metricLabels = {
+                        'l60_spent': 'L60 SPENT',
+                        'l60_clicks': 'L60 CLICKS',
+                        'cvr_60': 'CVR 60',
+                        'grw_cvr': 'Grw CVR'
+                    };
+                    l60GraphChart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: metricLabels[metric] || metric,
+                                data: data,
+                                borderColor: '#4361ee',
+                                backgroundColor: 'rgba(67, 97, 238, 0.1)',
+                                borderWidth: 3,
+                                fill: true,
+                                tension: 0.4,
+                                pointRadius: 6,
+                                pointHoverRadius: 8,
+                                pointBackgroundColor: '#4361ee',
+                                pointBorderColor: '#fff',
+                                pointBorderWidth: 2
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    display: true,
+                                    position: 'top'
+                                },
+                                tooltip: {
+                                    mode: 'index',
+                                    intersect: false
+                                }
+                            },
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    grid: {
+                                        color: 'rgba(0, 0, 0, 0.1)'
+                                    }
+                                },
+                                x: {
+                                    grid: {
+                                        display: false
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+                $(document).on('click', '.adv-l60-graph-link', function(e) {
+                    e.preventDefault();
+                    var modalEl = document.getElementById('adv-l60-graph-modal');
+                    if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                        var modal = new bootstrap.Modal(modalEl);
+                        modal.show();
+                        setTimeout(function() {
+                            renderL60Graph('l60_spent');
+                        }, 300);
+                    } else {
+                        modalEl.classList.add('show');
+                        modalEl.style.display = 'block';
+                        setTimeout(function() {
+                            renderL60Graph('l60_spent');
+                        }, 300);
+                    }
+                });
+                $('#l60-graph-metric').on('change', function() {
+                    var metric = $(this).val();
+                    renderL60Graph(metric);
+                });
             } catch (error) {
                 console.error('Tabulator initialization error:', error);
             }
@@ -3741,6 +4401,7 @@ $(document).ready(function() {
     document.addEventListener('DOMContentLoaded', function() {
         const fromDateEEbay = document.querySelector('.ebay-from-date');
         const toDateEbay = document.querySelector('.ebay-to-date');
+        if (!fromDateEEbay || !toDateEbay) return;
 
         fromDateEEbay.addEventListener('change', function() {
             toDateEbay.min = fromDateEEbay.value;

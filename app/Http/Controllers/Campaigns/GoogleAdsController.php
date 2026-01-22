@@ -837,6 +837,11 @@ class GoogleAdsController extends Controller
             // Get NRL, NRA from GoogleDataView
             $nra = '';
             $nrl = 'REQ'; // Default value
+            $gpft = null;
+            $pft = null;
+            $roi = null;
+            $sprice = null;
+            $spft = null;
             if (isset($nrValues[$pm->sku])) {
                 $raw = $nrValues[$pm->sku];
                 if (!is_array($raw)) {
@@ -845,6 +850,11 @@ class GoogleAdsController extends Controller
                 if (is_array($raw)) {
                     $nra = $raw['NRA'] ?? '';
                     $nrl = $raw['NRL'] ?? 'REQ';
+                    $gpft = $raw['GPFT'] ?? null;
+                    $pft = $raw['PFT'] ?? null;
+                    $roi = $raw['ROI'] ?? null;
+                    $sprice = $raw['SPRICE'] ?? null;
+                    $spft = $raw['SPFT'] ?? null;
                 }
             }
 
@@ -865,11 +875,22 @@ class GoogleAdsController extends Controller
                         : 0,
                     'status' => $matchedCampaign ? $matchedCampaign->campaign_status : null,
                     'campaignStatus' => $matchedCampaign ? $matchedCampaign->campaign_status : null,
+                    'price' => ($shopify && isset($shopify->price)) ? (float)$shopify->price : 0,
                     'INV' => ($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0,
                     'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
                     'NRL' => $nrl,
                     'NRA' => $nra,
                     'hasCampaign' => $hasCampaign,
+                    'GPFT' => $gpft,
+                    'PFT' => $pft,
+                    'roi' => $roi,
+                    'SPRICE' => $sprice,
+                    'SPFT' => $spft,
+                    'GPFT' => $gpft,
+                    'PFT' => $pft,
+                    'roi' => $roi,
+                    'SPRICE' => $sprice,
+                    'SPFT' => $spft,
                     'spend_L1' => 0,
                     'spend_L7' => 0,
                     'spend_L30' => 0,
@@ -1346,6 +1367,43 @@ class GoogleAdsController extends Controller
             'status' => 200,
             'message' => "Field updated successfully",
             'updated_json' => $jsonData
+        ]);
+    }
+
+    public function bulkUpdateGoogleNrData(Request $request)
+    {
+        $skus  = $request->input('skus', []);
+        $field = $request->input('field');
+        $value = $request->input('value');
+
+        if (empty($skus) || !in_array($field, ['NRA', 'NRL'])) {
+            return response()->json([
+                'status' => 422,
+                'message' => "Invalid request. SKUs array and valid field (NRA/NRL) required."
+            ], 422);
+        }
+
+        $updated = 0;
+        $errors = [];
+
+        foreach ($skus as $sku) {
+            try {
+                $googleDataView = GoogleDataView::firstOrNew(['sku' => $sku]);
+                $jsonData = $googleDataView->value ?? [];
+                $jsonData[$field] = $value;
+                $googleDataView->value = $jsonData;
+                $googleDataView->save();
+                $updated++;
+            } catch (\Exception $e) {
+                $errors[] = "Error updating SKU {$sku}: " . $e->getMessage();
+            }
+        }
+
+        return response()->json([
+            'status' => 200,
+            'message' => "Bulk update completed. {$updated} SKU(s) updated.",
+            'updated_count' => $updated,
+            'errors' => $errors
         ]);
     }
 

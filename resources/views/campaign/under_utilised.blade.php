@@ -166,6 +166,39 @@
         </div>
     </div>
 
+    <!-- L60 Data Modal (stacked tabular) -->
+    <div class="modal fade" id="l60-data-modal" tabindex="-1" aria-labelledby="l60-data-modal-label" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="l60-data-modal-label">L60 Data – All Rows</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-0">
+                    <div class="table-responsive" style="max-height: 70vh;">
+                        <table class="table table-bordered table-striped mb-0" id="l60-data-stack-table">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th>#</th>
+                                    <th>Parent</th>
+                                    <th>Campaign</th>
+                                    <th>Ad Type</th>
+                                    <th class="text-end">L60 Clicks</th>
+                                    <th class="text-end">L60 Spend</th>
+                                    <th class="text-end">Sales L60</th>
+                                    <th class="text-end">CPC L60</th>
+                                    <th class="text-end">Orders L60</th>
+                                    <th class="text-end">ACOS L60</th>
+                                </tr>
+                            </thead>
+                            <tbody id="l60-data-stack-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 @endsection
 
 @section('script')
@@ -202,6 +235,14 @@
                         title: "AD TYPE",
                         field: "ad_type",
                         frozen: true
+                    },
+                    {
+                        title: "Tab",
+                        width: 80,
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            return '<a href="#" class="l60-tab-link text-primary" title="View L60 Data">L60</a>';
+                        }
                     },
                     {
                         title: "Note",
@@ -572,6 +613,50 @@
             document.getElementById("filter-start").addEventListener("change", applyFilters);
             document.getElementById("filter-end").addEventListener("change", applyFilters);
 
+            // Tab link: show L60 Data of all rows in modal (stacked tabular)
+            function escapeHtml(str) {
+                if (str == null || str === undefined) return '';
+                var div = document.createElement('div');
+                div.textContent = str;
+                return div.innerHTML;
+            }
+            function fmtNum(v) {
+                if (v == null || v === undefined || v === '') return '—';
+                var n = parseFloat(v);
+                return isNaN(n) ? '—' : n.toFixed(2);
+            }
+            document.addEventListener("click", function(e) {
+                if (!e.target.closest(".l60-tab-link")) return;
+                e.preventDefault();
+                var data = table.getData();
+                var tbody = document.getElementById("l60-data-stack-tbody");
+                tbody.innerHTML = "";
+                data.forEach(function(row, i) {
+                    var tr = document.createElement("tr");
+                    var acos = row.l60_acos != null && row.l60_acos !== '' ? parseFloat(row.l60_acos).toFixed(2) + '%' : '—';
+                    tr.innerHTML = 
+                        '<td>' + (i + 1) + '</td>' +
+                        '<td>' + escapeHtml(row.parent || '') + '</td>' +
+                        '<td>' + escapeHtml(row.campaignName || '') + '</td>' +
+                        '<td>' + escapeHtml(row.ad_type || '') + '</td>' +
+                        '<td class="text-end">' + fmtNum(row.l60_clicks) + '</td>' +
+                        '<td class="text-end">' + fmtNum(row.l60_spend) + '</td>' +
+                        '<td class="text-end">' + fmtNum(row.l60_sales) + '</td>' +
+                        '<td class="text-end">' + fmtNum(row.l60_cpc) + '</td>' +
+                        '<td class="text-end">' + fmtNum(row.l60_orders) + '</td>' +
+                        '<td class="text-end">' + acos + '</td>';
+                    tbody.appendChild(tr);
+                });
+                var modalEl = document.getElementById("l60-data-modal");
+                if (typeof bootstrap !== "undefined" && bootstrap.Modal) {
+                    var modal = new bootstrap.Modal(modalEl);
+                    modal.show();
+                } else {
+                    modalEl.classList.add("show");
+                    modalEl.style.display = "block";
+                    modalEl.setAttribute("aria-hidden", "false");
+                }
+            });
 
             document.body.style.zoom = "83%";
         });

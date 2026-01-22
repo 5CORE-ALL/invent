@@ -3007,6 +3007,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         Route::post('/update-google-ads-bid-price', 'updateGoogleAdsCampaignSbid');
         Route::post('/update-google-nr-data', 'updateGoogleNrData');
+        Route::post('/bulk-update-google-nr-data', 'bulkUpdateGoogleNrData');
     });
 
     Route::controller(TemuAdsController::class)->group(function () {
