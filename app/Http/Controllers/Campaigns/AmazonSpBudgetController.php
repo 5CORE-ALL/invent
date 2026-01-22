@@ -1693,6 +1693,12 @@ class AmazonSpBudgetController extends Controller
         return $this->getAmazonUtilizedAdsData($request);
     }
 
+    public function getAmazonUtilizedHlAdsData(Request $request)
+    {
+        $request->merge(['type' => 'HL']);
+        return $this->getAmazonUtilizedAdsData($request);
+    }
+
     public function getAmazonUtilizedAdsData(Request $request)
     {
         $campaignType = $request->get('type', 'KW'); // KW, PT, or HL
@@ -1737,6 +1743,58 @@ class AmazonSpBudgetController extends Controller
             });
 
         $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+
+        // Fetch latest ACOS action history for each campaign/sku
+        $acosHistoryMap = [];
+        
+        // Get all history records for this campaign type
+        // Use a simpler approach: fetch all records and match in PHP
+        $allHistoryRecords = DB::table('amazon_acos_action_history')
+            ->where('campaign_type', $campaignType)
+            ->orderBy('created_at', 'desc')
+            ->get();
+        
+        // Build a map with multiple keys for flexible matching
+        // Group by campaign_id|sku first to get latest for each combination
+        $groupedByKey = [];
+        foreach ($allHistoryRecords as $record) {
+            $normalizedSku = $record->sku ? strtoupper(trim($record->sku)) : '';
+            $normalizedCampaignId = $record->campaign_id ? trim($record->campaign_id) : '';
+            
+            // Primary key: campaign_id|sku
+            $primaryKey = $normalizedCampaignId . '|' . $normalizedSku;
+            if (!isset($groupedByKey[$primaryKey])) {
+                $groupedByKey[$primaryKey] = $record;
+            }
+        }
+        
+        // Now build the map with all possible keys
+        foreach ($groupedByKey as $record) {
+            $normalizedSku = $record->sku ? strtoupper(trim($record->sku)) : '';
+            $normalizedCampaignId = $record->campaign_id ? trim($record->campaign_id) : '';
+            
+            // Key 1: campaign_id|sku (most specific)
+            if ($normalizedCampaignId && $normalizedSku) {
+                $key1 = $normalizedCampaignId . '|' . $normalizedSku;
+                $acosHistoryMap[$key1] = $record;
+            }
+            
+            // Key 2: |sku (SKU only, for fallback) - only if not already set
+            if ($normalizedSku) {
+                $key2 = '|' . $normalizedSku;
+                if (!isset($acosHistoryMap[$key2])) {
+                    $acosHistoryMap[$key2] = $record;
+                }
+            }
+            
+            // Key 3: campaign_id| (campaign only, for fallback) - only if not already set
+            if ($normalizedCampaignId) {
+                $key3 = $normalizedCampaignId . '|';
+                if (!isset($acosHistoryMap[$key3])) {
+                    $acosHistoryMap[$key3] = $record;
+                }
+            }
+        }
 
         // Get marketplace percentage for AD% calculation
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Amazon')->first();
@@ -2406,6 +2464,65 @@ class AmazonSpBudgetController extends Controller
                 // Always recalculate SPFT = SGPFT - AD% (AD% might have changed)
                 $spft = !empty($calculatedSgpft) ? round($calculatedSgpft - $adPercent, 2) : 0;
                 
+                // Get ACOS history for this row - normalize SKU for matching
+                $normalizedSkuForHistory = $pm->sku ? strtoupper(trim($pm->sku)) : '';
+                $normalizedCampaignIdForHistory = $campaignId ? trim($campaignId) : '';
+                
+                // Try multiple matching strategies
+                $historyRecord = null;
+                
+                // Strategy 1: Match by campaign_id + SKU (most specific)
+                if ($normalizedCampaignIdForHistory && $normalizedSkuForHistory) {
+                    $key1 = $normalizedCampaignIdForHistory . '|' . $normalizedSkuForHistory;
+                    if (isset($acosHistoryMap[$key1])) {
+                        $historyRecord = $acosHistoryMap[$key1];
+                    }
+                }
+                
+                // Strategy 2: Match by SKU only (fallback)
+                if (!$historyRecord && $normalizedSkuForHistory) {
+                    $key2 = '|' . $normalizedSkuForHistory;
+                    if (isset($acosHistoryMap[$key2])) {
+                        $historyRecord = $acosHistoryMap[$key2];
+                    }
+                }
+                
+                // Strategy 3: Match by campaign_id only (fallback)
+                if (!$historyRecord && $normalizedCampaignIdForHistory) {
+                    $key3 = $normalizedCampaignIdForHistory . '|';
+                    if (isset($acosHistoryMap[$key3])) {
+                        $historyRecord = $acosHistoryMap[$key3];
+                    }
+                }
+                
+                // Strategy 4: Loop through all records and match by SKU (case-insensitive)
+                if (!$historyRecord && $normalizedSkuForHistory) {
+                    foreach ($acosHistoryMap as $key => $record) {
+                        if (isset($record->sku)) {
+                            $recordSku = strtoupper(trim($record->sku));
+                            if ($recordSku === $normalizedSkuForHistory) {
+                                $historyRecord = $record;
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                $targetIssues = [];
+                $issueFound = '';
+                $actionTaken = '';
+                
+                if ($historyRecord) {
+                    // Get target issues
+                    if (isset($historyRecord->target_issues) && $historyRecord->target_issues) {
+                        $decoded = json_decode($historyRecord->target_issues, true);
+                        $targetIssues = is_array($decoded) ? $decoded : [];
+                    }
+                    // Get issue found and action taken
+                    $issueFound = $historyRecord->issue_found ?? '';
+                    $actionTaken = $historyRecord->action_taken ?? '';
+                }
+                
                 $campaignMap[$mapKey] = [
                     'parent' => $parent,
                     'sku' => $pm->sku,
@@ -2447,6 +2564,20 @@ class AmazonSpBudgetController extends Controller
                     'last_sbid' => isset($lastSbidMap[$campaignId]) ? $lastSbidMap[$campaignId] : '',
                     'sbid_m' => isset($sbidMMap[$campaignId]) ? $sbidMMap[$campaignId] : '',
                     'sbid_approved' => isset($sbidApprovedMap[$campaignId]) ? $sbidApprovedMap[$campaignId] : false,
+                    // ACOS Action History fields
+                    'target_kw_issue' => $targetIssues['target_kw_issue'] ?? false,
+                    'target_pt_issue' => $targetIssues['target_pt_issue'] ?? false,
+                    'variation_issue' => $targetIssues['variation_issue'] ?? false,
+                    'incorrect_product_added' => $targetIssues['incorrect_product_added'] ?? false,
+                    'target_negative_kw_issue' => $targetIssues['target_negative_kw_issue'] ?? false,
+                    'target_review_issue' => $targetIssues['target_review_issue'] ?? false,
+                    'target_cvr_issue' => $targetIssues['target_cvr_issue'] ?? false,
+                    'content_check' => $targetIssues['content_check'] ?? false,
+                    'price_justification_check' => $targetIssues['price_justification_check'] ?? false,
+                    'ad_not_req' => $targetIssues['ad_not_req'] ?? false,
+                    'review_issue' => $targetIssues['review_issue'] ?? false,
+                    'issue_found' => $issueFound,
+                    'action_taken' => $actionTaken,
                 ];
             }
 
@@ -3202,6 +3333,64 @@ class AmazonSpBudgetController extends Controller
                 }
             }
             
+            // Get ACOS history for this row - normalize SKU for matching
+            $normalizedSku = $pm->sku ? strtoupper(trim($pm->sku)) : '';
+            $normalizedCampaignId = $campaignId ? trim($campaignId) : '';
+            
+            // Try multiple matching strategies
+            $historyRecord = null;
+            
+            // Strategy 1: Match by campaign_id + SKU (most specific)
+            if ($normalizedCampaignId && $normalizedSku) {
+                $key1 = $normalizedCampaignId . '|' . $normalizedSku;
+                if (isset($acosHistoryMap[$key1])) {
+                    $historyRecord = $acosHistoryMap[$key1];
+                }
+            }
+            
+            // Strategy 2: Match by SKU only (fallback)
+            if (!$historyRecord && $normalizedSku) {
+                $key2 = '|' . $normalizedSku;
+                if (isset($acosHistoryMap[$key2])) {
+                    $historyRecord = $acosHistoryMap[$key2];
+                }
+            }
+            
+            // Strategy 3: Match by campaign_id only (fallback)
+            if (!$historyRecord && $normalizedCampaignId) {
+                $key3 = $normalizedCampaignId . '|';
+                if (isset($acosHistoryMap[$key3])) {
+                    $historyRecord = $acosHistoryMap[$key3];
+                }
+            }
+            
+            // Strategy 4: Loop through all records and match by SKU (case-insensitive)
+            if (!$historyRecord && $normalizedSku) {
+                foreach ($acosHistoryMap as $key => $record) {
+                    if (isset($record->sku)) {
+                        $recordSku = strtoupper(trim($record->sku));
+                        if ($recordSku === $normalizedSku) {
+                            $historyRecord = $record;
+                            break;
+                        }
+                    }
+                }
+            }
+            $targetIssues = [];
+            $issueFound = '';
+            $actionTaken = '';
+            
+            if ($historyRecord) {
+                // Get target issues
+                if (isset($historyRecord->target_issues) && $historyRecord->target_issues) {
+                    $decoded = json_decode($historyRecord->target_issues, true);
+                    $targetIssues = is_array($decoded) ? $decoded : [];
+                }
+                // Get issue found and action taken
+                $issueFound = $historyRecord->issue_found ?? '';
+                $actionTaken = $historyRecord->action_taken ?? '';
+            }
+            
             $result[] = (object) [
                 'parent' => $pm->parent,
                 'sku' => $pm->sku,
@@ -3236,7 +3425,21 @@ class AmazonSpBudgetController extends Controller
                 'SPFT' => $spft, // Keep both for backward compatibility
                 'SROI' => $calculatedSroi,
                 'has_custom_sprice' => $hasCustomSprice,
-                    'SPRICE_STATUS' => $spriceStatus,
+                'SPRICE_STATUS' => $spriceStatus,
+                // ACOS Action History fields
+                'target_kw_issue' => $targetIssues['target_kw_issue'] ?? false,
+                'target_pt_issue' => $targetIssues['target_pt_issue'] ?? false,
+                'variation_issue' => $targetIssues['variation_issue'] ?? false,
+                'incorrect_product_added' => $targetIssues['incorrect_product_added'] ?? false,
+                'target_negative_kw_issue' => $targetIssues['target_negative_kw_issue'] ?? false,
+                'target_review_issue' => $targetIssues['target_review_issue'] ?? false,
+                'target_cvr_issue' => $targetIssues['target_cvr_issue'] ?? false,
+                'content_check' => $targetIssues['content_check'] ?? false,
+                'price_justification_check' => $targetIssues['price_justification_check'] ?? false,
+                'ad_not_req' => $targetIssues['ad_not_req'] ?? false,
+                'review_issue' => $targetIssues['review_issue'] ?? false,
+                'issue_found' => $issueFound,
+                'action_taken' => $actionTaken,
                 ];
             }
         }
@@ -3514,6 +3717,65 @@ class AmazonSpBudgetController extends Controller
                     }
                 }
                 
+                // Get ACOS history for this row - normalize SKU for matching
+                $normalizedSku = $pm->sku ? strtoupper(trim($pm->sku)) : '';
+                $normalizedCampaignId = $campaignId ? trim($campaignId) : '';
+                
+                // Try multiple matching strategies
+                $historyRecord = null;
+                
+                // Strategy 1: Match by campaign_id + SKU (most specific)
+                if ($normalizedCampaignId && $normalizedSku) {
+                    $key1 = $normalizedCampaignId . '|' . $normalizedSku;
+                    if (isset($acosHistoryMap[$key1])) {
+                        $historyRecord = $acosHistoryMap[$key1];
+                    }
+                }
+                
+                // Strategy 2: Match by SKU only (fallback)
+                if (!$historyRecord && $normalizedSku) {
+                    $key2 = '|' . $normalizedSku;
+                    if (isset($acosHistoryMap[$key2])) {
+                        $historyRecord = $acosHistoryMap[$key2];
+                    }
+                }
+                
+                // Strategy 3: Match by campaign_id only (fallback)
+                if (!$historyRecord && $normalizedCampaignId) {
+                    $key3 = $normalizedCampaignId . '|';
+                    if (isset($acosHistoryMap[$key3])) {
+                        $historyRecord = $acosHistoryMap[$key3];
+                    }
+                }
+                
+                // Strategy 4: Loop through all records and match by SKU (case-insensitive)
+                if (!$historyRecord && $normalizedSku) {
+                    foreach ($acosHistoryMap as $key => $record) {
+                        if (isset($record->sku)) {
+                            $recordSku = strtoupper(trim($record->sku));
+                            if ($recordSku === $normalizedSku) {
+                                $historyRecord = $record;
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                $targetIssues = [];
+                $issueFound = '';
+                $actionTaken = '';
+                
+                if ($historyRecord) {
+                    // Get target issues
+                    if (isset($historyRecord->target_issues) && $historyRecord->target_issues) {
+                        $decoded = json_decode($historyRecord->target_issues, true);
+                        $targetIssues = is_array($decoded) ? $decoded : [];
+                    }
+                    // Get issue found and action taken
+                    $issueFound = $historyRecord->issue_found ?? '';
+                    $actionTaken = $historyRecord->action_taken ?? '';
+                }
+                
                 $result[] = (object) [
                     'parent' => $pm->parent,
                     'sku' => $pm->sku,
@@ -3549,6 +3811,20 @@ class AmazonSpBudgetController extends Controller
                     'SROI' => $calculatedSroi,
                     'has_custom_sprice' => $hasCustomSprice,
                     'SPRICE_STATUS' => $spriceStatus,
+                    // ACOS Action History fields
+                    'target_kw_issue' => $targetIssues['target_kw_issue'] ?? false,
+                    'target_pt_issue' => $targetIssues['target_pt_issue'] ?? false,
+                    'variation_issue' => $targetIssues['variation_issue'] ?? false,
+                    'incorrect_product_added' => $targetIssues['incorrect_product_added'] ?? false,
+                    'target_negative_kw_issue' => $targetIssues['target_negative_kw_issue'] ?? false,
+                    'target_review_issue' => $targetIssues['target_review_issue'] ?? false,
+                    'target_cvr_issue' => $targetIssues['target_cvr_issue'] ?? false,
+                    'content_check' => $targetIssues['content_check'] ?? false,
+                    'price_justification_check' => $targetIssues['price_justification_check'] ?? false,
+                    'ad_not_req' => $targetIssues['ad_not_req'] ?? false,
+                    'review_issue' => $targetIssues['review_issue'] ?? false,
+                    'issue_found' => $issueFound,
+                    'action_taken' => $actionTaken,
                 ];
             }
         }
@@ -3705,6 +3981,80 @@ class AmazonSpBudgetController extends Controller
                         }
                     }
 
+                    // Get ACOS history for this unmatched HL campaign
+                    $normalizedSku = $extractedSku ? strtoupper(trim($extractedSku)) : '';
+                    $normalizedCampaignId = $campaignId ? trim($campaignId) : '';
+                    
+                    // Try multiple matching strategies
+                    $historyRecord = null;
+                    
+                    // Strategy 1: Match by campaign_id + SKU (most specific)
+                    if ($normalizedCampaignId && $normalizedSku) {
+                        $key1 = $normalizedCampaignId . '|' . $normalizedSku;
+                        if (isset($acosHistoryMap[$key1])) {
+                            $historyRecord = $acosHistoryMap[$key1];
+                        }
+                    }
+                    
+                    // Strategy 2: Match by SKU only (fallback)
+                    if (!$historyRecord && $normalizedSku) {
+                        $key2 = '|' . $normalizedSku;
+                        if (isset($acosHistoryMap[$key2])) {
+                            $historyRecord = $acosHistoryMap[$key2];
+                        }
+                    }
+                    
+                    // Strategy 3: Match by campaign_id only (fallback)
+                    if (!$historyRecord && $normalizedCampaignId) {
+                        $key3 = $normalizedCampaignId . '|';
+                        if (isset($acosHistoryMap[$key3])) {
+                            $historyRecord = $acosHistoryMap[$key3];
+                        }
+                    }
+                    
+                    // Strategy 4: Loop through all records and match by SKU (case-insensitive)
+                    if (!$historyRecord && $normalizedSku) {
+                        foreach ($acosHistoryMap as $key => $record) {
+                            if (isset($record->sku)) {
+                                $recordSku = strtoupper(trim($record->sku));
+                                if ($recordSku === $normalizedSku) {
+                                    $historyRecord = $record;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    
+                    $targetIssues = [];
+                    $issueFound = '';
+                    $actionTaken = '';
+                    
+                    if ($historyRecord) {
+                        // Get target issues
+                        if (isset($historyRecord->target_issues) && $historyRecord->target_issues) {
+                            $decoded = json_decode($historyRecord->target_issues, true);
+                            $targetIssues = is_array($decoded) ? $decoded : [];
+                        }
+                        // Get issue found and action taken
+                        $issueFound = $historyRecord->issue_found ?? '';
+                        $actionTaken = $historyRecord->action_taken ?? '';
+                    }
+                    
+                    // Add ACOS Action History fields to row
+                    $row['target_kw_issue'] = $targetIssues['target_kw_issue'] ?? false;
+                    $row['target_pt_issue'] = $targetIssues['target_pt_issue'] ?? false;
+                    $row['variation_issue'] = $targetIssues['variation_issue'] ?? false;
+                    $row['incorrect_product_added'] = $targetIssues['incorrect_product_added'] ?? false;
+                    $row['target_negative_kw_issue'] = $targetIssues['target_negative_kw_issue'] ?? false;
+                    $row['target_review_issue'] = $targetIssues['target_review_issue'] ?? false;
+                    $row['target_cvr_issue'] = $targetIssues['target_cvr_issue'] ?? false;
+                    $row['content_check'] = $targetIssues['content_check'] ?? false;
+                    $row['price_justification_check'] = $targetIssues['price_justification_check'] ?? false;
+                    $row['ad_not_req'] = $targetIssues['ad_not_req'] ?? false;
+                    $row['review_issue'] = $targetIssues['review_issue'] ?? false;
+                    $row['issue_found'] = $issueFound;
+                    $row['action_taken'] = $actionTaken;
+
                     $result[] = (object) $row;
                     $matchedCampaignIds[] = $campaignId;
                 }
@@ -3750,7 +4100,7 @@ class AmazonSpBudgetController extends Controller
                     $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($campaignId) {
                         return ($item->campaign_id ?? '') === $campaignId;
                     });
-                    
+
                     $checkCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($campaignId) {
                         return ($item->campaign_id ?? '') === $campaignId;
                     });
@@ -3842,6 +4192,80 @@ class AmazonSpBudgetController extends Controller
                             $row['acos_L7'] = 100;
                         }
                     }
+
+                    // Get ACOS history for this unmatched KW campaign
+                    $normalizedSku = $row['sku'] ? strtoupper(trim($row['sku'])) : '';
+                    $normalizedCampaignId = $campaignId ? trim($campaignId) : '';
+                    
+                    // Try multiple matching strategies
+                    $historyRecord = null;
+                    
+                    // Strategy 1: Match by campaign_id + SKU (most specific)
+                    if ($normalizedCampaignId && $normalizedSku) {
+                        $key1 = $normalizedCampaignId . '|' . $normalizedSku;
+                        if (isset($acosHistoryMap[$key1])) {
+                            $historyRecord = $acosHistoryMap[$key1];
+                        }
+                    }
+                    
+                    // Strategy 2: Match by SKU only (fallback)
+                    if (!$historyRecord && $normalizedSku) {
+                        $key2 = '|' . $normalizedSku;
+                        if (isset($acosHistoryMap[$key2])) {
+                            $historyRecord = $acosHistoryMap[$key2];
+                        }
+                    }
+                    
+                    // Strategy 3: Match by campaign_id only (fallback)
+                    if (!$historyRecord && $normalizedCampaignId) {
+                        $key3 = $normalizedCampaignId . '|';
+                        if (isset($acosHistoryMap[$key3])) {
+                            $historyRecord = $acosHistoryMap[$key3];
+                        }
+                    }
+                    
+                    // Strategy 4: Loop through all records and match by SKU (case-insensitive)
+                    if (!$historyRecord && $normalizedSku) {
+                        foreach ($acosHistoryMap as $key => $record) {
+                            if (isset($record->sku)) {
+                                $recordSku = strtoupper(trim($record->sku));
+                                if ($recordSku === $normalizedSku) {
+                                    $historyRecord = $record;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    
+                    $targetIssues = [];
+                    $issueFound = '';
+                    $actionTaken = '';
+                    
+                    if ($historyRecord) {
+                        // Get target issues
+                        if (isset($historyRecord->target_issues) && $historyRecord->target_issues) {
+                            $decoded = json_decode($historyRecord->target_issues, true);
+                            $targetIssues = is_array($decoded) ? $decoded : [];
+                        }
+                        // Get issue found and action taken
+                        $issueFound = $historyRecord->issue_found ?? '';
+                        $actionTaken = $historyRecord->action_taken ?? '';
+                    }
+                    
+                    // Add ACOS Action History fields to row
+                    $row['target_kw_issue'] = $targetIssues['target_kw_issue'] ?? false;
+                    $row['target_pt_issue'] = $targetIssues['target_pt_issue'] ?? false;
+                    $row['variation_issue'] = $targetIssues['variation_issue'] ?? false;
+                    $row['incorrect_product_added'] = $targetIssues['incorrect_product_added'] ?? false;
+                    $row['target_negative_kw_issue'] = $targetIssues['target_negative_kw_issue'] ?? false;
+                    $row['target_review_issue'] = $targetIssues['target_review_issue'] ?? false;
+                    $row['target_cvr_issue'] = $targetIssues['target_cvr_issue'] ?? false;
+                    $row['content_check'] = $targetIssues['content_check'] ?? false;
+                    $row['price_justification_check'] = $targetIssues['price_justification_check'] ?? false;
+                    $row['ad_not_req'] = $targetIssues['ad_not_req'] ?? false;
+                    $row['review_issue'] = $targetIssues['review_issue'] ?? false;
+                    $row['issue_found'] = $issueFound;
+                    $row['action_taken'] = $actionTaken;
 
                     $result[] = (object) $row;
                     $matchedCampaignIds[] = $campaignId;
@@ -4411,6 +4835,100 @@ class AmazonSpBudgetController extends Controller
             return $results;
         } catch (\Exception $e) {
             throw new \Exception('Amazon API error: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Save ACOS Action History
+     */
+    public function saveAcosActionHistory(Request $request)
+    {
+        try {
+            $campaignId = $request->input('campaign_id');
+            $sku = $request->input('sku');
+            $issueFound = $request->input('issue_found', '');
+            $actionTaken = $request->input('action_taken', '');
+            $targetIssues = $request->input('target_issues', '{}');
+            $campaignType = $request->input('campaign_type', 'KW');
+
+            if (!$campaignId && !$sku) {
+                return response()->json([
+                    'status' => 400,
+                    'message' => 'Campaign ID or SKU is required'
+                ], 400);
+            }
+
+            // Save to database
+            DB::table('amazon_acos_action_history')->insert([
+                'campaign_id' => $campaignId,
+                'sku' => $sku,
+                'issue_found' => $issueFound,
+                'action_taken' => $actionTaken,
+                'target_issues' => $targetIssues,
+                'campaign_type' => $campaignType,
+                'user_id' => auth()->id(),
+                'created_at' => now(),
+                'updated_at' => now()
+            ]);
+
+            return response()->json([
+                'status' => 200,
+                'message' => 'ACOS action history saved successfully'
+            ]);
+        } catch (\Exception $e) {
+            FacadesLog::error('Error saving ACOS action history: ' . $e->getMessage());
+            return response()->json([
+                'status' => 500,
+                'message' => 'Error saving history: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get ACOS Action History
+     */
+    public function getAcosActionHistory(Request $request)
+    {
+        try {
+            $campaignId = $request->input('campaign_id');
+            $sku = $request->input('sku');
+            $campaignType = $request->input('campaign_type', 'KW');
+
+            $query = DB::table('amazon_acos_action_history')
+                ->where('campaign_type', $campaignType)
+                ->orderBy('created_at', 'desc');
+
+            if ($campaignId) {
+                $query->where('campaign_id', $campaignId);
+            }
+            if ($sku) {
+                // Case-insensitive SKU matching
+                $query->where(DB::raw('UPPER(sku)'), strtoupper(trim($sku)));
+            }
+
+            $history = $query->get()->map(function ($item) {
+                return [
+                    'id' => $item->id,
+                    'campaign_id' => $item->campaign_id,
+                    'sku' => $item->sku,
+                    'issue_found' => $item->issue_found,
+                    'action_taken' => $item->action_taken,
+                    'target_issues' => $item->target_issues,
+                    'created_at' => $item->created_at,
+                    'user_id' => $item->user_id
+                ];
+            });
+
+            return response()->json([
+                'status' => 200,
+                'history' => $history
+            ]);
+        } catch (\Exception $e) {
+            FacadesLog::error('Error getting ACOS action history: ' . $e->getMessage());
+            return response()->json([
+                'status' => 500,
+                'message' => 'Error getting history: ' . $e->getMessage()
+            ], 500);
         }
     }
 

@@ -563,11 +563,15 @@
                                             Clear
                                         </button>
                                     </div>
-                                    <div class="col-md-2 d-flex align-items-end">
-                                        <button id="clear-sbid-m-btn" class="btn btn-danger btn-sm w-100" style="font-size: 0.75rem;">
+                                    <div class="col-md-3 d-flex gap-2 align-items-end">
+                                        <button id="clear-sbid-m-btn" class="btn btn-danger btn-sm flex-fill" style="font-size: 0.75rem;">
                                             <i class="fa-solid fa-trash me-1"></i>
                                             <span class="d-none d-lg-inline">Clear SBID M</span>
                                             <span class="d-lg-none">Clear</span>
+                                        </button>
+                                        <button id="acos-view-btn" class="btn btn-warning btn-sm flex-fill" style="min-width: 80px; font-size: 0.75rem;">
+                                            <i class="fa-solid fa-filter me-1"></i>
+                                            ACOS
                                         </button>
                                     </div>
                                     <div class="col-md-4 d-flex gap-1 align-items-end">
@@ -2124,6 +2128,159 @@
                         },
                         sorter: "number",
                         width: 90
+                    },
+                    // ACOS View Columns (Target Issue Columns)
+                    {
+                        title: "KW Issue",
+                        field: "target_kw_issue",
+                        hozAlign: "center",
+                        editor: "tickCross",
+                        formatter: "tickCross",
+                        visible: false,
+                    },
+                    {
+                        title: "PT Issue",
+                        field: "target_pt_issue",
+                        hozAlign: "center",
+                        editor: "tickCross",
+                        formatter: "tickCross",
+                        visible: false,
+                    },
+                    {
+                        title: "Variation",
+                        field: "variation_issue",
+                        hozAlign: "center",
+                        editor: "tickCross",
+                        formatter: "tickCross",
+                        visible: false,
+                    },
+                    {
+                        title: "Wrong Prod.",
+                        field: "incorrect_product_added",
+                        hozAlign: "center",
+                        editor: "tickCross",
+                        formatter: "tickCross",
+                        visible: false,
+                    },
+                    {
+                        title: "-ve KW",
+                        field: "target_negative_kw_issue",
+                        hozAlign: "center",
+                        editor: "tickCross",
+                        formatter: "tickCross",
+                        visible: false,
+                    },
+                    {
+                        title: "Review Target",
+                        field: "target_review_issue",
+                        hozAlign: "center",
+                        editor: "tickCross",
+                        formatter: "tickCross",
+                        visible: false,
+                    },
+                    {
+                        title: "CVR Target",
+                        field: "target_cvr_issue",
+                        hozAlign: "center",
+                        editor: "tickCross",
+                        formatter: "tickCross",
+                        visible: false,
+                    },
+                    {
+                        title: "Content",
+                        field: "content_check",
+                        hozAlign: "center",
+                        editor: "tickCross",
+                        formatter: "tickCross",
+                        visible: false,
+                    },
+                    {
+                        title: "Price Justify",
+                        field: "price_justification_check",
+                        hozAlign: "center",
+                        editor: "tickCross",
+                        formatter: "tickCross",
+                        visible: false,
+                    },
+                    {
+                        title: "Ad Not Req",
+                        field: "ad_not_req",
+                        hozAlign: "center",
+                        editor: "tickCross",
+                        formatter: "tickCross",
+                        visible: false,
+                    },
+                    {
+                        title: "Review",
+                        field: "review_issue",
+                        hozAlign: "center",
+                        editor: "tickCross",
+                        formatter: "tickCross",
+                        visible: false,
+                    },
+                    // Action Columns
+                    {
+                        title: "Issue",
+                        field: "issue_found",
+                        hozAlign: "left",
+                        editor: "textarea",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            if (value && value.length > 50) {
+                                return value.substring(0, 50) + '...';
+                            }
+                            return value || '';
+                        },
+                        cellEdited: function(cell) {
+                            var row = cell.getRow();
+                            var rowData = row.getData();
+                            saveAcosActionHistory(rowData);
+                        },
+                        width: 200
+                    },
+                    {
+                        title: "Action",
+                        field: "action_taken",
+                        hozAlign: "left",
+                        editor: "textarea",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            if (value && value.length > 50) {
+                                return value.substring(0, 50) + '...';
+                            }
+                            return value || '';
+                        },
+                        cellEdited: function(cell) {
+                            var row = cell.getRow();
+                            var rowData = row.getData();
+                            saveAcosActionHistory(rowData);
+                        },
+                        width: 200
+                    },
+                    {
+                        title: "History",
+                        field: "acos_history",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var row = cell.getRow();
+                            var rowData = row.getData();
+                            var campaignId = rowData.campaign_id || rowData.sku;
+                            return `<button class="btn btn-sm btn-info view-history-btn" data-campaign-id="${campaignId}" data-sku="${rowData.sku || ''}" style="padding: 2px 8px;">
+                                <i class="fa fa-eye"></i>
+                            </button>`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.closest('.view-history-btn')) {
+                                var btn = e.target.closest('.view-history-btn');
+                                var campaignId = btn.getAttribute('data-campaign-id');
+                                var sku = btn.getAttribute('data-sku');
+                                showAcosHistory(campaignId, sku);
+                            }
+                        },
+                        width: 80
                     },
                     {
                         title: "AD CVR",
@@ -3731,6 +3888,187 @@
                     showUtilizationChart(type);
                 });
             });
+
+            // ACOS View Button Click Handler
+            $(document).on("click", "#acos-view-btn", function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                // ACOS view columns
+                var acosViewColumns = [
+                    'target_kw_issue',
+                    'target_pt_issue',
+                    'variation_issue',
+                    'incorrect_product_added',
+                    'target_negative_kw_issue',
+                    'target_review_issue',
+                    'target_cvr_issue',
+                    'content_check',
+                    'price_justification_check',
+                    'ad_not_req',
+                    'review_issue',
+                    'issue_found',
+                    'action_taken',
+                    'acos_history'
+                ];
+                
+                // Check if columns are currently visible (check first column)
+                var isVisible = false;
+                try {
+                    var column = table.getColumn('target_kw_issue');
+                    if (column) {
+                        isVisible = column.isVisible();
+                    }
+                } catch(e) {
+                    // Column might not exist, assume hidden
+                    isVisible = false;
+                }
+                
+                // Toggle visibility
+                acosViewColumns.forEach(function(field) {
+                    try {
+                        if (isVisible) {
+                            table.hideColumn(field);
+                        } else {
+                            table.showColumn(field);
+                        }
+                    } catch(e) {
+                        console.log('Column not found: ' + field);
+                    }
+                });
+                
+                if (!isVisible) {
+                    // Sort by ACOS highest to lowest when showing
+                    table.setSort([
+                        {column: "acos", dir: "desc"}
+                    ]);
+                    showToast('success', 'ACOS view columns shown and sorted by ACOS (highest to lowest)');
+                } else {
+                    showToast('info', 'ACOS view columns hidden');
+                }
+            });
+
+            // Save ACOS Action History Function
+            function saveAcosActionHistory(rowData) {
+                var campaignId = rowData.campaign_id || rowData.sku;
+                if (!campaignId) return;
+
+                var targetIssues = {
+                    target_kw_issue: rowData.target_kw_issue || false,
+                    target_pt_issue: rowData.target_pt_issue || false,
+                    variation_issue: rowData.variation_issue || false,
+                    incorrect_product_added: rowData.incorrect_product_added || false,
+                    target_negative_kw_issue: rowData.target_negative_kw_issue || false,
+                    target_review_issue: rowData.target_review_issue || false,
+                    target_cvr_issue: rowData.target_cvr_issue || false,
+                    content_check: rowData.content_check || false,
+                    price_justification_check: rowData.price_justification_check || false,
+                    ad_not_req: rowData.ad_not_req || false,
+                    review_issue: rowData.review_issue || false
+                };
+
+                $.ajax({
+                    url: '/amazon/save-acos-action-history',
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    data: {
+                        campaign_id: campaignId,
+                        sku: rowData.sku || '',
+                        issue_found: rowData.issue_found || '',
+                        action_taken: rowData.action_taken || '',
+                        target_issues: JSON.stringify(targetIssues),
+                        campaign_type: 'PT'
+                    },
+                    success: function(response) {
+                        if (response.status === 200) {
+                            console.log('ACOS action history saved successfully');
+                        }
+                    },
+                    error: function(xhr) {
+                        console.error('Error saving ACOS action history:', xhr);
+                    }
+                });
+            }
+
+            // Show ACOS History Function
+            function showAcosHistory(campaignId, sku) {
+                $.ajax({
+                    url: '/amazon/get-acos-action-history',
+                    method: 'GET',
+                    data: {
+                        campaign_id: campaignId,
+                        sku: sku,
+                        campaign_type: 'PT'
+                    },
+                    success: function(response) {
+                        if (response.status === 200) {
+                            var history = response.history || [];
+                            var historyHtml = '<div class="table-responsive" style="max-height: 400px; overflow-y: auto;">';
+                            historyHtml += '<table class="table table-sm table-bordered">';
+                            historyHtml += '<thead class="table-light"><tr>';
+                            historyHtml += '<th>Date</th><th>Issue Found</th><th>Action Taken</th><th>Target Issues</th>';
+                            historyHtml += '</tr></thead><tbody>';
+                            
+                            if (history.length === 0) {
+                                historyHtml += '<tr><td colspan="4" class="text-center">No history found</td></tr>';
+                            } else {
+                                history.forEach(function(item) {
+                                    var targetIssues = JSON.parse(item.target_issues || '{}');
+                                    var issuesList = Object.keys(targetIssues).filter(key => targetIssues[key]).join(', ') || 'None';
+                                    historyHtml += '<tr>';
+                                    historyHtml += '<td>' + (item.created_at || '') + '</td>';
+                                    historyHtml += '<td>' + (item.issue_found || '') + '</td>';
+                                    historyHtml += '<td>' + (item.action_taken || '') + '</td>';
+                                    historyHtml += '<td><small>' + issuesList + '</small></td>';
+                                    historyHtml += '</tr>';
+                                });
+                            }
+                            
+                            historyHtml += '</tbody></table></div>';
+                            
+                            // Show modal
+                            var modalHtml = `
+                                <div class="modal fade" id="acosHistoryModal" tabindex="-1">
+                                    <div class="modal-dialog modal-lg">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title">ACOS Action History - ${sku || campaignId}</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <div class="modal-body">
+                                                ${historyHtml}
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                            
+                            // Remove existing modal if any
+                            $('#acosHistoryModal').remove();
+                            
+                            // Add modal to body
+                            $('body').append(modalHtml);
+                            
+                            // Show modal
+                            var modal = new bootstrap.Modal(document.getElementById('acosHistoryModal'));
+                            modal.show();
+                            
+                            // Remove modal from DOM when hidden
+                            $('#acosHistoryModal').on('hidden.bs.modal', function() {
+                                $(this).remove();
+                            });
+                        }
+                    },
+                    error: function(xhr) {
+                        alert('Error loading history: ' + (xhr.responseJSON?.message || 'Failed to load history'));
+                    }
+                });
+            }
         });
 
         let utilizationChartInstance = null;

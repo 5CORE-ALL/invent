@@ -795,6 +795,16 @@
                         }
                     },
                     {
+                        title: "Spend L30",
+                        field: "spend_L30",
+                        hozAlign: "right",
+                        formatter: function(cell){
+                            var row = cell.getRow().getData();
+                            var spend_L30 = parseFloat(row.spend_L30) || 0;
+                            return spend_L30.toFixed(2);
+                        }
+                    },
+                    {
                         title: "Spend L7",
                         field: "spend_L7",
                         hozAlign: "right",
@@ -1639,22 +1649,46 @@
             }
 
             document.getElementById("export-btn").addEventListener("click", function () {
-                let filteredData = table.getData("active");
+                // Get all data regardless of filters
+                let allData = table.getData("all");
 
-                let exportData = filteredData.map(row => {
+                let exportData = allData.map(row => {
                     let cpc_L1 = parseFloat(row.cpc_L1 || 0);
                     let cpc_L7 = parseFloat(row.cpc_L7 || 0);
                     let sbid;
 
-                        if (cpc_L1 === 0 && cpc_L7 === 0) {
-                            sbid = 0.75;
-                        } else {
+                    if (cpc_L1 === 0 && cpc_L7 === 0) {
+                        sbid = 0.75;
+                    } else {
                         sbid = Math.floor(cpc_L7 * 1.10 * 100) / 100;
                     }
 
+                    // Calculate UB7 and UB1
+                    let budget = parseFloat(row.campaignBudgetAmount || 0);
+                    let spend_L7 = parseFloat(row.spend_L7 || 0);
+                    let spend_L1 = parseFloat(row.spend_L1 || 0);
+                    let ub7 = budget > 0 ? (spend_L7 / (budget * 7)) * 100 : 0;
+                    let ub1 = budget > 0 ? (spend_L1 / budget) * 100 : 0;
+
                     return {
-                        campaignName: row.campaignName || "",
-                        sbid: sbid.toFixed(2)
+                        Parent: row.parent || "",
+                        SKU: row.sku || "",
+                        Campaign: row.campaignName || "",
+                        Status: row.campaignStatus || "",
+                        Budget: budget.toFixed(2),
+                        "Clicks L30": parseFloat(row.clicks_L30 || 0),
+                        "Spend L30": parseFloat(row.spend_L30 || 0).toFixed(2),
+                        "Spend L7": spend_L7.toFixed(2),
+                        "Spend L1": spend_L1.toFixed(2),
+                        "7 UB%": ub7.toFixed(0) + "%",
+                        "1 UB%": ub1.toFixed(0) + "%",
+                        "L7 CPC": parseFloat(row.cpc_L7 || 0).toFixed(2),
+                        "L1 CPC": parseFloat(row.cpc_L1 || 0).toFixed(2),
+                        SBID: sbid.toFixed(2),
+                        INV: parseFloat(row.INV || 0),
+                        "OV L30": parseFloat(row.L30 || 0),
+                        NRL: row.NRL || "",
+                        NRA: row.NRA || ""
                     };
                 });
 
@@ -1665,9 +1699,9 @@
 
                 let ws = XLSX.utils.json_to_sheet(exportData);
                 let wb = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb, ws, "Campaigns");
+                XLSX.utils.book_append_sheet(wb, ws, "Google Shopping Data");
 
-                XLSX.writeFile(wb, "ebay_over_acos_pink.xlsx");
+                XLSX.writeFile(wb, "google_shopping_utilized_data.xlsx");
             });
 
             document.body.style.zoom = "78%";

@@ -2442,6 +2442,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/amazon/utilized/pt/ads/data', 'getAmazonUtilizedPtAdsData');
         Route::get('/amazon/get-utilization-counts', 'getAmazonUtilizationCounts');
         Route::get('/amazon/get-utilization-chart-data', 'getAmazonUtilizationChartData');
+        
+        // ACOS Action History Routes
+        Route::post('/amazon/save-acos-action-history', 'saveAcosActionHistory');
+        Route::get('/amazon/get-acos-action-history', 'getAcosActionHistory');
 
         Route::get('/amazon-sp/amz-utilized-bgt-pt', 'amzUtilizedBgtPt')->name('amazon-sp.amz-utilized-bgt-pt');
         Route::get('/amazon-sp/get-amz-utilized-bgt-pt', 'getAmzUtilizedBgtPt');
