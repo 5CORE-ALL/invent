@@ -1632,6 +1632,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     //data update routes
     Route::post('/channel_master/update', [ChannelMasterController::class, 'update']);
+    Route::post('/channel_master/update-name-type', [ChannelMasterController::class, 'updateNameAndType'])->name('channel_master.update_name_type');
 
     //data delete routes
     Route::delete('/product_master/delete', [ProductMasterController::class, 'destroy'])->name('product_master.destroy');

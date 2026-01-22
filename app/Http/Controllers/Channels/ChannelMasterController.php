@@ -4291,6 +4291,43 @@ class ChannelMasterController extends Controller
         return response()->json(['success' => true]);
     }
 
+    /**
+     * Update only channel name and Ad Type (for ADV Masters Edit).
+     * Prefer update: lookup by original_channel (case-insensitive). If not found, lookup by new channel (avoid duplicates).
+     * Create only when neither exists.
+     */
+    public function updateNameAndType(Request $request)
+    {
+        $request->validate([
+            'original_channel' => 'required|string',
+            'channel' => 'required|string|max:255',
+            'type' => 'nullable|string|max:50',
+        ]);
+
+        $original = trim($request->input('original_channel'));
+        $newName = trim($request->input('channel'));
+        $type = $request->filled('type') ? trim($request->input('type')) : null;
+
+        $channel = ChannelMaster::whereRaw('LOWER(TRIM(channel)) = ?', [strtolower($original)])->first();
+
+        if (!$channel) {
+            $channel = ChannelMaster::whereRaw('LOWER(TRIM(channel)) = ?', [strtolower($newName)])->first();
+        }
+
+        if ($channel) {
+            $channel->channel = $newName;
+            $channel->type = $type;
+            $channel->save();
+            return response()->json(['success' => true, 'message' => 'Channel updated successfully']);
+        }
+
+        ChannelMaster::create([
+            'channel' => $newName,
+            'type' => $type,
+            'status' => 'Active',
+        ]);
+        return response()->json(['success' => true, 'message' => 'Channel created successfully']);
+    }
 
     public function getChannelCounts()
     {

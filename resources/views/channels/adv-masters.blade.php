@@ -126,8 +126,8 @@
             letter-spacing: 0.5px;
         }
 
-        /* Tabulator vertical headers (columns 4+) */
-        .tabulator .tabulator-col:nth-child(n+4) .tabulator-col-content {
+        /* Tabulator headers – all columns bottom-to-top */
+        .tabulator .tabulator-col .tabulator-col-content {
             writing-mode: vertical-rl;
             text-orientation: mixed;
             white-space: nowrap;
@@ -137,6 +137,7 @@
             padding: 8px 6px;
             line-height: 1.3;
             overflow: visible;
+            transform: rotate(180deg);
         }
 
         .tabulator .tabulator-cell {
@@ -182,6 +183,7 @@
             position: sticky;
             top: 0;
             z-index: 10;
+            text-align: center;
         }
 
         #adv-master-table thead th:first-child {
@@ -192,7 +194,7 @@
             border-top-right-radius: 12px;
         }
 
-        /* Vertical headers (columns 4+) */
+        /* Vertical headers (columns 4+) – bottom-to-top */
         #adv-master-table thead th.th-vertical {
             writing-mode: vertical-rl;
             text-orientation: mixed;
@@ -205,6 +207,7 @@
             line-height: 1.3;
             overflow: visible;
             text-overflow: clip;
+            transform: rotate(180deg);
         }
 
         #adv-master-table thead th.th-vertical hr {
@@ -212,9 +215,15 @@
             width: 80%;
         }
 
-        /* Horizontal headers (first 3 columns) */
+        /* All headers bottom-to-top (including CHANNELS, Ad Type, Tab, Graph) */
         #adv-master-table thead th.th-horizontal {
-            white-space: normal;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            white-space: nowrap;
+            height: 140px;
+            min-width: 38px;
+            vertical-align: bottom;
+            transform: rotate(180deg);
         }
 
         #adv-master-table tbody td {
@@ -222,31 +231,11 @@
             border-bottom: 1px solid var(--border-color);
             font-size: 14px;
             transition: background-color 0.2s ease;
+            text-align: center;
         }
 
         #adv-master-table tbody tr:hover {
             background-color: #F9FAFB;
-        }
-
-        #adv-master-table tbody tr.accordion-header {
-            background: linear-gradient(135deg, #E0E7FF 0%, #C7D2FE 100%);
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        #adv-master-table tbody tr.accordion-header:hover {
-            background: linear-gradient(135deg, #C7D2FE 0%, #A5B4FC 100%);
-            transform: scale(1.01);
-        }
-
-        #adv-master-table tbody tr.accordion-body {
-            background-color: #FAFBFC;
-            border-left: 3px solid var(--primary-color);
-        }
-
-        #adv-master-table tbody tr.accordion-body:hover {
-            background-color: #F3F4F6;
         }
 
         #adv-master-table th,
@@ -525,12 +514,6 @@
             opacity: 0.3;
         }
 
-        /* Better Visual Hierarchy */
-        #adv-master-table tbody tr.accordion-header td:first-child {
-            font-size: 15px;
-            letter-spacing: 0.3px;
-        }
-
         /* Smooth Transitions */
         * {
             transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
@@ -575,7 +558,7 @@
                                     $total_grw_cvr = 0;
                                 }
                                 $total_cvr = number_format($total_cvr, 2);
-                                $total_grw_cvr = number_format($total_grw_cvr, 2);
+                                $total_grw_cvr = number_format($total_grw_cvr, 0);
                                 $grw_cvr_color = ($total_grw_cvr >= 0) ? '#28a745' : '#dc3545';
                             @endphp
                             CVR: <span id="badge-cvr">{{ $total_cvr }}</span>% 
@@ -586,7 +569,7 @@
                         <span class="badge bg-secondary" style="font-size: 13px; padding: 6px 12px; font-weight: 500;">
                             @php
                                 $total_grw_clks = (($total_l60_clicks ?? 0) > 0) ? ($total_clicks / ($total_l60_clicks ?? 1)) * 100 : 0;
-                                $total_grw_clks = number_format($total_grw_clks, 2);
+                                $total_grw_clks = number_format($total_grw_clks, 0);
                                 $grw_clks_color = ($total_grw_clks >= 0) ? '#28a745' : '#dc3545';
                             @endphp
                             Clicks: <span id="badge-clicks">{{ number_format($total_clicks ?? 0, 0) }}</span>
@@ -652,7 +635,7 @@
                             <th class="text-center th-vertical">GRW <br><hr> 
                                 @php
                                     $total_grw = ($total_l60_spent > 0) ? ($total_spent / $total_l60_spent) * 100 : 0;
-                                    echo number_format($total_grw, 2) . '%';
+                                    echo number_format($total_grw, 0) . '%';
                                 @endphp
                             </th>
                             <th class="text-center th-vertical">L30 CLKS <br><hr> {{ $total_clicks}}</th>
@@ -660,7 +643,26 @@
                             <th class="text-center th-vertical">GRW CLKS <br><hr>
                                 @php
                                     $total_grw_clks = (($total_l60_clicks ?? 0) > 0) ? ($total_clicks / ($total_l60_clicks ?? 1)) * 100 : 0;
-                                    echo number_format($total_grw_clks, 2) . '%';
+                                    echo number_format($total_grw_clks, 0) . '%';
+                                @endphp
+                            </th>
+                            <th class="text-center th-vertical">CPC <br><hr>
+                                @php
+                                    $total_cpc = ($total_clicks > 0) ? ($total_spent / $total_clicks) : 0;
+                                    echo number_format($total_cpc, 2);
+                                @endphp
+                            </th>
+                            <th class="text-center th-vertical">CTR <br><hr>
+                                @php
+                                    $total_impressions = ($total_impressions ?? 0);
+                                    $total_ctr = ($total_impressions > 0) ? (($total_clicks / $total_impressions) * 100) : 0;
+                                    echo number_format($total_ctr, 2) . '%';
+                                @endphp
+                            </th>
+                            <th class="text-center th-vertical">CPS <br><hr>
+                                @php
+                                    $total_cps = ($total_ad_sold > 0) ? ($total_spent / $total_ad_sold) : 0;
+                                    echo number_format($total_cps, 2);
                                 @endphp
                             </th>
                             <th class="text-center th-vertical">AD SALES <br><hr> {{ $total_ad_sales}}</th>
@@ -710,7 +712,7 @@
                                     }else{
                                         $total_grw_cvr = 0;
                                     }
-                                    $total_grw_cvr = number_format($total_grw_cvr, 2);
+                                    $total_grw_cvr = number_format($total_grw_cvr, 0);
                                 @endphp
                                 {{ $total_grw_cvr.' %' }}
                             </th>
@@ -741,7 +743,7 @@
                             <td class="text-center">
                                 @php
                                     $amazon_grw = (($amazon_l60_spent ?? 0) > 0) ? ($amazon_spent / ($amazon_l60_spent ?? 1)) * 100 : 0;
-                                    echo number_format($amazon_grw, 2) . '%';
+                                    echo number_format($amazon_grw, 0) . '%';
                                 @endphp
                             </td>
                             <td class="text-center">{{ $amazon_clicks }}</td>
@@ -749,7 +751,26 @@
                             <td class="text-center">
                                 @php
                                     $grw_clks = (($amazon_l60_clicks ?? 0) > 0) ? ($amazon_clicks / ($amazon_l60_clicks ?? 1)) * 100 : 0;
-                                    echo number_format($grw_clks, 2) . '%';
+                                    echo number_format($grw_clks, 0) . '%';
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $amazon_cpc = ($amazon_clicks > 0) ? ($amazon_spent / $amazon_clicks) : 0;
+                                    echo number_format($amazon_cpc, 2);
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $amazon_impressions = ($amazon_impressions ?? 0);
+                                    $amazon_ctr = ($amazon_impressions > 0) ? (($amazon_clicks / $amazon_impressions) * 100) : 0;
+                                    echo number_format($amazon_ctr, 2) . '%';
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $amazon_cps = ($amazon_ad_sold > 0) ? ($amazon_spent / $amazon_ad_sold) : 0;
+                                    echo number_format($amazon_cps, 2);
                                 @endphp
                             </td>
                             <td class="text-center">{{ $amazon_ad_sales }}</td>
@@ -838,13 +859,13 @@
                                     }else{
                                         $grw_cvr = 0;
                                     }
-                                    $grw_cvr = number_format($grw_cvr, 2);
+                                    $grw_cvr = number_format($grw_cvr, 0);
                                 @endphp
                                 {{ $grw_cvr.' %' }}
                             </td>
                             <td class="text-center">{{ $amazon_missing_ads }}</td>
                             <td class="text-center">
-                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="AMAZON" title="Edit Channel">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="AMAZON" data-type="" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                                         <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
                                     </svg>
@@ -865,7 +886,7 @@
                             <td class="text-center">
                                 @php
                                     $amazonkw_grw = (($amazonkw_l60_spent ?? 0) > 0) ? ($amazonkw_spent / ($amazonkw_l60_spent ?? 1)) * 100 : 0;
-                                    echo number_format($amazonkw_grw, 2) . '%';
+                                    echo number_format($amazonkw_grw, 0) . '%';
                                 @endphp
                             </td>
                             <td class="text-center">{{ $amazonkw_clicks }}</td>
@@ -873,7 +894,26 @@
                             <td class="text-center">
                                 @php
                                     $grw_clks = (($amazonkw_l60_clicks ?? 0) > 0) ? ($amazonkw_clicks / ($amazonkw_l60_clicks ?? 1)) * 100 : 0;
-                                    echo number_format($grw_clks, 2) . '%';
+                                    echo number_format($grw_clks, 0) . '%';
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $amazonkw_cpc = ($amazonkw_clicks > 0) ? ($amazonkw_spent / $amazonkw_clicks) : 0;
+                                    echo number_format($amazonkw_cpc, 2);
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $amazonkw_impressions = ($amazonkw_impressions ?? 0);
+                                    $amazonkw_ctr = ($amazonkw_impressions > 0) ? (($amazonkw_clicks / $amazonkw_impressions) * 100) : 0;
+                                    echo number_format($amazonkw_ctr, 2) . '%';
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $amazonkw_cps = ($amazonkw_ad_sold > 0) ? ($amazonkw_spent / $amazonkw_ad_sold) : 0;
+                                    echo number_format($amazonkw_cps, 2);
                                 @endphp
                             </td>
                             <td class="text-center">{{ $amazonkw_ad_sales }}</td>
@@ -950,13 +990,13 @@
                                     }else{
                                         $grw_cvr = 0;
                                     }
-                                    $grw_cvr = number_format($grw_cvr, 2);
+                                    $grw_cvr = number_format($grw_cvr, 0);
                                 @endphp
                                 {{ $grw_cvr.' %' }}
                             </td>
                             <td class="text-center">{{ $amazonkw_missing_ads }}</td>
                             <td class="text-center">
-                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="AMZ KW" title="Edit Channel">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="AMZ KW" data-type="" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                                         <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
                                     </svg>
@@ -977,7 +1017,7 @@
                             <td class="text-center">
                                 @php
                                     $amazonpt_grw = (($amazonpt_l60_spent ?? 0) > 0) ? ($amazonpt_spent / ($amazonpt_l60_spent ?? 1)) * 100 : 0;
-                                    echo number_format($amazonpt_grw, 2) . '%';
+                                    echo number_format($amazonpt_grw, 0) . '%';
                                 @endphp
                             </td>
                             <td class="text-center">{{ $amazonpt_clicks }}</td>
@@ -985,7 +1025,26 @@
                             <td class="text-center">
                                 @php
                                     $grw_clks = (($amazonpt_l60_clicks ?? 0) > 0) ? ($amazonpt_clicks / ($amazonpt_l60_clicks ?? 1)) * 100 : 0;
-                                    echo number_format($grw_clks, 2) . '%';
+                                    echo number_format($grw_clks, 0) . '%';
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $amazonpt_cpc = ($amazonpt_clicks > 0) ? ($amazonpt_spent / $amazonpt_clicks) : 0;
+                                    echo number_format($amazonpt_cpc, 2);
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $amazonpt_impressions = ($amazonpt_impressions ?? 0);
+                                    $amazonpt_ctr = ($amazonpt_impressions > 0) ? (($amazonpt_clicks / $amazonpt_impressions) * 100) : 0;
+                                    echo number_format($amazonpt_ctr, 2) . '%';
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $amazonpt_cps = ($amazonpt_ad_sold > 0) ? ($amazonpt_spent / $amazonpt_ad_sold) : 0;
+                                    echo number_format($amazonpt_cps, 2);
                                 @endphp
                             </td>
                             <td class="text-center">{{ $amazonpt_ad_sales }}</td>
@@ -1062,13 +1121,13 @@
                                     }else{
                                         $grw_cvr = 0;
                                     }
-                                    $grw_cvr = number_format($grw_cvr, 2);
+                                    $grw_cvr = number_format($grw_cvr, 0);
                                 @endphp
                                 {{ $grw_cvr.' %' }}
                             </td>
                             <td class="text-center">{{ $amazonpt_missing_ads }}</td>
                             <td class="text-center">
-                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="AMZ PT" title="Edit Channel">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="AMZ PT" data-type="" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                                         <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
                                     </svg>
@@ -1089,7 +1148,7 @@
                             <td class="text-center">
                                 @php
                                     $amazonhl_grw = (($amazonhl_l60_spent ?? 0) > 0) ? ($amazonhl_spent / ($amazonhl_l60_spent ?? 1)) * 100 : 0;
-                                    echo number_format($amazonhl_grw, 2) . '%';
+                                    echo number_format($amazonhl_grw, 0) . '%';
                                 @endphp
                             </td>
                             <td class="text-center">{{ $amazonhl_clicks }}</td>
@@ -1097,7 +1156,26 @@
                             <td class="text-center">
                                 @php
                                     $grw_clks = (($amazonhl_l60_clicks ?? 0) > 0) ? ($amazonhl_clicks / ($amazonhl_l60_clicks ?? 1)) * 100 : 0;
-                                    echo number_format($grw_clks, 2) . '%';
+                                    echo number_format($grw_clks, 0) . '%';
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $amazonhl_cpc = ($amazonhl_clicks > 0) ? ($amazonhl_spent / $amazonhl_clicks) : 0;
+                                    echo number_format($amazonhl_cpc, 2);
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $amazonhl_impressions = ($amazonhl_impressions ?? 0);
+                                    $amazonhl_ctr = ($amazonhl_impressions > 0) ? (($amazonhl_clicks / $amazonhl_impressions) * 100) : 0;
+                                    echo number_format($amazonhl_ctr, 2) . '%';
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $amazonhl_cps = ($amazonhl_ad_sold > 0) ? ($amazonhl_spent / $amazonhl_ad_sold) : 0;
+                                    echo number_format($amazonhl_cps, 2);
                                 @endphp
                             </td>
                             <td class="text-center">{{ $amazonhl_ad_sales }}</td>
@@ -1174,13 +1252,13 @@
                                     }else{
                                         $grw_cvr = 0;
                                     }
-                                    $grw_cvr = number_format($grw_cvr, 2);
+                                    $grw_cvr = number_format($grw_cvr, 0);
                                 @endphp
                                 {{ $grw_cvr.' %' }}
                             </td>
                             <td class="text-center">{{ $amazonhl_missing_ads }}</td>
                             <td class="text-center">
-                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="AMZ HL" title="Edit Channel">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="AMZ HL" data-type="" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                                         <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
                                     </svg>
@@ -1210,7 +1288,7 @@
                             <td class="text-center">
                                 @php
                                     $ebay_grw = (($ebay_l60_spent ?? 0) > 0) ? ($ebay_spent / ($ebay_l60_spent ?? 1)) * 100 : 0;
-                                    echo number_format($ebay_grw, 2) . '%';
+                                    echo number_format($ebay_grw, 0) . '%';
                                 @endphp
                             </td>
                             <td class="text-center">{{ $ebay_clicks }}</td>
@@ -1218,7 +1296,26 @@
                             <td class="text-center">
                                 @php
                                     $grw_clks = (($ebay_l60_clicks ?? 0) > 0) ? ($ebay_clicks / ($ebay_l60_clicks ?? 1)) * 100 : 0;
-                                    echo number_format($grw_clks, 2) . '%';
+                                    echo number_format($grw_clks, 0) . '%';
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $ebay_cpc = ($ebay_clicks > 0) ? ($ebay_spent / $ebay_clicks) : 0;
+                                    echo number_format($ebay_cpc, 2);
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $ebay_impressions = ($ebay_impressions ?? 0);
+                                    $ebay_ctr = ($ebay_impressions > 0) ? (($ebay_clicks / $ebay_impressions) * 100) : 0;
+                                    echo number_format($ebay_ctr, 2) . '%';
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $ebay_cps = ($ebay_ad_sold > 0) ? ($ebay_spent / $ebay_ad_sold) : 0;
+                                    echo number_format($ebay_cps, 2);
                                 @endphp
                             </td>
                             <td class="text-center">{{ $ebay_ad_sales }}</td>
@@ -1307,13 +1404,13 @@
                                     }else{
                                         $grw_cvr = 0;
                                     }
-                                    $grw_cvr = number_format($grw_cvr, 2);
+                                    $grw_cvr = number_format($grw_cvr, 0);
                                 @endphp
                                 {{ $grw_cvr.' %' }}
                             </td>
                             <td class="text-center">{{ $ebay_missing_ads }}</td>
                             <td class="text-center">
-                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="EBAY" title="Edit Channel">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="EBAY" data-type="" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                                         <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
                                     </svg>
@@ -1334,7 +1431,7 @@
                             <td class="text-center">
                                 @php
                                     $ebaykw_grw = (($ebaykw_l60_spent ?? 0) > 0) ? ($ebaykw_spent / ($ebaykw_l60_spent ?? 1)) * 100 : 0;
-                                    echo number_format($ebaykw_grw, 2) . '%';
+                                    echo number_format($ebaykw_grw, 0) . '%';
                                 @endphp
                             </td>
                             <td class="text-center">{{ $ebaykw_clicks }}</td>
@@ -1342,7 +1439,26 @@
                             <td class="text-center">
                                 @php
                                     $grw_clks = (($ebaykw_l60_clicks ?? 0) > 0) ? ($ebaykw_clicks / ($ebaykw_l60_clicks ?? 1)) * 100 : 0;
-                                    echo number_format($grw_clks, 2) . '%';
+                                    echo number_format($grw_clks, 0) . '%';
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $ebaykw_cpc = ($ebaykw_clicks > 0) ? ($ebaykw_spent / $ebaykw_clicks) : 0;
+                                    echo number_format($ebaykw_cpc, 2);
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $ebaykw_impressions = ($ebaykw_impressions ?? 0);
+                                    $ebaykw_ctr = ($ebaykw_impressions > 0) ? (($ebaykw_clicks / $ebaykw_impressions) * 100) : 0;
+                                    echo number_format($ebaykw_ctr, 2) . '%';
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $ebaykw_cps = ($ebaykw_ad_sold > 0) ? ($ebaykw_spent / $ebaykw_ad_sold) : 0;
+                                    echo number_format($ebaykw_cps, 2);
                                 @endphp
                             </td>
                             <td class="text-center">{{ $ebaykw_ad_sales }}</td>
@@ -1419,13 +1535,13 @@
                                     }else{
                                         $grw_cvr = 0;
                                     }
-                                    $grw_cvr = number_format($grw_cvr, 2);
+                                    $grw_cvr = number_format($grw_cvr, 0);
                                 @endphp
                                 {{ $grw_cvr.' %' }}
                             </td>
                             <td class="text-center">{{ $ebaykw_missing_ads }}</td>
                             <td class="text-center">
-                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="EB KW" title="Edit Channel">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="EB KW" data-type="" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                                         <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
                                     </svg>
@@ -1446,7 +1562,7 @@
                             <td class="text-center">
                                 @php
                                     $ebaypmt_grw = (($ebaypmt_l60_spent ?? 0) > 0) ? ($ebaypmt_spent / ($ebaypmt_l60_spent ?? 1)) * 100 : 0;
-                                    echo number_format($ebaypmt_grw, 2) . '%';
+                                    echo number_format($ebaypmt_grw, 0) . '%';
                                 @endphp
                             </td>
                             <td class="text-center">{{ $ebaypmt_clicks }}</td>
@@ -1454,7 +1570,26 @@
                             <td class="text-center">
                                 @php
                                     $grw_clks = (($ebaypmt_l60_clicks ?? 0) > 0) ? ($ebaypmt_clicks / ($ebaypmt_l60_clicks ?? 1)) * 100 : 0;
-                                    echo number_format($grw_clks, 2) . '%';
+                                    echo number_format($grw_clks, 0) . '%';
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $ebaypmt_cpc = ($ebaypmt_clicks > 0) ? ($ebaypmt_spent / $ebaypmt_clicks) : 0;
+                                    echo number_format($ebaypmt_cpc, 2);
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $ebaypmt_impressions = ($ebaypmt_impressions ?? 0);
+                                    $ebaypmt_ctr = ($ebaypmt_impressions > 0) ? (($ebaypmt_clicks / $ebaypmt_impressions) * 100) : 0;
+                                    echo number_format($ebaypmt_ctr, 2) . '%';
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $ebaypmt_cps = ($ebaypmt_ad_sold > 0) ? ($ebaypmt_spent / $ebaypmt_ad_sold) : 0;
+                                    echo number_format($ebaypmt_cps, 2);
                                 @endphp
                             </td>
                             <td class="text-center">{{ $ebaypmt_ad_sales }}</td>
@@ -1531,13 +1666,13 @@
                                     }else{
                                         $grw_cvr = 0;
                                     }
-                                    $grw_cvr = number_format($grw_cvr, 2);
+                                    $grw_cvr = number_format($grw_cvr, 0);
                                 @endphp
                                 {{ $grw_cvr.' %' }}
                             </td>
                             <td class="text-center">{{ $ebaypmt_missing_ads }}</td>
                             <td class="text-center">
-                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="EB PMT" title="Edit Channel">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="EB PMT" data-type="" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                                         <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
                                     </svg>
@@ -1558,7 +1693,7 @@
                             <td class="text-center">
                                 @php
                                     $ebay2_grw = (($ebay2_l60_spent ?? 0) > 0) ? ($ebay2_spent / ($ebay2_l60_spent ?? 1)) * 100 : 0;
-                                    echo number_format($ebay2_grw, 2) . '%';
+                                    echo number_format($ebay2_grw, 0) . '%';
                                 @endphp
                             </td>
                             <td class="text-center">{{ $ebay2_clicks }}</td>
@@ -1566,7 +1701,26 @@
                             <td class="text-center">
                                 @php
                                     $grw_clks = (($ebay2_l60_clicks ?? 0) > 0) ? ($ebay2_clicks / ($ebay2_l60_clicks ?? 1)) * 100 : 0;
-                                    echo number_format($grw_clks, 2) . '%';
+                                    echo number_format($grw_clks, 0) . '%';
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $ebay2_cpc = ($ebay2_clicks > 0) ? ($ebay2_spent / $ebay2_clicks) : 0;
+                                    echo number_format($ebay2_cpc, 2);
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $ebay2_impressions = ($ebay2_impressions ?? 0);
+                                    $ebay2_ctr = ($ebay2_impressions > 0) ? (($ebay2_clicks / $ebay2_impressions) * 100) : 0;
+                                    echo number_format($ebay2_ctr, 2) . '%';
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $ebay2_cps = ($ebay2_ad_sold > 0) ? ($ebay2_spent / $ebay2_ad_sold) : 0;
+                                    echo number_format($ebay2_cps, 2);
                                 @endphp
                             </td>
                             <td class="text-center">{{ $ebay2_ad_sales }}</td>
@@ -1654,13 +1808,13 @@
                                     }else{
                                         $grw_cvr = 0;
                                     }
-                                    $grw_cvr = number_format($grw_cvr, 2);
+                                    $grw_cvr = number_format($grw_cvr, 0);
                                 @endphp
                                 {{ $grw_cvr.' %' }}
                             </td>
                             <td class="text-center">{{ $ebay2_missing_ads }}</td>
                             <td class="text-center">
-                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="EBAY 2" title="Edit Channel">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="EBAY 2" data-type="" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                                         <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
                                     </svg>
@@ -1681,7 +1835,7 @@
                             <td class="text-center">
                                 @php
                                     $grw = (($ebay2pmt_l60_spent ?? 0) > 0) ? ($ebay2pmt_spent / ($ebay2pmt_l60_spent ?? 1)) * 100 : 0;
-                                    echo number_format($grw, 2) . '%';
+                                    echo number_format($grw, 0) . '%';
                                 @endphp
                             </td>
                             <td class="text-center">{{ $ebay2pmt_clicks }}</td>
@@ -1689,7 +1843,26 @@
                             <td class="text-center">
                                 @php
                                     $grw_clks = (($ebay2pmt_l60_clicks ?? 0) > 0) ? ($ebay2pmt_clicks / ($ebay2pmt_l60_clicks ?? 1)) * 100 : 0;
-                                    echo number_format($grw_clks, 2) . '%';
+                                    echo number_format($grw_clks, 0) . '%';
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $ebay2pmt_cpc = ($ebay2pmt_clicks > 0) ? ($ebay2pmt_spent / $ebay2pmt_clicks) : 0;
+                                    echo number_format($ebay2pmt_cpc, 2);
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $ebay2pmt_impressions = ($ebay2pmt_impressions ?? 0);
+                                    $ebay2pmt_ctr = ($ebay2pmt_impressions > 0) ? (($ebay2pmt_clicks / $ebay2pmt_impressions) * 100) : 0;
+                                    echo number_format($ebay2pmt_ctr, 2) . '%';
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $ebay2pmt_cps = ($ebay2pmt_ad_sold > 0) ? ($ebay2pmt_spent / $ebay2pmt_ad_sold) : 0;
+                                    echo number_format($ebay2pmt_cps, 2);
                                 @endphp
                             </td>
                             <td class="text-center">{{ $ebay2pmt_ad_sales }}</td>
@@ -1766,13 +1939,13 @@
                                     }else{
                                         $grw_cvr = 0;
                                     }
-                                    $grw_cvr = number_format($grw_cvr, 2);
+                                    $grw_cvr = number_format($grw_cvr, 0);
                                 @endphp
                                 {{ $grw_cvr.' %' }}
                             </td>
                             <td class="text-center">{{ $ebay2pmt_missing_ads }}</td>
                             <td class="text-center">
-                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="EB PMT" title="Edit Channel">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="EB PMT" data-type="" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                                         <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
                                     </svg>
@@ -1793,7 +1966,7 @@
                             <td class="text-center">
                                 @php
                                     $grw = (($ebay3_l60_spent ?? 0) > 0) ? ($ebay3_spent / ($ebay3_l60_spent ?? 1)) * 100 : 0;
-                                    echo number_format($grw, 2) . '%';
+                                    echo number_format($grw, 0) . '%';
                                 @endphp
                             </td>
                             <td class="text-center">{{ $ebay3_clicks }}</td>
@@ -1801,7 +1974,26 @@
                             <td class="text-center">
                                 @php
                                     $grw_clks = (($ebay3_l60_clicks ?? 0) > 0) ? ($ebay3_clicks / ($ebay3_l60_clicks ?? 1)) * 100 : 0;
-                                    echo number_format($grw_clks, 2) . '%';
+                                    echo number_format($grw_clks, 0) . '%';
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $ebay3_cpc = ($ebay3_clicks > 0) ? ($ebay3_spent / $ebay3_clicks) : 0;
+                                    echo number_format($ebay3_cpc, 2);
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $ebay3_impressions = ($ebay3_impressions ?? 0);
+                                    $ebay3_ctr = ($ebay3_impressions > 0) ? (($ebay3_clicks / $ebay3_impressions) * 100) : 0;
+                                    echo number_format($ebay3_ctr, 2) . '%';
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $ebay3_cps = ($ebay3_ad_sold > 0) ? ($ebay3_spent / $ebay3_ad_sold) : 0;
+                                    echo number_format($ebay3_cps, 2);
                                 @endphp
                             </td>
                             <td class="text-center">{{ $ebay3_ad_sales }}</td>
@@ -1889,13 +2081,13 @@
                                     }else{
                                         $grw_cvr = 0;
                                     }
-                                    $grw_cvr = number_format($grw_cvr, 2);
+                                    $grw_cvr = number_format($grw_cvr, 0);
                                 @endphp
                                 {{ $grw_cvr.' %' }}
                             </td>
                             <td class="text-center">{{ $ebay3_missing_ads }}</td>
                             <td class="text-center">
-                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="EBAY 3" title="Edit Channel">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="EBAY 3" data-type="" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                                         <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
                                     </svg>
@@ -1916,7 +2108,7 @@
                             <td class="text-center">
                                 @php
                                     $grw = (($ebay3kw_l60_spent ?? 0) > 0) ? ($ebay3kw_spent / ($ebay3kw_l60_spent ?? 1)) * 100 : 0;
-                                    echo number_format($grw, 2) . '%';
+                                    echo number_format($grw, 0) . '%';
                                 @endphp
                             </td>
                             <td class="text-center">{{ $ebay3kw_clicks }}</td>
@@ -1924,7 +2116,26 @@
                             <td class="text-center">
                                 @php
                                     $grw_clks = (($ebay3kw_l60_clicks ?? 0) > 0) ? ($ebay3kw_clicks / ($ebay3kw_l60_clicks ?? 1)) * 100 : 0;
-                                    echo number_format($grw_clks, 2) . '%';
+                                    echo number_format($grw_clks, 0) . '%';
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $ebay3kw_cpc = ($ebay3kw_clicks > 0) ? ($ebay3kw_spent / $ebay3kw_clicks) : 0;
+                                    echo number_format($ebay3kw_cpc, 2);
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $ebay3kw_impressions = ($ebay3kw_impressions ?? 0);
+                                    $ebay3kw_ctr = ($ebay3kw_impressions > 0) ? (($ebay3kw_clicks / $ebay3kw_impressions) * 100) : 0;
+                                    echo number_format($ebay3kw_ctr, 2) . '%';
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $ebay3kw_cps = ($ebay3kw_ad_sold > 0) ? ($ebay3kw_spent / $ebay3kw_ad_sold) : 0;
+                                    echo number_format($ebay3kw_cps, 2);
                                 @endphp
                             </td>
                             <td class="text-center">{{ $ebay3kw_ad_sales }}</td>
@@ -2001,13 +2212,13 @@
                                     }else{
                                         $grw_cvr = 0;
                                     }
-                                    $grw_cvr = number_format($grw_cvr, 2);
+                                    $grw_cvr = number_format($grw_cvr, 0);
                                 @endphp
                                 {{ $grw_cvr.' %' }}
                             </td>
                             <td class="text-center">{{ $ebay3kw_missing_ads }}</td>
                             <td class="text-center">
-                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="EB KW" title="Edit Channel">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="EB KW" data-type="" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                                         <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
                                     </svg>
@@ -2028,7 +2239,7 @@
                             <td class="text-center">
                                 @php
                                     $grw = (($ebay3pmt_l60_spent ?? 0) > 0) ? ($ebay3pmt_spent / ($ebay3pmt_l60_spent ?? 1)) * 100 : 0;
-                                    echo number_format($grw, 2) . '%';
+                                    echo number_format($grw, 0) . '%';
                                 @endphp
                             </td>
                             <td class="text-center">{{ $ebay3pmt_clicks }}</td>
@@ -2036,7 +2247,26 @@
                             <td class="text-center">
                                 @php
                                     $grw_clks = (($ebay3pmt_l60_clicks ?? 0) > 0) ? ($ebay3pmt_clicks / ($ebay3pmt_l60_clicks ?? 1)) * 100 : 0;
-                                    echo number_format($grw_clks, 2) . '%';
+                                    echo number_format($grw_clks, 0) . '%';
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $ebay3pmt_cpc = ($ebay3pmt_clicks > 0) ? ($ebay3pmt_spent / $ebay3pmt_clicks) : 0;
+                                    echo number_format($ebay3pmt_cpc, 2);
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $ebay3pmt_impressions = ($ebay3pmt_impressions ?? 0);
+                                    $ebay3pmt_ctr = ($ebay3pmt_impressions > 0) ? (($ebay3pmt_clicks / $ebay3pmt_impressions) * 100) : 0;
+                                    echo number_format($ebay3pmt_ctr, 2) . '%';
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $ebay3pmt_cps = ($ebay3pmt_ad_sold > 0) ? ($ebay3pmt_spent / $ebay3pmt_ad_sold) : 0;
+                                    echo number_format($ebay3pmt_cps, 2);
                                 @endphp
                             </td>
                             <td class="text-center">{{ $ebay3pmt_ad_sales }}</td>
@@ -2113,13 +2343,13 @@
                                     }else{
                                         $grw_cvr = 0;
                                     }
-                                    $grw_cvr = number_format($grw_cvr, 2);
+                                    $grw_cvr = number_format($grw_cvr, 0);
                                 @endphp
                                 {{ $grw_cvr.' %' }}
                             </td>
                             <td class="text-center">{{ $ebay3pmt_missing_ads }}</td>
                             <td class="text-center">
-                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="EB PMT" title="Edit Channel">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="EB PMT" data-type="" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                                         <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
                                     </svg>
@@ -2140,7 +2370,7 @@
                             <td class="text-center">
                                 @php
                                     $grw = (($walmart_l60_spent ?? 0) > 0) ? ($walmart_spent / ($walmart_l60_spent ?? 1)) * 100 : 0;
-                                    echo number_format($grw, 2) . '%';
+                                    echo number_format($grw, 0) . '%';
                                 @endphp
                             </td>
                             <td class="text-center">{{ $walmart_clicks }}</td>
@@ -2148,7 +2378,26 @@
                             <td class="text-center">
                                 @php
                                     $grw_clks = (($walmart_l60_clicks ?? 0) > 0) ? ($walmart_clicks / ($walmart_l60_clicks ?? 1)) * 100 : 0;
-                                    echo number_format($grw_clks, 2) . '%';
+                                    echo number_format($grw_clks, 0) . '%';
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $walmart_cpc = ($walmart_clicks > 0) ? ($walmart_spent / $walmart_clicks) : 0;
+                                    echo number_format($walmart_cpc, 2);
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $walmart_impressions = ($walmart_impressions ?? 0);
+                                    $walmart_ctr = ($walmart_impressions > 0) ? (($walmart_clicks / $walmart_impressions) * 100) : 0;
+                                    echo number_format($walmart_ctr, 2) . '%';
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $walmart_cps = ($walmart_ad_sold > 0) ? ($walmart_spent / $walmart_ad_sold) : 0;
+                                    echo number_format($walmart_cps, 2);
                                 @endphp
                             </td>
                             <td class="text-center">{{ $walmart_ad_sales }}</td>
@@ -2227,13 +2476,13 @@
                                     }else{
                                         $grw_cvr = 0;
                                     }
-                                    $grw_cvr = number_format($grw_cvr, 2);
+                                    $grw_cvr = number_format($grw_cvr, 0);
                                 @endphp
                                 {{ $grw_cvr.' %' }}
                             </td>
                             <td class="text-center">{{ $walmart_missing_ads }}</td>
                             <td class="text-center">
-                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="WALMART" title="Edit Channel">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="WALMART" data-type="" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                                         <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
                                     </svg>
@@ -2264,7 +2513,7 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">
-                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="SHOPIFY" title="Edit Channel">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="SHOPIFY" data-type="" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                                         <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
                                     </svg>
@@ -2285,7 +2534,7 @@
                             <td class="text-center">
                                 @php
                                     $grw = (($gshoping_l60_spent ?? 0) > 0) ? ($gshoping_spent / ($gshoping_l60_spent ?? 1)) * 100 : 0;
-                                    echo number_format($grw, 2) . '%';
+                                    echo number_format($grw, 0) . '%';
                                 @endphp
                             </td>
                             <td class="text-center">{{ $gshoping_clicks }}</td>
@@ -2293,7 +2542,7 @@
                             <td class="text-center">
                                 @php
                                     $grw_clks = (($gshoping_l60_clicks ?? 0) > 0) ? ($gshoping_clicks / ($gshoping_l60_clicks ?? 1)) * 100 : 0;
-                                    echo number_format($grw_clks, 2) . '%';
+                                    echo number_format($grw_clks, 0) . '%';
                                 @endphp
                             </td>
                             <td class="text-center">{{ $gshoping_ad_sales }}</td>
@@ -2370,13 +2619,13 @@
                                     }else{
                                         $grw_cvr = 0;
                                     }
-                                    $grw_cvr = number_format($grw_cvr, 2);
+                                    $grw_cvr = number_format($grw_cvr, 0);
                                 @endphp
                                 {{ $grw_cvr.' %' }}
                             </td>
                             <td class="text-center">{{ $gshoping_missing_ads }}</td>
                             <td class="text-center">
-                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="G SHOPPING" title="Edit Channel">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="G SHOPPING" data-type="" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                                         <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
                                     </svg>
@@ -2412,7 +2661,7 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">
-                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="G SERP" title="Edit Channel">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="G SERP" data-type="" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                                         <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
                                     </svg>
@@ -2449,7 +2698,7 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">
-                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="FB CARAOUSAL" title="Edit Channel">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="FB CARAOUSAL" data-type="" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                                         <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
                                     </svg>
@@ -2483,7 +2732,7 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">
-                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="FB VIDEO" title="Edit Channel">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="FB VIDEO" data-type="" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                                         <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
                                     </svg>
@@ -2517,7 +2766,7 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">
-                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="INSTA CARAOUSAL" title="Edit Channel">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="INSTA CARAOUSAL" data-type="" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                                         <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
                                     </svg>
@@ -2551,7 +2800,7 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">
-                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="INSTA VIDEO" title="Edit Channel">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="INSTA VIDEO" data-type="" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                                         <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
                                     </svg>
@@ -2585,7 +2834,7 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">
-                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="YOUTUBE" title="Edit Channel">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="YOUTUBE" data-type="" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                                         <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
                                     </svg>
@@ -2615,7 +2864,7 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">
-                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="TIKTOK" title="Edit Channel">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="TIKTOK" data-type="" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                                         <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
                                     </svg>
@@ -2646,10 +2895,29 @@
                                     <td class="text-center"></td>
                                     <td class="text-center">{{ number_format($chData['spent'], 2) }}</td>
                                     <td class="text-center">{{ number_format($chData['l60_spent'], 2) }}</td>
-                                    <td class="text-center">{{ number_format($grw, 2) }}%</td>
+                                    <td class="text-center">{{ number_format($grw, 0) }}%</td>
                                     <td class="text-center">{{ number_format($chData['clicks'], 0) }}</td>
                                     <td class="text-center">{{ number_format($chData['l60_clicks'], 0) }}</td>
-                                    <td class="text-center">{{ number_format($grw_clks, 2) }}%</td>
+                                    <td class="text-center">{{ number_format($grw_clks, 0) }}%</td>
+                                    <td class="text-center">
+                                        @php
+                                            $ch_cpc = ($chData['clicks'] > 0) ? ($chData['spent'] / $chData['clicks']) : 0;
+                                            echo number_format($ch_cpc, 2);
+                                        @endphp
+                                    </td>
+                                    <td class="text-center">
+                                        @php
+                                            $ch_impressions = ($chData['impressions'] ?? 0);
+                                            $ch_ctr = ($ch_impressions > 0) ? (($chData['clicks'] / $ch_impressions) * 100) : 0;
+                                            echo number_format($ch_ctr, 2) . '%';
+                                        @endphp
+                                    </td>
+                                    <td class="text-center">
+                                        @php
+                                            $ch_cps = (($chData['ad_sold'] ?? 0) > 0) ? ($chData['spent'] / $chData['ad_sold']) : 0;
+                                            echo number_format($ch_cps, 2);
+                                        @endphp
+                                    </td>
                                     <td class="text-center">{{ number_format($chData['ad_sales'], 2) }}</td>
                                     <td class="text-center">{{ number_format($l30_acos, 2) }}%</td>
                                     <td class="text-center">{{ number_format($l60_acos, 2) }}%</td>
@@ -2658,10 +2926,10 @@
                                     <td class="text-center">{{ number_format($chData['ad_sold'], 0) }}</td>
                                     <td class="text-center">{{ number_format($cvr, 2) }}%</td>
                                     <td class="text-center">{{ number_format($cvr_60, 2) }}%</td>
-                                    <td class="text-center">{{ number_format($grw_cvr, 2) }}%</td>
+                                    <td class="text-center">{{ number_format($grw_cvr, 0) }}%</td>
                                     <td class="text-center">{{ number_format($chData['missing_ads'], 0) }}</td>
                                     <td class="text-center">
-                                        <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="{{ $ch }}" title="Edit Channel">
+                                        <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="{{ $ch }}" data-type="{{ $chData['type'] ?? '' }}" title="Edit Channel">
                                             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                                                 <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
                                             </svg>
@@ -2940,8 +3208,45 @@
                             <input type="url" class="form-control" id="addChannelSheetLink" name="sheet_link" placeholder="https://..." autocomplete="off">
                         </div>
                         <div class="mb-3">
-                            <label for="addChannelType" class="form-label">Type</label>
-                            <select class="form-select" id="addChannelType" name="type">
+                            <label for="addChannelAdType" class="form-label">Ad Type</label>
+                            <input type="text" class="form-control" id="addChannelAdType" name="ad_type" placeholder="e.g. B2B, B2C, Dropship" autocomplete="off">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="saveChannelBtn">
+                        <span class="btn-text">Save Channel</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Channel Modal -->
+    <div class="modal fade" id="editChannelModal" tabindex="-1" aria-labelledby="editChannelModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title" id="editChannelModalLabel">
+                        <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" class="me-2" style="vertical-align: middle;">
+                            <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10z"/>
+                        </svg>
+                        Edit Channel
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editChannelForm">
+                        @csrf
+                        <input type="hidden" id="editOriginalChannel" name="original_channel">
+                        <div class="mb-3">
+                            <label for="editChannelName" class="form-label">Channel Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="editChannelName" name="channel" required placeholder="e.g. AMAZON, EBAY" autocomplete="off">
+                        </div>
+                        <div class="mb-3">
+                            <label for="editChannelType" class="form-label">Ad Type</label>
+                            <select class="form-select" id="editChannelType" name="type">
                                 <option value="">Select type (optional)</option>
                                 <option value="B2B">B2B</option>
                                 <option value="B2C">B2C</option>
@@ -2952,8 +3257,8 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="button" class="btn btn-primary" id="saveChannelBtn">
-                        <span class="btn-text">Save Channel</span>
+                    <button type="button" class="btn btn-warning" id="saveEditChannelBtn">
+                        <span class="btn-text">Save</span>
                     </button>
                 </div>
             </div>
@@ -3845,6 +4150,107 @@ $(document).ready(function() {
         }
     });
 
+    window.advEditRowRef = null;
+
+    // Edit channel: open modal with Channel Name + Ad Type (registered early, uses window.advMasterTable when set)
+    $(document).on('click', '.edit-channel-btn', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var $btn = $(this);
+        var channelName = $btn.data('channel') || '';
+        var adType = $btn.data('type') || '';
+        var table = window.advMasterTable;
+        var rowComponent = null;
+        var $row = $btn.closest('.tabulator-row');
+        if ($row.length && table) {
+            var rows = table.getRows();
+            for (var i = 0; i < rows.length; i++) {
+                if (rows[i].getElement() === $row[0]) {
+                    rowComponent = rows[i];
+                    break;
+                }
+            }
+        }
+        window.advEditRowRef = rowComponent;
+        $('#editOriginalChannel').val(channelName);
+        $('#editChannelName').val(channelName);
+        $('#editChannelType').val(adType);
+        var modalEl = document.getElementById('editChannelModal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modal.show();
+        }
+    });
+
+    // Save Edit Channel: POST update-name-type, then update row and close modal
+    $(document).on('click', '#saveEditChannelBtn', function() {
+        var btn = $(this);
+        var original = $('#editOriginalChannel').val().trim();
+        var channelName = $('#editChannelName').val().trim();
+        var adType = $('#editChannelType').val() || '';
+        if (!channelName) {
+            alert('Channel name is required.');
+            $('#editChannelName').focus();
+            return;
+        }
+        btn.prop('disabled', true);
+        btn.find('.btn-text').text('Saving…');
+        $.ajax({
+            url: '{{ route("channel_master.update_name_type") }}',
+            method: 'POST',
+            data: {
+                _token: '{{ csrf_token() }}',
+                original_channel: original,
+                channel: channelName,
+                type: adType
+            },
+            success: function(res) {
+                var modalEl = document.getElementById('editChannelModal');
+                if (modalEl && typeof bootstrap !== 'undefined') {
+                    var modal = bootstrap.Modal.getInstance(modalEl);
+                    if (modal) modal.hide();
+                }
+                var editRowRef = window.advEditRowRef;
+                if (editRowRef) {
+                    var typeDisplay = adType ? adType : '';
+                    var nameHtml = '<b>' + channelName.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') + '</b>';
+                    editRowRef.update({ col0: nameHtml, col1: typeDisplay });
+                    try {
+                        var cell = editRowRef.getCell('col23');
+                        if (cell) {
+                            var editBtn = cell.getElement().querySelector('.edit-channel-btn');
+                            if (editBtn) {
+                                editBtn.setAttribute('data-channel', channelName);
+                                editBtn.setAttribute('data-type', adType);
+                            }
+                        }
+                    } catch (err) { /* ignore */ }
+                }
+                window.advEditRowRef = null;
+                if (typeof window.showToast === 'function') {
+                    window.showToast('success', res.message || 'Channel updated successfully.');
+                } else {
+                    alert(res.message || 'Channel updated successfully.');
+                }
+            },
+            error: function(xhr) {
+                var msg = 'Failed to update channel. Please try again.';
+                if (xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
+                else if (xhr.status === 404) msg = 'Channel not found. It may only exist in this table.';
+                else if (xhr.status === 419) msg = 'Session expired. Please refresh and try again.';
+                else if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON.errors) {
+                    var errs = xhr.responseJSON.errors;
+                    msg = (errs.channel && errs.channel[0]) || msg;
+                }
+                alert(msg);
+            },
+            complete: function() {
+                btn.prop('disabled', false);
+                btn.find('.btn-text').text('Save');
+            }
+        });
+    });
+
     /* Accordion handled by Tabulator rowClick; table is replaced by Tabulator */
     setTimeout(function() {
         var tabulatorScript = document.createElement('script');
@@ -3960,25 +4366,13 @@ $(document).ready(function() {
                     rowFormatter: function(row) {
                         var rowData = row.getData();
                         var rowElement = row.getElement();
-                        
-                        // Apply accordion header styling
-                        if (rowData._isAccordionHeader) {
-                            rowElement.style.backgroundColor = '#cfe2f3';
-                            rowElement.style.fontWeight = 'bold';
-                            rowElement.style.cursor = 'pointer';
-                        }
-                        
-                        // Hide accordion body rows initially
-                        if (rowData._isAccordionBody) {
-                            rowElement.style.display = 'none';
-                        }
-                        
-                        // Apply original row style if exists
-                        if (rowData._rowStyle) {
-                            rowElement.setAttribute('style', rowData._rowStyle + '; ' + rowElement.getAttribute('style'));
+                        // Apply original row style only for non–group-header rows (no accordion styling)
+                        if (rowData._rowStyle && !rowData._isAccordionHeader) {
+                            rowElement.setAttribute('style', rowData._rowStyle + '; ' + (rowElement.getAttribute('style') || ''));
                         }
                     }
                 });
+                window.advMasterTable = table;
 
                 // Search functionality - search across all columns (works alongside header filters)
                 var globalSearchFilter = null;
@@ -4012,67 +4406,6 @@ $(document).ready(function() {
                     }, 300);
                 });
 
-                // Accordion functionality
-                var accordionState = {};
-                
-                // Add index to each row data for easier tracking
-                tableData.forEach(function(row, index) {
-                    row._rowIndex = index;
-                });
-                
-                table.on("rowClick", function(e, row) {
-                    var rowData = row.getData();
-                    if (rowData._isAccordionHeader) {
-                        var rowIndex = rowData._rowIndex;
-                        var isExpanded = accordionState[rowIndex] || false;
-                        
-                        // Get all rows from table
-                        var allRows = table.getRows();
-                        var startIndex = -1;
-                        
-                        // Find the clicked row's index in allRows
-                        for (var i = 0; i < allRows.length; i++) {
-                            if (allRows[i] === row) {
-                                startIndex = i;
-                                break;
-                            }
-                        }
-                        
-                        if (startIndex === -1) return;
-                        
-                        // Find the next accordion-header
-                        var endIndex = allRows.length;
-                        for (var i = startIndex + 1; i < allRows.length; i++) {
-                            var checkRow = allRows[i];
-                            var checkData = checkRow.getData();
-                            if (checkData._isAccordionHeader) {
-                                endIndex = i;
-                                break;
-                            }
-                        }
-                        
-                        // Toggle visibility of accordion-body rows
-                        for (var i = startIndex + 1; i < endIndex; i++) {
-                            var targetRow = allRows[i];
-                            if (targetRow) {
-                                var targetData = targetRow.getData();
-                                if (targetData._isAccordionBody) {
-                                    var rowElement = targetRow.getElement();
-                                    if (rowElement) {
-                                        if (isExpanded) {
-                                            rowElement.style.display = 'none';
-                                        } else {
-                                            rowElement.style.display = '';
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        
-                        accordionState[rowIndex] = !isExpanded;
-                    }
-                });
-
                 // Add Channel: opens modal via data-bs-toggle/data-bs-target
 
                 // Save Channel (Add Channel modal form submit)
@@ -4080,7 +4413,7 @@ $(document).ready(function() {
                     var btn = $('#saveChannelBtn');
                     var name = $('#addChannelName').val().trim();
                     var sheetLink = $('#addChannelSheetLink').val().trim();
-                    var type = $('#addChannelType').val() || '';
+                    var adType = $('#addChannelAdType').val().trim() || '';
 
                     if (!name) {
                         alert('Channel name is required.');
@@ -4100,7 +4433,7 @@ $(document).ready(function() {
                         data: {
                             channel: name,
                             sheet_link: sheetLink || '',
-                            type: type,
+                            type: adType,
                             _token: token
                         },
                         success: function(res) {
@@ -4112,23 +4445,23 @@ $(document).ready(function() {
                             $('#addChannelForm')[0].reset();
                             var channelName = name;
                             try {
-                                var editBtnHtml = '<button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="' + channelName.replace(/"/g, '&quot;') + '" title="Edit Channel">' +
+                                var editBtnHtml = '<button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="' + channelName.replace(/"/g, '&quot;') + '" data-type="' + adType.replace(/"/g, '&quot;') + '" title="Edit Channel">' +
                                     '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">' +
                                     '<path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>' +
                                     '</svg></button>';
                                 var tabLink = '<a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a>';
                                 var graphLink = '<a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a>';
+                                var typeDisplay = adType ? adType : '';
                                 var newRow = {
                                     col0: '<b>' + channelName.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;') + '</b>',
-                                    col1: '',
+                                    col1: typeDisplay,
                                     col2: tabLink,
                                     col3: graphLink,
                                     col4: '', col5: '', col6: '', col7: '', col8: '', col9: '', col10: '', col11: '', col12: '',
                                     col13: '', col14: '', col15: '', col16: '', col17: '', col18: '', col19: '', col20: '', col21: '', col22: '',
                                     col23: editBtnHtml,
-                                    _isAccordionHeader: true,
-                                    _isAccordionBody: false,
-                                    _rowStyle: 'background-color:#cfe2f3;'
+                                    _isAccordionHeader: false,
+                                    _isAccordionBody: false
                                 };
                                 table.addRow(newRow, false);
                                 var rows = table.getRows();
@@ -4159,12 +4492,6 @@ $(document).ready(function() {
                             btn.find('.btn-text').text('Save Channel');
                         }
                     });
-                });
-
-                // Edit channel button handler (delegated event)
-                $(document).on('click', '.edit-channel-btn', function() {
-                    const channelName = $(this).data('channel');
-                    alert('Edit Channel: ' + channelName);
                 });
 
                 // View mode & Channel-wise: update badges + header totals
