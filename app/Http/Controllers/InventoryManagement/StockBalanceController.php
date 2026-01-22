@@ -120,13 +120,13 @@ class StockBalanceController extends Controller
         $request->validate([
             'from_parent_name' => 'required|string',
             'from_sku' => 'required|string',
-            'from_dil_percent' => 'nullable|numeric|max:100',
+            'from_dil_percent' => 'nullable|numeric',
             'from_available_qty' => 'nullable|integer',
             'from_adjust_qty' => 'required|integer|min:1',
 
             'to_parent_name' => 'required|string',
             'to_sku' => 'required|string',
-            'to_dil_percent' => 'nullable|numeric|max:100',
+            'to_dil_percent' => 'nullable|numeric',
             'to_available_qty' => 'nullable|integer',
             'to_adjust_qty' => 'required|integer|min:1',
 
@@ -466,7 +466,7 @@ class StockBalanceController extends Controller
             }
 
             return response()->json([
-                'message' => 'Stock transferred successfully in Shopify and saved to database'
+                'message' => '✓ SHOPIFY - Stock transferred successfully and saved to database'
             ]);
 
         } catch (\Exception $e) {

@@ -5327,4 +5327,103 @@ class ChannelMasterController extends Controller
         }
     }
 
+    /**
+     * Get clicks breakdown (PT, KW, HL) for a channel
+     */
+    public function getClicksBreakdown(Request $request)
+    {
+        try {
+            $channel = $request->input('channel');
+            
+            if (!$channel) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Channel name is required'
+                ], 400);
+            }
+            
+            // Get channel name and convert to uppercase
+            $channelUpper = strtoupper(trim($channel));
+            
+            \Log::info("Clicks breakdown requested", ['channel' => $channelUpper]);
+            
+            // Determine related channel patterns based on main channel
+            $suffixPatterns = [];
+            if ($channelUpper === 'AMAZON') {
+                $suffixPatterns = ['AMZ PT', 'AMZ KW', 'AMZ HL'];
+            } elseif ($channelUpper === 'EBAY') {
+                $suffixPatterns = ['EB KW', 'EB PMT'];
+            } elseif ($channelUpper === 'EBAY 2' || $channelUpper === 'EBAYTWO') {
+                $suffixPatterns = ['EB PMT2'];
+            } elseif ($channelUpper === 'EBAY 3' || $channelUpper === 'EBAYTHREE') {
+                $suffixPatterns = ['EB KW3', 'EB PMT3'];
+            } elseif ($channelUpper === 'WALMART') {
+                $suffixPatterns = [];
+            }
+            
+            \Log::info("Searching for patterns", ['patterns' => $suffixPatterns]);
+            
+            // Find all related channels from adv_masters_datas table
+            $breakdown = [];
+            $total = 0;
+            
+            foreach ($suffixPatterns as $pattern) {
+                // Try both exact match and case-insensitive match
+                $relatedChannel = \App\Models\ADVMastersData::where('channel', $pattern)
+                    ->orWhereRaw('UPPER(channel) = ?', [strtoupper($pattern)])
+                    ->first();
+                
+                \Log::info("Pattern search", [
+                    'pattern' => $pattern,
+                    'found' => $relatedChannel ? 'yes' : 'no',
+                    'found_channel' => $relatedChannel ? $relatedChannel->channel : null
+                ]);
+                
+                if ($relatedChannel) {
+                    // Extract clean type name from channel pattern
+                    $type = $pattern;
+                    if (strpos($pattern, 'PMT') !== false) {
+                        $type = str_replace(['EB ', 'EB'], '', $pattern);
+                    } elseif (strpos($pattern, 'KW') !== false) {
+                        $type = str_replace(['EB ', 'EB', 'AMZ ', 'AMZ'], '', $pattern);
+                    } elseif (strpos($pattern, 'PT') !== false || strpos($pattern, 'HL') !== false) {
+                        $type = str_replace(['AMZ ', 'AMZ'], '', $pattern);
+                    }
+                    
+                    $breakdown[] = [
+                        'type' => $type,
+                        'channel' => $relatedChannel->channel,
+                        'clicks' => $relatedChannel->clicks ?? 0,
+                        'ad_sales' => $relatedChannel->ad_sales ?? 0,
+                        'acos' => $relatedChannel->acos ?? 0,
+                        'tacos' => $relatedChannel->tacos ?? 0,
+                        'ad_sold' => $relatedChannel->ad_sold ?? 0,
+                        'cvr' => $relatedChannel->cvr ?? 0,
+                        'missing_ads' => $relatedChannel->missing_ads ?? 0
+                    ];
+                    $total += $relatedChannel->clicks ?? 0;
+                }
+            }
+            
+            \Log::info("Clicks breakdown results", [
+                'channel' => $channelUpper,
+                'found_count' => count($breakdown),
+                'total_clicks' => $total
+            ]);
+            
+            return response()->json([
+                'success' => true,
+                'data' => $breakdown,
+                'total' => $total
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error fetching clicks breakdown: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error fetching clicks breakdown'
+            ], 500);
+        }
+    }
+
 }
