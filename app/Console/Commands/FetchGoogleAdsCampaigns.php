@@ -380,10 +380,10 @@ class FetchGoogleAdsCampaigns extends Command
             'metrics_video_quartile_p100_rate' => $metrics['videoQuartileP100Rate'] ?? 0,
             'metrics_video_view_rate' => $metrics['videoViewRate'] ?? 0,
             
-            // GA4 Metrics - Note: These may need to come from GA4 API separately
-            // Google Ads API doesn't directly provide GA4 metrics, they need separate integration
-            'ga4_sold_units' => 0, // TODO: Fetch from GA4 API or Google Ads conversion tracking
-            'ga4_ad_sales' => 0,   // TODO: Fetch from GA4 API or Google Ads conversion tracking
+            // GA4 Metrics - Using Google Ads conversion metrics as proxy
+            // Using all_conversions_value for sales and all_conversions for units sold
+            'ga4_sold_units' => $metrics['allConversions'] ?? 0,
+            'ga4_ad_sales' => $metrics['allConversionsValue'] ?? 0,
             
             // Date
             'date' => $segments['date'] ?? Carbon::now()->format('Y-m-d'),

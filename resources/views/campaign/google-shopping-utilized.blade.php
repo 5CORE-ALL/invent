@@ -20,6 +20,20 @@
             font-size: 1.08rem;
             letter-spacing: 0.02em;
             transition: background 0.2s;
+            height: 120px;
+            vertical-align: bottom;
+        }
+
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            transform: rotate(180deg);
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            width: 100%;
         }
 
         .tabulator .tabulator-header .tabulator-col:hover {
@@ -590,21 +604,21 @@
                     let ub1 = budget > 0 ? (spend_L1 / budget) * 100 : 0;
                     
                     // Count utilization types (matching backend logic from getFilteredCampaignIds)
-                    // Over: UB7 > 90% (only UB7, not UB1)
-                    // Under: UB7 < 70% (only UB7, not UB1)
-                    if (ub7 > 90) {
+                    // Over: UB7 > 99% AND UB1 > 99%
+                    // Under: UB7 < 66% AND UB1 < 66%
+                    if (ub7 > 99 && ub1 > 99) {
                         overCount++;
-                    } else if (ub7 < 70) {
+                    } else if (ub7 < 66 && ub1 < 66) {
                         underCount++;
                     }
                     
                     // Count 7UB (based on 7UB only)
-                    if (ub7 > 90 || ub7 < 70) {
+                    if (ub7 > 99 || ub7 < 66) {
                         count7ub++;
                     }
                     
                     // Count 7UB + 1UB (based on both 7UB and 1UB)
-                    if ((ub7 > 90 && ub1 > 90) || (ub7 < 70 && ub1 < 70)) {
+                    if ((ub7 > 99 && ub1 > 99) || (ub7 < 66 && ub1 < 66)) {
                         count7ub1ub++;
                     }
                 });
@@ -654,7 +668,8 @@
                     },
                     {
                         title: "Parent",
-                        field: "parent"
+                        field: "parent",
+                        visible: false
                     },
                     {
                         title: "SKU",
@@ -785,9 +800,145 @@
                         hozAlign: "right",
                     },
                     {
+                        title: "SBGT",
+                        field: "sbgt",
+                        hozAlign: "right",
+                        formatter: function(cell){
+                            var row = cell.getRow().getData();
+                            var spend_L30 = parseFloat(row.spend_L30 || 0);
+                            var sales_L30 = parseFloat(row.ad_sales_L30 || 0);
+                            var acos = 0;
+                            
+                            // Calculate ACOS L30
+                            if (sales_L30 > 0) {
+                                acos = (spend_L30 / sales_L30) * 100;
+                            } else if (spend_L30 > 0 && sales_L30 == 0) {
+                                acos = 100;
+                            } else {
+                                acos = 0;
+                            }
+                            
+                            // Calculate SBGT based on ACOS ranges
+                            var sbgt = 0;
+                            if (acos < 10) {
+                                sbgt = 5;
+                            } else if (acos >= 10 && acos < 30) {
+                                sbgt = 4;
+                            } else if (acos >= 30 && acos < 40) {
+                                sbgt = 3;
+                            } else if (acos >= 40 && acos < 50) {
+                                sbgt = 2;
+                            } else if (acos >= 50) {
+                                sbgt = 1;
+                            }
+                            
+                            return sbgt;
+                        },
+                        sorter: function(a, b, aRow, bRow, column, dir) {
+                            var dataA = aRow.getData();
+                            var dataB = bRow.getData();
+                            
+                            // Calculate ACOS for A
+                            var spendA = parseFloat(dataA.spend_L30 || 0);
+                            var salesA = parseFloat(dataA.ad_sales_L30 || 0);
+                            var acosA = 0;
+                            if (salesA > 0) {
+                                acosA = (spendA / salesA) * 100;
+                            } else if (spendA > 0 && salesA == 0) {
+                                acosA = 100;
+                            }
+                            
+                            // Calculate ACOS for B
+                            var spendB = parseFloat(dataB.spend_L30 || 0);
+                            var salesB = parseFloat(dataB.ad_sales_L30 || 0);
+                            var acosB = 0;
+                            if (salesB > 0) {
+                                acosB = (spendB / salesB) * 100;
+                            } else if (spendB > 0 && salesB == 0) {
+                                acosB = 100;
+                            }
+                            
+                            // Calculate SBGT for A
+                            var sbgtA = 0;
+                            if (acosA < 10) {
+                                sbgtA = 5;
+                            } else if (acosA >= 10 && acosA < 30) {
+                                sbgtA = 4;
+                            } else if (acosA >= 30 && acosA < 40) {
+                                sbgtA = 3;
+                            } else if (acosA >= 40 && acosA < 50) {
+                                sbgtA = 2;
+                            } else if (acosA >= 50) {
+                                sbgtA = 1;
+                            }
+                            
+                            // Calculate SBGT for B
+                            var sbgtB = 0;
+                            if (acosB < 10) {
+                                sbgtB = 5;
+                            } else if (acosB >= 10 && acosB < 30) {
+                                sbgtB = 4;
+                            } else if (acosB >= 30 && acosB < 40) {
+                                sbgtB = 3;
+                            } else if (acosB >= 40 && acosB < 50) {
+                                sbgtB = 2;
+                            } else if (acosB >= 50) {
+                                sbgtB = 1;
+                            }
+                            
+                            return sbgtA - sbgtB;
+                        }
+                    },
+                    {
+                        title: "ACOS L30",
+                        field: "acos_L30",
+                        hozAlign: "right",
+                        formatter: function(cell){
+                            var row = cell.getRow().getData();
+                            var spend_L30 = parseFloat(row.spend_L30 || 0);
+                            var sales_L30 = parseFloat(row.ad_sales_L30 || 0);
+                            var acos = 0;
+                            
+                            if (sales_L30 > 0) {
+                                acos = (spend_L30 / sales_L30) * 100;
+                            } else if (spend_L30 > 0 && sales_L30 == 0) {
+                                acos = 100;
+                            } else {
+                                acos = 0;
+                            }
+                            
+                            return Math.round(acos) + "%" + " <i class='fa fa-info-circle text-primary toggle-l7-l1-cols-btn' style='cursor:pointer; margin-left:5px; pointer-events:auto;' title='Click to show/hide L30 columns'></i>";
+                        },
+                        sorter: function(a, b, aRow, bRow, column, dir) {
+                            var dataA = aRow.getData();
+                            var dataB = bRow.getData();
+                            
+                            var spendA = parseFloat(dataA.spend_L30 || 0);
+                            var salesA = parseFloat(dataA.ad_sales_L30 || 0);
+                            var acosA = 0;
+                            if (salesA > 0) {
+                                acosA = (spendA / salesA) * 100;
+                            } else if (spendA > 0 && salesA == 0) {
+                                acosA = 100;
+                            }
+                            
+                            var spendB = parseFloat(dataB.spend_L30 || 0);
+                            var salesB = parseFloat(dataB.ad_sales_L30 || 0);
+                            var acosB = 0;
+                            if (salesB > 0) {
+                                acosB = (spendB / salesB) * 100;
+                            } else if (spendB > 0 && salesB == 0) {
+                                acosB = 100;
+                            }
+                            
+                            return acosA - acosB;
+                        }
+                    },
+                    {
                         title: "Clicks L30 ",
                         field: "clicks_L30",
                         hozAlign: "right",
+                        visible: false,
                         formatter: function(cell){
                             var row = cell.getRow().getData();
                             var clicks_L30 = parseFloat(row.clicks_L30) || 0;
@@ -798,20 +949,33 @@
                         title: "Spend L30",
                         field: "spend_L30",
                         hozAlign: "right",
+                        visible: false,
                         formatter: function(cell){
                             var row = cell.getRow().getData();
                             var spend_L30 = parseFloat(row.spend_L30) || 0;
-                            return spend_L30.toFixed(2);
+                            return Math.round(spend_L30);
                         }
                     },
                     {
-                        title: "Spend L7",
-                        field: "spend_L7",
+                        title: "Sales L30",
+                        field: "ad_sales_L30",
                         hozAlign: "right",
+                        visible: false,
                         formatter: function(cell){
                             var row = cell.getRow().getData();
-                            var spend_L7 = parseFloat(row.spend_L7) || 0;
-                            return spend_L7.toFixed(2);
+                            var sales_L30 = parseFloat(row.ad_sales_L30 || 0);
+                            return Math.round(sales_L30);
+                        }
+                    },
+                    {
+                        title: "AD SOLD L30",
+                        field: "ad_sold_L30",
+                        hozAlign: "right",
+                        visible: false,
+                        formatter: function(cell){
+                            var row = cell.getRow().getData();
+                            var ad_sold_L30 = parseFloat(row.ad_sold_L30 || 0);
+                            return Math.round(ad_sold_L30);
                         }
                     },
                     {
@@ -826,11 +990,11 @@
 
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            if (ub7 >= 70 && ub7 <= 90) {
+                            if (ub7 >= 66 && ub7 <= 99) {
                                 td.classList.add('green-bg');
-                            } else if (ub7 > 90) {
+                            } else if (ub7 > 99) {
                                 td.classList.add('pink-bg');
-                            } else if (ub7 < 70) {
+                            } else if (ub7 < 66) {
                                 td.classList.add('red-bg');
                             }
 
@@ -858,11 +1022,11 @@
 
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            if (ub1 >= 70 && ub1 <= 90) {
+                            if (ub1 >= 66 && ub1 <= 99) {
                                 td.classList.add('green-bg');
-                            } else if (ub1 > 90) {
+                            } else if (ub1 > 99) {
                                 td.classList.add('pink-bg');
-                            } else if (ub1 < 70) {
+                            } else if (ub1 < 66) {
                                 td.classList.add('red-bg');
                             }
 
@@ -873,6 +1037,7 @@
                         title: "L7 CPC",
                         field: "cpc_L7",
                         hozAlign: "center",
+                        visible: false,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var cpc_L7 = parseFloat(row.cpc_L7) || 0;
@@ -883,6 +1048,7 @@
                         title: "L1 CPC",
                         field: "cpc_L1",
                         hozAlign: "center",
+                        visible: false,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var cpc_L1 = parseFloat(row.cpc_L1) || 0;
@@ -1224,16 +1390,16 @@
                 }
 
                 // Filter by utilization type (matching backend logic from getFilteredCampaignIds)
-                // Over: UB7 > 90% (only UB7, not UB1) - matches google/shopping/over/utilize
-                // Under: UB7 < 70% (only UB7, not UB1) - matches google/shopping/under/utilize
+                // Over: UB7 > 99% AND UB1 > 99%
+                // Under: UB7 < 66% AND UB1 < 66%
                 if (currentUtilizationType === 'all') {
                     // Show all data (no filter on utilization)
                 } else if (currentUtilizationType === 'over') {
-                    // Over-utilized: ub7 > 90 (only UB7)
-                    if (!(ub7 > 90)) return false;
+                    // Over-utilized: ub7 > 99 AND ub1 > 99
+                    if (!(ub7 > 99 && ub1 > 99)) return false;
                 } else if (currentUtilizationType === 'under') {
-                    // Under-utilized: ub7 < 70 (only UB7)
-                    if (!(ub7 < 70)) return false;
+                    // Under-utilized: ub7 < 66 AND ub1 < 66
+                    if (!(ub7 < 66 && ub1 < 66)) return false;
                 }
 
                     let searchVal = $("#global-search").val()?.toLowerCase() || "";
@@ -1552,6 +1718,44 @@
                 }
             });
 
+            // Handle info icon toggle for L30 columns
+            document.addEventListener("click", function(e) {
+                // Check if clicked element or any parent has the toggle class
+                let target = e.target;
+                let found = false;
+                while (target && target !== document) {
+                    if (target.classList && target.classList.contains('toggle-l7-l1-cols-btn')) {
+                        found = true;
+                        break;
+                    }
+                    target = target.parentElement;
+                }
+                
+                if (found) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    const l30ColumnFields = ['clicks_L30', 'spend_L30', 'ad_sales_L30', 'ad_sold_L30'];
+                    
+                    // Check if any L30 column is visible to determine current state
+                    const clicksL30Col = table.getColumn('clicks_L30');
+                    const anyVisible = clicksL30Col && clicksL30Col.isVisible();
+                    
+                    // Toggle visibility
+                    l30ColumnFields.forEach(field => {
+                        const col = table.getColumn(field);
+                        if (col) {
+                            if (anyVisible) {
+                                col.hide();
+                            } else {
+                                col.show();
+                            }
+                        }
+                    });
+                    return false;
+                }
+            }, true); // Use capture phase to catch event earlier
+
             document.getElementById("apr-all-sbid-btn").addEventListener("click", function() {
                 const overlay = document.getElementById("progress-overlay");
                 overlay.style.display = "flex";
@@ -1677,9 +1881,7 @@
                         Status: row.campaignStatus || "",
                         Budget: budget.toFixed(2),
                         "Clicks L30": parseFloat(row.clicks_L30 || 0),
-                        "Spend L30": parseFloat(row.spend_L30 || 0).toFixed(2),
-                        "Spend L7": spend_L7.toFixed(2),
-                        "Spend L1": spend_L1.toFixed(2),
+                        "Spend L30": Math.round(parseFloat(row.spend_L30 || 0)),
                         "7 UB%": ub7.toFixed(0) + "%",
                         "1 UB%": ub1.toFixed(0) + "%",
                         "L7 CPC": parseFloat(row.cpc_L7 || 0).toFixed(2),

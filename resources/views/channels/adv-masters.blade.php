@@ -3,7 +3,7 @@
 @section('css')
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css">
+    <link href="https://unpkg.com/tabulator-tables@5.5.2/dist/css/tabulator_bootstrap5.min.css" rel="stylesheet">
     <style>
         :root {
             --primary-color: #6366F1;
@@ -95,6 +95,62 @@
             border-spacing: 0;
         }
 
+        /* Tabulator Styling */
+        .tabulator {
+            border: none;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .tabulator .tabulator-header {
+            background: linear-gradient(135deg, #F8F9FA 0%, #E9ECEF 100%);
+            border-bottom: 2px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .tabulator .tabulator-col {
+            background: linear-gradient(135deg, #F8F9FA 0%, #E9ECEF 100%);
+            border-right: 1px solid var(--border-color);
+        }
+
+        .tabulator .tabulator-col-content {
+            padding: 16px 12px;
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--text-primary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Tabulator vertical headers (columns 4+) */
+        .tabulator .tabulator-col:nth-child(n+4) .tabulator-col-content {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            white-space: nowrap;
+            height: 120px;
+            min-width: 36px;
+            vertical-align: bottom;
+            padding: 8px 6px;
+            line-height: 1.3;
+            overflow: visible;
+        }
+
+        .tabulator .tabulator-cell {
+            padding: 12px;
+            border-right: 1px solid var(--border-color);
+        }
+
+        .tabulator .tabulator-row {
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .tabulator .tabulator-row:hover {
+            background-color: #f8f9fa;
+        }
+
         #adv-master-table thead th {
             background: linear-gradient(135deg, #F8F9FA 0%, #E9ECEF 100%);
             color: var(--text-primary);
@@ -116,6 +172,31 @@
 
         #adv-master-table thead th:last-child {
             border-top-right-radius: 12px;
+        }
+
+        /* Vertical headers (columns 4+) */
+        #adv-master-table thead th.th-vertical {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            white-space: nowrap;
+            height: 140px;
+            min-width: 38px;
+            max-width: 42px;
+            vertical-align: bottom;
+            padding: 8px 6px;
+            line-height: 1.3;
+            overflow: visible;
+            text-overflow: clip;
+        }
+
+        #adv-master-table thead th.th-vertical hr {
+            margin: 4px auto;
+            width: 80%;
+        }
+
+        /* Horizontal headers (first 3 columns) */
+        #adv-master-table thead th.th-horizontal {
+            white-space: normal;
         }
 
         #adv-master-table tbody td {
@@ -451,11 +532,27 @@
         <!-- Table Container -->
         <div class="table-container">
             <div class="d-flex justify-content-between align-items-center mb-4">
-                <h3 class="mb-0" style="color: var(--text-primary); font-weight: 700;">ADV Masters Dashboard</h3>
+                <div>
+                    <h3 class="mb-0" style="color: var(--text-primary); font-weight: 700;">ADV Masters Dashboard</h3>
+                    <div class="d-flex align-items-center gap-2 mt-2">
+                        <span class="badge bg-primary" style="font-size: 14px; padding: 8px 12px;">
+                            L30 Ad Spend: ${{ number_format($total_spent, 2) }}
+                        </span>
+                        <span class="badge bg-info" style="font-size: 14px; padding: 8px 12px;">
+                            L60 Ad Spend: ${{ number_format($total_l60_spent ?? 0, 2) }}
+                        </span>
+                    </div>
+                </div>
                 <div class="d-flex align-items-center gap-3">
                     <div class="position-relative" style="width: 300px;">
                         <input type="text" class="form-control" id="search-input" placeholder="🔍 Search channels..." />
                     </div>
+                    <button type="button" class="btn btn-primary" id="add-channel-btn" title="Add New Channel">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="margin-right: 6px; vertical-align: middle;">
+                            <path d="M8 0L10.5 6L16 8L10.5 10L8 16L5.5 10L0 8L5.5 6L8 0Z"/>
+                        </svg>
+                        Add Channel
+                    </button>
                 </div>
             </div>
 
@@ -463,18 +560,79 @@
                 <table class="table table-bordered table-responsive display" id="adv-master-table" style="width:100%">
                     <thead>
                         <tr>
-                            <th class="text-center" style="width: 110px;">TOTAL</th>
-                            <th class="text-center">L30 SALES <br><hr> {{ $total_l30_sales}}</th>
-                            <th class="text-center">GPFT <br><hr> 0</th>
-                            <th class="text-center">TPFT <br><hr> 0</th>
-                            <th class="text-center">SPENT <br><hr> {{ $total_spent}}</th>
-                            <th class="text-center">CLICKS <br><hr> {{ $total_clicks}}</th>
-                            <th class="text-center">AD SALES <br><hr> {{ $total_ad_sales}}</th>
-                            <th class="text-center">ACOS <br><hr> 0</th>
-                            <th class="text-center">TACOS <br><hr> 0</th>     
-                            <th class="text-center">AD SOLD <br><hr> {{ $total_ad_sold}}</th>        
-                            <th class="text-center">CVR <br><hr> 0 </th>     
-                            <th class="text-center">MISSING ADS <br><hr> {{ $total_missing}}</th>     
+                            <th class="text-center th-horizontal" style="width: 110px;">CHANNELS</th>
+                            <th class="text-center th-horizontal">L30 SALES <br><hr> {{ $total_l30_sales}}</th>
+                            <th class="text-center th-horizontal">GPFT <br><hr> 0</th>
+                            <th class="text-center th-vertical">TPFT <br><hr> 0</th>
+                            <th class="text-center th-vertical">L30 SPENT <br><hr> {{ $total_spent}}</th>
+                            <th class="text-center th-vertical">L60 SPENT <br><hr> {{ $total_l60_spent ?? 0}}</th>
+                            <th class="text-center th-vertical">GRW <br><hr> 
+                                @php
+                                    $total_grw = ($total_l60_spent > 0) ? ($total_spent / $total_l60_spent) * 100 : 0;
+                                    echo number_format($total_grw, 2) . '%';
+                                @endphp
+                            </th>
+                            <th class="text-center th-vertical">L30 CLKS <br><hr> {{ $total_clicks}}</th>
+                            <th class="text-center th-vertical">L60 CLICKS <br><hr> {{ $total_l60_clicks ?? 0}}</th>
+                            <th class="text-center th-vertical">GRW CLKS <br><hr>
+                                @php
+                                    $total_grw_clks = (($total_l60_clicks ?? 0) > 0) ? ($total_clicks / ($total_l60_clicks ?? 1)) * 100 : 0;
+                                    echo number_format($total_grw_clks, 2) . '%';
+                                @endphp
+                            </th>
+                            <th class="text-center th-vertical">AD SALES <br><hr> {{ $total_ad_sales}}</th>
+                            <th class="text-center th-vertical">L30 ACOS% <br><hr> 0</th>
+                            <th class="text-center th-vertical">L60 ACOS% <br><hr> 0</th>
+                            <th class="text-center th-vertical">Ctrl ACOS% <br><hr>
+                                @php
+                                    $total_l30_acos_val = ($total_ad_sales > 0) ? ($total_spent / $total_ad_sales) * 100 : 0;
+                                    $total_l60_acos_val = (($total_l60_ad_sales ?? 0) > 0) ? (($total_l60_spent ?? 0) / ($total_l60_ad_sales ?? 1)) * 100 : 0;
+                                    if($total_l60_acos_val > 0){
+                                        $total_ctrl_acos = (($total_l30_acos_val - $total_l60_acos_val) / $total_l60_acos_val) * 100;
+                                    }else{
+                                        $total_ctrl_acos = 0;
+                                    }
+                                    $total_ctrl_acos = number_format($total_ctrl_acos, 2);
+                                    $total_ctrl_color = ($total_ctrl_acos < 0) ? 'color: #006400;' : 'color: #8B0000;';
+                                @endphp
+                                <span style="{{ $total_ctrl_color }}">{{ $total_ctrl_acos.' %' }}</span>
+                            </th>
+                            <th class="text-center th-vertical">TACOS <br><hr> 0</th>     
+                            <th class="text-center th-vertical">AD SOLD <br><hr> {{ $total_ad_sold}}</th>        
+                            <th class="text-center th-vertical">CVR <br><hr> 0 </th>     
+                            <th class="text-center th-vertical">CVR 60 <br><hr>
+                                @php
+                                    if(($total_l60_clicks ?? 0) > 0){
+                                        $total_cvr_60 = (($total_l60_ad_sold ?? 0) / ($total_l60_clicks ?? 1)) * 100;
+                                        $total_cvr_60 = number_format($total_cvr_60, 2);
+                                    }else{
+                                        $total_cvr_60 = 0;
+                                    }
+                                    $total_cvr_60 = round($total_cvr_60, 1);
+                                @endphp
+                                {{ $total_cvr_60.' %' }}
+                            </th>
+                            <th class="text-center th-vertical">Grw CVR <br><hr>
+                                @php
+                                    $total_cvr = 0;
+                                    $total_cvr_60_val = 0;
+                                    if(($total_clicks ?? 0) > 0){
+                                        $total_cvr = (($total_ad_sold ?? 0) / ($total_clicks ?? 1)) * 100;
+                                    }
+                                    if(($total_l60_clicks ?? 0) > 0){
+                                        $total_cvr_60_val = (($total_l60_ad_sold ?? 0) / ($total_l60_clicks ?? 1)) * 100;
+                                    }
+                                    if($total_cvr_60_val > 0){
+                                        $total_grw_cvr = (($total_cvr - $total_cvr_60_val) / $total_cvr_60_val) * 100;
+                                    }else{
+                                        $total_grw_cvr = 0;
+                                    }
+                                    $total_grw_cvr = number_format($total_grw_cvr, 2);
+                                @endphp
+                                {{ $total_grw_cvr.' %' }}
+                            </th>
+                            <th class="text-center th-vertical">MISSING ADS <br><hr> {{ $total_missing}}</th>
+                            <th class="text-center th-vertical">ACTIONS</th>     
                         </tr>
                     </thead>
                     <tbody>
@@ -493,7 +651,21 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $amazon_spent }}</td>
+                            <td class="text-center">{{ $amazon_l60_spent ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $amazon_grw = (($amazon_l60_spent ?? 0) > 0) ? ($amazon_spent / ($amazon_l60_spent ?? 1)) * 100 : 0;
+                                    echo number_format($amazon_grw, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $amazon_clicks }}</td>
+                            <td class="text-center">{{ $amazon_l60_clicks ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $grw_clks = (($amazon_l60_clicks ?? 0) > 0) ? ($amazon_clicks / ($amazon_l60_clicks ?? 1)) * 100 : 0;
+                                    echo number_format($grw_clks, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $amazon_ad_sales }}</td>
                             <td class="text-center">
                                 @php
@@ -506,6 +678,32 @@
                                     $acos = round($acos);
                                 @endphp
                                 {{ $acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    if(($amazon_l60_ad_sales ?? 0) > 0){
+                                        $l60_acos = (($amazon_l60_spent ?? 0) / ($amazon_l60_ad_sales ?? 1)) * 100;
+                                        $l60_acos = number_format($l60_acos, 2);
+                                    }else{
+                                        $l60_acos = 0;
+                                    }
+                                    $l60_acos = round($l60_acos);
+                                @endphp
+                                {{ $l60_acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_acos_val = ($amazon_ad_sales > 0) ? ($amazon_spent/$amazon_ad_sales)*100 : 0;
+                                    $l60_acos_val = (($amazon_l60_ad_sales ?? 0) > 0) ? (($amazon_l60_spent ?? 0) / ($amazon_l60_ad_sales ?? 1)) * 100 : 0;
+                                    if($l60_acos_val > 0){
+                                        $ctrl_acos = (($l30_acos_val - $l60_acos_val) / $l60_acos_val) * 100;
+                                    }else{
+                                        $ctrl_acos = 0;
+                                    }
+                                    $ctrl_acos = number_format($ctrl_acos, 2);
+                                    $ctrl_color = ($ctrl_acos < 0) ? 'color: #006400;' : 'color: #8B0000;'; // Dark green for decrease, dark red for increase
+                                @endphp
+                                <span style="{{ $ctrl_color }}">{{ $ctrl_acos.' %'  }}</span>
                             </td>
                             <td class="text-center">
                                 @php
@@ -533,7 +731,39 @@
                                 @endphp
                                 {{ $cvr.' %' }}
                             </td>
+                            <td class="text-center">
+                                @php
+                                    if(($amazon_l60_clicks ?? 0) > 0){
+                                        $cvr_60 = (($amazon_l60_ad_sold ?? 0) / ($amazon_l60_clicks ?? 1)) * 100;
+                                        $cvr_60 = number_format($cvr_60, 2);
+                                    }else{
+                                        $cvr_60 = 0;
+                                    }
+                                    $cvr_60 = round($cvr_60, 1);
+                                @endphp
+                                {{ $cvr_60.' %' }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_cvr_val = ($amazon_clicks > 0) ? ($amazon_ad_sold/$amazon_clicks)*100 : 0;
+                                    $l60_cvr_val = (($amazon_l60_clicks ?? 0) > 0) ? (($amazon_l60_ad_sold ?? 0) / ($amazon_l60_clicks ?? 1)) * 100 : 0;
+                                    if($l60_cvr_val > 0){
+                                        $grw_cvr = (($l30_cvr_val - $l60_cvr_val) / $l60_cvr_val) * 100;
+                                    }else{
+                                        $grw_cvr = 0;
+                                    }
+                                    $grw_cvr = number_format($grw_cvr, 2);
+                                @endphp
+                                {{ $grw_cvr.' %' }}
+                            </td>
                             <td class="text-center">{{ $amazon_missing_ads }}</td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="AMAZON" title="Edit Channel">
+                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                                    </svg>
+                                </button>
+                            </td>
                         </tr>
 
                         <tr class="accordion-body">
@@ -542,7 +772,21 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $amazonkw_spent }}</td>
+                            <td class="text-center">{{ $amazonkw_l60_spent ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $amazonkw_grw = (($amazonkw_l60_spent ?? 0) > 0) ? ($amazonkw_spent / ($amazonkw_l60_spent ?? 1)) * 100 : 0;
+                                    echo number_format($amazonkw_grw, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $amazonkw_clicks }}</td>
+                            <td class="text-center">{{ $amazonkw_l60_clicks ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $grw_clks = (($amazonkw_l60_clicks ?? 0) > 0) ? ($amazonkw_clicks / ($amazonkw_l60_clicks ?? 1)) * 100 : 0;
+                                    echo number_format($grw_clks, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $amazonkw_ad_sales }}</td>
                             <td class="text-center">
                                 @php
@@ -555,6 +799,32 @@
                                     $acos = round($acos);
                                 @endphp
                                 {{ $acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    if(($amazonkw_l60_ad_sales ?? 0) > 0){
+                                        $l60_acos = (($amazonkw_l60_spent ?? 0) / ($amazonkw_l60_ad_sales ?? 1)) * 100;
+                                        $l60_acos = number_format($l60_acos, 2);
+                                    }else{
+                                        $l60_acos = 0;
+                                    }
+                                    $l60_acos = round($l60_acos);
+                                @endphp
+                                {{ $l60_acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_acos_val = ($amazonkw_ad_sales > 0) ? ($amazonkw_spent/$amazonkw_ad_sales)*100 : 0;
+                                    $l60_acos_val = (($amazonkw_l60_ad_sales ?? 0) > 0) ? (($amazonkw_l60_spent ?? 0) / ($amazonkw_l60_ad_sales ?? 1)) * 100 : 0;
+                                    if($l60_acos_val > 0){
+                                        $ctrl_acos = (($l30_acos_val - $l60_acos_val) / $l60_acos_val) * 100;
+                                    }else{
+                                        $ctrl_acos = 0;
+                                    }
+                                    $ctrl_acos = number_format($ctrl_acos, 2);
+                                    $ctrl_color = ($ctrl_acos < 0) ? 'color: #006400;' : 'color: #8B0000;';
+                                @endphp
+                                <span style="{{ $ctrl_color }}">{{ $ctrl_acos.' %'  }}</span>
                             </td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $amazonkw_ad_sold }}</td>
@@ -570,7 +840,39 @@
                                 @endphp
                                 {{ $cvr.' %' }}
                             </td>
+                            <td class="text-center">
+                                @php
+                                    if(($amazonkw_l60_clicks ?? 0) > 0){
+                                        $cvr_60 = (($amazonkw_l60_ad_sold ?? 0) / ($amazonkw_l60_clicks ?? 1)) * 100;
+                                        $cvr_60 = number_format($cvr_60, 2);
+                                    }else{
+                                        $cvr_60 = 0;
+                                    }
+                                    $cvr_60 = round($cvr_60, 1);
+                                @endphp
+                                {{ $cvr_60.' %' }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_cvr_val = ($amazonkw_clicks > 0) ? ($amazonkw_ad_sold/$amazonkw_clicks)*100 : 0;
+                                    $l60_cvr_val = (($amazonkw_l60_clicks ?? 0) > 0) ? (($amazonkw_l60_ad_sold ?? 0) / ($amazonkw_l60_clicks ?? 1)) * 100 : 0;
+                                    if($l60_cvr_val > 0){
+                                        $grw_cvr = (($l30_cvr_val - $l60_cvr_val) / $l60_cvr_val) * 100;
+                                    }else{
+                                        $grw_cvr = 0;
+                                    }
+                                    $grw_cvr = number_format($grw_cvr, 2);
+                                @endphp
+                                {{ $grw_cvr.' %' }}
+                            </td>
                             <td class="text-center">{{ $amazonkw_missing_ads }}</td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="AMZ KW" title="Edit Channel">
+                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                                    </svg>
+                                </button>
+                            </td>
                         </tr>
 
                          <tr class="accordion-body">
@@ -579,7 +881,21 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $amazonpt_spent }}</td>
+                            <td class="text-center">{{ $amazonpt_l60_spent ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $amazonpt_grw = (($amazonpt_l60_spent ?? 0) > 0) ? ($amazonpt_spent / ($amazonpt_l60_spent ?? 1)) * 100 : 0;
+                                    echo number_format($amazonpt_grw, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $amazonpt_clicks }}</td>
+                            <td class="text-center">{{ $amazonpt_l60_clicks ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $grw_clks = (($amazonpt_l60_clicks ?? 0) > 0) ? ($amazonpt_clicks / ($amazonpt_l60_clicks ?? 1)) * 100 : 0;
+                                    echo number_format($grw_clks, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $amazonpt_ad_sales }}</td>
                             <td class="text-center">
                                 @php
@@ -592,6 +908,32 @@
                                     $acos = round($acos);
                                 @endphp
                                 {{ $acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    if(($amazonpt_l60_ad_sales ?? 0) > 0){
+                                        $l60_acos = (($amazonpt_l60_spent ?? 0) / ($amazonpt_l60_ad_sales ?? 1)) * 100;
+                                        $l60_acos = number_format($l60_acos, 2);
+                                    }else{
+                                        $l60_acos = 0;
+                                    }
+                                    $l60_acos = round($l60_acos);
+                                @endphp
+                                {{ $l60_acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_acos_val = ($amazonpt_ad_sales > 0) ? ($amazonpt_spent/$amazonpt_ad_sales)*100 : 0;
+                                    $l60_acos_val = (($amazonpt_l60_ad_sales ?? 0) > 0) ? (($amazonpt_l60_spent ?? 0) / ($amazonpt_l60_ad_sales ?? 1)) * 100 : 0;
+                                    if($l60_acos_val > 0){
+                                        $ctrl_acos = (($l30_acos_val - $l60_acos_val) / $l60_acos_val) * 100;
+                                    }else{
+                                        $ctrl_acos = 0;
+                                    }
+                                    $ctrl_acos = number_format($ctrl_acos, 2);
+                                    $ctrl_color = ($ctrl_acos < 0) ? 'color: #006400;' : 'color: #8B0000;';
+                                @endphp
+                                <span style="{{ $ctrl_color }}">{{ $ctrl_acos.' %'  }}</span>
                             </td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $amazonpt_ad_sold }}</td>
@@ -607,7 +949,39 @@
                                 @endphp
                                 {{ $cvr.' %' }}
                             </td>
+                            <td class="text-center">
+                                @php
+                                    if(($amazonpt_l60_clicks ?? 0) > 0){
+                                        $cvr_60 = (($amazonpt_l60_ad_sold ?? 0) / ($amazonpt_l60_clicks ?? 1)) * 100;
+                                        $cvr_60 = number_format($cvr_60, 2);
+                                    }else{
+                                        $cvr_60 = 0;
+                                    }
+                                    $cvr_60 = round($cvr_60, 1);
+                                @endphp
+                                {{ $cvr_60.' %' }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_cvr_val = ($amazonpt_clicks > 0) ? ($amazonpt_ad_sold/$amazonpt_clicks)*100 : 0;
+                                    $l60_cvr_val = (($amazonpt_l60_clicks ?? 0) > 0) ? (($amazonpt_l60_ad_sold ?? 0) / ($amazonpt_l60_clicks ?? 1)) * 100 : 0;
+                                    if($l60_cvr_val > 0){
+                                        $grw_cvr = (($l30_cvr_val - $l60_cvr_val) / $l60_cvr_val) * 100;
+                                    }else{
+                                        $grw_cvr = 0;
+                                    }
+                                    $grw_cvr = number_format($grw_cvr, 2);
+                                @endphp
+                                {{ $grw_cvr.' %' }}
+                            </td>
                             <td class="text-center">{{ $amazonpt_missing_ads }}</td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="AMZ PT" title="Edit Channel">
+                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                                    </svg>
+                                </button>
+                            </td>
                         </tr>
 
                         <tr class="accordion-body">
@@ -616,7 +990,21 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $amazonhl_spent }}</td>
+                            <td class="text-center">{{ $amazonhl_l60_spent ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $amazonhl_grw = (($amazonhl_l60_spent ?? 0) > 0) ? ($amazonhl_spent / ($amazonhl_l60_spent ?? 1)) * 100 : 0;
+                                    echo number_format($amazonhl_grw, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $amazonhl_clicks }}</td>
+                            <td class="text-center">{{ $amazonhl_l60_clicks ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $grw_clks = (($amazonhl_l60_clicks ?? 0) > 0) ? ($amazonhl_clicks / ($amazonhl_l60_clicks ?? 1)) * 100 : 0;
+                                    echo number_format($grw_clks, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $amazonhl_ad_sales }}</td>
                             <td class="text-center">
                                 @php
@@ -629,6 +1017,32 @@
                                     $acos = round($acos);
                                 @endphp
                                 {{ $acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    if(($amazonhl_l60_ad_sales ?? 0) > 0){
+                                        $l60_acos = (($amazonhl_l60_spent ?? 0) / ($amazonhl_l60_ad_sales ?? 1)) * 100;
+                                        $l60_acos = number_format($l60_acos, 2);
+                                    }else{
+                                        $l60_acos = 0;
+                                    }
+                                    $l60_acos = round($l60_acos);
+                                @endphp
+                                {{ $l60_acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_acos_val = ($amazonhl_ad_sales > 0) ? ($amazonhl_spent/$amazonhl_ad_sales)*100 : 0;
+                                    $l60_acos_val = (($amazonhl_l60_ad_sales ?? 0) > 0) ? (($amazonhl_l60_spent ?? 0) / ($amazonhl_l60_ad_sales ?? 1)) * 100 : 0;
+                                    if($l60_acos_val > 0){
+                                        $ctrl_acos = (($l30_acos_val - $l60_acos_val) / $l60_acos_val) * 100;
+                                    }else{
+                                        $ctrl_acos = 0;
+                                    }
+                                    $ctrl_acos = number_format($ctrl_acos, 2);
+                                    $ctrl_color = ($ctrl_acos < 0) ? 'color: #006400;' : 'color: #8B0000;';
+                                @endphp
+                                <span style="{{ $ctrl_color }}">{{ $ctrl_acos.' %'  }}</span>
                             </td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $amazonhl_ad_sold }}</td>
@@ -644,7 +1058,39 @@
                                 @endphp
                                 {{ $cvr.' %' }}
                             </td>
+                            <td class="text-center">
+                                @php
+                                    if(($amazonhl_l60_clicks ?? 0) > 0){
+                                        $cvr_60 = (($amazonhl_l60_ad_sold ?? 0) / ($amazonhl_l60_clicks ?? 1)) * 100;
+                                        $cvr_60 = number_format($cvr_60, 2);
+                                    }else{
+                                        $cvr_60 = 0;
+                                    }
+                                    $cvr_60 = round($cvr_60, 1);
+                                @endphp
+                                {{ $cvr_60.' %' }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_cvr_val = ($amazonhl_clicks > 0) ? ($amazonhl_ad_sold/$amazonhl_clicks)*100 : 0;
+                                    $l60_cvr_val = (($amazonhl_l60_clicks ?? 0) > 0) ? (($amazonhl_l60_ad_sold ?? 0) / ($amazonhl_l60_clicks ?? 1)) * 100 : 0;
+                                    if($l60_cvr_val > 0){
+                                        $grw_cvr = (($l30_cvr_val - $l60_cvr_val) / $l60_cvr_val) * 100;
+                                    }else{
+                                        $grw_cvr = 0;
+                                    }
+                                    $grw_cvr = number_format($grw_cvr, 2);
+                                @endphp
+                                {{ $grw_cvr.' %' }}
+                            </td>
                             <td class="text-center"></td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="AMZ HL" title="Edit Channel">
+                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                                    </svg>
+                                </button>
+                            </td>
                         </tr>
 
                         <tr style="background-color:#cfe2f3;" class="accordion-header">
@@ -662,7 +1108,21 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $ebay_spent }}</td>
+                            <td class="text-center">{{ $ebay_l60_spent ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $ebay_grw = (($ebay_l60_spent ?? 0) > 0) ? ($ebay_spent / ($ebay_l60_spent ?? 1)) * 100 : 0;
+                                    echo number_format($ebay_grw, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $ebay_clicks }}</td>
+                            <td class="text-center">{{ $ebay_l60_clicks ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $grw_clks = (($ebay_l60_clicks ?? 0) > 0) ? ($ebay_clicks / ($ebay_l60_clicks ?? 1)) * 100 : 0;
+                                    echo number_format($grw_clks, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $ebay_ad_sales }}</td>
                             <td class="text-center">
                                 @php
@@ -675,6 +1135,32 @@
                                     $acos = round($acos);
                                 @endphp
                                 {{ $acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    if(($ebay_l60_ad_sales ?? 0) > 0){
+                                        $l60_acos = (($ebay_l60_spent ?? 0) / ($ebay_l60_ad_sales ?? 1)) * 100;
+                                        $l60_acos = number_format($l60_acos, 2);
+                                    }else{
+                                        $l60_acos = 0;
+                                    }
+                                    $l60_acos = round($l60_acos);
+                                @endphp
+                                {{ $l60_acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_acos_val = ($ebay_ad_sales > 0) ? ($ebay_spent/$ebay_ad_sales)*100 : 0;
+                                    $l60_acos_val = (($ebay_l60_ad_sales ?? 0) > 0) ? (($ebay_l60_spent ?? 0) / ($ebay_l60_ad_sales ?? 1)) * 100 : 0;
+                                    if($l60_acos_val > 0){
+                                        $ctrl_acos = (($l30_acos_val - $l60_acos_val) / $l60_acos_val) * 100;
+                                    }else{
+                                        $ctrl_acos = 0;
+                                    }
+                                    $ctrl_acos = number_format($ctrl_acos, 2);
+                                    $ctrl_color = ($ctrl_acos < 0) ? 'color: #006400;' : 'color: #8B0000;';
+                                @endphp
+                                <span style="{{ $ctrl_color }}">{{ $ctrl_acos.' %'  }}</span>
                             </td>
                             <td class="text-center">
                                 @php
@@ -702,7 +1188,39 @@
                                 @endphp
                                 {{ $cvr.' %' }}
                             </td>
+                            <td class="text-center">
+                                @php
+                                    if(($ebay_l60_clicks ?? 0) > 0){
+                                        $cvr_60 = (($ebay_l60_ad_sold ?? 0) / ($ebay_l60_clicks ?? 1)) * 100;
+                                        $cvr_60 = number_format($cvr_60, 2);
+                                    }else{
+                                        $cvr_60 = 0;
+                                    }
+                                    $cvr_60 = round($cvr_60, 1);
+                                @endphp
+                                {{ $cvr_60.' %' }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_cvr_val = ($ebay_clicks > 0) ? ($ebay_ad_sold/$ebay_clicks)*100 : 0;
+                                    $l60_cvr_val = (($ebay_l60_clicks ?? 0) > 0) ? (($ebay_l60_ad_sold ?? 0) / ($ebay_l60_clicks ?? 1)) * 100 : 0;
+                                    if($l60_cvr_val > 0){
+                                        $grw_cvr = (($l30_cvr_val - $l60_cvr_val) / $l60_cvr_val) * 100;
+                                    }else{
+                                        $grw_cvr = 0;
+                                    }
+                                    $grw_cvr = number_format($grw_cvr, 2);
+                                @endphp
+                                {{ $grw_cvr.' %' }}
+                            </td>
                             <td class="text-center">{{ $ebay_missing_ads }}</td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="EBAY" title="Edit Channel">
+                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                                    </svg>
+                                </button>
+                            </td>
                         </tr>
 
                         <tr class="accordion-body">
@@ -711,7 +1229,21 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $ebaykw_spent }}</td>
+                            <td class="text-center">{{ $ebaykw_l60_spent ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $ebaykw_grw = (($ebaykw_l60_spent ?? 0) > 0) ? ($ebaykw_spent / ($ebaykw_l60_spent ?? 1)) * 100 : 0;
+                                    echo number_format($ebaykw_grw, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $ebaykw_clicks }}</td>
+                            <td class="text-center">{{ $ebaykw_l60_clicks ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $grw_clks = (($ebaykw_l60_clicks ?? 0) > 0) ? ($ebaykw_clicks / ($ebaykw_l60_clicks ?? 1)) * 100 : 0;
+                                    echo number_format($grw_clks, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $ebaykw_ad_sales }}</td>
                             <td class="text-center">
                                 @php
@@ -724,6 +1256,32 @@
                                     $acos = round($acos);
                                 @endphp
                                 {{ $acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    if(($ebaykw_l60_ad_sales ?? 0) > 0){
+                                        $l60_acos = (($ebaykw_l60_spent ?? 0) / ($ebaykw_l60_ad_sales ?? 1)) * 100;
+                                        $l60_acos = number_format($l60_acos, 2);
+                                    }else{
+                                        $l60_acos = 0;
+                                    }
+                                    $l60_acos = round($l60_acos);
+                                @endphp
+                                {{ $l60_acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_acos_val = ($ebaykw_ad_sales > 0) ? ($ebaykw_spent/$ebaykw_ad_sales)*100 : 0;
+                                    $l60_acos_val = (($ebaykw_l60_ad_sales ?? 0) > 0) ? (($ebaykw_l60_spent ?? 0) / ($ebaykw_l60_ad_sales ?? 1)) * 100 : 0;
+                                    if($l60_acos_val > 0){
+                                        $ctrl_acos = (($l30_acos_val - $l60_acos_val) / $l60_acos_val) * 100;
+                                    }else{
+                                        $ctrl_acos = 0;
+                                    }
+                                    $ctrl_acos = number_format($ctrl_acos, 2);
+                                    $ctrl_color = ($ctrl_acos < 0) ? 'color: #006400;' : 'color: #8B0000;';
+                                @endphp
+                                <span style="{{ $ctrl_color }}">{{ $ctrl_acos.' %'  }}</span>
                             </td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $ebaykw_ad_sold }}</td>
@@ -739,7 +1297,39 @@
                                 @endphp
                                 {{ $cvr.' %' }}
                             </td>
+                            <td class="text-center">
+                                @php
+                                    if(($ebaykw_l60_clicks ?? 0) > 0){
+                                        $cvr_60 = (($ebaykw_l60_ad_sold ?? 0) / ($ebaykw_l60_clicks ?? 1)) * 100;
+                                        $cvr_60 = number_format($cvr_60, 2);
+                                    }else{
+                                        $cvr_60 = 0;
+                                    }
+                                    $cvr_60 = round($cvr_60, 1);
+                                @endphp
+                                {{ $cvr_60.' %' }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_cvr_val = ($ebaykw_clicks > 0) ? ($ebaykw_ad_sold/$ebaykw_clicks)*100 : 0;
+                                    $l60_cvr_val = (($ebaykw_l60_clicks ?? 0) > 0) ? (($ebaykw_l60_ad_sold ?? 0) / ($ebaykw_l60_clicks ?? 1)) * 100 : 0;
+                                    if($l60_cvr_val > 0){
+                                        $grw_cvr = (($l30_cvr_val - $l60_cvr_val) / $l60_cvr_val) * 100;
+                                    }else{
+                                        $grw_cvr = 0;
+                                    }
+                                    $grw_cvr = number_format($grw_cvr, 2);
+                                @endphp
+                                {{ $grw_cvr.' %' }}
+                            </td>
                             <td class="text-center">{{ $ebaykw_missing_ads }}</td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="EB KW" title="Edit Channel">
+                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                                    </svg>
+                                </button>
+                            </td>
                         </tr>
 
                         <tr class="accordion-body">
@@ -748,7 +1338,21 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $ebaypmt_spent }}</td>
+                            <td class="text-center">{{ $ebaypmt_l60_spent ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $ebaypmt_grw = (($ebaypmt_l60_spent ?? 0) > 0) ? ($ebaypmt_spent / ($ebaypmt_l60_spent ?? 1)) * 100 : 0;
+                                    echo number_format($ebaypmt_grw, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $ebaypmt_clicks }}</td>
+                            <td class="text-center">{{ $ebaypmt_l60_clicks ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $grw_clks = (($ebaypmt_l60_clicks ?? 0) > 0) ? ($ebaypmt_clicks / ($ebaypmt_l60_clicks ?? 1)) * 100 : 0;
+                                    echo number_format($grw_clks, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $ebaypmt_ad_sales }}</td>
                             <td class="text-center">
                                 @php
@@ -761,6 +1365,32 @@
                                     $acos = round($acos);
                                 @endphp
                                 {{ $acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    if(($ebaypmt_l60_ad_sales ?? 0) > 0){
+                                        $l60_acos = (($ebaypmt_l60_spent ?? 0) / ($ebaypmt_l60_ad_sales ?? 1)) * 100;
+                                        $l60_acos = number_format($l60_acos, 2);
+                                    }else{
+                                        $l60_acos = 0;
+                                    }
+                                    $l60_acos = round($l60_acos);
+                                @endphp
+                                {{ $l60_acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_acos_val = ($ebaypmt_ad_sales > 0) ? ($ebaypmt_spent/$ebaypmt_ad_sales)*100 : 0;
+                                    $l60_acos_val = (($ebaypmt_l60_ad_sales ?? 0) > 0) ? (($ebaypmt_l60_spent ?? 0) / ($ebaypmt_l60_ad_sales ?? 1)) * 100 : 0;
+                                    if($l60_acos_val > 0){
+                                        $ctrl_acos = (($l30_acos_val - $l60_acos_val) / $l60_acos_val) * 100;
+                                    }else{
+                                        $ctrl_acos = 0;
+                                    }
+                                    $ctrl_acos = number_format($ctrl_acos, 2);
+                                    $ctrl_color = ($ctrl_acos < 0) ? 'color: #006400;' : 'color: #8B0000;';
+                                @endphp
+                                <span style="{{ $ctrl_color }}">{{ $ctrl_acos.' %'  }}</span>
                             </td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $ebaypmt_ad_sold }}</td>
@@ -776,7 +1406,39 @@
                                 @endphp
                                 {{ $cvr.' %' }}
                             </td>
+                            <td class="text-center">
+                                @php
+                                    if(($ebaypmt_l60_clicks ?? 0) > 0){
+                                        $cvr_60 = (($ebaypmt_l60_ad_sold ?? 0) / ($ebaypmt_l60_clicks ?? 1)) * 100;
+                                        $cvr_60 = number_format($cvr_60, 2);
+                                    }else{
+                                        $cvr_60 = 0;
+                                    }
+                                    $cvr_60 = round($cvr_60, 1);
+                                @endphp
+                                {{ $cvr_60.' %' }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_cvr_val = ($ebaypmt_clicks > 0) ? ($ebaypmt_ad_sold/$ebaypmt_clicks)*100 : 0;
+                                    $l60_cvr_val = (($ebaypmt_l60_clicks ?? 0) > 0) ? (($ebaypmt_l60_ad_sold ?? 0) / ($ebaypmt_l60_clicks ?? 1)) * 100 : 0;
+                                    if($l60_cvr_val > 0){
+                                        $grw_cvr = (($l30_cvr_val - $l60_cvr_val) / $l60_cvr_val) * 100;
+                                    }else{
+                                        $grw_cvr = 0;
+                                    }
+                                    $grw_cvr = number_format($grw_cvr, 2);
+                                @endphp
+                                {{ $grw_cvr.' %' }}
+                            </td>
                             <td class="text-center">{{ $ebaypmt_missing_ads }}</td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="EB PMT" title="Edit Channel">
+                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                                    </svg>
+                                </button>
+                            </td>
                         </tr>
 
                         <tr style="background-color:#cfe2f3;" class="accordion-header">
@@ -785,7 +1447,21 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $ebay2_spent }}</td>
+                            <td class="text-center">{{ $ebay2_l60_spent ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $ebay2_grw = (($ebay2_l60_spent ?? 0) > 0) ? ($ebay2_spent / ($ebay2_l60_spent ?? 1)) * 100 : 0;
+                                    echo number_format($ebay2_grw, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $ebay2_clicks }}</td>
+                            <td class="text-center">{{ $ebay2_l60_clicks ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $grw_clks = (($ebay2_l60_clicks ?? 0) > 0) ? ($ebay2_clicks / ($ebay2_l60_clicks ?? 1)) * 100 : 0;
+                                    echo number_format($grw_clks, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $ebay2_ad_sales }}</td>
                             <td class="text-center">
                                 @php
@@ -798,6 +1474,32 @@
                                     $acos = round($acos);
                                 @endphp
                                 {{ $acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    if(($ebay2_l60_ad_sales ?? 0) > 0){
+                                        $l60_acos = (($ebay2_l60_spent ?? 0) / ($ebay2_l60_ad_sales ?? 1)) * 100;
+                                        $l60_acos = number_format($l60_acos, 2);
+                                    }else{
+                                        $l60_acos = 0;
+                                    }
+                                    $l60_acos = round($l60_acos);
+                                @endphp
+                                {{ $l60_acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_acos_val = ($ebay2_ad_sales > 0) ? ($ebay2_spent/$ebay2_ad_sales)*100 : 0;
+                                    $l60_acos_val = (($ebay2_l60_ad_sales ?? 0) > 0) ? (($ebay2_l60_spent ?? 0) / ($ebay2_l60_ad_sales ?? 1)) * 100 : 0;
+                                    if($l60_acos_val > 0){
+                                        $ctrl_acos = (($l30_acos_val - $l60_acos_val) / $l60_acos_val) * 100;
+                                    }else{
+                                        $ctrl_acos = 0;
+                                    }
+                                    $ctrl_acos = number_format($ctrl_acos, 2);
+                                    $ctrl_color = ($ctrl_acos < 0) ? 'color: #006400;' : 'color: #8B0000;';
+                                @endphp
+                                <span style="{{ $ctrl_color }}">{{ $ctrl_acos.' %'  }}</span>
                             </td>
                             <td class="text-center">
                                 @php
@@ -824,7 +1526,39 @@
                                 @endphp
                                 {{ $cvr.' %' }}
                             </td>
+                            <td class="text-center">
+                                @php
+                                    if(($ebay2_l60_clicks ?? 0) > 0){
+                                        $cvr_60 = (($ebay2_l60_ad_sold ?? 0) / ($ebay2_l60_clicks ?? 1)) * 100;
+                                        $cvr_60 = number_format($cvr_60, 2);
+                                    }else{
+                                        $cvr_60 = 0;
+                                    }
+                                    $cvr_60 = round($cvr_60, 1);
+                                @endphp
+                                {{ $cvr_60.' %' }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_cvr_val = ($ebay2_clicks > 0) ? ($ebay2_ad_sold/$ebay2_clicks)*100 : 0;
+                                    $l60_cvr_val = (($ebay2_l60_clicks ?? 0) > 0) ? (($ebay2_l60_ad_sold ?? 0) / ($ebay2_l60_clicks ?? 1)) * 100 : 0;
+                                    if($l60_cvr_val > 0){
+                                        $grw_cvr = (($l30_cvr_val - $l60_cvr_val) / $l60_cvr_val) * 100;
+                                    }else{
+                                        $grw_cvr = 0;
+                                    }
+                                    $grw_cvr = number_format($grw_cvr, 2);
+                                @endphp
+                                {{ $grw_cvr.' %' }}
+                            </td>
                             <td class="text-center">{{ $ebay2_missing_ads }}</td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="EBAY 2" title="Edit Channel">
+                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                                    </svg>
+                                </button>
+                            </td>
                         </tr>
 
                         <tr class="accordion-body">
@@ -833,7 +1567,21 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $ebay2pmt_spent }}</td>
+                            <td class="text-center">{{ $ebay2pmt_l60_spent ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $grw = (($ebay2pmt_l60_spent ?? 0) > 0) ? ($ebay2pmt_spent / ($ebay2pmt_l60_spent ?? 1)) * 100 : 0;
+                                    echo number_format($grw, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $ebay2pmt_clicks }}</td>
+                            <td class="text-center">{{ $ebay2pmt_l60_clicks ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $grw_clks = (($ebay2pmt_l60_clicks ?? 0) > 0) ? ($ebay2pmt_clicks / ($ebay2pmt_l60_clicks ?? 1)) * 100 : 0;
+                                    echo number_format($grw_clks, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $ebay2pmt_ad_sales }}</td>
                             <td class="text-center">
                                 @php
@@ -846,6 +1594,32 @@
                                     $acos = round($acos);
                                 @endphp
                                 {{ $acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    if(($ebay2pmt_l60_ad_sales ?? 0) > 0){
+                                        $l60_acos = (($ebay2pmt_l60_spent ?? 0) / ($ebay2pmt_l60_ad_sales ?? 1)) * 100;
+                                        $l60_acos = number_format($l60_acos, 2);
+                                    }else{
+                                        $l60_acos = 0;
+                                    }
+                                    $l60_acos = round($l60_acos);
+                                @endphp
+                                {{ $l60_acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_acos_val = ($ebay2pmt_ad_sales > 0) ? ($ebay2pmt_spent/$ebay2pmt_ad_sales)*100 : 0;
+                                    $l60_acos_val = (($ebay2pmt_l60_ad_sales ?? 0) > 0) ? (($ebay2pmt_l60_spent ?? 0) / ($ebay2pmt_l60_ad_sales ?? 1)) * 100 : 0;
+                                    if($l60_acos_val > 0){
+                                        $ctrl_acos = (($l30_acos_val - $l60_acos_val) / $l60_acos_val) * 100;
+                                    }else{
+                                        $ctrl_acos = 0;
+                                    }
+                                    $ctrl_acos = number_format($ctrl_acos, 2);
+                                    $ctrl_color = ($ctrl_acos < 0) ? 'color: #006400;' : 'color: #8B0000;';
+                                @endphp
+                                <span style="{{ $ctrl_color }}">{{ $ctrl_acos.' %'  }}</span>
                             </td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $ebay2pmt_ad_sold }}</td>
@@ -861,7 +1635,39 @@
                                 @endphp
                                 {{ $cvr.' %' }}
                             </td>
+                            <td class="text-center">
+                                @php
+                                    if(($ebay2pmt_l60_clicks ?? 0) > 0){
+                                        $cvr_60 = (($ebay2pmt_l60_ad_sold ?? 0) / ($ebay2pmt_l60_clicks ?? 1)) * 100;
+                                        $cvr_60 = number_format($cvr_60, 2);
+                                    }else{
+                                        $cvr_60 = 0;
+                                    }
+                                    $cvr_60 = round($cvr_60, 1);
+                                @endphp
+                                {{ $cvr_60.' %' }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_cvr_val = ($ebay2pmt_clicks > 0) ? ($ebay2pmt_ad_sold/$ebay2pmt_clicks)*100 : 0;
+                                    $l60_cvr_val = (($ebay2pmt_l60_clicks ?? 0) > 0) ? (($ebay2pmt_l60_ad_sold ?? 0) / ($ebay2pmt_l60_clicks ?? 1)) * 100 : 0;
+                                    if($l60_cvr_val > 0){
+                                        $grw_cvr = (($l30_cvr_val - $l60_cvr_val) / $l60_cvr_val) * 100;
+                                    }else{
+                                        $grw_cvr = 0;
+                                    }
+                                    $grw_cvr = number_format($grw_cvr, 2);
+                                @endphp
+                                {{ $grw_cvr.' %' }}
+                            </td>
                             <td class="text-center">{{ $ebay2pmt_missing_ads }}</td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="EB PMT" title="Edit Channel">
+                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                                    </svg>
+                                </button>
+                            </td>
                         </tr>
 
                         <tr style="background-color:#cfe2f3;" class="accordion-header">
@@ -870,7 +1676,21 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $ebay3_spent }}</td>
+                            <td class="text-center">{{ $ebay3_l60_spent ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $grw = (($ebay3_l60_spent ?? 0) > 0) ? ($ebay3_spent / ($ebay3_l60_spent ?? 1)) * 100 : 0;
+                                    echo number_format($grw, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $ebay3_clicks }}</td>
+                            <td class="text-center">{{ $ebay3_l60_clicks ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $grw_clks = (($ebay3_l60_clicks ?? 0) > 0) ? ($ebay3_clicks / ($ebay3_l60_clicks ?? 1)) * 100 : 0;
+                                    echo number_format($grw_clks, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $ebay3_ad_sales }}</td>
                             <td class="text-center">
                                 @php
@@ -883,6 +1703,32 @@
                                     $acos = round($acos);
                                 @endphp
                                 {{ $acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    if(($ebay3_l60_ad_sales ?? 0) > 0){
+                                        $l60_acos = (($ebay3_l60_spent ?? 0) / ($ebay3_l60_ad_sales ?? 1)) * 100;
+                                        $l60_acos = number_format($l60_acos, 2);
+                                    }else{
+                                        $l60_acos = 0;
+                                    }
+                                    $l60_acos = round($l60_acos);
+                                @endphp
+                                {{ $l60_acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_acos_val = ($ebay3_ad_sales > 0) ? ($ebay3_spent/$ebay3_ad_sales)*100 : 0;
+                                    $l60_acos_val = (($ebay3_l60_ad_sales ?? 0) > 0) ? (($ebay3_l60_spent ?? 0) / ($ebay3_l60_ad_sales ?? 1)) * 100 : 0;
+                                    if($l60_acos_val > 0){
+                                        $ctrl_acos = (($l30_acos_val - $l60_acos_val) / $l60_acos_val) * 100;
+                                    }else{
+                                        $ctrl_acos = 0;
+                                    }
+                                    $ctrl_acos = number_format($ctrl_acos, 2);
+                                    $ctrl_color = ($ctrl_acos < 0) ? 'color: #006400;' : 'color: #8B0000;';
+                                @endphp
+                                <span style="{{ $ctrl_color }}">{{ $ctrl_acos.' %'  }}</span>
                             </td>
                             <td class="text-center">
                                 @php
@@ -909,7 +1755,39 @@
                                 @endphp
                                 {{ $cvr.' %' }}
                             </td>
+                            <td class="text-center">
+                                @php
+                                    if(($ebay3_l60_clicks ?? 0) > 0){
+                                        $cvr_60 = (($ebay3_l60_ad_sold ?? 0) / ($ebay3_l60_clicks ?? 1)) * 100;
+                                        $cvr_60 = number_format($cvr_60, 2);
+                                    }else{
+                                        $cvr_60 = 0;
+                                    }
+                                    $cvr_60 = round($cvr_60, 1);
+                                @endphp
+                                {{ $cvr_60.' %' }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_cvr_val = ($ebay3_clicks > 0) ? ($ebay3_ad_sold/$ebay3_clicks)*100 : 0;
+                                    $l60_cvr_val = (($ebay3_l60_clicks ?? 0) > 0) ? (($ebay3_l60_ad_sold ?? 0) / ($ebay3_l60_clicks ?? 1)) * 100 : 0;
+                                    if($l60_cvr_val > 0){
+                                        $grw_cvr = (($l30_cvr_val - $l60_cvr_val) / $l60_cvr_val) * 100;
+                                    }else{
+                                        $grw_cvr = 0;
+                                    }
+                                    $grw_cvr = number_format($grw_cvr, 2);
+                                @endphp
+                                {{ $grw_cvr.' %' }}
+                            </td>
                             <td class="text-center">{{ $ebay3_missing_ads }}</td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="EBAY 3" title="Edit Channel">
+                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                                    </svg>
+                                </button>
+                            </td>
                         </tr>
 
                          <tr class="accordion-body">
@@ -918,7 +1796,21 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $ebay3kw_spent }}</td>
+                            <td class="text-center">{{ $ebay3kw_l60_spent ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $grw = (($ebay3kw_l60_spent ?? 0) > 0) ? ($ebay3kw_spent / ($ebay3kw_l60_spent ?? 1)) * 100 : 0;
+                                    echo number_format($grw, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $ebay3kw_clicks }}</td>
+                            <td class="text-center">{{ $ebay3kw_l60_clicks ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $grw_clks = (($ebay3kw_l60_clicks ?? 0) > 0) ? ($ebay3kw_clicks / ($ebay3kw_l60_clicks ?? 1)) * 100 : 0;
+                                    echo number_format($grw_clks, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $ebay3kw_ad_sales }}</td>
                             <td class="text-center">
                                 @php
@@ -931,6 +1823,32 @@
                                     $acos = round($acos);
                                 @endphp
                                 {{ $acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    if(($ebay3kw_l60_ad_sales ?? 0) > 0){
+                                        $l60_acos = (($ebay3kw_l60_spent ?? 0) / ($ebay3kw_l60_ad_sales ?? 1)) * 100;
+                                        $l60_acos = number_format($l60_acos, 2);
+                                    }else{
+                                        $l60_acos = 0;
+                                    }
+                                    $l60_acos = round($l60_acos);
+                                @endphp
+                                {{ $l60_acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_acos_val = ($ebay3kw_ad_sales > 0) ? ($ebay3kw_spent/$ebay3kw_ad_sales)*100 : 0;
+                                    $l60_acos_val = (($ebay3kw_l60_ad_sales ?? 0) > 0) ? (($ebay3kw_l60_spent ?? 0) / ($ebay3kw_l60_ad_sales ?? 1)) * 100 : 0;
+                                    if($l60_acos_val > 0){
+                                        $ctrl_acos = (($l30_acos_val - $l60_acos_val) / $l60_acos_val) * 100;
+                                    }else{
+                                        $ctrl_acos = 0;
+                                    }
+                                    $ctrl_acos = number_format($ctrl_acos, 2);
+                                    $ctrl_color = ($ctrl_acos < 0) ? 'color: #006400;' : 'color: #8B0000;';
+                                @endphp
+                                <span style="{{ $ctrl_color }}">{{ $ctrl_acos.' %'  }}</span>
                             </td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $ebay3kw_ad_sold }}</td>
@@ -946,7 +1864,39 @@
                                 @endphp
                                 {{ $cvr.' %' }}
                             </td>
+                            <td class="text-center">
+                                @php
+                                    if(($ebay3kw_l60_clicks ?? 0) > 0){
+                                        $cvr_60 = (($ebay3kw_l60_ad_sold ?? 0) / ($ebay3kw_l60_clicks ?? 1)) * 100;
+                                        $cvr_60 = number_format($cvr_60, 2);
+                                    }else{
+                                        $cvr_60 = 0;
+                                    }
+                                    $cvr_60 = round($cvr_60, 1);
+                                @endphp
+                                {{ $cvr_60.' %' }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_cvr_val = ($ebay3kw_clicks > 0) ? ($ebay3kw_ad_sold/$ebay3kw_clicks)*100 : 0;
+                                    $l60_cvr_val = (($ebay3kw_l60_clicks ?? 0) > 0) ? (($ebay3kw_l60_ad_sold ?? 0) / ($ebay3kw_l60_clicks ?? 1)) * 100 : 0;
+                                    if($l60_cvr_val > 0){
+                                        $grw_cvr = (($l30_cvr_val - $l60_cvr_val) / $l60_cvr_val) * 100;
+                                    }else{
+                                        $grw_cvr = 0;
+                                    }
+                                    $grw_cvr = number_format($grw_cvr, 2);
+                                @endphp
+                                {{ $grw_cvr.' %' }}
+                            </td>
                             <td class="text-center">{{ $ebay3kw_missing_ads }}</td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="EB KW" title="Edit Channel">
+                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                                    </svg>
+                                </button>
+                            </td>
                         </tr>
 
                         <tr class="accordion-body">
@@ -955,7 +1905,21 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $ebay3pmt_spent }}</td>
+                            <td class="text-center">{{ $ebay3pmt_l60_spent ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $grw = (($ebay3pmt_l60_spent ?? 0) > 0) ? ($ebay3pmt_spent / ($ebay3pmt_l60_spent ?? 1)) * 100 : 0;
+                                    echo number_format($grw, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $ebay3pmt_clicks }}</td>
+                            <td class="text-center">{{ $ebay3pmt_l60_clicks ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $grw_clks = (($ebay3pmt_l60_clicks ?? 0) > 0) ? ($ebay3pmt_clicks / ($ebay3pmt_l60_clicks ?? 1)) * 100 : 0;
+                                    echo number_format($grw_clks, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $ebay3pmt_ad_sales }}</td>
                             <td class="text-center">
                                 @php
@@ -968,6 +1932,32 @@
                                     $acos = round($acos);
                                 @endphp
                                 {{ $acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    if(($ebay3pmt_l60_ad_sales ?? 0) > 0){
+                                        $l60_acos = (($ebay3pmt_l60_spent ?? 0) / ($ebay3pmt_l60_ad_sales ?? 1)) * 100;
+                                        $l60_acos = number_format($l60_acos, 2);
+                                    }else{
+                                        $l60_acos = 0;
+                                    }
+                                    $l60_acos = round($l60_acos);
+                                @endphp
+                                {{ $l60_acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_acos_val = ($ebay3pmt_ad_sales > 0) ? ($ebay3pmt_spent/$ebay3pmt_ad_sales)*100 : 0;
+                                    $l60_acos_val = (($ebay3pmt_l60_ad_sales ?? 0) > 0) ? (($ebay3pmt_l60_spent ?? 0) / ($ebay3pmt_l60_ad_sales ?? 1)) * 100 : 0;
+                                    if($l60_acos_val > 0){
+                                        $ctrl_acos = (($l30_acos_val - $l60_acos_val) / $l60_acos_val) * 100;
+                                    }else{
+                                        $ctrl_acos = 0;
+                                    }
+                                    $ctrl_acos = number_format($ctrl_acos, 2);
+                                    $ctrl_color = ($ctrl_acos < 0) ? 'color: #006400;' : 'color: #8B0000;';
+                                @endphp
+                                <span style="{{ $ctrl_color }}">{{ $ctrl_acos.' %'  }}</span>
                             </td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $ebay3pmt_ad_sold }}</td>
@@ -983,7 +1973,39 @@
                                 @endphp
                                 {{ $cvr.' %' }}
                             </td>
+                            <td class="text-center">
+                                @php
+                                    if(($ebay3pmt_l60_clicks ?? 0) > 0){
+                                        $cvr_60 = (($ebay3pmt_l60_ad_sold ?? 0) / ($ebay3pmt_l60_clicks ?? 1)) * 100;
+                                        $cvr_60 = number_format($cvr_60, 2);
+                                    }else{
+                                        $cvr_60 = 0;
+                                    }
+                                    $cvr_60 = round($cvr_60, 1);
+                                @endphp
+                                {{ $cvr_60.' %' }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_cvr_val = ($ebay3pmt_clicks > 0) ? ($ebay3pmt_ad_sold/$ebay3pmt_clicks)*100 : 0;
+                                    $l60_cvr_val = (($ebay3pmt_l60_clicks ?? 0) > 0) ? (($ebay3pmt_l60_ad_sold ?? 0) / ($ebay3pmt_l60_clicks ?? 1)) * 100 : 0;
+                                    if($l60_cvr_val > 0){
+                                        $grw_cvr = (($l30_cvr_val - $l60_cvr_val) / $l60_cvr_val) * 100;
+                                    }else{
+                                        $grw_cvr = 0;
+                                    }
+                                    $grw_cvr = number_format($grw_cvr, 2);
+                                @endphp
+                                {{ $grw_cvr.' %' }}
+                            </td>
                             <td class="text-center">{{ $ebay3pmt_missing_ads }}</td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="EB PMT" title="Edit Channel">
+                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                                    </svg>
+                                </button>
+                            </td>
                         </tr>
 
                         <tr style="background-color:#cfe2f3;" class="accordion-header">
@@ -992,7 +2014,21 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $walmart_spent }}</td>
+                            <td class="text-center">{{ $walmart_l60_spent ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $grw = (($walmart_l60_spent ?? 0) > 0) ? ($walmart_spent / ($walmart_l60_spent ?? 1)) * 100 : 0;
+                                    echo number_format($grw, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $walmart_clicks }}</td>
+                            <td class="text-center">{{ $walmart_l60_clicks ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $grw_clks = (($walmart_l60_clicks ?? 0) > 0) ? ($walmart_clicks / ($walmart_l60_clicks ?? 1)) * 100 : 0;
+                                    echo number_format($grw_clks, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $walmart_ad_sales }}</td>
                             <td class="text-center">
                                 @php
@@ -1005,6 +2041,32 @@
                                     $acos = round($acos);
                                 @endphp
                                 {{ $acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    if(($walmart_l60_ad_sales ?? 0) > 0){
+                                        $l60_acos = (($walmart_l60_spent ?? 0) / ($walmart_l60_ad_sales ?? 1)) * 100;
+                                        $l60_acos = number_format($l60_acos, 2);
+                                    }else{
+                                        $l60_acos = 0;
+                                    }
+                                    $l60_acos = round($l60_acos);
+                                @endphp
+                                {{ $l60_acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_acos_val = ($walmart_ad_sales > 0) ? ($walmart_spent/$walmart_ad_sales)*100 : 0;
+                                    $l60_acos_val = (($walmart_l60_ad_sales ?? 0) > 0) ? (($walmart_l60_spent ?? 0) / ($walmart_l60_ad_sales ?? 1)) * 100 : 0;
+                                    if($l60_acos_val > 0){
+                                        $ctrl_acos = (($l30_acos_val - $l60_acos_val) / $l60_acos_val) * 100;
+                                    }else{
+                                        $ctrl_acos = 0;
+                                    }
+                                    $ctrl_acos = number_format($ctrl_acos, 2);
+                                    $ctrl_color = ($ctrl_acos < 0) ? 'color: #006400;' : 'color: #8B0000;';
+                                @endphp
+                                <span style="{{ $ctrl_color }}">{{ $ctrl_acos.' %'  }}</span>
                             </td>
                             <td class="text-center">
                               
@@ -1022,7 +2084,39 @@
                                 @endphp
                                 {{ $cvr.' %' }}
                             </td>
+                            <td class="text-center">
+                                @php
+                                    if(($walmart_l60_clicks ?? 0) > 0){
+                                        $cvr_60 = (($walmart_l60_ad_sold ?? 0) / ($walmart_l60_clicks ?? 1)) * 100;
+                                        $cvr_60 = number_format($cvr_60, 2);
+                                    }else{
+                                        $cvr_60 = 0;
+                                    }
+                                    $cvr_60 = round($cvr_60, 1);
+                                @endphp
+                                {{ $cvr_60.' %' }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_cvr_val = ($walmart_clicks > 0) ? ($walmart_ad_sold/$walmart_clicks)*100 : 0;
+                                    $l60_cvr_val = (($walmart_l60_clicks ?? 0) > 0) ? (($walmart_l60_ad_sold ?? 0) / ($walmart_l60_clicks ?? 1)) * 100 : 0;
+                                    if($l60_cvr_val > 0){
+                                        $grw_cvr = (($l30_cvr_val - $l60_cvr_val) / $l60_cvr_val) * 100;
+                                    }else{
+                                        $grw_cvr = 0;
+                                    }
+                                    $grw_cvr = number_format($grw_cvr, 2);
+                                @endphp
+                                {{ $grw_cvr.' %' }}
+                            </td>
                             <td class="text-center"></td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="WALMART" title="Edit Channel">
+                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                                    </svg>
+                                </button>
+                            </td>
                         </tr>
 
                         <tr style="background-color:#cfe2f3;" class="accordion-header">
@@ -1038,6 +2132,21 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="SHOPIFY" title="Edit Channel">
+                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                                    </svg>
+                                </button>
+                            </td>
                         </tr>
 
                          <tr class="accordion-body">
@@ -1046,7 +2155,21 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $gshoping_spent }}</td>
+                            <td class="text-center">{{ $gshoping_l60_spent ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $grw = (($gshoping_l60_spent ?? 0) > 0) ? ($gshoping_spent / ($gshoping_l60_spent ?? 1)) * 100 : 0;
+                                    echo number_format($grw, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $gshoping_clicks }}</td>
+                            <td class="text-center">{{ $gshoping_l60_clicks ?? 0 }}</td>
+                            <td class="text-center">
+                                @php
+                                    $grw_clks = (($gshoping_l60_clicks ?? 0) > 0) ? ($gshoping_clicks / ($gshoping_l60_clicks ?? 1)) * 100 : 0;
+                                    echo number_format($grw_clks, 2) . '%';
+                                @endphp
+                            </td>
                             <td class="text-center">{{ $gshoping_ad_sales }}</td>
                             <td class="text-center">
                                 @php
@@ -1059,6 +2182,32 @@
                                     $acos = round($acos);
                                 @endphp
                                 {{ $acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    if(($gshoping_l60_ad_sales ?? 0) > 0){
+                                        $l60_acos = (($gshoping_l60_spent ?? 0) / ($gshoping_l60_ad_sales ?? 1)) * 100;
+                                        $l60_acos = number_format($l60_acos, 2);
+                                    }else{
+                                        $l60_acos = 0;
+                                    }
+                                    $l60_acos = round($l60_acos);
+                                @endphp
+                                {{ $l60_acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_acos_val = ($gshoping_ad_sales > 0) ? ($gshoping_spent/$gshoping_ad_sales)*100 : 0;
+                                    $l60_acos_val = (($gshoping_l60_ad_sales ?? 0) > 0) ? (($gshoping_l60_spent ?? 0) / ($gshoping_l60_ad_sales ?? 1)) * 100 : 0;
+                                    if($l60_acos_val > 0){
+                                        $ctrl_acos = (($l30_acos_val - $l60_acos_val) / $l60_acos_val) * 100;
+                                    }else{
+                                        $ctrl_acos = 0;
+                                    }
+                                    $ctrl_acos = number_format($ctrl_acos, 2);
+                                    $ctrl_color = ($ctrl_acos < 0) ? 'color: #006400;' : 'color: #8B0000;';
+                                @endphp
+                                <span style="{{ $ctrl_color }}">{{ $ctrl_acos.' %'  }}</span>
                             </td>
                             <td class="text-center"></td>
                             <td class="text-center">{{ $gshoping_ad_sold }}</td>
@@ -1074,7 +2223,39 @@
                                 @endphp
                                 {{ $cvr.' %' }}
                             </td>
+                            <td class="text-center">
+                                @php
+                                    if(($gshoping_l60_clicks ?? 0) > 0){
+                                        $cvr_60 = (($gshoping_l60_ad_sold ?? 0) / ($gshoping_l60_clicks ?? 1)) * 100;
+                                        $cvr_60 = number_format($cvr_60, 2);
+                                    }else{
+                                        $cvr_60 = 0;
+                                    }
+                                    $cvr_60 = round($cvr_60, 1);
+                                @endphp
+                                {{ $cvr_60.' %' }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $l30_cvr_val = ($gshoping_clicks > 0) ? ($gshoping_ad_sold/$gshoping_clicks)*100 : 0;
+                                    $l60_cvr_val = (($gshoping_l60_clicks ?? 0) > 0) ? (($gshoping_l60_ad_sold ?? 0) / ($gshoping_l60_clicks ?? 1)) * 100 : 0;
+                                    if($l60_cvr_val > 0){
+                                        $grw_cvr = (($l30_cvr_val - $l60_cvr_val) / $l60_cvr_val) * 100;
+                                    }else{
+                                        $grw_cvr = 0;
+                                    }
+                                    $grw_cvr = number_format($grw_cvr, 2);
+                                @endphp
+                                {{ $grw_cvr.' %' }}
+                            </td>
                             <td class="text-center"></td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="G SHOPPING" title="Edit Channel">
+                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                                    </svg>
+                                </button>
+                            </td>
                         </tr>
 
                          <tr class="accordion-body">
@@ -1090,6 +2271,21 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="G SERP" title="Edit Channel">
+                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                                    </svg>
+                                </button>
+                            </td>
                         </tr>
 
                         <tr class="accordion-body">
@@ -1105,6 +2301,21 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="FB CARAOUSAL" title="Edit Channel">
+                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                                    </svg>
+                                </button>
+                            </td>
                         </tr>
 
                         <tr class="accordion-body">
@@ -1120,6 +2331,21 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="FB VIDEO" title="Edit Channel">
+                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                                    </svg>
+                                </button>
+                            </td>
                         </tr>
 
                         <tr class="accordion-body">
@@ -1135,6 +2361,21 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="INSTA CARAOUSAL" title="Edit Channel">
+                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                                    </svg>
+                                </button>
+                            </td>
                         </tr>
 
                         <tr class="accordion-body">
@@ -1150,6 +2391,21 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="INSTA VIDEO" title="Edit Channel">
+                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                                    </svg>
+                                </button>
+                            </td>
                         </tr>
 
                         <tr class="accordion-body">
@@ -1165,6 +2421,21 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="YOUTUBE" title="Edit Channel">
+                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                                    </svg>
+                                </button>
+                            </td>
                         </tr>
 
                         <tr style="background-color:#cfe2f3;" class="accordion-header">
@@ -1180,6 +2451,20 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center">
+                                <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="TIKTOK" title="Edit Channel">
+                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5L13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-9.761 5.175l-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+                                    </svg>
+                                </button>
+                            </td>
                         </tr>
                     
                     </tbody>
@@ -1373,9 +2658,6 @@
 
 @section('script')
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
-  {{-- <script src="https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script> --}}
-  {{-- <script src="https://cdnjs.cloudflare.com/ajax/libs/colresizable/1.6.0/colResizable-1.6.min.js"></script> --}}
- 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script>
@@ -2261,39 +3543,197 @@ $(document).ready(function() {
     });
    
     setTimeout(function() {
-        var dtScript = document.createElement('script');
-        dtScript.src = "https://cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js";
-        dtScript.onload = function() {
-            var colScript = document.createElement('script');
-            colScript.src = "https://cdnjs.cloudflare.com/ajax/libs/colresizable/1.6.0/colResizable-1.6.min.js";
-            colScript.onload = function() {
+        var tabulatorScript = document.createElement('script');
+        tabulatorScript.src = "https://unpkg.com/tabulator-tables@5.5.2/dist/js/tabulator.min.js";
+        tabulatorScript.onload = function() {
+            try {
+                // Get the table element
+                var tableElement = document.getElementById('adv-master-table');
+                if (!tableElement) {
+                    console.error('Table element not found');
+                    return;
+                }
 
-                let table = $('#adv-master-table').DataTable({
-                    paging: false,
-                    info: false,
-                    searching: true,
-                    scrollX:false,
-                    autoWidth: false,
-                    ordering:false,
-                });
-
-                $('.dataTables_filter').hide();
+                // Extract table data from existing HTML table
+                var tableData = [];
+                var rows = tableElement.querySelectorAll('tbody tr');
                 
-                $('#adv-master-table').colResizable({
-                    liveDrag: true,
-                    resizeMode: 'fit', // or 'flex'
-                    gripInnerHtml: "<div class='grip'></div>",
-                    draggingClass: "dragging"
+                rows.forEach(function(row) {
+                    var cells = row.querySelectorAll('td');
+                    var rowData = {};
+                    var rowClasses = row.className;
+                    var rowStyle = row.getAttribute('style') || '';
+                    
+                    cells.forEach(function(cell, index) {
+                        rowData['col' + index] = cell.innerHTML.trim();
+                    });
+                    
+                    // Store metadata for row formatting
+                    rowData._isAccordionHeader = rowClasses.includes('accordion-header');
+                    rowData._isAccordionBody = rowClasses.includes('accordion-body');
+                    rowData._rowStyle = rowStyle;
+                    rowData._originalRow = row;
+                    
+                    tableData.push(rowData);
                 });
 
+                // Extract column definitions from header
+                var columns = [];
+                var headerRow = tableElement.querySelector('thead tr');
+                var headerCells = headerRow.querySelectorAll('th');
+                
+                headerCells.forEach(function(header, index) {
+                    var headerHtml = header.innerHTML;
+                    columns.push({
+                        title: headerHtml,
+                        field: 'col' + index,
+                        formatter: 'html',
+                        headerSort: false,
+                        resizable: true,
+                        width: index === 0 ? 110 : undefined,
+                        minWidth: 80,
+                        headerTooltip: true
+                    });
+                });
+
+                // Create a container div for Tabulator
+                var container = tableElement.parentElement;
+                var tabulatorDiv = document.createElement('div');
+                tabulatorDiv.id = 'tabulator-table';
+                container.insertBefore(tabulatorDiv, tableElement);
+                tableElement.style.display = 'none';
+
+                // Create Tabulator instance
+                var table = new Tabulator("#tabulator-table", {
+                    data: tableData,
+                    columns: columns,
+                    layout: "fitColumns",
+                    pagination: false,
+                    movableColumns: false,
+                    resizableColumns: true,
+                    headerVisible: true,
+                    height: "auto",
+                    placeholder: "No Data Available",
+                    rowFormatter: function(row) {
+                        var rowData = row.getData();
+                        var rowElement = row.getElement();
+                        
+                        // Apply accordion header styling
+                        if (rowData._isAccordionHeader) {
+                            rowElement.style.backgroundColor = '#cfe2f3';
+                            rowElement.style.fontWeight = 'bold';
+                            rowElement.style.cursor = 'pointer';
+                        }
+                        
+                        // Hide accordion body rows initially
+                        if (rowData._isAccordionBody) {
+                            rowElement.style.display = 'none';
+                        }
+                        
+                        // Apply original row style if exists
+                        if (rowData._rowStyle) {
+                            rowElement.setAttribute('style', rowData._rowStyle + '; ' + rowElement.getAttribute('style'));
+                        }
+                    }
+                });
+
+                // Search functionality - search across all columns
                 $('#search-input').on('keyup', function() {
-                    table.search(this.value).draw();
+                    var searchValue = this.value.toLowerCase();
+                    if (searchValue === '') {
+                        table.clearFilter();
+                    } else {
+                        table.setFilter(function(data) {
+                            // Search across all columns
+                            for (var key in data) {
+                                if (key.startsWith('col') && typeof data[key] === 'string') {
+                                    if (data[key].toLowerCase().includes(searchValue)) {
+                                        return true;
+                                    }
+                                }
+                            }
+                            return false;
+                        });
+                    }
                 });
 
-            };
-            document.body.appendChild(colScript); 
+                // Accordion functionality
+                var accordionState = {};
+                
+                // Add index to each row data for easier tracking
+                tableData.forEach(function(row, index) {
+                    row._rowIndex = index;
+                });
+                
+                table.on("rowClick", function(e, row) {
+                    var rowData = row.getData();
+                    if (rowData._isAccordionHeader) {
+                        var rowIndex = rowData._rowIndex;
+                        var isExpanded = accordionState[rowIndex] || false;
+                        
+                        // Get all rows from table
+                        var allRows = table.getRows();
+                        var startIndex = -1;
+                        
+                        // Find the clicked row's index in allRows
+                        for (var i = 0; i < allRows.length; i++) {
+                            if (allRows[i] === row) {
+                                startIndex = i;
+                                break;
+                            }
+                        }
+                        
+                        if (startIndex === -1) return;
+                        
+                        // Find the next accordion-header
+                        var endIndex = allRows.length;
+                        for (var i = startIndex + 1; i < allRows.length; i++) {
+                            var checkRow = allRows[i];
+                            var checkData = checkRow.getData();
+                            if (checkData._isAccordionHeader) {
+                                endIndex = i;
+                                break;
+                            }
+                        }
+                        
+                        // Toggle visibility of accordion-body rows
+                        for (var i = startIndex + 1; i < endIndex; i++) {
+                            var targetRow = allRows[i];
+                            if (targetRow) {
+                                var targetData = targetRow.getData();
+                                if (targetData._isAccordionBody) {
+                                    var rowElement = targetRow.getElement();
+                                    if (rowElement) {
+                                        if (isExpanded) {
+                                            rowElement.style.display = 'none';
+                                        } else {
+                                            rowElement.style.display = '';
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        accordionState[rowIndex] = !isExpanded;
+                    }
+                });
+
+                // Add channel button handler
+                $('#add-channel-btn').on('click', function() {
+                    alert('Add Channel functionality - to be implemented');
+                });
+
+                // Edit channel button handler (delegated event)
+                $(document).on('click', '.edit-channel-btn', function() {
+                    const channelName = $(this).data('channel');
+                    alert('Edit Channel: ' + channelName);
+                });
+
+            } catch (error) {
+                console.error('Tabulator initialization error:', error);
+            }
         };
-        document.body.appendChild(dtScript); 
+        document.body.appendChild(tabulatorScript);
     }, 200); 
 
     /** START CODE FOR DATE DISABLE */

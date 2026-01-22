@@ -3544,10 +3544,27 @@ class AdsMasterController extends Controller
         
         $total_l30_sales = 0;
         $total_spent = 0;
+        $total_l60_spent = 0;
         $total_clicks = 0;
         $total_ad_sales = 0;
         $total_ad_sold = 0;
         $total_missing = 0;
+        
+        // Initialize L60 spent variables
+        $amazon_l60_spent = 0;
+        $amazonkw_l60_spent = 0;
+        $amazonpt_l60_spent = 0;
+        $amazonhl_l60_spent = 0;
+        $ebay_l60_spent = 0;
+        $ebaykw_l60_spent = 0;
+        $ebaypmt_l60_spent = 0;
+        $ebay2_l60_spent = 0;
+        $ebay2pmt_l60_spent = 0;
+        $ebay3_l60_spent = 0;
+        $ebay3kw_l60_spent = 0;
+        $ebay3pmt_l60_spent = 0;
+        $walmart_l60_spent = 0;
+        $gshoping_l60_spent = 0;
         
         foreach($advMasterDatas as $data)
         {
@@ -3745,6 +3762,13 @@ class AdsMasterController extends Controller
         // Calculate totals - use main channel l30_sales only (not sub-channels, they're duplicates)
         $total_l30_sales = $amazon_l30_sales + $ebay_l30_sales + $ebay2_l30_sales + $ebay3_l30_sales + $walmart_l30_sales + $gshoping_l30_sales;
         $total_spent = $amazon_spent + $ebay_spent + $ebay2_spent + $ebay3_spent + $walmart_spent + $gshoping_spent;
+        
+        // Calculate L60 spent totals (sum of sub-channels for main channels)
+        $amazon_l60_spent = $amazonkw_l60_spent + $amazonpt_l60_spent + $amazonhl_l60_spent;
+        $ebay_l60_spent = $ebaykw_l60_spent + $ebaypmt_l60_spent;
+        $ebay2_l60_spent = $ebay2pmt_l60_spent;
+        $ebay3_l60_spent = $ebay3kw_l60_spent + $ebay3pmt_l60_spent;
+        $total_l60_spent = $amazon_l60_spent + $ebay_l60_spent + $ebay2_l60_spent + $ebay3_l60_spent + $walmart_l60_spent + $gshoping_l60_spent;
         // Calculate totals - use main channel values only (not sub-channels to avoid double counting)
         $total_clicks = $amazon_clicks + $ebay_clicks + $ebay2_clicks + $ebay3_clicks + $walmart_clicks + $gshoping_clicks;
         $total_ad_sales = $amazon_ad_sales + $ebay_ad_sales + $ebay2_ad_sales + $ebay3_ad_sales + $walmart_ad_sales + $gshoping_ad_sales;
@@ -3798,7 +3822,7 @@ class AdsMasterController extends Controller
 
         /** END EBAY GRAPH DATA **/
 
-        return view('channels.adv-masters', compact('amazon_l30_sales', 'amazon_spent', 'amazon_clicks', 'amazon_ad_sales', 'amazon_ad_sold', 'amazon_missing_ads', 'amazonkw_l30_sales', 'amazonkw_spent', 'amazonkw_clicks', 'amazonkw_ad_sales', 'amazonkw_ad_sold', 'amazonkw_missing_ads', 'amazonpt_l30_sales', 'amazonpt_spent', 'amazonpt_clicks', 'amazonpt_ad_sales', 'amazonpt_ad_sold', 'amazonpt_missing_ads', 'amazonhl_l30_sales', 'amazonhl_spent', 'amazonhl_clicks', 'amazonhl_ad_sales', 'amazonhl_ad_sold', 'amazonhl_missing_ads', 'ebay_l30_sales', 'ebay_spent', 'ebay_clicks', 'ebay_ad_sales', 'ebay_ad_sold', 'ebay_missing_ads', 'ebaykw_l30_sales', 'ebaykw_spent', 'ebaykw_clicks', 'ebaykw_ad_sales', 'ebaykw_ad_sold', 'ebaykw_missing_ads', 'ebaypmt_l30_sales', 'ebaypmt_spent', 'ebaypmt_clicks', 'ebaypmt_ad_sales', 'ebaypmt_ad_sold', 'ebaypmt_missing_ads', 'ebay2_l30_sales', 'ebay2_spent', 'ebay2_clicks', 'ebay2_ad_sales', 'ebay2_ad_sold', 'ebay2_missing_ads', 'ebay2pmt_l30_sales', 'ebay2pmt_spent', 'ebay2pmt_clicks', 'ebay2pmt_ad_sales', 'ebay2pmt_ad_sold', 'ebay2pmt_missing_ads', 'ebay3_l30_sales', 'ebay3_spent', 'ebay3_clicks', 'ebay3_ad_sales', 'ebay3_ad_sold', 'ebay3_missing_ads', 'ebay3kw_l30_sales', 'ebay3kw_spent', 'ebay3kw_clicks', 'ebay3kw_ad_sales', 'ebay3kw_ad_sold', 'ebay3kw_missing_ads', 'ebay3pmt_l30_sales', 'ebay3pmt_spent', 'ebay3pmt_clicks', 'ebay3pmt_ad_sales', 'ebay3pmt_ad_sold', 'ebay3pmt_missing_ads', 'walmart_l30_sales', 'walmart_spent', 'walmart_clicks', 'walmart_ad_sales', 'walmart_ad_sold', 'walmart_missing_ads', 'gshoping_l30_sales', 'gshoping_spent', 'gshoping_clicks', 'gshoping_ad_sales', 'gshoping_ad_sold', 'gshoping_missing_ads', 'total_l30_sales', 'total_spent', 'total_clicks', 'total_ad_sales', 'total_ad_sold', 'total_missing', 'amazonDateArray', 'amazonSpentArray', 'amazonclicksArray', 'amazonadSalesArray', 'amzonadSoldArray', 'amzonCpcArray', 'amazonCvrArray', 'ebayDateArray', 'ebaySpentArray', 'ebayclicksArray', 'ebayadSalesArray', 'ebayadSoldArray', 'ebayCvrArray'));
+        return view('channels.adv-masters', compact('amazon_l30_sales', 'amazon_spent', 'amazon_l60_spent', 'amazon_clicks', 'amazon_ad_sales', 'amazon_ad_sold', 'amazon_missing_ads', 'amazonkw_l30_sales', 'amazonkw_spent', 'amazonkw_l60_spent', 'amazonkw_clicks', 'amazonkw_ad_sales', 'amazonkw_ad_sold', 'amazonkw_missing_ads', 'amazonpt_l30_sales', 'amazonpt_spent', 'amazonpt_l60_spent', 'amazonpt_clicks', 'amazonpt_ad_sales', 'amazonpt_ad_sold', 'amazonpt_missing_ads', 'amazonhl_l30_sales', 'amazonhl_spent', 'amazonhl_l60_spent', 'amazonhl_clicks', 'amazonhl_ad_sales', 'amazonhl_ad_sold', 'amazonhl_missing_ads', 'ebay_l30_sales', 'ebay_spent', 'ebay_l60_spent', 'ebay_clicks', 'ebay_ad_sales', 'ebay_ad_sold', 'ebay_missing_ads', 'ebaykw_l30_sales', 'ebaykw_spent', 'ebaykw_l60_spent', 'ebaykw_clicks', 'ebaykw_ad_sales', 'ebaykw_ad_sold', 'ebaykw_missing_ads', 'ebaypmt_l30_sales', 'ebaypmt_spent', 'ebaypmt_l60_spent', 'ebaypmt_clicks', 'ebaypmt_ad_sales', 'ebaypmt_ad_sold', 'ebaypmt_missing_ads', 'ebay2_l30_sales', 'ebay2_spent', 'ebay2_l60_spent', 'ebay2_clicks', 'ebay2_ad_sales', 'ebay2_ad_sold', 'ebay2_missing_ads', 'ebay2pmt_l30_sales', 'ebay2pmt_spent', 'ebay2pmt_l60_spent', 'ebay2pmt_clicks', 'ebay2pmt_ad_sales', 'ebay2pmt_ad_sold', 'ebay2pmt_missing_ads', 'ebay3_l30_sales', 'ebay3_spent', 'ebay3_l60_spent', 'ebay3_clicks', 'ebay3_ad_sales', 'ebay3_ad_sold', 'ebay3_missing_ads', 'ebay3kw_l30_sales', 'ebay3kw_spent', 'ebay3kw_l60_spent', 'ebay3kw_clicks', 'ebay3kw_ad_sales', 'ebay3kw_ad_sold', 'ebay3kw_missing_ads', 'ebay3pmt_l30_sales', 'ebay3pmt_spent', 'ebay3pmt_l60_spent', 'ebay3pmt_clicks', 'ebay3pmt_ad_sales', 'ebay3pmt_ad_sold', 'ebay3pmt_missing_ads', 'walmart_l30_sales', 'walmart_spent', 'walmart_l60_spent', 'walmart_clicks', 'walmart_ad_sales', 'walmart_ad_sold', 'walmart_missing_ads', 'gshoping_l30_sales', 'gshoping_spent', 'gshoping_l60_spent', 'gshoping_clicks', 'gshoping_ad_sales', 'gshoping_ad_sold', 'gshoping_missing_ads', 'total_l30_sales', 'total_spent', 'total_l60_spent', 'total_clicks', 'total_ad_sales', 'total_ad_sold', 'total_missing', 'amazonDateArray', 'amazonSpentArray', 'amazonclicksArray', 'amazonadSalesArray', 'amzonadSoldArray', 'amzonCpcArray', 'amazonCvrArray', 'ebayDateArray', 'ebaySpentArray', 'ebayclicksArray', 'ebayadSalesArray', 'ebayadSoldArray', 'ebayCvrArray'));
     }
 
     public function getAmazonAdvChartData(Request $request)

@@ -145,16 +145,16 @@ class StoreGoogleShoppingUtilizationCounts extends Command
                 $ub1 = $campaignData['ub1'];
                 
                 // Categorize based on 7UB only condition
-                if ($ub7 > 90) {
+                if ($ub7 > 99) {
                     $overUtilizedCount7ub++;
-                } elseif ($ub7 < 70) {
+                } elseif ($ub7 < 66) {
                     $underUtilizedCount7ub++;
                 }
                 
                 // Categorize based on 7UB + 1UB condition
-                if ($ub7 > 90 && $ub1 > 90) {
+                if ($ub7 > 99 && $ub1 > 99) {
                     $overUtilizedCount7ub1ub++;
-                } elseif ($ub7 < 70 && $ub1 < 70) {
+                } elseif ($ub7 < 66 && $ub1 < 66) {
                     $underUtilizedCount7ub1ub++;
                 }
             }

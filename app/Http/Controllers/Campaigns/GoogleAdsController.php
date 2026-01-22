@@ -848,10 +848,8 @@ class GoogleAdsController extends Controller
                 }
             }
 
-            // Skip SKUs with NRA = 'NRA' (similar to Amazon)
-            if ($nra === 'NRA') {
-                continue;
-            }
+            // Note: Include NRA items in data so they can be counted and filtered in frontend
+            // Frontend will handle filtering/hiding NRA items based on user selection
 
             // Use SKU as key (since we're looping by SKUs, not campaigns)
             $mapKey = 'SKU_' . $pm->sku;
@@ -882,8 +880,10 @@ class GoogleAdsController extends Controller
                     'cpc_L7' => 0,
                     'ad_sales_L1' => 0,
                     'ad_sales_L7' => 0,
+                    'ad_sales_L30' => 0,
                     'ad_sold_L1' => 0,
                     'ad_sold_L7' => 0,
+                    'ad_sold_L30' => 0,
                 ];
             }
 
@@ -930,14 +930,14 @@ class GoogleAdsController extends Controller
             $sbid = 0;
             
             // Determine utilization type
-            if ($ub7 > 90 && $ub1 > 90) {
+            if ($ub7 > 99 && $ub1 > 99) {
                 // Over-utilized: decrease bid
                 if ($cpc_L7 == 0) {
                     $sbid = 0.75;
                 } else {
                     $sbid = floor($cpc_L7 * 0.90 * 100) / 100;
                 }
-            } elseif ($ub7 < 70 && $ub1 < 70) {
+            } elseif ($ub7 < 66 && $ub1 < 66) {
                 // Under-utilized: increase bid
                 if ($cpc_L1 == 0 && $cpc_L7 == 0) {
                     $sbid = 0.75;
@@ -1748,9 +1748,19 @@ class GoogleAdsController extends Controller
             $ub7 = $budget > 0 ? ($spendL7 / ($budget * 7)) * 100 : 0;
 
             // Apply filter based on type
-            if ($filterType === 'over_utilize' && $ub7 > 90) {
+            // Need to calculate ub1 as well for the new thresholds
+            $metricsL1 = $this->aggregateMetricsByRange(
+                $googleCampaigns, 
+                $sku, 
+                $dateRanges['L1'], 
+                'ENABLED'
+            );
+            $spendL1 = $metricsL1['spend'];
+            $ub1 = $budget > 0 ? ($spendL1 / $budget) * 100 : 0;
+            
+            if ($filterType === 'over_utilize' && $ub7 > 99 && $ub1 > 99) {
                 $filteredCampaignIds[] = $campaignId;
-            } elseif ($filterType === 'under_utilize' && $ub7 < 70) {
+            } elseif ($filterType === 'under_utilize' && $ub7 < 66 && $ub1 < 66) {
                 $filteredCampaignIds[] = $campaignId;
             }
         }
@@ -1894,15 +1904,15 @@ class GoogleAdsController extends Controller
                 $ub7 = $campaignData['ub7'];
                 $ub1 = $campaignData['ub1'];
                 
-                if ($ub7 > 90) {
+                if ($ub7 > 99) {
                     $overUtilizedCount7ub++;
-                } elseif ($ub7 < 70) {
+                } elseif ($ub7 < 66) {
                     $underUtilizedCount7ub++;
                 }
                 
-                if ($ub7 > 90 && $ub1 > 90) {
+                if ($ub7 > 99 && $ub1 > 99) {
                     $overUtilizedCount7ub1ub++;
-                } elseif ($ub7 < 70 && $ub1 < 70) {
+                } elseif ($ub7 < 66 && $ub1 < 66) {
                     $underUtilizedCount7ub1ub++;
                 }
             }
