@@ -145,8 +145,35 @@ class StockBalanceController extends Controller
                 'to_sku' => $toSku,
                 'from_qty' => $fromQty,
                 'to_qty' => $toQty,
+                'from_available_qty' => $request->from_available_qty,
+                'to_available_qty' => $request->to_available_qty,
                 'user' => Auth::user()->name ?? 'Unknown'
             ]);
+            
+            // Validate that available quantities are not negative
+            if ($request->to_available_qty < 0) {
+                Log::error("Negative inventory detected for TO SKU", [
+                    'to_sku' => $toSku,
+                    'to_available_qty' => $request->to_available_qty
+                ]);
+                
+                return response()->json([
+                    'error' => 'Invalid inventory data: TO SKU has negative inventory (' . $request->to_available_qty . '). Please check Shopify inventory for ' . $toSku,
+                    'details' => 'Cannot transfer to SKU with negative inventory'
+                ], 422);
+            }
+            
+            if ($request->from_available_qty < 0) {
+                Log::error("Negative inventory detected for FROM SKU", [
+                    'from_sku' => $fromSku,
+                    'from_available_qty' => $request->from_available_qty
+                ]);
+                
+                return response()->json([
+                    'error' => 'Invalid inventory data: FROM SKU has negative inventory (' . $request->from_available_qty . '). Please check Shopify inventory for ' . $fromSku,
+                    'details' => 'Cannot transfer from SKU with negative inventory'
+                ], 422);
+            }
 
             // Helper function to get inventory_item_id and location_id using ShopifySku table
             $getInventoryInfo = function ($sku) {
@@ -391,7 +418,9 @@ class StockBalanceController extends Controller
             try {
                 DB::beginTransaction();
                 
-                // Cap DIL percent values to prevent database overflow (max 100%)
+                // Cap DIL percent values to prevent database overflow
+                // Database column is decimal(5,2), range: -999.99 to 999.99
+                // We'll clamp between -999.99 and 100 (since DIL % shouldn't exceed 100)
                 $fromDilPercent = $request->from_dil_percent;
                 if ($fromDilPercent > 100) {
                     Log::warning("from_dil_percent exceeds 100%, capping it", [
@@ -399,6 +428,12 @@ class StockBalanceController extends Controller
                         'capped' => 100
                     ]);
                     $fromDilPercent = 100;
+                } elseif ($fromDilPercent < -999.99) {
+                    Log::warning("from_dil_percent below minimum, capping it", [
+                        'original' => $fromDilPercent,
+                        'capped' => -999.99
+                    ]);
+                    $fromDilPercent = -999.99;
                 }
                 
                 $toDilPercent = $request->to_dil_percent;
@@ -408,6 +443,12 @@ class StockBalanceController extends Controller
                         'capped' => 100
                     ]);
                     $toDilPercent = 100;
+                } elseif ($toDilPercent < -999.99) {
+                    Log::warning("to_dil_percent below minimum, capping it", [
+                        'original' => $toDilPercent,
+                        'capped' => -999.99
+                    ]);
+                    $toDilPercent = -999.99;
                 }
                 
                 $dataToInsert = [
@@ -591,24 +632,79 @@ class StockBalanceController extends Controller
                 }
             }
         }
+        
+        // Fetch last stock balance history for each SKU
+        $lastStockBalances = collect();
+        foreach ($skus as $sku) {
+            // Get the latest stock balance where this SKU is either the FROM or TO SKU
+            $lastBalance = StockBalance::where(function($query) use ($sku) {
+                $query->where('from_sku', $sku)
+                      ->orWhere('to_sku', $sku);
+            })
+            ->orderBy('transferred_at', 'desc')
+            ->first();
+            
+            if ($lastBalance) {
+                $lastStockBalances[$sku] = $lastBalance;
+            }
+        }
 
         // Merge everything
-        $data = $productMasterData->map(function ($item) use ($shopifyData, $inventoryActions, $normalizeSku) {
+        $data = $productMasterData->map(function ($item) use ($shopifyData, $inventoryActions, $lastStockBalances, $normalizeSku) {
             $sku = $normalizeSku($item->sku ?? '');
             $shopify = $shopifyData[$sku] ?? null;
             $inventory = $inventoryActions[$sku] ?? null;
+            $lastBalance = $lastStockBalances[$sku] ?? null;
 
             $inv = $shopify->inv ?? 0;
             $l30 = $shopify->quantity ?? 0;
             // Calculate DIL following verification-adjustment pattern:
             // If INV > 0 and L30 === 0, then DIL = 0
-            // Otherwise, if INV !== 0, then DIL = L30 / INV
+            // If INV is negative or zero, set DIL to 0 to prevent extreme values
+            // Otherwise, if INV > 0, then DIL = L30 / INV
             if ($inv > 0 && $l30 === 0) {
                 $dil = 0;
-            } else if ($inv != 0) {
+            } else if ($inv > 0) {
                 $dil = $l30 / $inv;
+                // Cap DIL to prevent extreme values (max 100x or -100x ratio)
+                if ($dil > 100) {
+                    $dil = 100;
+                } else if ($dil < -100) {
+                    $dil = -100;
+                }
             } else {
+                // If inventory is 0 or negative, set DIL to 0
                 $dil = 0;
+            }
+            
+            // Format last update history
+            $lastUpdate = null;
+            if ($lastBalance) {
+                $direction = '';
+                $otherSku = '';
+                $qty = 0;
+                
+                if ($lastBalance->from_sku === $item->sku) {
+                    $direction = 'OUT';
+                    $otherSku = $lastBalance->to_sku;
+                    $qty = $lastBalance->from_adjust_qty;
+                } else {
+                    $direction = 'IN';
+                    $otherSku = $lastBalance->from_sku;
+                    $qty = $lastBalance->to_adjust_qty;
+                }
+                
+                $transferredAt = $lastBalance->transferred_at 
+                    ? Carbon::parse($lastBalance->transferred_at)->timezone('America/New_York')->format('m/d/y H:i')
+                    : '';
+                
+                $lastUpdate = [
+                    'direction' => $direction,
+                    'other_sku' => $otherSku,
+                    'qty' => $qty,
+                    'date' => $transferredAt,
+                    'by' => $lastBalance->transferred_by
+                ];
             }
 
             return [
@@ -619,6 +715,7 @@ class StockBalanceController extends Controller
                 'SOLD' => $l30,
                 'DIL' => $dil,
                 'ACTION' => $inventory->action ?? null,
+                'LAST_UPDATE' => $lastUpdate,
             ];
         })->filter(function ($item) {
             // Filter out items with no SKU
