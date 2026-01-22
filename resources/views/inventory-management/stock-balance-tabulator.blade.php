@@ -648,11 +648,6 @@
                 return;
             }
             
-            // Confirm
-            if (!confirm('Transfer ' + fromQty + ' units FROM ' + fromSku + ' TO ' + toQty + ' units TO ' + toSku + '?')) {
-                return;
-            }
-            
             // Prepare transfer data
             // Backend: to_sku = destination, from_sku = source (SWAPPING SKUs!)
             // UI: FROM SKU (source), TO SKU (destination)
@@ -831,6 +826,31 @@
                     },
                     cellClick: function(e, cell) {
                         e.stopPropagation();
+                    }
+                },
+                {
+                    title: "Last Updt",
+                    field: "LAST_UPDATE",
+                    hozAlign: "left",
+                    width: 280,
+                    headerSort: false,
+                    formatter: function(cell) {
+                        const data = cell.getValue();
+                        if (!data) {
+                            return '<span style="color:#999;">No history</span>';
+                        }
+                        
+                        const directionColor = data.direction === 'IN' ? '#28a745' : '#dc3545';
+                        const directionIcon = data.direction === 'IN' ? '↓' : '↑';
+                        const directionText = data.direction === 'IN' ? 'IN' : 'OUT';
+                        
+                        return '<div style="font-size:12px; line-height:1.3;">' +
+                            '<span style="font-weight:bold; color:' + directionColor + ';">' + directionIcon + ' ' + directionText + '</span> ' +
+                            '<span style="font-weight:600;">' + data.qty + '</span> ' +
+                            '<span style="color:#666;">' + (data.direction === 'IN' ? 'from' : 'to') + '</span> ' +
+                            '<span style="font-weight:500;">' + data.other_sku + '</span><br>' +
+                            '<span style="color:#999; font-size:11px;">' + data.date + ' • ' + data.by + '</span>' +
+                            '</div>';
                     }
                 },
                 {
