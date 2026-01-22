@@ -1644,6 +1644,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     //data update routes
     Route::post('/channel_master/update', [ChannelMasterController::class, 'update']);
+    Route::post('/channel_master/update-name-type', [ChannelMasterController::class, 'updateNameAndType'])->name('channel_master.update_name_type');
 
     //data delete routes
     Route::delete('/product_master/delete', [ProductMasterController::class, 'destroy'])->name('product_master.destroy');
@@ -3019,6 +3020,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
         Route::post('/update-google-ads-bid-price', 'updateGoogleAdsCampaignSbid');
         Route::post('/update-google-nr-data', 'updateGoogleNrData');
+        Route::post('/bulk-update-google-nr-data', 'bulkUpdateGoogleNrData');
     });
 
     Route::controller(TemuAdsController::class)->group(function () {

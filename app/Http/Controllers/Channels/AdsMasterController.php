@@ -3544,10 +3544,27 @@ class AdsMasterController extends Controller
         
         $total_l30_sales = 0;
         $total_spent = 0;
+        $total_l60_spent = 0;
         $total_clicks = 0;
         $total_ad_sales = 0;
         $total_ad_sold = 0;
         $total_missing = 0;
+        
+        // Initialize L60 spent variables
+        $amazon_l60_spent = 0;
+        $amazonkw_l60_spent = 0;
+        $amazonpt_l60_spent = 0;
+        $amazonhl_l60_spent = 0;
+        $ebay_l60_spent = 0;
+        $ebaykw_l60_spent = 0;
+        $ebaypmt_l60_spent = 0;
+        $ebay2_l60_spent = 0;
+        $ebay2pmt_l60_spent = 0;
+        $ebay3_l60_spent = 0;
+        $ebay3kw_l60_spent = 0;
+        $ebay3pmt_l60_spent = 0;
+        $walmart_l60_spent = 0;
+        $gshoping_l60_spent = 0;
         
         foreach($advMasterDatas as $data)
         {
@@ -3744,12 +3761,158 @@ class AdsMasterController extends Controller
 
         // Calculate totals - use main channel l30_sales only (not sub-channels, they're duplicates)
         $total_l30_sales = $amazon_l30_sales + $ebay_l30_sales + $ebay2_l30_sales + $ebay3_l30_sales + $walmart_l30_sales + $gshoping_l30_sales;
-        $total_spent = $amazon_spent + $ebay_spent + $ebay2_spent + $ebay3_spent + $walmart_spent + $gshoping_spent;
+        // L30 SPENT total = sum of ALL rows in table (every channel that displays L30 SPENT) so badge/header match table
+        $total_spent = $amazon_spent + $amazonkw_spent + $amazonpt_spent + $amazonhl_spent
+            + $ebay_spent + $ebaykw_spent + $ebaypmt_spent
+            + $ebay2_spent + $ebay2pmt_spent
+            + $ebay3_spent + $ebay3kw_spent + $ebay3pmt_spent
+            + $walmart_spent + $gshoping_spent;
+        
+        // Calculate L60 spent totals (sum of sub-channels for main channels)
+        $amazon_l60_spent = $amazonkw_l60_spent + $amazonpt_l60_spent + $amazonhl_l60_spent;
+        $ebay_l60_spent = $ebaykw_l60_spent + $ebaypmt_l60_spent;
+        $ebay2_l60_spent = $ebay2pmt_l60_spent;
+        $ebay3_l60_spent = $ebay3kw_l60_spent + $ebay3pmt_l60_spent;
+        $total_l60_spent = $amazon_l60_spent + $ebay_l60_spent + $ebay2_l60_spent + $ebay3_l60_spent + $walmart_l60_spent + $gshoping_l60_spent;
         // Calculate totals - use main channel values only (not sub-channels to avoid double counting)
         $total_clicks = $amazon_clicks + $ebay_clicks + $ebay2_clicks + $ebay3_clicks + $walmart_clicks + $gshoping_clicks;
         $total_ad_sales = $amazon_ad_sales + $ebay_ad_sales + $ebay2_ad_sales + $ebay3_ad_sales + $walmart_ad_sales + $gshoping_ad_sales;
         $total_ad_sold = $amazon_ad_sold + $ebay_ad_sold + $ebay2_ad_sold + $ebay3_ad_sold + $walmart_ad_sold + $gshoping_ad_sold;
-        $total_missing = $amazon_missing_ads + $ebay_missing_ads + $ebay2_missing_ads + $ebay3_missing_ads + $walmart_missing_ads + $gshoping_missing_ads;  
+        $total_missing = $amazon_missing_ads + $amazonkw_missing_ads + $amazonpt_missing_ads + $amazonhl_missing_ads
+            + $ebay_missing_ads + $ebaykw_missing_ads + $ebaypmt_missing_ads
+            + $ebay2_missing_ads + $ebay2pmt_missing_ads
+            + $ebay3_missing_ads + $ebay3kw_missing_ads + $ebay3pmt_missing_ads
+            + $walmart_missing_ads + $gshoping_missing_ads;
+
+        // L60 clicks/ad_sold (not yet per-channel in DB; use 0 for channel-wise)
+        $total_l60_clicks = 0;
+        $total_l60_ad_sold = 0;
+        $total_l60_ad_sales = 0;
+
+        // Channel-wise totals for "Active channels view / channel-wise" mode
+        $channelWiseTotals = [];
+        $channelData = [
+            'AMAZON' => [
+                'l30_sales' => $amazon_l30_sales,
+                'spent' => $amazon_spent,
+                'l60_spent' => $amazon_l60_spent,
+                'clicks' => $amazon_clicks,
+                'l60_clicks' => 0,
+                'ad_sales' => $amazon_ad_sales,
+                'ad_sold' => $amazon_ad_sold,
+                'l60_ad_sold' => 0,
+                'missing' => $amazon_missing_ads + $amazonkw_missing_ads + $amazonpt_missing_ads + $amazonhl_missing_ads,
+            ],
+            'EBAY' => [
+                'l30_sales' => $ebay_l30_sales,
+                'spent' => $ebay_spent,
+                'l60_spent' => $ebay_l60_spent,
+                'clicks' => $ebay_clicks,
+                'l60_clicks' => 0,
+                'ad_sales' => $ebay_ad_sales,
+                'ad_sold' => $ebay_ad_sold,
+                'l60_ad_sold' => 0,
+                'missing' => $ebay_missing_ads + $ebaykw_missing_ads + $ebaypmt_missing_ads,
+            ],
+            'EBAY 2' => [
+                'l30_sales' => $ebay2_l30_sales,
+                'spent' => $ebay2_spent,
+                'l60_spent' => $ebay2_l60_spent,
+                'clicks' => $ebay2_clicks,
+                'l60_clicks' => 0,
+                'ad_sales' => $ebay2_ad_sales,
+                'ad_sold' => $ebay2_ad_sold,
+                'l60_ad_sold' => 0,
+                'missing' => $ebay2_missing_ads + $ebay2pmt_missing_ads,
+            ],
+            'EBAY 3' => [
+                'l30_sales' => $ebay3_l30_sales,
+                'spent' => $ebay3_spent,
+                'l60_spent' => $ebay3_l60_spent,
+                'clicks' => $ebay3_clicks,
+                'l60_clicks' => 0,
+                'ad_sales' => $ebay3_ad_sales,
+                'ad_sold' => $ebay3_ad_sold,
+                'l60_ad_sold' => 0,
+                'missing' => $ebay3_missing_ads + $ebay3kw_missing_ads + $ebay3pmt_missing_ads,
+            ],
+            'WALMART' => [
+                'l30_sales' => $walmart_l30_sales,
+                'spent' => $walmart_spent,
+                'l60_spent' => $walmart_l60_spent,
+                'clicks' => $walmart_clicks,
+                'l60_clicks' => 0,
+                'ad_sales' => $walmart_ad_sales,
+                'ad_sold' => $walmart_ad_sold,
+                'l60_ad_sold' => 0,
+                'missing' => $walmart_missing_ads,
+            ],
+            'G SHOPPING' => [
+                'l30_sales' => $gshoping_l30_sales,
+                'spent' => $gshoping_spent,
+                'l60_spent' => $gshoping_l60_spent,
+                'clicks' => $gshoping_clicks,
+                'l60_clicks' => 0,
+                'ad_sales' => $gshoping_ad_sales,
+                'ad_sold' => $gshoping_ad_sold,
+                'l60_ad_sold' => 0,
+                'missing' => $gshoping_missing_ads,
+            ],
+        ];
+        foreach ($channelData as $ch => $d) {
+            $grw = ($d['l60_spent'] > 0) ? ($d['spent'] / $d['l60_spent']) * 100 : 0;
+            $grw_clks = ($d['l60_clicks'] > 0) ? ($d['clicks'] / $d['l60_clicks']) * 100 : 0;
+            $l30_acos = ($d['ad_sales'] > 0) ? ($d['spent'] / $d['ad_sales']) * 100 : 0;
+            $l60_acos = 0;
+            $ctrl_acos = 0;
+            $cvr = ($d['clicks'] > 0) ? ($d['ad_sold'] / $d['clicks']) * 100 : 0;
+            $cvr_60 = ($d['l60_clicks'] > 0) ? ($d['l60_ad_sold'] / $d['l60_clicks']) * 100 : 0;
+            $grw_cvr = ($cvr_60 > 0) ? (($cvr - $cvr_60) / $cvr_60) * 100 : 0;
+            $channelWiseTotals[$ch] = [
+                'l30_sales' => $d['l30_sales'],
+                'spent' => $d['spent'],
+                'l60_spent' => $d['l60_spent'],
+                'clicks' => $d['clicks'],
+                'l60_clicks' => $d['l60_clicks'],
+                'ad_sales' => $d['ad_sales'],
+                'ad_sold' => $d['ad_sold'],
+                'l60_ad_sold' => $d['l60_ad_sold'],
+                'missing' => $d['missing'],
+                'grw' => round($grw, 2),
+                'grw_clks' => round($grw_clks, 2),
+                'l30_acos' => round($l30_acos, 2),
+                'l60_acos' => $l60_acos,
+                'ctrl_acos' => $ctrl_acos,
+                'cvr' => round($cvr, 2),
+                'cvr_60' => round($cvr_60, 2),
+                'grw_cvr' => round($grw_cvr, 2),
+            ];
+        }
+        $all_grw = $total_l60_spent > 0 ? ($total_spent / $total_l60_spent) * 100 : 0;
+        $all_grw_clks = $total_l60_clicks > 0 ? ($total_clicks / $total_l60_clicks) * 100 : 0;
+        $all_l30_acos = $total_ad_sales > 0 ? ($total_spent / $total_ad_sales) * 100 : 0;
+        $all_cvr = $total_clicks > 0 ? ($total_ad_sold / $total_clicks) * 100 : 0;
+        $all_cvr_60 = $total_l60_clicks > 0 ? ($total_l60_ad_sold / $total_l60_clicks) * 100 : 0;
+        $all_grw_cvr = $all_cvr_60 > 0 ? (($all_cvr - $all_cvr_60) / $all_cvr_60) * 100 : 0;
+        $channelWiseTotals['all'] = [
+            'l30_sales' => $total_l30_sales,
+            'spent' => $total_spent,
+            'l60_spent' => $total_l60_spent,
+            'clicks' => $total_clicks,
+            'l60_clicks' => $total_l60_clicks,
+            'ad_sales' => $total_ad_sales,
+            'ad_sold' => $total_ad_sold,
+            'l60_ad_sold' => $total_l60_ad_sold,
+            'missing' => $total_missing,
+            'grw' => round($all_grw, 2),
+            'grw_clks' => round($all_grw_clks, 2),
+            'l30_acos' => round($all_l30_acos, 2),
+            'l60_acos' => 0,
+            'ctrl_acos' => 0,
+            'cvr' => round($all_cvr, 2),
+            'cvr_60' => round($all_cvr_60, 2),
+            'grw_cvr' => round($all_grw_cvr, 2),
+        ];
 
         /** START AMZON GRAPH DATA **/
 
@@ -3798,7 +3961,73 @@ class AdsMasterController extends Controller
 
         /** END EBAY GRAPH DATA **/
 
-        return view('channels.adv-masters', compact('amazon_l30_sales', 'amazon_spent', 'amazon_clicks', 'amazon_ad_sales', 'amazon_ad_sold', 'amazon_missing_ads', 'amazonkw_l30_sales', 'amazonkw_spent', 'amazonkw_clicks', 'amazonkw_ad_sales', 'amazonkw_ad_sold', 'amazonkw_missing_ads', 'amazonpt_l30_sales', 'amazonpt_spent', 'amazonpt_clicks', 'amazonpt_ad_sales', 'amazonpt_ad_sold', 'amazonpt_missing_ads', 'amazonhl_l30_sales', 'amazonhl_spent', 'amazonhl_clicks', 'amazonhl_ad_sales', 'amazonhl_ad_sold', 'amazonhl_missing_ads', 'ebay_l30_sales', 'ebay_spent', 'ebay_clicks', 'ebay_ad_sales', 'ebay_ad_sold', 'ebay_missing_ads', 'ebaykw_l30_sales', 'ebaykw_spent', 'ebaykw_clicks', 'ebaykw_ad_sales', 'ebaykw_ad_sold', 'ebaykw_missing_ads', 'ebaypmt_l30_sales', 'ebaypmt_spent', 'ebaypmt_clicks', 'ebaypmt_ad_sales', 'ebaypmt_ad_sold', 'ebaypmt_missing_ads', 'ebay2_l30_sales', 'ebay2_spent', 'ebay2_clicks', 'ebay2_ad_sales', 'ebay2_ad_sold', 'ebay2_missing_ads', 'ebay2pmt_l30_sales', 'ebay2pmt_spent', 'ebay2pmt_clicks', 'ebay2pmt_ad_sales', 'ebay2pmt_ad_sold', 'ebay2pmt_missing_ads', 'ebay3_l30_sales', 'ebay3_spent', 'ebay3_clicks', 'ebay3_ad_sales', 'ebay3_ad_sold', 'ebay3_missing_ads', 'ebay3kw_l30_sales', 'ebay3kw_spent', 'ebay3kw_clicks', 'ebay3kw_ad_sales', 'ebay3kw_ad_sold', 'ebay3kw_missing_ads', 'ebay3pmt_l30_sales', 'ebay3pmt_spent', 'ebay3pmt_clicks', 'ebay3pmt_ad_sales', 'ebay3pmt_ad_sold', 'ebay3pmt_missing_ads', 'walmart_l30_sales', 'walmart_spent', 'walmart_clicks', 'walmart_ad_sales', 'walmart_ad_sold', 'walmart_missing_ads', 'gshoping_l30_sales', 'gshoping_spent', 'gshoping_clicks', 'gshoping_ad_sales', 'gshoping_ad_sold', 'gshoping_missing_ads', 'total_l30_sales', 'total_spent', 'total_clicks', 'total_ad_sales', 'total_ad_sold', 'total_missing', 'amazonDateArray', 'amazonSpentArray', 'amazonclicksArray', 'amazonadSalesArray', 'amzonadSoldArray', 'amzonCpcArray', 'amazonCvrArray', 'ebayDateArray', 'ebaySpentArray', 'ebayclicksArray', 'ebayadSalesArray', 'ebayadSoldArray', 'ebayCvrArray'));
+        // Fetch additional channels from channel_master that aren't in the hardcoded list
+        $hardcodedChannels = ['AMAZON', 'AMZ KW', 'AMZ PT', 'AMZ HL', 'EBAY', 'EB KW', 'EB PMT', 'EBAY 2', 'EB PMT2', 'EBAY 3', 'EB KW3', 'EB PMT3', 'WALMART', 'G SHOPPING', 'G SERP', 'SHOPIFY', 'FB CARAOUSAL', 'FB VIDEO', 'INSTA CARAOUSAL', 'INSTA VIDEO', 'YOUTUBE', 'TIKTOK'];
+        $additionalChannels = ChannelMaster::where('status', 'Active')
+            ->whereNotIn('channel', $hardcodedChannels)
+            ->orderBy('channel', 'asc')
+            ->get(['channel', 'type', 'sheet_link']);
+        
+        // For each additional channel, try to get data from ADVMastersData
+        $additionalChannelsData = [];
+        foreach ($additionalChannels as $ch) {
+            $channelData = ADVMastersData::where('channel', $ch->channel)->first();
+            $chData = [
+                'channel' => $ch->channel,
+                'type' => $ch->type ?? '',
+                'sheet_link' => $ch->sheet_link ?? '',
+                'l30_sales' => $channelData ? ($channelData->l30_sales ?? 0) : 0,
+                'spent' => $channelData ? ($channelData->spent ?? 0) : 0,
+                'l60_spent' => $channelData ? ($channelData->l60_spent ?? 0) : 0,
+                'clicks' => $channelData ? ($channelData->clicks ?? 0) : 0,
+                'l60_clicks' => $channelData ? ($channelData->l60_clicks ?? 0) : 0,
+                'ad_sales' => $channelData ? ($channelData->ad_sales ?? 0) : 0,
+                'ad_sold' => $channelData ? ($channelData->ad_sold ?? 0) : 0,
+                'l60_ad_sold' => $channelData ? ($channelData->l60_ad_sold ?? 0) : 0,
+                'missing_ads' => $channelData ? ($channelData->missing_ads ?? 0) : 0,
+            ];
+            $additionalChannelsData[] = $chData;
+            
+            // Add to channelWiseTotals for channel-wise view and graphs
+            $grw = ($chData['l60_spent'] > 0) ? ($chData['spent'] / $chData['l60_spent']) * 100 : 0;
+            $grw_clks = ($chData['l60_clicks'] > 0) ? ($chData['clicks'] / $chData['l60_clicks']) * 100 : 0;
+            $l30_acos = ($chData['ad_sales'] > 0) ? ($chData['spent'] / $chData['ad_sales']) * 100 : 0;
+            $l60_acos = 0;
+            $ctrl_acos = 0;
+            $cvr = ($chData['clicks'] > 0) ? ($chData['ad_sold'] / $chData['clicks']) * 100 : 0;
+            $cvr_60 = ($chData['l60_clicks'] > 0) ? ($chData['l60_ad_sold'] / $chData['l60_clicks']) * 100 : 0;
+            $grw_cvr = ($cvr_60 > 0) ? (($cvr - $cvr_60) / $cvr_60) * 100 : 0;
+            $channelWiseTotals[$ch->channel] = [
+                'l30_sales' => $chData['l30_sales'],
+                'spent' => $chData['spent'],
+                'l60_spent' => $chData['l60_spent'],
+                'clicks' => $chData['clicks'],
+                'l60_clicks' => $chData['l60_clicks'],
+                'ad_sales' => $chData['ad_sales'],
+                'ad_sold' => $chData['ad_sold'],
+                'l60_ad_sold' => $chData['l60_ad_sold'],
+                'missing' => $chData['missing_ads'],
+                'grw' => round($grw, 2),
+                'grw_clks' => round($grw_clks, 2),
+                'l30_acos' => round($l30_acos, 2),
+                'l60_acos' => $l60_acos,
+                'ctrl_acos' => $ctrl_acos,
+                'cvr' => round($cvr, 2),
+                'cvr_60' => round($cvr_60, 2),
+                'grw_cvr' => round($grw_cvr, 2),
+            ];
+        }
+
+        // Add additional channels' L30 spent to total so badge/header match table sum
+        foreach ($additionalChannelsData as $chData) {
+            $total_spent += (float) ($chData['spent'] ?? 0);
+        }
+        // Sync channelWiseTotals['all'] with updated total_spent
+        if (isset($channelWiseTotals['all'])) {
+            $channelWiseTotals['all']['spent'] = $total_spent;
+        }
+
+        return view('channels.adv-masters', compact('amazon_l30_sales', 'amazon_spent', 'amazon_l60_spent', 'amazon_clicks', 'amazon_ad_sales', 'amazon_ad_sold', 'amazon_missing_ads', 'amazonkw_l30_sales', 'amazonkw_spent', 'amazonkw_l60_spent', 'amazonkw_clicks', 'amazonkw_ad_sales', 'amazonkw_ad_sold', 'amazonkw_missing_ads', 'amazonpt_l30_sales', 'amazonpt_spent', 'amazonpt_l60_spent', 'amazonpt_clicks', 'amazonpt_ad_sales', 'amazonpt_ad_sold', 'amazonpt_missing_ads', 'amazonhl_l30_sales', 'amazonhl_spent', 'amazonhl_l60_spent', 'amazonhl_clicks', 'amazonhl_ad_sales', 'amazonhl_ad_sold', 'amazonhl_missing_ads', 'ebay_l30_sales', 'ebay_spent', 'ebay_l60_spent', 'ebay_clicks', 'ebay_ad_sales', 'ebay_ad_sold', 'ebay_missing_ads', 'ebaykw_l30_sales', 'ebaykw_spent', 'ebaykw_l60_spent', 'ebaykw_clicks', 'ebaykw_ad_sales', 'ebaykw_ad_sold', 'ebaykw_missing_ads', 'ebaypmt_l30_sales', 'ebaypmt_spent', 'ebaypmt_l60_spent', 'ebaypmt_clicks', 'ebaypmt_ad_sales', 'ebaypmt_ad_sold', 'ebaypmt_missing_ads', 'ebay2_l30_sales', 'ebay2_spent', 'ebay2_l60_spent', 'ebay2_clicks', 'ebay2_ad_sales', 'ebay2_ad_sold', 'ebay2_missing_ads', 'ebay2pmt_l30_sales', 'ebay2pmt_spent', 'ebay2pmt_l60_spent', 'ebay2pmt_clicks', 'ebay2pmt_ad_sales', 'ebay2pmt_ad_sold', 'ebay2pmt_missing_ads', 'ebay3_l30_sales', 'ebay3_spent', 'ebay3_l60_spent', 'ebay3_clicks', 'ebay3_ad_sales', 'ebay3_ad_sold', 'ebay3_missing_ads', 'ebay3kw_l30_sales', 'ebay3kw_spent', 'ebay3kw_l60_spent', 'ebay3kw_clicks', 'ebay3kw_ad_sales', 'ebay3kw_ad_sold', 'ebay3kw_missing_ads', 'ebay3pmt_l30_sales', 'ebay3pmt_spent', 'ebay3pmt_l60_spent', 'ebay3pmt_clicks', 'ebay3pmt_ad_sales', 'ebay3pmt_ad_sold', 'ebay3pmt_missing_ads', 'walmart_l30_sales', 'walmart_spent', 'walmart_l60_spent', 'walmart_clicks', 'walmart_ad_sales', 'walmart_ad_sold', 'walmart_missing_ads', 'gshoping_l30_sales', 'gshoping_spent', 'gshoping_l60_spent', 'gshoping_clicks', 'gshoping_ad_sales', 'gshoping_ad_sold', 'gshoping_missing_ads', 'total_l30_sales', 'total_spent', 'total_l60_spent', 'total_clicks', 'total_ad_sales', 'total_ad_sold', 'total_missing', 'total_l60_clicks', 'total_l60_ad_sold', 'total_l60_ad_sales', 'channelWiseTotals', 'amazonDateArray', 'amazonSpentArray', 'amazonclicksArray', 'amazonadSalesArray', 'amzonadSoldArray', 'amzonCpcArray', 'amazonCvrArray', 'ebayDateArray', 'ebaySpentArray', 'ebayclicksArray', 'ebayadSalesArray', 'ebayadSoldArray', 'ebayCvrArray', 'additionalChannelsData'));
     }
 
     public function getAmazonAdvChartData(Request $request)

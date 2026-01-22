@@ -8,18 +8,136 @@
             background: linear-gradient(90deg, #D8F3F3 0%, #D8F3F3 100%);
             border-bottom: 1px solid #403f3f;
             box-shadow: 0 4px 16px rgba(37, 99, 235, 0.10);
+            position: relative !important;
         }
 
         .tabulator .tabulator-header .tabulator-col {
             text-align: center;
             background: #D8F3F3;
             border-right: 1px solid #262626;
-            padding: 16px 10px;
+            padding: 5px;
             font-weight: 700;
             color: #1e293b;
-            font-size: 1.08rem;
+            font-size: 0.9rem;
             letter-spacing: 0.02em;
             transition: background 0.2s;
+            min-height: 120px;
+            height: auto;
+        }
+
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 120px;
+            padding: 10px 5px;
+            box-sizing: border-box;
+        }
+
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            transform: rotate(180deg);
+            white-space: nowrap;
+            line-height: 1.5;
+            overflow: hidden;
+            word-break: keep-all;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            transform: rotate(180deg);
+            white-space: nowrap;
+            line-height: 1.5;
+            overflow: hidden;
+            word-break: keep-all;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        /* Ensure columns don't shrink too much */
+        .tabulator .tabulator-header .tabulator-col {
+            min-width: 80px;
+            overflow: hidden;
+            box-sizing: border-box;
+        }
+
+        /* Specific width for AD SOLD L30 column header - prevent overflow */
+        .tabulator .tabulator-header .tabulator-col[data-field="ad_sold_L30"] {
+            min-width: 130px !important;
+            width: 140px !important;
+            max-width: 140px !important;
+            overflow: hidden !important;
+        }
+
+        .tabulator .tabulator-header .tabulator-col[data-field="ad_sold_L30"] .tabulator-col-content {
+            overflow: hidden !important;
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+
+        .tabulator .tabulator-header .tabulator-col[data-field="ad_sold_L30"] .tabulator-col-content .tabulator-col-content-holder,
+        .tabulator .tabulator-header .tabulator-col[data-field="ad_sold_L30"] .tabulator-col-title-holder {
+            overflow: hidden !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+        }
+
+        .tabulator .tabulator-cell {
+            overflow: visible;
+            white-space: nowrap;
+        }
+
+        /* Ensure AD SOLD L30 cell has proper width */
+        .tabulator .tabulator-cell[data-field="ad_sold_L30"] {
+            min-width: 130px !important;
+            width: 140px !important;
+            overflow: visible !important;
+        }
+
+        /* Special handling for rowSelection column - don't rotate checkbox column */
+        .tabulator .tabulator-header .tabulator-col:first-child .tabulator-col-content .tabulator-col-content-holder,
+        .tabulator .tabulator-header .tabulator-col:first-child .tabulator-col-title-holder {
+            writing-mode: initial !important;
+            text-orientation: initial !important;
+            transform: none !important;
+        }
+
+        /* Ensure all header cells have consistent height */
+        .tabulator .tabulator-header .tabulator-col {
+            vertical-align: bottom;
+        }
+
+        /* Hide sorting arrows but keep sorting functionality */
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-sorter {
+            display: none !important;
+        }
+
+        .tabulator .tabulator-header .tabulator-col .tabulator-arrow {
+            display: none !important;
+        }
+
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-sorter-element {
+            display: none !important;
+        }
+
+        /* Ensure header is clickable for sorting */
+        .tabulator .tabulator-header .tabulator-col {
+            cursor: pointer;
+            pointer-events: auto;
+        }
+
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            pointer-events: auto;
+        }
+
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder,
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
+            pointer-events: none;
         }
 
         .tabulator .tabulator-header .tabulator-col:hover {
@@ -379,7 +497,23 @@
                                     <option value="NRL">NRL</option>
                                     <option value="RL">RL</option>
                                 </select>
-                        </div>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
+                                    <i class="fa-solid fa-check-square me-1" style="color: #64748b;"></i>Bulk Actions
+                                </label>
+                                <div class="btn-group w-100" role="group">
+                                    <button type="button" id="select-all-rows-btn" class="btn btn-sm btn-outline-primary">
+                                        <i class="fa fa-check-double"></i> Select All
+                                    </button>
+                                    <button type="button" id="mark-nra-btn" class="btn btn-sm btn-danger" disabled>
+                                        <i class="fa fa-times-circle"></i> Mark NRA
+                                    </button>
+                                    <button type="button" id="mark-ra-btn" class="btn btn-sm btn-success" disabled>
+                                        <i class="fa fa-check-circle"></i> Mark RA
+                                    </button>
+                                </div>
+                            </div>
                                     <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem; visibility: hidden;">
                                             Export
@@ -590,21 +724,21 @@
                     let ub1 = budget > 0 ? (spend_L1 / budget) * 100 : 0;
                     
                     // Count utilization types (matching backend logic from getFilteredCampaignIds)
-                    // Over: UB7 > 90% (only UB7, not UB1)
-                    // Under: UB7 < 70% (only UB7, not UB1)
-                    if (ub7 > 90) {
+                    // Over: UB7 > 99% AND UB1 > 99%
+                    // Under: UB7 < 66% AND UB1 < 66%
+                    if (ub7 > 99 && ub1 > 99) {
                         overCount++;
-                    } else if (ub7 < 70) {
+                    } else if (ub7 < 66 && ub1 < 66) {
                         underCount++;
                     }
                     
                     // Count 7UB (based on 7UB only)
-                    if (ub7 > 90 || ub7 < 70) {
+                    if (ub7 > 99 || ub7 < 66) {
                         count7ub++;
                     }
                     
                     // Count 7UB + 1UB (based on both 7UB and 1UB)
-                    if ((ub7 > 90 && ub1 > 90) || (ub7 < 70 && ub1 < 70)) {
+                    if ((ub7 > 99 && ub1 > 99) || (ub7 < 66 && ub1 < 66)) {
                         count7ub1ub++;
                     }
                 });
@@ -636,6 +770,8 @@
                 resizableColumns: true,
                 height: "700px",             
                 virtualDom: true,
+                selectable: true,
+                selectableRangeMode: "click",
                 rowFormatter: function(row) {
                     const data = row.getData();
                     const sku = data["sku"] || '';
@@ -654,7 +790,8 @@
                     },
                     {
                         title: "Parent",
-                        field: "parent"
+                        field: "parent",
+                        visible: false
                     },
                     {
                         title: "SKU",
@@ -681,15 +818,16 @@
                                 ? row.hasCampaign 
                                 : (row.campaign_id && row.campaignName);
                             
-                            // Check if NRL is "NRL" (red dot) OR NRA is "NRA" - if so, show yellow dot
-                            const nrlValue = row.NRL ? row.NRL.trim() : "";
+                            // Check if NRA is "NRA" and campaign is missing - show yellow dot
                             const nraValue = row.NRA ? row.NRA.trim() : "";
                             let dotColor, title;
                             
-                            if (nrlValue === 'NRL' || nraValue === 'NRA') {
+                            if (nraValue === 'NRA' && !hasCampaign) {
+                                // NRA items that are missing should show yellow dot
                                 dotColor = 'yellow';
-                                title = 'NRL or NRA - Not Required';
+                                title = 'NRA - Campaign Missing';
                             } else {
+                                // Regular logic: green if campaign exists, red if missing
                                 dotColor = hasCampaign ? 'green' : 'red';
                                 title = hasCampaign ? 'Campaign Exists' : 'Campaign Missing';
                             }
@@ -780,14 +918,276 @@
                         hozAlign: "center"
                     },
                     {
+                        title: "Price",
+                        field: "price",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var value = parseFloat(cell.getValue() || 0);
+                            return value.toFixed(2) + " <i class='fa fa-info-circle text-primary toggle-price-cols-btn' style='cursor:pointer; margin-left:5px; pointer-events:auto;' title='Click to show/hide GPFT, PFT, ROI, SPRICE, SPFT columns'></i>";
+                        },
+                        sorter: "number",
+                        width: 120
+                    },
+                    {
+                        title: "GPFT",
+                        field: "GPFT",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '';
+                            const percent = parseFloat(value);
+                            if (isNaN(percent)) return '';
+                            
+                            let color = '';
+                            if (percent < 10) color = '#a00211'; // red
+                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
+                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        sorter: "number",
+                        width: 80
+                    },
+                    {
+                        title: "PFT%",
+                        field: "PFT",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '0%';
+                            const percent = parseFloat(value);
+                            if (isNaN(percent)) return '0%';
+                            let color = '';
+                            
+                            if (percent < 10) color = '#a00211'; // red
+                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
+                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        sorter: "number",
+                        width: 80
+                    },
+                    {
+                        title: "ROI%",
+                        field: "roi",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '0%';
+                            const percent = parseFloat(value);
+                            if (isNaN(percent)) return '0%';
+                            let color = '';
+                            
+                            if (percent < 50) color = '#a00211'; // red
+                            else if (percent >= 50 && percent < 75) color = '#ffc107'; // yellow
+                            else if (percent >= 75 && percent <= 125) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        sorter: "number",
+                        width: 80
+                    },
+                    {
+                        title: "SPRICE",
+                        field: "SPRICE",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            const rowData = cell.getRow().getData();
+                            const currentPrice = parseFloat(rowData.price) || 0;
+                            const sprice = parseFloat(value) || 0;
+                            
+                            if (!value || sprice === 0) return '';
+                            
+                            // Show blank if price and SPRICE match
+                            if (currentPrice > 0 && sprice > 0 && currentPrice.toFixed(2) === sprice.toFixed(2)) {
+                                return '';
+                            }
+                            
+                            return `$${parseFloat(value).toFixed(2)}`;
+                        },
+                        sorter: "number",
+                        width: 100
+                    },
+                    {
+                        title: "SPFT",
+                        field: "SPFT",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (value === null || value === undefined) return '';
+                            const percent = parseFloat(value);
+                            if (isNaN(percent)) return '';
+                            
+                            let color = '';
+                            if (percent < 10) color = '#a00211'; // red
+                            else if (percent >= 10 && percent < 15) color = '#ffc107'; // yellow
+                            else if (percent >= 15 && percent < 20) color = '#3591dc'; // blue
+                            else if (percent >= 20 && percent <= 40) color = '#28a745'; // green
+                            else color = '#e83e8c'; // pink
+                            
+                            return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                        },
+                        sorter: "number",
+                        width: 80
+                    },
+                    {
                         title: "BGT",
                         field: "campaignBudgetAmount",
                         hozAlign: "right",
                     },
                     {
+                        title: "SBGT",
+                        field: "sbgt",
+                        hozAlign: "right",
+                        formatter: function(cell){
+                            var row = cell.getRow().getData();
+                            var spend_L30 = parseFloat(row.spend_L30 || 0);
+                            var sales_L30 = parseFloat(row.ad_sales_L30 || 0);
+                            var acos = 0;
+                            
+                            // Calculate ACOS L30
+                            if (sales_L30 > 0) {
+                                acos = (spend_L30 / sales_L30) * 100;
+                            } else if (spend_L30 > 0 && sales_L30 == 0) {
+                                acos = 100;
+                            } else {
+                                acos = 0;
+                            }
+                            
+                            // Calculate SBGT based on ACOS ranges
+                            var sbgt = 0;
+                            if (acos < 10) {
+                                sbgt = 5;
+                            } else if (acos >= 10 && acos < 30) {
+                                sbgt = 4;
+                            } else if (acos >= 30 && acos < 40) {
+                                sbgt = 3;
+                            } else if (acos >= 40 && acos < 50) {
+                                sbgt = 2;
+                            } else if (acos >= 50) {
+                                sbgt = 1;
+                            }
+                            
+                            return sbgt;
+                        },
+                        sorter: function(a, b, aRow, bRow, column, dir) {
+                            var dataA = aRow.getData();
+                            var dataB = bRow.getData();
+                            
+                            // Calculate ACOS for A
+                            var spendA = parseFloat(dataA.spend_L30 || 0);
+                            var salesA = parseFloat(dataA.ad_sales_L30 || 0);
+                            var acosA = 0;
+                            if (salesA > 0) {
+                                acosA = (spendA / salesA) * 100;
+                            } else if (spendA > 0 && salesA == 0) {
+                                acosA = 100;
+                            }
+                            
+                            // Calculate ACOS for B
+                            var spendB = parseFloat(dataB.spend_L30 || 0);
+                            var salesB = parseFloat(dataB.ad_sales_L30 || 0);
+                            var acosB = 0;
+                            if (salesB > 0) {
+                                acosB = (spendB / salesB) * 100;
+                            } else if (spendB > 0 && salesB == 0) {
+                                acosB = 100;
+                            }
+                            
+                            // Calculate SBGT for A
+                            var sbgtA = 0;
+                            if (acosA < 10) {
+                                sbgtA = 5;
+                            } else if (acosA >= 10 && acosA < 30) {
+                                sbgtA = 4;
+                            } else if (acosA >= 30 && acosA < 40) {
+                                sbgtA = 3;
+                            } else if (acosA >= 40 && acosA < 50) {
+                                sbgtA = 2;
+                            } else if (acosA >= 50) {
+                                sbgtA = 1;
+                            }
+                            
+                            // Calculate SBGT for B
+                            var sbgtB = 0;
+                            if (acosB < 10) {
+                                sbgtB = 5;
+                            } else if (acosB >= 10 && acosB < 30) {
+                                sbgtB = 4;
+                            } else if (acosB >= 30 && acosB < 40) {
+                                sbgtB = 3;
+                            } else if (acosB >= 40 && acosB < 50) {
+                                sbgtB = 2;
+                            } else if (acosB >= 50) {
+                                sbgtB = 1;
+                            }
+                            
+                            return sbgtA - sbgtB;
+                        }
+                    },
+                    {
+                        title: "ACOS L30",
+                        field: "acos_L30",
+                        hozAlign: "right",
+                        formatter: function(cell){
+                            var row = cell.getRow().getData();
+                            var spend_L30 = parseFloat(row.spend_L30 || 0);
+                            var sales_L30 = parseFloat(row.ad_sales_L30 || 0);
+                            var acos = 0;
+                            
+                            if (sales_L30 > 0) {
+                                acos = (spend_L30 / sales_L30) * 100;
+                            } else if (spend_L30 > 0 && sales_L30 == 0) {
+                                acos = 100;
+                            } else {
+                                acos = 0;
+                            }
+                            
+                            return Math.round(acos) + "%" + " <i class='fa fa-info-circle text-primary toggle-l7-l1-cols-btn' style='cursor:pointer; margin-left:5px; pointer-events:auto;' title='Click to show/hide L30 columns'></i>";
+                        },
+                        sorter: function(a, b, aRow, bRow, column, dir) {
+                            var dataA = aRow.getData();
+                            var dataB = bRow.getData();
+                            
+                            var spendA = parseFloat(dataA.spend_L30 || 0);
+                            var salesA = parseFloat(dataA.ad_sales_L30 || 0);
+                            var acosA = 0;
+                            if (salesA > 0) {
+                                acosA = (spendA / salesA) * 100;
+                            } else if (spendA > 0 && salesA == 0) {
+                                acosA = 100;
+                            }
+                            
+                            var spendB = parseFloat(dataB.spend_L30 || 0);
+                            var salesB = parseFloat(dataB.ad_sales_L30 || 0);
+                            var acosB = 0;
+                            if (salesB > 0) {
+                                acosB = (spendB / salesB) * 100;
+                            } else if (spendB > 0 && salesB == 0) {
+                                acosB = 100;
+                            }
+                            
+                            return acosA - acosB;
+                        }
+                    },
+                    {
                         title: "Clicks L30 ",
                         field: "clicks_L30",
                         hozAlign: "right",
+                        visible: false,
                         formatter: function(cell){
                             var row = cell.getRow().getData();
                             var clicks_L30 = parseFloat(row.clicks_L30) || 0;
@@ -798,20 +1198,80 @@
                         title: "Spend L30",
                         field: "spend_L30",
                         hozAlign: "right",
+                        visible: false,
                         formatter: function(cell){
                             var row = cell.getRow().getData();
                             var spend_L30 = parseFloat(row.spend_L30) || 0;
-                            return spend_L30.toFixed(2);
+                            return Math.round(spend_L30);
                         }
                     },
                     {
-                        title: "Spend L7",
-                        field: "spend_L7",
+                        title: "Sales L30",
+                        field: "ad_sales_L30",
                         hozAlign: "right",
+                        visible: false,
                         formatter: function(cell){
                             var row = cell.getRow().getData();
-                            var spend_L7 = parseFloat(row.spend_L7) || 0;
-                            return spend_L7.toFixed(2);
+                            var sales_L30 = parseFloat(row.ad_sales_L30 || 0);
+                            return Math.round(sales_L30);
+                        },
+                        sorter: function(a, b, aRow, bRow, column, dir) {
+                            var dataA = aRow.getData();
+                            var dataB = bRow.getData();
+                            var salesA = parseFloat(dataA.ad_sales_L30 || 0);
+                            var salesB = parseFloat(dataB.ad_sales_L30 || 0);
+                            return salesA - salesB;
+                        }
+                    },
+                    {
+                        title: "AD SOLD L30",
+                        field: "ad_sold_L30",
+                        hozAlign: "right",
+                        visible: false,
+                        formatter: function(cell){
+                            var row = cell.getRow().getData();
+                            var ad_sold_L30 = parseFloat(row.ad_sold_L30 || 0);
+                            return Math.round(ad_sold_L30);
+                        },
+                        sorter: function(a, b, aRow, bRow, column, dir) {
+                            var dataA = aRow.getData();
+                            var dataB = bRow.getData();
+                            var soldA = parseFloat(dataA.ad_sold_L30 || 0);
+                            var soldB = parseFloat(dataB.ad_sold_L30 || 0);
+                            return soldA - soldB;
+                        }
+                    },
+                    {
+                        title: "AD CVR",
+                        field: "ad_cvr",
+                        hozAlign: "right",
+                        visible: false,
+                        formatter: function(cell){
+                            var row = cell.getRow().getData();
+                            var ad_sold_L30 = parseFloat(row.ad_sold_L30 || 0);
+                            var clicks_L30 = parseFloat(row.clicks_L30 || 0);
+                            var cvr = 0;
+                            
+                            // Calculate AD CVR: (AD SOLD / CLICKS) * 100
+                            if (clicks_L30 > 0) {
+                                cvr = (ad_sold_L30 / clicks_L30) * 100;
+                            }
+                            
+                            return cvr.toFixed(2) + "%";
+                        },
+                        sorter: function(a, b, aRow, bRow, column, dir) {
+                            var dataA = aRow.getData();
+                            var dataB = bRow.getData();
+                            
+                            var soldA = parseFloat(dataA.ad_sold_L30 || 0);
+                            var clicksA = parseFloat(dataA.clicks_L30 || 0);
+                            var cvrA = clicksA > 0 ? (soldA / clicksA) * 100 : 0;
+                            
+                            var soldB = parseFloat(dataB.ad_sold_L30 || 0);
+                            var clicksB = parseFloat(dataB.clicks_L30 || 0);
+                            var cvrB = clicksB > 0 ? (soldB / clicksB) * 100 : 0;
+                            
+                            return cvrA - cvrB;
                         }
                     },
                     {
@@ -826,11 +1286,11 @@
 
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            if (ub7 >= 70 && ub7 <= 90) {
+                            if (ub7 >= 66 && ub7 <= 99) {
                                 td.classList.add('green-bg');
-                            } else if (ub7 > 90) {
+                            } else if (ub7 > 99) {
                                 td.classList.add('pink-bg');
-                            } else if (ub7 < 70) {
+                            } else if (ub7 < 66) {
                                 td.classList.add('red-bg');
                             }
 
@@ -858,11 +1318,11 @@
 
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            if (ub1 >= 70 && ub1 <= 90) {
+                            if (ub1 >= 66 && ub1 <= 99) {
                                 td.classList.add('green-bg');
-                            } else if (ub1 > 90) {
+                            } else if (ub1 > 99) {
                                 td.classList.add('pink-bg');
-                            } else if (ub1 < 70) {
+                            } else if (ub1 < 66) {
                                 td.classList.add('red-bg');
                             }
 
@@ -873,6 +1333,7 @@
                         title: "L7 CPC",
                         field: "cpc_L7",
                         hozAlign: "center",
+                        visible: false,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var cpc_L7 = parseFloat(row.cpc_L7) || 0;
@@ -883,6 +1344,7 @@
                         title: "L1 CPC",
                         field: "cpc_L1",
                         hozAlign: "center",
+                        visible: false,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var cpc_L1 = parseFloat(row.cpc_L1) || 0;
@@ -954,10 +1416,12 @@
                     {
                         title: "CAMPAIGN",
                         field: "campaignName",
+                        width: 250,
+                        minWidth: 200,
                         formatter: function(cell) {
                             const campaignName = cell.getValue();
                             const rowData = cell.getRow().getData();
-                            return `<span>${campaignName || ''}</span> <button class="btn btn-sm btn-outline-primary ms-2" onclick="showCampaignChart('${campaignName || ''}')"><i class="fas fa-chart-line"></i></button>`;
+                            return `<span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block; max-width: 200px;">${campaignName || ''}</span> <button class="btn btn-sm btn-outline-primary ms-2" onclick="showCampaignChart('${campaignName || ''}')"><i class="fas fa-chart-line"></i></button>`;
                         }
                     }
                 ],
@@ -1224,16 +1688,16 @@
                 }
 
                 // Filter by utilization type (matching backend logic from getFilteredCampaignIds)
-                // Over: UB7 > 90% (only UB7, not UB1) - matches google/shopping/over/utilize
-                // Under: UB7 < 70% (only UB7, not UB1) - matches google/shopping/under/utilize
+                // Over: UB7 > 99% AND UB1 > 99%
+                // Under: UB7 < 66% AND UB1 < 66%
                 if (currentUtilizationType === 'all') {
                     // Show all data (no filter on utilization)
                 } else if (currentUtilizationType === 'over') {
-                    // Over-utilized: ub7 > 90 (only UB7)
-                    if (!(ub7 > 90)) return false;
+                    // Over-utilized: ub7 > 99 AND ub1 > 99
+                    if (!(ub7 > 99 && ub1 > 99)) return false;
                 } else if (currentUtilizationType === 'under') {
-                    // Under-utilized: ub7 < 70 (only UB7)
-                    if (!(ub7 < 70)) return false;
+                    // Under-utilized: ub7 < 66 AND ub1 < 66
+                    if (!(ub7 < 66 && ub1 < 66)) return false;
                 }
 
                     let searchVal = $("#global-search").val()?.toLowerCase() || "";
@@ -1483,6 +1947,48 @@
                     let field = e.target.getAttribute("data-field");
                     let value = e.target.value;
 
+                    // If NRL is set to "NRL" (red dot), automatically set NRA to "NRA" (red dot)
+                    if (field === 'NRL' && value === 'NRL') {
+                        // Find the NRA select dropdown for this row
+                        let row = table.searchRows('sku', '=', sku);
+                        if (row.length > 0) {
+                            let rowData = row[0].getData();
+                            let nraCell = row[0].getCell('NRA');
+                            if (nraCell) {
+                                let nraSelect = nraCell.getElement().querySelector('.editable-select');
+                                if (nraSelect) {
+                                    nraSelect.value = 'NRA';
+                                    nraSelect.style.backgroundColor = '#dc3545'; // red
+                                    nraSelect.style.color = '#000';
+                                    
+                                    // Update NRA in backend
+                                    fetch('/update-google-nr-data', {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                                        },
+                                        body: JSON.stringify({
+                                            sku: sku,
+                                            field: 'NRA',
+                                            value: 'NRA'
+                                        })
+                                    })
+                                    .then(res => res.json())
+                                    .then(data => {
+                                        if (data.status === 200 && typeof table !== 'undefined' && table) {
+                                            row[0].update({NRA: 'NRA'});
+                                        }
+                                        setTimeout(function() {
+                                            updateButtonCounts();
+                                        }, 200);
+                                    })
+                                    .catch(err => console.error(err));
+                                }
+                            }
+                        }
+                    }
+
                     // Update color immediately for NRA field
                     if (field === 'NRA') {
                         if (value === 'NRA') {
@@ -1528,6 +2034,175 @@
                 }
             });
 
+            // Bulk Actions: Select All, Mark NRA, Mark RA
+            let selectAllMode = false;
+            
+            document.getElementById('select-all-rows-btn').addEventListener('click', function() {
+                selectAllMode = !selectAllMode;
+                const selectedRows = table.getSelectedRows();
+                
+                if (selectAllMode) {
+                    // Select all visible rows
+                    const allRows = table.getRows('visible');
+                    allRows.forEach(row => row.select());
+                    this.innerHTML = '<i class="fa fa-times"></i> Deselect All';
+                    this.classList.remove('btn-outline-primary');
+                    this.classList.add('btn-primary');
+                } else {
+                    // Deselect all
+                    table.deselectRow();
+                    this.innerHTML = '<i class="fa fa-check-double"></i> Select All';
+                    this.classList.remove('btn-primary');
+                    this.classList.add('btn-outline-primary');
+                }
+                
+                updateBulkActionButtons();
+            });
+
+            // Update bulk action buttons state based on selection
+            function updateBulkActionButtons() {
+                const selectedRows = table.getSelectedRows();
+                const hasSelection = selectedRows.length > 0;
+                
+                document.getElementById('mark-nra-btn').disabled = !hasSelection;
+                document.getElementById('mark-ra-btn').disabled = !hasSelection;
+            }
+
+            // Mark selected rows as NRA
+            document.getElementById('mark-nra-btn').addEventListener('click', function() {
+                const selectedRows = table.getSelectedRows();
+                if (selectedRows.length === 0) {
+                    alert('Please select at least one row');
+                    return;
+                }
+
+                if (!confirm(`Mark ${selectedRows.length} selected row(s) as NRA?`)) {
+                    return;
+                }
+
+                const skus = selectedRows.map(row => row.getData().sku).filter(sku => sku);
+                
+                fetch('/bulk-update-google-nr-data', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                    },
+                    body: JSON.stringify({
+                        skus: skus,
+                        field: 'NRA',
+                        value: 'NRA'
+                    })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 200) {
+                        // Update table rows
+                        selectedRows.forEach(row => {
+                            const rowData = row.getData();
+                            row.update({NRA: 'NRA'});
+                            
+                            // Update NRA select dropdown if visible
+                            const nraCell = row.getCell('NRA');
+                            if (nraCell) {
+                                const cellElement = nraCell.getElement();
+                                const select = cellElement.querySelector('.editable-select');
+                                if (select) {
+                                    select.value = 'NRA';
+                                    select.style.backgroundColor = '#dc3545';
+                                    select.style.color = '#000';
+                                }
+                            }
+                        });
+                        
+                        alert(data.message);
+                        updateButtonCounts();
+                        table.deselectRow();
+                        updateBulkActionButtons();
+                        selectAllMode = false;
+                        document.getElementById('select-all-rows-btn').innerHTML = '<i class="fa fa-check-double"></i> Select All';
+                        document.getElementById('select-all-rows-btn').classList.remove('btn-primary');
+                        document.getElementById('select-all-rows-btn').classList.add('btn-outline-primary');
+                    } else {
+                        alert('Error: ' + (data.message || 'Failed to update'));
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    alert('Error updating data');
+                });
+            });
+
+            // Mark selected rows as RA
+            document.getElementById('mark-ra-btn').addEventListener('click', function() {
+                const selectedRows = table.getSelectedRows();
+                if (selectedRows.length === 0) {
+                    alert('Please select at least one row');
+                    return;
+                }
+
+                if (!confirm(`Mark ${selectedRows.length} selected row(s) as RA?`)) {
+                    return;
+                }
+
+                const skus = selectedRows.map(row => row.getData().sku).filter(sku => sku);
+                
+                fetch('/bulk-update-google-nr-data', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                    },
+                    body: JSON.stringify({
+                        skus: skus,
+                        field: 'NRA',
+                        value: 'RA'
+                    })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 200) {
+                        // Update table rows
+                        selectedRows.forEach(row => {
+                            const rowData = row.getData();
+                            row.update({NRA: 'RA'});
+                            
+                            // Update NRA select dropdown if visible
+                            const nraCell = row.getCell('NRA');
+                            if (nraCell) {
+                                const cellElement = nraCell.getElement();
+                                const select = cellElement.querySelector('.editable-select');
+                                if (select) {
+                                    select.value = 'RA';
+                                    select.style.backgroundColor = '#28a745';
+                                    select.style.color = '#000';
+                                }
+                            }
+                        });
+                        
+                        alert(data.message);
+                        updateButtonCounts();
+                        table.deselectRow();
+                        updateBulkActionButtons();
+                        selectAllMode = false;
+                        document.getElementById('select-all-rows-btn').innerHTML = '<i class="fa fa-check-double"></i> Select All';
+                        document.getElementById('select-all-rows-btn').classList.remove('btn-primary');
+                        document.getElementById('select-all-rows-btn').classList.add('btn-outline-primary');
+                    } else {
+                        alert('Error: ' + (data.message || 'Failed to update'));
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    alert('Error updating data');
+                });
+            });
+
+            // Update bulk action buttons when selection changes
+            table.on("rowSelectionChanged", function(data, rows) {
+                updateBulkActionButtons();
+            });
+
             // Handle info icon toggle for INV column
             document.addEventListener("click", function(e) {
                 if (e.target.classList.contains('info-icon-inv-toggle')) {
@@ -1551,6 +2226,82 @@
                     });
                 }
             });
+
+            // Handle info icon toggle for L30 columns
+            document.addEventListener("click", function(e) {
+                // Check if clicked element or any parent has the toggle class
+                let target = e.target;
+                let found = false;
+                while (target && target !== document) {
+                    if (target.classList && target.classList.contains('toggle-l7-l1-cols-btn')) {
+                        found = true;
+                        break;
+                    }
+                    target = target.parentElement;
+                }
+                
+                if (found) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    const l30ColumnFields = ['clicks_L30', 'spend_L30', 'ad_sales_L30', 'ad_sold_L30', 'ad_cvr'];
+                    
+                    // Check if any L30 column is visible to determine current state
+                    const clicksL30Col = table.getColumn('clicks_L30');
+                    const anyVisible = clicksL30Col && clicksL30Col.isVisible();
+                    
+                    // Toggle visibility
+                    l30ColumnFields.forEach(field => {
+                        const col = table.getColumn(field);
+                        if (col) {
+                            if (anyVisible) {
+                                col.hide();
+                            } else {
+                                col.show();
+                            }
+                        }
+                    });
+                    return false;
+                }
+            }, true); // Use capture phase to catch event earlier
+
+            // Handle info icon toggle for Price columns (GPFT, PFT, ROI, SPRICE, SPFT)
+            document.addEventListener("click", function(e) {
+                // Check if clicked element or any parent has the toggle class
+                let target = e.target;
+                let found = false;
+                while (target && target !== document) {
+                    if (target.classList && target.classList.contains('toggle-price-cols-btn')) {
+                        found = true;
+                        break;
+                    }
+                    target = target.parentElement;
+                }
+                
+                if (found) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.stopImmediatePropagation();
+                    const priceColumnFields = ['GPFT', 'PFT', 'roi', 'SPRICE', 'SPFT'];
+                    
+                    // Check if any price-related column is visible to determine current state
+                    const gpftCol = table.getColumn('GPFT');
+                    const anyVisible = gpftCol && gpftCol.isVisible();
+                    
+                    // Toggle visibility
+                    priceColumnFields.forEach(field => {
+                        const col = table.getColumn(field);
+                        if (col) {
+                            if (anyVisible) {
+                                col.hide();
+                            } else {
+                                col.show();
+                            }
+                        }
+                    });
+                    return false;
+                }
+            }, true); // Use capture phase to catch event earlier
 
             document.getElementById("apr-all-sbid-btn").addEventListener("click", function() {
                 const overlay = document.getElementById("progress-overlay");
@@ -1677,9 +2428,7 @@
                         Status: row.campaignStatus || "",
                         Budget: budget.toFixed(2),
                         "Clicks L30": parseFloat(row.clicks_L30 || 0),
-                        "Spend L30": parseFloat(row.spend_L30 || 0).toFixed(2),
-                        "Spend L7": spend_L7.toFixed(2),
-                        "Spend L1": spend_L1.toFixed(2),
+                        "Spend L30": Math.round(parseFloat(row.spend_L30 || 0)),
                         "7 UB%": ub7.toFixed(0) + "%",
                         "1 UB%": ub1.toFixed(0) + "%",
                         "L7 CPC": parseFloat(row.cpc_L7 || 0).toFixed(2),

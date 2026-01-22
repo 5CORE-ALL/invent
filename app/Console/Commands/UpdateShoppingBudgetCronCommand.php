@@ -174,15 +174,21 @@ class UpdateShoppingBudgetCronCommand extends Command
             // Get current budget
             $currentBudget = $matchedCampaign->budget_amount_micros ? $matchedCampaign->budget_amount_micros / 1000000 : 0;
 
-            // Determine budget value based on ACOS
-            // ACOS under 10% → budget = 5
+            // Determine budget value based on ACOS (matching SBGT formula)
+            // ACOS < 10% → budget = 5
             // ACOS 10%-30% → budget = 4
-            // ACOS more than 30% → budget = 1
+            // ACOS 30%-40% → budget = 3
+            // ACOS 40%-50% → budget = 2
+            // ACOS > 50% → budget = 1
             $newBudget = 1;
             if ($acos < 10) {
                 $newBudget = 5;
-            } elseif ($acos >= 10 && $acos <= 30) {
+            } elseif ($acos >= 10 && $acos < 30) {
                 $newBudget = 4;
+            } elseif ($acos >= 30 && $acos < 40) {
+                $newBudget = 3;
+            } elseif ($acos >= 40 && $acos < 50) {
+                $newBudget = 2;
             } else {
                 $newBudget = 1;
             }
