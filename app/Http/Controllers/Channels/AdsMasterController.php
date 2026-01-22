@@ -3713,7 +3713,16 @@ class AdsMasterController extends Controller
             'amazon_l30_sales', 'amazon_spent', 'amazon_clicks', 'amazon_ad_sales', 'amazon_ad_sold', 'amazon_missing_ads', 'amazonkw_l30_sales', 'amazonkw_spent', 'amazonkw_clicks', 'amazonkw_ad_sales', 'amazonkw_ad_sold', 'amazonkw_missing_ads', 'amazonpt_l30_sales', 'amazonpt_spent', 'amazonpt_clicks', 'amazonpt_ad_sales', 'amazonpt_ad_sold', 'amazonpt_missing_ads', 'amazonhl_l30_sales', 'amazonhl_spent', 'amazonhl_clicks', 'amazonhl_ad_sales', 'amazonhl_ad_sold', 'amazonhl_missing_ads', 'ebay_l30_sales', 'ebay_spent', 'ebay_clicks', 'ebay_ad_sales', 'ebay_ad_sold', 'ebay_missing_ads', 'ebaykw_l30_sales', 'ebaykw_spent', 'ebaykw_clicks', 'ebaykw_ad_sales', 'ebaykw_ad_sold', 'ebaykw_missing_ads', 'ebaypmt_l30_sales', 'ebaypmt_spent', 'ebaypmt_clicks', 'ebaypmt_ad_sales', 'ebaypmt_ad_sold', 'ebaypmt_missing_ads', 'ebay2_l30_sales', 'ebay2_spent', 'ebay2_clicks', 'ebay2_ad_sales', 'ebay2_ad_sold', 'ebay2_missing_ads', 'ebay2pmt_l30_sales', 'ebay2pmt_spent', 'ebay2pmt_clicks', 'ebay2pmt_ad_sales', 'ebay2pmt_ad_sold', 'ebay2pmt_missing_ads', 'ebay3_l30_sales', 'ebay3_spent', 'ebay3_clicks', 'ebay3_ad_sales', 'ebay3_ad_sold', 'ebay3_missing_ads', 'ebay3kw_l30_sales', 'ebay3kw_spent', 'ebay3kw_clicks', 'ebay3kw_ad_sales', 'ebay3kw_ad_sold', 'ebay3kw_missing_ads', 'ebay3pmt_l30_sales', 'ebay3pmt_spent', 'ebay3pmt_clicks', 'ebay3pmt_ad_sales', 'ebay3pmt_ad_sold', 'ebay3pmt_missing_ads', 'walmart_l30_sales', 'walmart_spent', 'walmart_clicks', 'walmart_ad_sales', 'walmart_ad_sold', 'walmart_missing_ads', 'gshoping_l30_sales', 'gshoping_spent', 'gshoping_clicks', 'gshoping_ad_sales', 'gshoping_ad_sold', 'gshoping_missing_ads', 'total_l30_sales', 'total_spent', 'total_clicks', 'total_ad_sales', 'total_ad_sold', 'total_missing'
         ];
 
-        // Round individual values first
+        // Calculate L30 SPENT total BEFORE rounding to avoid rounding errors
+        // Sum of ALL individual rows displayed in table (sub-channels + standalone channels)
+        // Exclude main channel summary rows (AMAZON, EBAY, EBAY 2, EBAY 3) as they are calculated totals, not individual rows
+        $total_spent = $amazonkw_spent + $amazonpt_spent + $amazonhl_spent
+            + $ebaykw_spent + $ebaypmt_spent
+            + $ebay2pmt_spent
+            + $ebay3kw_spent + $ebay3pmt_spent
+            + $walmart_spent + $gshoping_spent;
+        
+        // Round individual values AFTER calculating total
         foreach ($roundVars as $varName) {
             if (isset($$varName)) {
                 $$varName = round((float) $$varName);
@@ -3761,14 +3770,6 @@ class AdsMasterController extends Controller
 
         // Calculate totals - use main channel l30_sales only (not sub-channels, they're duplicates)
         $total_l30_sales = $amazon_l30_sales + $ebay_l30_sales + $ebay2_l30_sales + $ebay3_l30_sales + $walmart_l30_sales + $gshoping_l30_sales;
-        // L30 SPENT total = sum of ALL individual rows displayed in table (sub-channels + standalone channels)
-        // Exclude main channel summary rows (AMAZON, EBAY, EBAY 2, EBAY 3) as they are calculated totals, not individual rows
-        // Exclude G SHOPPING as it may not be included in the expected total
-        $total_spent = $amazonkw_spent + $amazonpt_spent + $amazonhl_spent
-            + $ebaykw_spent + $ebaypmt_spent
-            + $ebay2pmt_spent
-            + $ebay3kw_spent + $ebay3pmt_spent
-            + $walmart_spent;
         
         // Calculate L60 spent totals (sum of sub-channels for main channels)
         $amazon_l60_spent = $amazonkw_l60_spent + $amazonpt_l60_spent + $amazonhl_l60_spent;
