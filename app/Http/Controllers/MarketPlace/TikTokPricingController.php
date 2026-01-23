@@ -7,6 +7,7 @@ use App\Models\ProductMaster;
 use App\Models\TikTokProduct;
 use App\Models\ShopifySku;
 use App\Models\ChannelMaster;
+use App\Models\MarketplacePercentage;
 use App\Models\ReverbViewData;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -26,8 +27,9 @@ class TikTokPricingController extends Controller
         $mode = $request->query("mode");
         $demo = $request->query("demo");
 
-        $marketplaceData = ChannelMaster::where('channel', 'TikTok')->first();
-        $percentage = $marketplaceData ? $marketplaceData->channel_percentage : 80;
+        // Get percentage from MarketplacePercentage table (consistent with other marketplaces)
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'TikTok')->first();
+        $percentage = $marketplaceData ? $marketplaceData->percentage : 80;
 
         return view("market-places.tiktok_tabulator_view", [
             "mode" => $mode,
@@ -68,9 +70,9 @@ class TikTokPricingController extends Controller
      */
     public function getViewTikTokTabularData(Request $request)
     {
-        // Get percentage from database (80% for TikTok)
-        $marketplaceData = ChannelMaster::where('channel', 'TikTok')->first();
-        $percentage = $marketplaceData ? $marketplaceData->channel_percentage : 80;
+        // Get percentage from MarketplacePercentage table (consistent with other marketplaces)
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'TikTok')->first();
+        $percentage = $marketplaceData ? $marketplaceData->percentage : 80;
         $percentageValue = $percentage / 100;
 
         // Fetch all product master records (excluding parent rows)

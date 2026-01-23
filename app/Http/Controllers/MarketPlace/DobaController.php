@@ -46,22 +46,10 @@ class DobaController extends Controller
         $mode = $request->query("mode");
         $demo = $request->query("demo");
 
-        // Get percentage from cache or database
-        // $percentage = Cache::remember(
-        //     "doba_marketplace_percentage",
-        //     now()->addDays(30),
-        //     function () {
-        //         $marketplaceData = MarketplacePercentage::where(
-        //             "marketplace",
-        //             "Doba"
-        //         )->first();
-        //         return $marketplaceData ? $marketplaceData->percentage : 100; // Default to 100 if not set
-        //     }
-        // );
-
-        $marketplaceData = ChannelMaster::where('channel', 'Doba')->first();
-
-        $percentage = $marketplaceData ? $marketplaceData->channel_percentage : 100;
+        // Get percentage from MarketplacePercentage table (consistent with other marketplaces)
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'Doba')->first();
+        
+        $percentage = $marketplaceData ? $marketplaceData->percentage : 100;
         $adUpdates = $marketplaceData ? $marketplaceData->ad_updates : 0;
 
         return view("market-places.doba-analytics", [

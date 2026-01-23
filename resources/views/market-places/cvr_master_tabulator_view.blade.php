@@ -115,6 +115,29 @@
             color: #1e2125;
             background-color: #e9ecef;
         }
+
+        /* Parent row styling - Light blue background like Amazon */
+        .parent-row {
+            background-color: #bde0ff !important;
+            font-weight: bold !important;
+        }
+
+        .tabulator-row.parent-row {
+            background-color: #bde0ff !important;
+            font-weight: bold !important;
+        }
+
+        /* Expand/collapse icon */
+        .parent-toggle-icon {
+            cursor: pointer;
+            margin-right: 8px;
+            color: #17a2b8;
+            font-size: 13px;
+        }
+
+        .parent-toggle-icon:hover {
+            color: #0d6efd;
+        }
     </style>
 @endsection
 
@@ -153,13 +176,14 @@
                                     <th class="text-end">L30</th>
                                     <th class="text-end">CVR%</th>
                                     <th class="text-end">GPFT%</th>
+                                    <th class="text-end">AD%</th>
                                     <th class="text-end">NPFT%</th>
                                 </tr>
                             </thead>
                             <tbody id="ovl30DetailsTableBody">
                                 <!-- Table rows will be populated dynamically -->
                                 <tr>
-                                    <td colspan="8" class="text-center text-muted py-4">No data available</td>
+                                    <td colspan="9" class="text-center text-muted py-4">No data available</td>
                                 </tr>
                             </tbody>
                             <tfoot class="table-secondary">
@@ -171,6 +195,7 @@
                                     <th class="text-end" id="modal-total-l30">0</th>
                                     <th class="text-end" id="modal-avg-cvr">0%</th>
                                     <th class="text-end" id="modal-avg-gpft">0%</th>
+                                    <th class="text-end" id="modal-avg-ad">0%</th>
                                     <th class="text-end" id="modal-avg-npft">0%</th>
                                 </tr>
                             </tfoot>
@@ -214,6 +239,13 @@
                                     <span class="status-circle pink"></span> Pink (50%+)</a></li>
                         </ul>
                     </div>
+
+                    <!-- SKU/Parent Filter -->
+                    <select id="sku-parent-filter" class="form-select form-select-sm" style="width: auto;">
+                        <option value="both">Both</option>
+                        <option value="sku" selected>SKU Only</option>
+                        <option value="parent">Parent Only</option>
+                    </select>
 
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
@@ -335,7 +367,7 @@
         function showModalLoading(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="8" class="text-center text-muted py-4">
+                    <td colspan="9" class="text-center text-muted py-4">
                         <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
                         Loading data for ${sku}...
                     </td>
@@ -346,7 +378,7 @@
         function showModalEmpty(sku) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="8" class="text-center text-muted py-4">
+                    <td colspan="9" class="text-center text-muted py-4">
                         No marketplace data available for ${sku}
                     </td>
                 </tr>
@@ -356,7 +388,7 @@
         function showModalError(message) {
             $('#ovl30DetailsTableBody').html(`
                 <tr>
-                    <td colspan="8" class="text-center text-danger py-4">
+                    <td colspan="9" class="text-center text-danger py-4">
                         <i class="fas fa-exclamation-circle me-2"></i>${message}
                     </td>
                 </tr>
@@ -375,9 +407,11 @@
             let totalL30 = 0;
             let totalCVR = 0;
             let totalGPFT = 0;
+            let totalAD = 0;
             let totalNPFT = 0;
             let cvrCount = 0;
             let gpftCount = 0;
+            let adCount = 0;
             let npftCount = 0;
             
             data.forEach(item => {
@@ -390,6 +424,7 @@
                 const l30 = parseInt(item.l30 || 0);
                 const cvr = views > 0 ? (l30 / views) * 100 : 0;
                 const gpft = parseFloat(item.gpft || 0);
+                const ad = parseFloat(item.ad || 0);
                 const npft = parseFloat(item.npft || 0);
                 
                 // Color coding for CVR%
@@ -399,21 +434,30 @@
                 else if (cvr >= 3 && cvr < 5) cvrColor = '#28a745'; // Green
                 else cvrColor = '#e83e8c'; // Pink
                 
-                // Color coding for GPFT% and NPFT%
+                // Color coding for GPFT%, AD%, and NPFT%
                 let gpftColor = '';
+                let adColor = '';
                 let npftColor = '';
                 
-                if (gpft < 0) gpftColor = '#a00211'; // Dark red for negative
-                else if (gpft >= 0 && gpft < 10) gpftColor = '#ffc107'; // Yellow
-                else if (gpft >= 10 && gpft < 20) gpftColor = '#3591dc'; // Blue
-                else if (gpft >= 20 && gpft <= 40) gpftColor = '#28a745'; // Green
-                else gpftColor = '#e83e8c'; // Pink
+                if (gpft < 0) gpftColor = '#a00211';
+                else if (gpft >= 0 && gpft < 10) gpftColor = '#ffc107';
+                else if (gpft >= 10 && gpft < 20) gpftColor = '#3591dc';
+                else if (gpft >= 20 && gpft <= 40) gpftColor = '#28a745';
+                else gpftColor = '#e83e8c';
                 
-                if (npft < 0) npftColor = '#a00211'; // Dark red for negative
-                else if (npft >= 0 && npft < 10) npftColor = '#ffc107'; // Yellow
-                else if (npft >= 10 && npft < 20) npftColor = '#3591dc'; // Blue
-                else if (npft >= 20 && npft <= 40) npftColor = '#28a745'; // Green
-                else npftColor = '#e83e8c'; // Pink
+                // AD% color: lower is better
+                if (ad >= 100) adColor = '#a00211'; // Dark red for 100%+
+                else if (ad >= 50) adColor = '#dc3545'; // Red
+                else if (ad >= 20) adColor = '#ffc107'; // Yellow
+                else if (ad >= 10) adColor = '#3591dc'; // Blue
+                else if (ad > 0) adColor = '#28a745'; // Green (low is good)
+                else adColor = '#6c757d'; // Gray for 0
+                
+                if (npft < 0) npftColor = '#a00211';
+                else if (npft >= 0 && npft < 10) npftColor = '#ffc107';
+                else if (npft >= 10 && npft < 20) npftColor = '#3591dc';
+                else if (npft >= 20 && npft <= 40) npftColor = '#28a745';
+                else npftColor = '#e83e8c';
                 
                 // Add to totals only if listed
                 if (isListed) {
@@ -428,6 +472,9 @@
                         totalGPFT += gpft;
                         gpftCount++;
                     }
+                    // Always count AD% for average (even if 0)
+                    totalAD += ad;
+                    adCount++;
                     if (npft !== 0) {
                         totalNPFT += npft;
                         npftCount++;
@@ -443,6 +490,7 @@
                         <td class="text-end ${textClass}">${isListed ? l30 : '-'}</td>
                         <td class="text-end ${textClass}">${isListed && views > 0 ? '<span style="color: ' + cvrColor + '; font-weight: 600;">' + cvr.toFixed(1) + '%</span>' : '-'}</td>
                         <td class="text-end ${textClass}">${isListed && gpft !== 0 ? '<span style="color: ' + gpftColor + '; font-weight: 600;">' + Math.round(gpft) + '%</span>' : '-'}</td>
+                        <td class="text-end ${textClass}">${isListed ? '<span style="color: ' + adColor + '; font-weight: 600;">' + ad.toFixed(1) + '%</span>' : '-'}</td>
                         <td class="text-end ${textClass}">${isListed && npft !== 0 ? '<span style="color: ' + npftColor + '; font-weight: 600;">' + Math.round(npft) + '%</span>' : '-'}</td>
                     </tr>
                 `;
@@ -451,16 +499,19 @@
             $('#ovl30DetailsTableBody').html(html);
             
             // Calculate averages
-            const avgCVR = cvrCount > 0 ? totalCVR / cvrCount : 0;
+            // Avg CVR using CVR formula: (Total L30 / Total Views) × 100
+            const avgCVR = totalViews > 0 ? (totalL30 / totalViews) * 100 : 0;
             const avgGPFT = gpftCount > 0 ? totalGPFT / gpftCount : 0;
+            const avgAD = adCount > 0 ? totalAD / adCount : 0;
             const avgNPFT = npftCount > 0 ? totalNPFT / npftCount : 0;
             
             // Update totals in footer
             $('#modal-total-price').text('$' + totalPrice.toFixed(2));
             $('#modal-total-views').text(totalViews.toLocaleString());
             $('#modal-total-l30').text(totalL30.toLocaleString());
-            $('#modal-avg-cvr').text(avgCVR.toFixed(2) + '%');
+            $('#modal-avg-cvr').text(avgCVR.toFixed(1) + '%');
             $('#modal-avg-gpft').text(avgGPFT.toFixed(1) + '%');
+            $('#modal-avg-ad').text(avgAD.toFixed(1) + '%');
             $('#modal-avg-npft').text(avgNPFT.toFixed(1) + '%');
         }
 
@@ -486,6 +537,14 @@
                 column: "dil_percent",
                 dir: "desc"
             }],
+            rowFormatter: function(row) {
+                const data = row.getData();
+                if (data.is_parent_summary === true) {
+                    row.getElement().style.backgroundColor = "#bde0ff";
+                    row.getElement().style.fontWeight = "bold";
+                    row.getElement().classList.add("parent-row");
+                }
+            },
             columns: [
                 {
                     title: "Image",
@@ -511,7 +570,19 @@
                     width: 250,
                     formatter: function(cell) {
                         const sku = cell.getValue();
-                        let html = `<span>${sku}</span>`;
+                        const rowData = cell.getRow().getData();
+                        let html = '';
+                        
+                        // Add toggle icon for parent rows in "Parent Only" view
+                        if (rowData.is_parent_summary === true) {
+                            const isExpanded = rowData._expanded === true;
+                            const iconClass = isExpanded ? 'fa-chevron-up' : 'fa-chevron-down';
+                            html += `<i class="fas ${iconClass} parent-toggle-icon" 
+                                       data-parent="${rowData.parent}" 
+                                       title="Click to expand/collapse"></i>`;
+                        }
+                        
+                        html += `<span>${sku}</span>`;
                         html += `<i class="fa fa-copy text-secondary copy-sku-btn" 
                                    style="cursor: pointer; margin-left: 8px; font-size: 14px;" 
                                    data-sku="${sku}" title="Copy SKU"></i>`;
@@ -542,6 +613,12 @@
                         const value = parseFloat(cell.getValue() || 0);
                         const rowData = cell.getRow().getData();
                         const sku = rowData.sku;
+                        
+                        // Don't show info icon for parent rows
+                        if (rowData.is_parent_summary === true) {
+                            return `<span style="font-weight: 600;">${value}</span>`;
+                        }
+                        
                         return `
                             <span style="font-weight: 600;">${value}</span>
                             <i class="fas fa-info-circle text-info ovl30-info-icon" 
@@ -549,6 +626,17 @@
                                data-sku="${sku}"
                                title="View breakdown for ${sku}"></i>
                         `;
+                    }
+                },
+                {
+                    title: "M L30",
+                    field: "m_l30",
+                    hozAlign: "center",
+                    width: 90,
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        return `<span style="font-weight: 600;">${value}</span>`;
                     }
                 },
                 {
@@ -569,6 +657,115 @@
                         return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}%</span>`;
                     },
                     width: 80
+                },
+                {
+                    title: "Total Views",
+                    field: "total_views",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseInt(cell.getValue() || 0);
+                        if (value === 0) {
+                            return '<span style="color: #6c757d;">0</span>';
+                        }
+                        return `<span style="font-weight: 600;">${value.toLocaleString()}</span>`;
+                    },
+                    width: 110
+                },
+                {
+                    title: "Avg CVR",
+                    field: "avg_cvr",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        let color = '';
+                        
+                        // Color coding for CVR%
+                        if (value === 0) color = '#6c757d';
+                        else if (value < 1) color = '#a00211';
+                        else if (value >= 1 && value < 3) color = '#ffc107';
+                        else if (value >= 3 && value < 5) color = '#28a745';
+                        else color = '#e83e8c';
+                        
+                        return `<span style="color: ${color}; font-weight: 600;">${value.toFixed(1)}%</span>`;
+                    },
+                    width: 90
+                },
+                {
+                    title: "Avg Price",
+                    field: "avg_price",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        if (value === 0) {
+                            return '<span style="color: #6c757d;">-</span>';
+                        }
+                        return `<span style="font-weight: 600;">$${value.toFixed(2)}</span>`;
+                    },
+                    width: 100
+                },
+                {
+                    title: "Avg GPFT",
+                    field: "avg_gpft",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        let color = '';
+                        
+                        // Color coding for GPFT%
+                        if (value < 0) color = '#a00211';
+                        else if (value >= 0 && value < 10) color = '#ffc107';
+                        else if (value >= 10 && value < 20) color = '#3591dc';
+                        else if (value >= 20 && value <= 40) color = '#28a745';
+                        else color = '#e83e8c';
+                        
+                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}%</span>`;
+                    },
+                    width: 100
+                },
+                {
+                    title: "Avg AD",
+                    field: "avg_ad",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        let color = '';
+                        
+                        // Color coding for AD% (lower is better)
+                        if (value >= 100) color = '#a00211';
+                        else if (value >= 50) color = '#dc3545';
+                        else if (value >= 20) color = '#ffc107';
+                        else if (value >= 10) color = '#3591dc';
+                        else if (value > 0) color = '#28a745';
+                        else color = '#6c757d';
+                        
+                        return `<span style="color: ${color}; font-weight: 600;">${value.toFixed(1)}%</span>`;
+                    },
+                    width: 90
+                },
+                {
+                    title: "Avg PFT",
+                    field: "avg_pft",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        let color = '';
+                        
+                        // Color coding for PFT% (Net Profit)
+                        if (value < 0) color = '#a00211';
+                        else if (value >= 0 && value < 10) color = '#ffc107';
+                        else if (value >= 10 && value < 20) color = '#3591dc';
+                        else if (value >= 20 && value <= 40) color = '#28a745';
+                        else color = '#e83e8c';
+                        
+                        return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}%</span>`;
+                    },
+                    width: 90
                 }
             ]
         });
@@ -587,6 +784,100 @@
                 showToast(`Copied: ${sku}`, 'success');
             });
         });
+
+        // Store all data for parent expand/collapse
+        let fullDataset = [];
+        let expandedParent = null;
+
+        // Parent toggle handler
+        $(document).on('click', '.parent-toggle-icon', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const clickedParent = $(this).data('parent');
+            
+            console.log('=== Parent Toggle Clicked ===');
+            console.log('Clicked parent:', clickedParent);
+            console.log('Current expandedParent:', expandedParent);
+            
+            // Toggle expanded state
+            if (expandedParent === clickedParent) {
+                expandedParent = null; // Collapse
+                console.log('→ Collapsing parent');
+            } else {
+                expandedParent = clickedParent; // Expand
+                console.log('→ Expanding parent:', clickedParent);
+            }
+            
+            // Rebuild parent view
+            buildParentView();
+            
+            return false; // Prevent default action and stop propagation
+        });
+
+        function buildParentView() {
+            console.log('=== Building Parent View ===');
+            console.log('fullDataset length:', fullDataset.length);
+            console.log('expandedParent:', expandedParent);
+            
+            if (!fullDataset || fullDataset.length === 0) {
+                console.error('❌ No data available in fullDataset');
+                return;
+            }
+            
+            const parentRows = fullDataset.filter(row => row.is_parent_summary === true);
+            const childRows = fullDataset.filter(row => row.is_parent_summary !== true);
+            
+            console.log('Parents found:', parentRows.length);
+            console.log('Children found:', childRows.length);
+            
+            // Debug: Show first few parent values
+            if (parentRows.length > 0) {
+                console.log('Sample parent values:', parentRows.slice(0, 3).map(p => p.parent));
+            }
+            
+            let displayData = [];
+            
+            // Build ordered list: parent, then its children if expanded
+            parentRows.forEach(parent => {
+                // Mark parent as expanded or not (for icon display)
+                parent._expanded = (expandedParent === parent.parent);
+                
+                // Add parent
+                displayData.push(parent);
+                
+                // Add children RIGHT AFTER parent if this parent is expanded
+                if (expandedParent !== null && expandedParent === parent.parent) {
+                    const children = childRows.filter(child => {
+                        const matches = child.parent === expandedParent;
+                        return matches;
+                    });
+                    console.log('✓ Parent matched! Adding', children.length, 'children for parent:', parent.parent);
+                    
+                    // Debug: show sample children
+                    if (children.length > 0) {
+                        console.log('Sample children SKUs:', children.slice(0, 3).map(c => c.sku));
+                    } else {
+                        console.warn('⚠ No children found for parent:', expandedParent);
+                        console.log('Looking for children with parent field =', expandedParent);
+                        console.log('Sample child parent values:', childRows.slice(0, 5).map(c => ({sku: c.sku, parent: c.parent})));
+                    }
+                    
+                    displayData = displayData.concat(children);
+                }
+            });
+            
+            console.log('Final display data length:', displayData.length);
+            console.log('Expected:', parentRows.length, '+ children if expanded');
+            
+            // Update table
+            table.setData(displayData).then(() => {
+                console.log('✓ Table updated successfully');
+                updateSummary();
+            }).catch(err => {
+                console.error('❌ Error updating table:', err);
+            });
+        }
 
         // ==================== FILTER FUNCTIONS ====================
         
@@ -622,8 +913,23 @@
         function applyFilters() {
             const inventoryFilter = $('#inventory-filter').val();
             const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
+            const skuParentFilter = $('#sku-parent-filter').val();
 
             table.clearFilter();
+
+            // SKU/Parent filter
+            if (skuParentFilter === 'sku') {
+                // Show only SKU rows (hide parent rows)
+                table.addFilter(function(data) {
+                    return data.is_parent_summary !== true;
+                });
+            } else if (skuParentFilter === 'parent') {
+                // Build parent view with proper ordering
+                expandedParent = null; // Reset expanded state when switching to parent view
+                buildParentView();
+                return; // Don't apply other filters yet
+            }
+            // If 'both', don't add any filter
 
             if (inventoryFilter === 'zero') {
                 table.addFilter("inventory", "=", 0);
@@ -648,7 +954,7 @@
             updateSummary();
         }
 
-        $('#inventory-filter').on('change', function() {
+        $('#inventory-filter, #sku-parent-filter').on('change', function() {
             applyFilters();
         });
 
@@ -738,7 +1044,10 @@
             applyColumnVisibilityFromServer();
         });
 
-        table.on('dataLoaded', function() {
+        table.on('dataLoaded', function(data) {
+            // Store full dataset for parent expand/collapse
+            fullDataset = data;
+            
             setTimeout(function() {
                 applyFilters();
                 updateSummary();
