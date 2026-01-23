@@ -1047,7 +1047,7 @@
                             <div class="collapse" id="video-ads-master">
                                 <ul class="side-nav-second-level">
                                     <li>
-                                        <a href="{{ url('calculate-cvr-masters') }}">CVR Masters</a>
+                                        <a href="{{ url('cvr-master') }}">CVR Masters</a>
                                     </li>
                                     <li>
                                         <a href="{{ url('pricing-masters-l90.pricing_masters-l90') }}">Listing
