@@ -7,6 +7,7 @@ use App\Models\GoogleDataView;
 use App\Models\ProductMaster;
 use App\Models\ShopifySku;
 use App\Models\ADVMastersData;
+use App\Models\Shopifyb2cDataView;
 use Illuminate\Http\Request;
 use App\Services\GoogleAdsSbidService;
 use Illuminate\Support\Facades\DB;
@@ -129,161 +130,11 @@ class GoogleAdsController extends Controller
         ]);
     }
 
-    public function googleOverUtilizeView(){
-        $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30)->format('Y-m-d');
-        $today = \Carbon\Carbon::now()->format('Y-m-d');
-
-        // Get filtered campaign IDs for over-utilize (UB7 > 90%)
-        $filteredCampaignIds = $this->getFilteredCampaignIds('over_utilize', $thirtyDaysAgo, $today);
-
-        if (empty($filteredCampaignIds)) {
-            // Return empty data if no campaigns match the filter
-            $dates = [];
-            $clicks = [];
-            $spend = [];
-            $orders = [];
-            $sales = [];
-
-            for ($i = 30; $i >= 0; $i--) {
-                $date = \Carbon\Carbon::now()->subDays($i)->format('Y-m-d');
-                $dates[] = $date;
-                $clicks[] = 0;
-                $spend[] = 0.0;
-                $orders[] = 0;
-                $sales[] = 0.0;
-            }
-        } else {
-            $data = DB::table('google_ads_campaigns')
-                ->selectRaw('
-                    date,
-                    SUM(metrics_clicks) as clicks, 
-                    SUM(metrics_cost_micros) / 1000000 as spend, 
-                    SUM(ga4_sold_units) as orders, 
-                    SUM(ga4_ad_sales) as sales
-                ')
-                ->whereDate('date', '>=', $thirtyDaysAgo)
-                ->whereIn('campaign_id', $filteredCampaignIds)
-                ->groupBy('date')
-                ->orderBy('date', 'asc')
-                ->get()
-                ->keyBy('date');
-
-            // Fill in missing dates with zeros
-            $dates = [];
-            $clicks = [];
-            $spend = [];
-            $orders = [];
-            $sales = [];
-
-            for ($i = 30; $i >= 0; $i--) {
-                $date = \Carbon\Carbon::now()->subDays($i)->format('Y-m-d');
-                $dates[] = $date;
-                
-                if (isset($data[$date])) {
-                    $clicks[] = (int) $data[$date]->clicks;
-                    $spend[] = (float) $data[$date]->spend;
-                    $orders[] = (int) $data[$date]->orders;
-                    $sales[] = (float) $data[$date]->sales;
-                } else {
-                    $clicks[] = 0;
-                    $spend[] = 0.0;
-                    $orders[] = 0;
-                    $sales[] = 0.0;
-                }
-            }
-        }
-
-        return view('campaign.google-shopping-over-utilize', [
-            'dates' => $dates,
-            'clicks' => collect($clicks),
-            'spend' => collect($spend),
-            'orders' => collect($orders),
-            'sales' => collect($sales)
-        ]);
-    }
-
-    public function googleUnderUtilizeView(){
-        $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30)->format('Y-m-d');
-        $today = \Carbon\Carbon::now()->format('Y-m-d');
-
-        // Get filtered campaign IDs for under-utilize (UB7 < 70%)
-        $filteredCampaignIds = $this->getFilteredCampaignIds('under_utilize', $thirtyDaysAgo, $today);
-
-        if (empty($filteredCampaignIds)) {
-            // Return empty data if no campaigns match the filter
-            $dates = [];
-            $clicks = [];
-            $spend = [];
-            $orders = [];
-            $sales = [];
-
-            for ($i = 30; $i >= 0; $i--) {
-                $date = \Carbon\Carbon::now()->subDays($i)->format('Y-m-d');
-                $dates[] = $date;
-                $clicks[] = 0;
-                $spend[] = 0.0;
-                $orders[] = 0;
-                $sales[] = 0.0;
-            }
-        } else {
-            $data = DB::table('google_ads_campaigns')
-                ->selectRaw('
-                    date,
-                    SUM(metrics_clicks) as clicks, 
-                    SUM(metrics_cost_micros) / 1000000 as spend, 
-                    SUM(ga4_sold_units) as orders, 
-                    SUM(ga4_ad_sales) as sales
-                ')
-                ->whereDate('date', '>=', $thirtyDaysAgo)
-                ->whereIn('campaign_id', $filteredCampaignIds)
-                ->groupBy('date')
-                ->orderBy('date', 'asc')
-                ->get()
-                ->keyBy('date');
-
-            // Fill in missing dates with zeros
-            $dates = [];
-            $clicks = [];
-            $spend = [];
-            $orders = [];
-            $sales = [];
-
-            for ($i = 30; $i >= 0; $i--) {
-                $date = \Carbon\Carbon::now()->subDays($i)->format('Y-m-d');
-                $dates[] = $date;
-                
-                if (isset($data[$date])) {
-                    $clicks[] = (int) $data[$date]->clicks;
-                    $spend[] = (float) $data[$date]->spend;
-                    $orders[] = (int) $data[$date]->orders;
-                    $sales[] = (float) $data[$date]->sales;
-                } else {
-                    $clicks[] = 0;
-                    $spend[] = 0.0;
-                    $orders[] = 0;
-                    $sales[] = 0.0;
-                }
-            }
-        }
-
-        return view('campaign.google-shopping-under-utilize', [
-            'dates' => $dates,
-            'clicks' => collect($clicks),
-            'spend' => collect($spend),
-            'orders' => collect($orders),
-            'sales' => collect($sales)
-        ]);
-    }
-
     public function googleShoppingUtilizedView(){
-        // Google Dashboard "Last 30 days" typically means: last 30 complete days (excluding today)
-        // Because today's data might not be complete yet
-        $yesterday = \Carbon\Carbon::now()->subDay();
-        $thirtyDaysAgo = $yesterday->copy()->subDays(29)->format('Y-m-d'); // 30 days including yesterday
-        $endDate = $yesterday->format('Y-m-d');
+        $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30)->format('Y-m-d');
+        $today = \Carbon\Carbon::now()->format('Y-m-d');
 
-        // Get all SHOPPING campaigns for combined view (no filtering by utilization)
-        $googleCampaigns = DB::table('google_ads_campaigns')
+        $data = DB::table('google_ads_campaigns')
             ->selectRaw('
                 date,
                 SUM(metrics_clicks) as clicks, 
@@ -291,30 +142,28 @@ class GoogleAdsController extends Controller
                 SUM(ga4_sold_units) as orders, 
                 SUM(ga4_ad_sales) as sales
             ')
-            ->where('advertising_channel_type', 'SHOPPING')
             ->whereDate('date', '>=', $thirtyDaysAgo)
-            ->whereDate('date', '<=', $endDate)
             ->groupBy('date')
             ->orderBy('date', 'asc')
             ->get()
             ->keyBy('date');
 
-        // Fill in missing dates with zeros (for last 30 days ending yesterday)
+        // Fill in missing dates with zeros
         $dates = [];
         $clicks = [];
         $spend = [];
         $orders = [];
         $sales = [];
 
-        for ($i = 29; $i >= 0; $i--) {
-            $date = $yesterday->copy()->subDays($i)->format('Y-m-d');
+        for ($i = 30; $i >= 0; $i--) {
+            $date = \Carbon\Carbon::now()->subDays($i)->format('Y-m-d');
             $dates[] = $date;
             
-            if (isset($googleCampaigns[$date])) {
-                $clicks[] = (int) $googleCampaigns[$date]->clicks;
-                $spend[] = (float) $googleCampaigns[$date]->spend;
-                $orders[] = (int) $googleCampaigns[$date]->orders;
-                $sales[] = (float) $googleCampaigns[$date]->sales;
+            if (isset($data[$date])) {
+                $clicks[] = (int) $data[$date]->clicks;
+                $spend[] = (float) $data[$date]->spend;
+                $orders[] = (int) $data[$date]->orders;
+                $sales[] = (float) $data[$date]->sales;
             } else {
                 $clicks[] = 0;
                 $spend[] = 0.0;
@@ -775,6 +624,21 @@ class GoogleAdsController extends Controller
         
         // Get NRL, NRA from GoogleDataView (similar to AmazonDataView)
         $nrValues = GoogleDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+        
+        // Get GPFT, PFT, ROI, SPRICE, SPFT from shopify-b2c-pricing data
+        // Fetch pricing data using Shopifyb2cController method
+        $shopifyB2cController = new \App\Http\Controllers\MarketPlace\Shopifyb2cController(new \App\Http\Controllers\ApiController());
+        $shopifyB2cPricingData = $shopifyB2cController->getViewShopifyB2cTabularData();
+        $shopifyB2cPricingMap = [];
+        foreach ($shopifyB2cPricingData as $item) {
+            $itemSku = $item['(Child) sku'] ?? null;
+            if ($itemSku) {
+                $shopifyB2cPricingMap[$itemSku] = $item;
+            }
+        }
+        
+        // Also get SPRICE, SPFT from shopifyb2c_data_view (for SPFT)
+        $shopifyB2cData = Shopifyb2cDataView::whereIn('sku', $skus)->get()->keyBy('sku');
 
         // Calculate date ranges
         $dateRanges = $this->calculateDateRanges();
@@ -841,11 +705,6 @@ class GoogleAdsController extends Controller
             // Get NRL, NRA from GoogleDataView
             $nra = '';
             $nrl = 'REQ'; // Default value
-            $gpft = null;
-            $pft = null;
-            $roi = null;
-            $sprice = null;
-            $spft = null;
             if (isset($nrValues[$pm->sku])) {
                 $raw = $nrValues[$pm->sku];
                 if (!is_array($raw)) {
@@ -854,11 +713,42 @@ class GoogleAdsController extends Controller
                 if (is_array($raw)) {
                     $nra = $raw['NRA'] ?? '';
                     $nrl = $raw['NRL'] ?? 'REQ';
-                    $gpft = $raw['GPFT'] ?? null;
-                    $pft = $raw['PFT'] ?? null;
-                    $roi = $raw['ROI'] ?? null;
-                    $sprice = $raw['SPRICE'] ?? null;
-                    $spft = $raw['SPFT'] ?? null;
+                }
+            }
+            
+            // Get GPFT, PFT, ROI, SPRICE, SPFT from shopify-b2c-pricing data
+            $gpft = null;
+            $pft = null;
+            $roi = null;
+            $sprice = null;
+            $spft = null;
+            
+            // Get from shopify-b2c-pricing route data
+            if (isset($shopifyB2cPricingMap[$pm->sku])) {
+                $pricingItem = $shopifyB2cPricingMap[$pm->sku];
+                // GPFT% from pricing data (convert to GPFT)
+                $gpft = isset($pricingItem['GPFT%']) ? floatval($pricingItem['GPFT%']) : null;
+                // ROI% from pricing data (convert to ROI)
+                $roi = isset($pricingItem['ROI%']) ? floatval($pricingItem['ROI%']) : null;
+                // PFT = GPFT - ADS% (if ADS% available)
+                $adsPercent = isset($pricingItem['ADS%']) ? floatval($pricingItem['ADS%']) : 0;
+                $pft = $gpft !== null ? ($gpft - $adsPercent) : null;
+                // SPRICE from pricing data
+                $sprice = isset($pricingItem['SPRICE']) ? floatval($pricingItem['SPRICE']) : null;
+            }
+            
+            // Get SPFT from shopifyb2c_data_view (SGPFT)
+            if (isset($shopifyB2cData[$pm->sku])) {
+                $b2cData = $shopifyB2cData[$pm->sku];
+                $b2cValues = is_array($b2cData->value) 
+                    ? $b2cData->value 
+                    : (json_decode($b2cData->value, true) ?: []);
+                
+                // SPFT = SGPFT (from shopifyb2c_data_view)
+                $spft = isset($b2cValues['SGPFT']) ? floatval($b2cValues['SGPFT']) : ($spft ?? null);
+                // If SPRICE not found in pricing data, get from shopifyb2c_data_view
+                if ($sprice === null) {
+                    $sprice = isset($b2cValues['SPRICE']) ? floatval($b2cValues['SPRICE']) : null;
                 }
             }
 
@@ -1213,145 +1103,6 @@ class GoogleAdsController extends Controller
         }
     }
 
-    public function googleMissingAdsView(){
-        $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30)->format('Y-m-d');
-        $today = \Carbon\Carbon::now()->format('Y-m-d');
-
-        $data = DB::table('google_ads_campaigns')
-            ->selectRaw('
-                date,
-                SUM(metrics_clicks) as clicks, 
-                SUM(metrics_cost_micros) / 1000000 as spend, 
-                SUM(ga4_sold_units) as orders, 
-                SUM(ga4_ad_sales) as sales
-            ')
-            ->whereDate('date', '>=', $thirtyDaysAgo)
-            ->groupBy('date')
-            ->orderBy('date', 'asc')
-            ->get()
-            ->keyBy('date');
-
-        // Fill in missing dates with zeros
-        $dates = [];
-        $clicks = [];
-        $spend = [];
-        $orders = [];
-        $sales = [];
-
-        for ($i = 30; $i >= 0; $i--) {
-            $date = \Carbon\Carbon::now()->subDays($i)->format('Y-m-d');
-            $dates[] = $date;
-            
-            if (isset($data[$date])) {
-                $clicks[] = (int) $data[$date]->clicks;
-                $spend[] = (float) $data[$date]->spend;
-                $orders[] = (int) $data[$date]->orders;
-                $sales[] = (float) $data[$date]->sales;
-            } else {
-                $clicks[] = 0;
-                $spend[] = 0.0;
-                $orders[] = 0;
-                $sales[] = 0.0;
-            }
-        }
-
-        return view('campaign.google.google-shopping-missing-ads', [
-            'dates' => $dates,
-            'clicks' => collect($clicks),
-            'spend' => collect($spend),
-            'orders' => collect($orders),
-            'sales' => collect($sales)
-        ]);
-    }
-
-    public function googleShoppingAdsMissingAds()
-    {
-        $productMasters = ProductMaster::orderBy('parent', 'asc')
-            ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
-            ->orderBy('sku', 'asc')
-            ->get();
-
-        $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
-        $nrValues = GoogleDataView::whereIn('sku', $skus)->pluck('value', 'sku');
-
-        // Calculate date ranges for recent data
-        $dateRanges = $this->calculateDateRanges();
-
-        // Only fetch SHOPPING campaigns that are ENABLED and have recent data
-        $googleCampaigns = DB::table('google_ads_campaigns')
-            ->select(
-                'campaign_id',
-                'campaign_name',
-                'campaign_status'
-            )
-            ->where('advertising_channel_type', 'SHOPPING')
-            ->where('campaign_status', 'ENABLED')
-            ->whereBetween('date', [$dateRanges['L30']['start'], $dateRanges['L30']['end']])
-            ->distinct()
-            ->get();
-
-        $result = [];
-
-        foreach ($productMasters as $pm) {
-            $sku = strtoupper(trim($pm->sku));
-            $parent = $pm->parent;
-            $shopify = $shopifyData[$pm->sku] ?? null;
-
-            // Fixed: Use improved matching logic (same as other methods)
-            // Only match if SKU is in comma-separated list OR campaign name exactly equals SKU
-            // This prevents partial matches like "MX 12CH" matching "MX 12CH XU"
-            $matchedCampaign = $googleCampaigns->first(function ($c) use ($sku) {
-                $campaign = strtoupper(trim($c->campaign_name));
-                $skuTrimmed = strtoupper(trim($sku));
-                
-                // Check if SKU is in comma-separated list
-                $parts = array_map('trim', explode(',', $campaign));
-                $exactMatch = in_array($skuTrimmed, $parts);
-                
-                // If not in list, check if campaign name exactly equals SKU
-                if (!$exactMatch) {
-                    $exactMatch = $campaign === $skuTrimmed;
-                }
-                
-                return $exactMatch;
-            });
-
-            $row = [];
-            $row['parent'] = $parent;
-            $row['sku'] = $pm->sku;
-            $row['INV'] = $shopify->inv ?? 0;
-            $row['L30'] = $shopify->quantity ?? 0;
-            
-            // Fixed: Add null checks before accessing properties to prevent null pointer exceptions
-            $row['campaign_id'] = $matchedCampaign ? ($matchedCampaign->campaign_id ?? null) : null;
-            $row['campaignName'] = $matchedCampaign ? ($matchedCampaign->campaign_name ?? null) : null;
-            $row['campaignStatus'] = $matchedCampaign ? ($matchedCampaign->campaign_status ?? null) : null;
-
-            $row['NR'] = '';
-            if (isset($nrValues[$pm->sku])) {
-                $raw = $nrValues[$pm->sku];
-                if (!is_array($raw)) {
-                    $raw = json_decode($raw, true);
-                }
-                if (is_array($raw)) {
-                    $row['NR'] = $raw['NR'] ?? null;
-                }
-            }
-
-            
-            $result[] = (object) $row;
-        }
-
-        $uniqueResult = collect($result)->unique('sku')->values()->all();
-
-        return response()->json([
-            'message' => 'Data fetched successfully',
-            'data'    => $uniqueResult,
-            'status'  => 200,
-        ]);
-    }
-
     public function updateGoogleNrData(Request $request)
     {
         $sku   = $request->input('sku');
@@ -1420,16 +1171,6 @@ class GoogleAdsController extends Controller
     public function filterGoogleShoppingRunningChart(Request $request)
     {
         return $this->getChartData($request, ['campaign_status' => 'ENABLED']);
-    }
-
-    public function filterGoogleShoppingOverChart(Request $request)
-    {
-        return $this->getFilteredChartData($request, 'over_utilize');
-    }
-
-    public function filterGoogleShoppingUnderChart(Request $request)
-    {
-        return $this->getFilteredChartData($request, 'under_utilize');
     }
 
     public function filterGoogleShoppingReportChart(Request $request)

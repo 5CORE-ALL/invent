@@ -2985,8 +2985,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(GoogleAdsController::class)->group(function () {
         Route::get('/google/shopping', 'index')->name('google.shopping');
         Route::get('/google/shopping/running', 'googleShoppingAdsRunning')->name('google.shopping.running');
-        Route::get('/google/shopping/over/utilize', 'googleOverUtilizeView')->name('google.shopping.over.utilize');
-        Route::get('/google/shopping/under/utilize', 'googleUnderUtilizeView')->name('google.shopping.under.utilize');
         Route::get('/google/shopping/utilized', 'googleShoppingUtilizedView')->name('google.shopping.utilized');
         Route::get('/google/shopping/get-utilization-counts', 'getGoogleShoppingUtilizationCounts')->name('google.shopping.utilization.counts');
         Route::get('/google/shopping/get-utilization-chart-data', 'getGoogleShoppingUtilizationChartData')->name('google.shopping.utilization.chart.data');
@@ -2996,8 +2994,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         // Chart filter routes
         Route::get('/google/shopping/chart/filter', 'filterGoogleShoppingChart')->name('google.shopping.chart.filter');
         Route::get('/google/shopping/running/chart/filter', 'filterGoogleShoppingRunningChart')->name('google.shopping.running.chart.filter');
-        Route::get('/google/shopping/over/chart/filter', 'filterGoogleShoppingOverChart')->name('google.shopping.over.chart.filter');
-        Route::get('/google/shopping/under/chart/filter', 'filterGoogleShoppingUnderChart')->name('google.shopping.under.chart.filter');
         Route::get('/google/shopping/campaign/chart-data', 'getGoogleShoppingCampaignChartData');
         Route::get('/google/shopping/report/chart/filter', 'filterGoogleShoppingReportChart')->name('google.shopping.report.chart.filter');
         Route::get('/google/serp/chart/filter', 'filterGoogleSerpChart')->name('google.shopping.serp.chart.filter');
@@ -3015,8 +3011,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/google/search/data', 'getGoogleSearchAdsData');
         Route::get('/google/search/report/data', 'getGoogleSearchAdsReportData');
 
-        Route::get('/google/shopping-missings/ads', 'googleMissingAdsView')->name('google.shopping.missing.ads');
-        Route::get('/google/shopping-missings/ads/data', 'googleShoppingAdsMissingAds');
 
         Route::post('/update-google-ads-bid-price', 'updateGoogleAdsCampaignSbid');
         Route::post('/update-google-nr-data', 'updateGoogleNrData');

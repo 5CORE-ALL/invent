@@ -2735,18 +2735,6 @@
                                         <a href="{{ route('google.shopping.utilized') }}">G-Shopping Utilized's</a>
                                     </li>
                                     <li>
-                                        <a href="{{ route('google.shopping.over.utilize') }}">G-Shopping Over
-                                            Util.</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('google.shopping.under.utilize') }}">G-Shopping Under
-                                            Util.</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('google.shopping.missing.ads') }}">G-Shopping Missing
-                                            Ads</a>
-                                    </li>
-                                    <li>
                                         <a href="{{ route('google.shopping.report') }}">G-Shopping Report</a>
                                     </li>
                                     <li>
