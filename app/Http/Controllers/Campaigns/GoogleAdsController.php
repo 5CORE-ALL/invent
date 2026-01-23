@@ -276,8 +276,11 @@ class GoogleAdsController extends Controller
     }
 
     public function googleShoppingUtilizedView(){
-        $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30)->format('Y-m-d');
-        $today = \Carbon\Carbon::now()->format('Y-m-d');
+        // Google Dashboard "Last 30 days" typically means: last 30 complete days (excluding today)
+        // Because today's data might not be complete yet
+        $yesterday = \Carbon\Carbon::now()->subDay();
+        $thirtyDaysAgo = $yesterday->copy()->subDays(29)->format('Y-m-d'); // 30 days including yesterday
+        $endDate = $yesterday->format('Y-m-d');
 
         // Get all SHOPPING campaigns for combined view (no filtering by utilization)
         $googleCampaigns = DB::table('google_ads_campaigns')
@@ -290,20 +293,21 @@ class GoogleAdsController extends Controller
             ')
             ->where('advertising_channel_type', 'SHOPPING')
             ->whereDate('date', '>=', $thirtyDaysAgo)
+            ->whereDate('date', '<=', $endDate)
             ->groupBy('date')
             ->orderBy('date', 'asc')
             ->get()
             ->keyBy('date');
 
-        // Fill in missing dates with zeros
+        // Fill in missing dates with zeros (for last 30 days ending yesterday)
         $dates = [];
         $clicks = [];
         $spend = [];
         $orders = [];
         $sales = [];
 
-        for ($i = 30; $i >= 0; $i--) {
-            $date = \Carbon\Carbon::now()->subDays($i)->format('Y-m-d');
+        for ($i = 29; $i >= 0; $i--) {
+            $date = $yesterday->copy()->subDays($i)->format('Y-m-d');
             $dates[] = $date;
             
             if (isset($googleCampaigns[$date])) {

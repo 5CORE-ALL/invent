@@ -3443,6 +3443,18 @@ class AdsMasterController extends Controller
     {
         $advMasterDatas = ADVMastersData::get();
         
+        // Calculate L60 date range (60 days ago to 30 days ago)
+        $today = \Carbon\Carbon::today();
+        $l60StartDate = $today->copy()->subDays(60)->format('Y-m-d');
+        $l60EndDate = $today->copy()->subDays(31)->format('Y-m-d'); // 31 days ago to get 30 days of data
+        
+        // Get L60 spent data from daily data table
+        $l60DailyData = ADVMastersDailyData::whereBetween('date', [$l60StartDate, $l60EndDate])
+            ->select('channel', DB::raw('SUM(spent) as total_spent'), DB::raw('SUM(clicks) as total_clicks'), DB::raw('SUM(ad_sold) as total_ad_sold'), DB::raw('SUM(ad_sales) as total_ad_sales'))
+            ->groupBy('channel')
+            ->get()
+            ->keyBy('channel');
+        
         // Initialize all variables to 0 to handle missing channels
         $amazon_l30_sales = 0;
         $amazon_spent = 0;
@@ -3565,6 +3577,43 @@ class AdsMasterController extends Controller
         $ebay3pmt_l60_spent = 0;
         $walmart_l60_spent = 0;
         $gshoping_l60_spent = 0;
+        
+        // Initialize L60 clicks, ad_sold, and ad_sales variables
+        $amazonkw_l60_clicks = 0;
+        $amazonpt_l60_clicks = 0;
+        $amazonhl_l60_clicks = 0;
+        $amazonkw_l60_ad_sold = 0;
+        $amazonpt_l60_ad_sold = 0;
+        $amazonhl_l60_ad_sold = 0;
+        $amazonkw_l60_ad_sales = 0;
+        $amazonpt_l60_ad_sales = 0;
+        $amazonhl_l60_ad_sales = 0;
+        
+        $ebaykw_l60_clicks = 0;
+        $ebaypmt_l60_clicks = 0;
+        $ebaykw_l60_ad_sold = 0;
+        $ebaypmt_l60_ad_sold = 0;
+        $ebaykw_l60_ad_sales = 0;
+        $ebaypmt_l60_ad_sales = 0;
+        
+        $ebay2pmt_l60_clicks = 0;
+        $ebay2pmt_l60_ad_sold = 0;
+        $ebay2pmt_l60_ad_sales = 0;
+        
+        $ebay3kw_l60_clicks = 0;
+        $ebay3pmt_l60_clicks = 0;
+        $ebay3kw_l60_ad_sold = 0;
+        $ebay3pmt_l60_ad_sold = 0;
+        $ebay3kw_l60_ad_sales = 0;
+        $ebay3pmt_l60_ad_sales = 0;
+        
+        $walmart_l60_clicks = 0;
+        $walmart_l60_ad_sold = 0;
+        $walmart_l60_ad_sales = 0;
+        
+        $gshoping_l60_clicks = 0;
+        $gshoping_l60_ad_sold = 0;
+        $gshoping_l60_ad_sales = 0;
         
         foreach($advMasterDatas as $data)
         {
@@ -3708,6 +3757,79 @@ class AdsMasterController extends Controller
                 
             }
         }
+        
+        // Fetch L60 data from daily data table for each channel
+        // Amazon sub-channels
+        if(isset($l60DailyData['AMZ KW'])){
+            $amazonkw_l60_spent = $l60DailyData['AMZ KW']->total_spent ?? 0;
+            $amazonkw_l60_clicks = $l60DailyData['AMZ KW']->total_clicks ?? 0;
+            $amazonkw_l60_ad_sold = $l60DailyData['AMZ KW']->total_ad_sold ?? 0;
+            $amazonkw_l60_ad_sales = $l60DailyData['AMZ KW']->total_ad_sales ?? 0;
+        }
+        if(isset($l60DailyData['AMZ PT'])){
+            $amazonpt_l60_spent = $l60DailyData['AMZ PT']->total_spent ?? 0;
+            $amazonpt_l60_clicks = $l60DailyData['AMZ PT']->total_clicks ?? 0;
+            $amazonpt_l60_ad_sold = $l60DailyData['AMZ PT']->total_ad_sold ?? 0;
+            $amazonpt_l60_ad_sales = $l60DailyData['AMZ PT']->total_ad_sales ?? 0;
+        }
+        if(isset($l60DailyData['AMZ HL'])){
+            $amazonhl_l60_spent = $l60DailyData['AMZ HL']->total_spent ?? 0;
+            $amazonhl_l60_clicks = $l60DailyData['AMZ HL']->total_clicks ?? 0;
+            $amazonhl_l60_ad_sold = $l60DailyData['AMZ HL']->total_ad_sold ?? 0;
+            $amazonhl_l60_ad_sales = $l60DailyData['AMZ HL']->total_ad_sales ?? 0;
+        }
+        
+        // eBay sub-channels
+        if(isset($l60DailyData['EB KW'])){
+            $ebaykw_l60_spent = $l60DailyData['EB KW']->total_spent ?? 0;
+            $ebaykw_l60_clicks = $l60DailyData['EB KW']->total_clicks ?? 0;
+            $ebaykw_l60_ad_sold = $l60DailyData['EB KW']->total_ad_sold ?? 0;
+            $ebaykw_l60_ad_sales = $l60DailyData['EB KW']->total_ad_sales ?? 0;
+        }
+        if(isset($l60DailyData['EB PMT'])){
+            $ebaypmt_l60_spent = $l60DailyData['EB PMT']->total_spent ?? 0;
+            $ebaypmt_l60_clicks = $l60DailyData['EB PMT']->total_clicks ?? 0;
+            $ebaypmt_l60_ad_sold = $l60DailyData['EB PMT']->total_ad_sold ?? 0;
+            $ebaypmt_l60_ad_sales = $l60DailyData['EB PMT']->total_ad_sales ?? 0;
+        }
+        
+        // eBay 2 sub-channels
+        if(isset($l60DailyData['EB PMT2'])){
+            $ebay2pmt_l60_spent = $l60DailyData['EB PMT2']->total_spent ?? 0;
+            $ebay2pmt_l60_clicks = $l60DailyData['EB PMT2']->total_clicks ?? 0;
+            $ebay2pmt_l60_ad_sold = $l60DailyData['EB PMT2']->total_ad_sold ?? 0;
+            $ebay2pmt_l60_ad_sales = $l60DailyData['EB PMT2']->total_ad_sales ?? 0;
+        }
+        
+        // eBay 3 sub-channels
+        if(isset($l60DailyData['EB KW3'])){
+            $ebay3kw_l60_spent = $l60DailyData['EB KW3']->total_spent ?? 0;
+            $ebay3kw_l60_clicks = $l60DailyData['EB KW3']->total_clicks ?? 0;
+            $ebay3kw_l60_ad_sold = $l60DailyData['EB KW3']->total_ad_sold ?? 0;
+            $ebay3kw_l60_ad_sales = $l60DailyData['EB KW3']->total_ad_sales ?? 0;
+        }
+        if(isset($l60DailyData['EB PMT3'])){
+            $ebay3pmt_l60_spent = $l60DailyData['EB PMT3']->total_spent ?? 0;
+            $ebay3pmt_l60_clicks = $l60DailyData['EB PMT3']->total_clicks ?? 0;
+            $ebay3pmt_l60_ad_sold = $l60DailyData['EB PMT3']->total_ad_sold ?? 0;
+            $ebay3pmt_l60_ad_sales = $l60DailyData['EB PMT3']->total_ad_sales ?? 0;
+        }
+        
+        // Walmart
+        if(isset($l60DailyData['WALMART'])){
+            $walmart_l60_spent = $l60DailyData['WALMART']->total_spent ?? 0;
+            $walmart_l60_clicks = $l60DailyData['WALMART']->total_clicks ?? 0;
+            $walmart_l60_ad_sold = $l60DailyData['WALMART']->total_ad_sold ?? 0;
+            $walmart_l60_ad_sales = $l60DailyData['WALMART']->total_ad_sales ?? 0;
+        }
+        
+        // G SHOPPING
+        if(isset($l60DailyData['G SHOPPING'])){
+            $gshoping_l60_spent = $l60DailyData['G SHOPPING']->total_spent ?? 0;
+            $gshoping_l60_clicks = $l60DailyData['G SHOPPING']->total_clicks ?? 0;
+            $gshoping_l60_ad_sold = $l60DailyData['G SHOPPING']->total_ad_sold ?? 0;
+            $gshoping_l60_ad_sales = $l60DailyData['G SHOPPING']->total_ad_sales ?? 0;
+        }
 
         $roundVars = [
             'amazon_l30_sales', 'amazon_spent', 'amazon_clicks', 'amazon_ad_sales', 'amazon_ad_sold', 'amazon_missing_ads', 'amazonkw_l30_sales', 'amazonkw_spent', 'amazonkw_clicks', 'amazonkw_ad_sales', 'amazonkw_ad_sold', 'amazonkw_missing_ads', 'amazonpt_l30_sales', 'amazonpt_spent', 'amazonpt_clicks', 'amazonpt_ad_sales', 'amazonpt_ad_sold', 'amazonpt_missing_ads', 'amazonhl_l30_sales', 'amazonhl_spent', 'amazonhl_clicks', 'amazonhl_ad_sales', 'amazonhl_ad_sold', 'amazonhl_missing_ads', 'ebay_l30_sales', 'ebay_spent', 'ebay_clicks', 'ebay_ad_sales', 'ebay_ad_sold', 'ebay_missing_ads', 'ebaykw_l30_sales', 'ebaykw_spent', 'ebaykw_clicks', 'ebaykw_ad_sales', 'ebaykw_ad_sold', 'ebaykw_missing_ads', 'ebaypmt_l30_sales', 'ebaypmt_spent', 'ebaypmt_clicks', 'ebaypmt_ad_sales', 'ebaypmt_ad_sold', 'ebaypmt_missing_ads', 'ebay2_l30_sales', 'ebay2_spent', 'ebay2_clicks', 'ebay2_ad_sales', 'ebay2_ad_sold', 'ebay2_missing_ads', 'ebay2pmt_l30_sales', 'ebay2pmt_spent', 'ebay2pmt_clicks', 'ebay2pmt_ad_sales', 'ebay2pmt_ad_sold', 'ebay2pmt_missing_ads', 'ebay3_l30_sales', 'ebay3_spent', 'ebay3_clicks', 'ebay3_ad_sales', 'ebay3_ad_sold', 'ebay3_missing_ads', 'ebay3kw_l30_sales', 'ebay3kw_spent', 'ebay3kw_clicks', 'ebay3kw_ad_sales', 'ebay3kw_ad_sold', 'ebay3kw_missing_ads', 'ebay3pmt_l30_sales', 'ebay3pmt_spent', 'ebay3pmt_clicks', 'ebay3pmt_ad_sales', 'ebay3pmt_ad_sold', 'ebay3pmt_missing_ads', 'walmart_l30_sales', 'walmart_spent', 'walmart_clicks', 'walmart_ad_sales', 'walmart_ad_sold', 'walmart_missing_ads', 'gshoping_l30_sales', 'gshoping_spent', 'gshoping_clicks', 'gshoping_ad_sales', 'gshoping_ad_sold', 'gshoping_missing_ads', 'total_l30_sales', 'total_spent', 'total_clicks', 'total_ad_sales', 'total_ad_sold', 'total_missing'
@@ -3787,10 +3909,24 @@ class AdsMasterController extends Controller
             + $ebay3_missing_ads + $ebay3kw_missing_ads + $ebay3pmt_missing_ads
             + $walmart_missing_ads + $gshoping_missing_ads;
 
-        // L60 clicks/ad_sold (not yet per-channel in DB; use 0 for channel-wise)
-        $total_l60_clicks = 0;
-        $total_l60_ad_sold = 0;
-        $total_l60_ad_sales = 0;
+        // Calculate L60 clicks/ad_sold from daily data
+        $total_l60_clicks = $amazonkw_l60_clicks + $amazonpt_l60_clicks + $amazonhl_l60_clicks
+            + $ebaykw_l60_clicks + $ebaypmt_l60_clicks
+            + $ebay2pmt_l60_clicks
+            + $ebay3kw_l60_clicks + $ebay3pmt_l60_clicks
+            + $walmart_l60_clicks + $gshoping_l60_clicks;
+        
+        $total_l60_ad_sold = $amazonkw_l60_ad_sold + $amazonpt_l60_ad_sold + $amazonhl_l60_ad_sold
+            + $ebaykw_l60_ad_sold + $ebaypmt_l60_ad_sold
+            + $ebay2pmt_l60_ad_sold
+            + $ebay3kw_l60_ad_sold + $ebay3pmt_l60_ad_sold
+            + $walmart_l60_ad_sold + $gshoping_l60_ad_sold;
+        
+        $total_l60_ad_sales = $amazonkw_l60_ad_sales + $amazonpt_l60_ad_sales + $amazonhl_l60_ad_sales
+            + $ebaykw_l60_ad_sales + $ebaypmt_l60_ad_sales
+            + $ebay2pmt_l60_ad_sales
+            + $ebay3kw_l60_ad_sales + $ebay3pmt_l60_ad_sales
+            + $walmart_l60_ad_sales + $gshoping_l60_ad_sales;
 
         // Channel-wise totals for "Active channels view / channel-wise" mode
         $channelWiseTotals = [];
@@ -3800,10 +3936,11 @@ class AdsMasterController extends Controller
                 'spent' => $amazon_spent,
                 'l60_spent' => $amazon_l60_spent,
                 'clicks' => $amazon_clicks,
-                'l60_clicks' => 0,
+                'l60_clicks' => $amazonkw_l60_clicks + $amazonpt_l60_clicks + $amazonhl_l60_clicks,
                 'ad_sales' => $amazon_ad_sales,
+                'l60_ad_sales' => $amazonkw_l60_ad_sales + $amazonpt_l60_ad_sales + $amazonhl_l60_ad_sales,
                 'ad_sold' => $amazon_ad_sold,
-                'l60_ad_sold' => 0,
+                'l60_ad_sold' => $amazonkw_l60_ad_sold + $amazonpt_l60_ad_sold + $amazonhl_l60_ad_sold,
                 'missing' => $amazon_missing_ads + $amazonkw_missing_ads + $amazonpt_missing_ads + $amazonhl_missing_ads,
             ],
             'EBAY' => [
@@ -3811,10 +3948,11 @@ class AdsMasterController extends Controller
                 'spent' => $ebay_spent,
                 'l60_spent' => $ebay_l60_spent,
                 'clicks' => $ebay_clicks,
-                'l60_clicks' => 0,
+                'l60_clicks' => $ebaykw_l60_clicks + $ebaypmt_l60_clicks,
                 'ad_sales' => $ebay_ad_sales,
+                'l60_ad_sales' => $ebaykw_l60_ad_sales + $ebaypmt_l60_ad_sales,
                 'ad_sold' => $ebay_ad_sold,
-                'l60_ad_sold' => 0,
+                'l60_ad_sold' => $ebaykw_l60_ad_sold + $ebaypmt_l60_ad_sold,
                 'missing' => $ebay_missing_ads + $ebaykw_missing_ads + $ebaypmt_missing_ads,
             ],
             'EBAY 2' => [
@@ -3822,10 +3960,11 @@ class AdsMasterController extends Controller
                 'spent' => $ebay2_spent,
                 'l60_spent' => $ebay2_l60_spent,
                 'clicks' => $ebay2_clicks,
-                'l60_clicks' => 0,
+                'l60_clicks' => $ebay2pmt_l60_clicks,
                 'ad_sales' => $ebay2_ad_sales,
+                'l60_ad_sales' => $ebay2pmt_l60_ad_sales,
                 'ad_sold' => $ebay2_ad_sold,
-                'l60_ad_sold' => 0,
+                'l60_ad_sold' => $ebay2pmt_l60_ad_sold,
                 'missing' => $ebay2_missing_ads + $ebay2pmt_missing_ads,
             ],
             'EBAY 3' => [
@@ -3833,10 +3972,11 @@ class AdsMasterController extends Controller
                 'spent' => $ebay3_spent,
                 'l60_spent' => $ebay3_l60_spent,
                 'clicks' => $ebay3_clicks,
-                'l60_clicks' => 0,
+                'l60_clicks' => $ebay3kw_l60_clicks + $ebay3pmt_l60_clicks,
                 'ad_sales' => $ebay3_ad_sales,
+                'l60_ad_sales' => $ebay3kw_l60_ad_sales + $ebay3pmt_l60_ad_sales,
                 'ad_sold' => $ebay3_ad_sold,
-                'l60_ad_sold' => 0,
+                'l60_ad_sold' => $ebay3kw_l60_ad_sold + $ebay3pmt_l60_ad_sold,
                 'missing' => $ebay3_missing_ads + $ebay3kw_missing_ads + $ebay3pmt_missing_ads,
             ],
             'WALMART' => [
@@ -3844,10 +3984,11 @@ class AdsMasterController extends Controller
                 'spent' => $walmart_spent,
                 'l60_spent' => $walmart_l60_spent,
                 'clicks' => $walmart_clicks,
-                'l60_clicks' => 0,
+                'l60_clicks' => $walmart_l60_clicks,
                 'ad_sales' => $walmart_ad_sales,
+                'l60_ad_sales' => $walmart_l60_ad_sales,
                 'ad_sold' => $walmart_ad_sold,
-                'l60_ad_sold' => 0,
+                'l60_ad_sold' => $walmart_l60_ad_sold,
                 'missing' => $walmart_missing_ads,
             ],
             'G SHOPPING' => [
@@ -3855,10 +3996,11 @@ class AdsMasterController extends Controller
                 'spent' => $gshoping_spent,
                 'l60_spent' => $gshoping_l60_spent,
                 'clicks' => $gshoping_clicks,
-                'l60_clicks' => 0,
+                'l60_clicks' => $gshoping_l60_clicks,
                 'ad_sales' => $gshoping_ad_sales,
+                'l60_ad_sales' => $gshoping_l60_ad_sales,
                 'ad_sold' => $gshoping_ad_sold,
-                'l60_ad_sold' => 0,
+                'l60_ad_sold' => $gshoping_l60_ad_sold,
                 'missing' => $gshoping_missing_ads,
             ],
         ];
@@ -3866,8 +4008,10 @@ class AdsMasterController extends Controller
             $grw = ($d['l60_spent'] > 0) ? ($d['spent'] / $d['l60_spent']) * 100 : 0;
             $grw_clks = ($d['l60_clicks'] > 0) ? ($d['clicks'] / $d['l60_clicks']) * 100 : 0;
             $l30_acos = ($d['ad_sales'] > 0) ? ($d['spent'] / $d['ad_sales']) * 100 : 0;
-            $l60_acos = 0;
-            $ctrl_acos = 0;
+            $l60_acos = (($d['l60_ad_sales'] ?? 0) > 0) ? ($d['l60_spent'] / $d['l60_ad_sales']) * 100 : 0;
+            $l30_acos_val = ($d['ad_sales'] > 0) ? ($d['spent'] / $d['ad_sales']) * 100 : 0;
+            $l60_acos_val = (($d['l60_ad_sales'] ?? 0) > 0) ? ($d['l60_spent'] / $d['l60_ad_sales']) * 100 : 0;
+            $ctrl_acos = ($l60_acos_val > 0) ? (($l30_acos_val - $l60_acos_val) / $l60_acos_val) * 100 : 0;
             $cvr = ($d['clicks'] > 0) ? ($d['ad_sold'] / $d['clicks']) * 100 : 0;
             $cvr_60 = ($d['l60_clicks'] > 0) ? ($d['l60_ad_sold'] / $d['l60_clicks']) * 100 : 0;
             $grw_cvr = ($cvr_60 > 0) ? (($cvr - $cvr_60) / $cvr_60) * 100 : 0;
@@ -3878,6 +4022,7 @@ class AdsMasterController extends Controller
                 'clicks' => $d['clicks'],
                 'l60_clicks' => $d['l60_clicks'],
                 'ad_sales' => $d['ad_sales'],
+                'l60_ad_sales' => $d['l60_ad_sales'] ?? 0,
                 'ad_sold' => $d['ad_sold'],
                 'l60_ad_sold' => $d['l60_ad_sold'],
                 'missing' => $d['missing'],

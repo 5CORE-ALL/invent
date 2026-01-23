@@ -8,10 +8,11 @@ use App\Services\GoogleAdsSbidService;
 use App\Models\ProductMaster;
 use App\Models\GoogleAdsCampaign;
 use App\Models\ShopifySku;
+use App\Models\GoogleDataView;
 
 class UpdateShoppingBudgetCronCommand extends Command
 {
-    protected $signature = 'budget:update-shopping';
+    protected $signature = 'budget:update-shopping {--dry-run : Run without actually updating budgets}';
     protected $description = 'Update budget for SHOPPING campaigns based on ACOS (L30 data)';
 
     protected $sbidService;
@@ -36,6 +37,12 @@ class UpdateShoppingBudgetCronCommand extends Command
                 return 1;
             }
 
+            $dryRun = $this->option('dry-run');
+            
+            if ($dryRun) {
+                $this->warn('⚠️  DRY RUN MODE - No budgets will be updated');
+            }
+            
             $this->info('Starting budget update cron for SHOPPING campaigns (ACOS-based)...');
 
             $customerId = env('GOOGLE_ADS_LOGIN_CUSTOMER_ID');
@@ -57,8 +64,9 @@ class UpdateShoppingBudgetCronCommand extends Command
 
         $this->info("Date range - L30: {$dateRanges['L30']['start']} to {$dateRanges['L30']['end']}");
 
-            // Fetch product masters
-            $productMasters = ProductMaster::orderBy('parent', 'asc')
+            // Fetch product masters (exclude soft deleted, matching frontend logic)
+            $productMasters = ProductMaster::whereNull('deleted_at')
+                ->orderBy('parent', 'asc')
                 ->orderByRaw("CASE WHEN sku LIKE 'PARENT %' THEN 1 ELSE 0 END")
                 ->orderBy('sku', 'asc')
                 ->get();
@@ -82,6 +90,10 @@ class UpdateShoppingBudgetCronCommand extends Command
             if (!empty($skus)) {
                 $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
             }
+            
+            // Get NRA values from GoogleDataView (matching frontend logic)
+            $nrValues = GoogleDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+            
             DB::connection()->disconnect();
 
         $this->info("Found " . $productMasters->count() . " product masters");
@@ -105,6 +117,16 @@ class UpdateShoppingBudgetCronCommand extends Command
         $this->info("Found " . $googleCampaigns->count() . " SHOPPING campaigns in L30 range");
 
         $campaignUpdates = []; 
+        $skipCounters = [
+            'zero_inventory' => 0,
+            'nra_skip' => 0,
+            'no_matching_campaign' => 0,
+            'campaign_not_enabled' => 0,
+            'no_budget_id' => 0,
+            'duplicate_budget' => 0,
+            'total_processed' => 0,
+            'total_campaigns_processed' => 0 // Count individual campaigns, not just unique budgets
+        ];
 
         foreach ($productMasters as $pm) {
             $sku = strtoupper(trim($pm->sku));
@@ -112,27 +134,69 @@ class UpdateShoppingBudgetCronCommand extends Command
             // Use original SKU for shopifyData lookup
             $shopify = $shopifyData[$pm->sku] ?? null;
             if ($shopify && $shopify->inv <= 0) {
+                $skipCounters['zero_inventory']++;
                 continue; // Skip zero inventory
             }
+            
+            // Check NRA (Not Running Ads) - skip if NRA
+            $nra = '';
+            if (isset($nrValues[$pm->sku])) {
+                $raw = $nrValues[$pm->sku];
+                if (!is_array($raw)) {
+                    $raw = json_decode($raw, true);
+                }
+                if (is_array($raw)) {
+                    $nra = $raw['NRA'] ?? '';
+                }
+            }
+            if (!empty($nra) && strtoupper(trim($nra)) === 'NRA') {
+                $skipCounters['nra_skip']++;
+                continue; // Skip NRA campaigns
+            }
 
-            // Use improved matching logic for SHOPPING campaigns
+            // Use improved matching logic for SHOPPING campaigns (matching frontend logic)
             $matchedCampaign = $googleCampaigns->first(function ($c) use ($sku) {
                 $campaign = strtoupper(trim($c->campaign_name));
+                $campaignCleaned = rtrim(trim($campaign), '.'); // Remove trailing dots like frontend
                 $skuTrimmed = strtoupper(trim($sku));
                 
                 // Check if SKU is in comma-separated list
-                $parts = array_map('trim', explode(',', $campaign));
+                $parts = array_map('trim', explode(',', $campaignCleaned));
+                $parts = array_map(function($part) {
+                    return rtrim(trim($part), '.'); // Remove trailing dots from each part
+                }, $parts);
                 $exactMatch = in_array($skuTrimmed, $parts);
                 
                 // If not in list, check if campaign name exactly equals SKU
                 if (!$exactMatch) {
-                    $exactMatch = $campaign === $skuTrimmed;
+                    $exactMatch = $campaignCleaned === $skuTrimmed;
                 }
                 
                 return $exactMatch && $c->campaign_status === 'ENABLED';
             });
 
             if (!$matchedCampaign) {
+                // Check if campaign exists but is not ENABLED (matching frontend logic)
+                $anyCampaign = $googleCampaigns->first(function ($c) use ($sku) {
+                    $campaign = strtoupper(trim($c->campaign_name));
+                    $campaignCleaned = rtrim(trim($campaign), '.'); // Remove trailing dots
+                    $skuTrimmed = strtoupper(trim($sku));
+                    $parts = array_map('trim', explode(',', $campaignCleaned));
+                    $parts = array_map(function($part) {
+                        return rtrim(trim($part), '.'); // Remove trailing dots from each part
+                    }, $parts);
+                    $exactMatch = in_array($skuTrimmed, $parts);
+                    if (!$exactMatch) {
+                        $exactMatch = $campaignCleaned === $skuTrimmed;
+                    }
+                    return $exactMatch;
+                });
+                
+                if ($anyCampaign && $anyCampaign->campaign_status !== 'ENABLED') {
+                    $skipCounters['campaign_not_enabled']++;
+                } else {
+                    $skipCounters['no_matching_campaign']++;
+                }
                 continue;
             }
 
@@ -140,20 +204,25 @@ class UpdateShoppingBudgetCronCommand extends Command
             $budgetId = $matchedCampaign->budget_id;
             
             if (!$budgetId) {
+                $skipCounters['no_budget_id']++;
                 $this->line("Skipping campaign {$campaignId} (SKU: {$pm->sku}) - No budget ID");
                 continue;
             }
 
-            // Aggregate metrics for L30 range
+            // Aggregate metrics for L30 range (matching frontend logic)
             $campaignRanges = $googleCampaigns->filter(function ($c) use ($sku, $dateRanges) {
                 $campaign = strtoupper(trim($c->campaign_name));
+                $campaignCleaned = rtrim(trim($campaign), '.'); // Remove trailing dots
                 $skuTrimmed = strtoupper(trim($sku));
                 
-                $parts = array_map('trim', explode(',', $campaign));
+                $parts = array_map('trim', explode(',', $campaignCleaned));
+                $parts = array_map(function($part) {
+                    return rtrim(trim($part), '.'); // Remove trailing dots from each part
+                }, $parts);
                 $exactMatch = in_array($skuTrimmed, $parts);
                 
                 if (!$exactMatch) {
-                    $exactMatch = $campaign === $skuTrimmed;
+                    $exactMatch = $campaignCleaned === $skuTrimmed;
                 }
                 
                 $matchesCampaign = $exactMatch;
@@ -169,7 +238,14 @@ class UpdateShoppingBudgetCronCommand extends Command
             $totalSales = $campaignRanges->sum('ga4_ad_sales'); // Already in dollars
             
             // Calculate ACOS: (Spend / Sales) * 100
-            $acos = $totalSales > 0 ? ($totalSpend / $totalSales) * 100 : 0;
+            // If sales = 0 but spend > 0, ACOS should be 100% (matching frontend logic)
+            if ($totalSales > 0) {
+                $acos = ($totalSpend / $totalSales) * 100;
+            } elseif ($totalSpend > 0 && $totalSales == 0) {
+                $acos = 100; // When there's spend but no sales, ACOS is 100%
+            } else {
+                $acos = 0; // No spend and no sales
+            }
             
             // Get current budget
             $currentBudget = $matchedCampaign->budget_amount_micros ? $matchedCampaign->budget_amount_micros / 1000000 : 0;
@@ -193,20 +269,47 @@ class UpdateShoppingBudgetCronCommand extends Command
                 $newBudget = 1;
             }
             
+            // Track individual campaigns (for statistics)
+            $skipCounters['total_campaigns_processed']++;
+            
             if (!isset($campaignUpdates[$budgetId])) {
-                try {
-                    $budgetResourceName = "customers/{$customerId}/campaignBudgets/{$budgetId}";
-                    $this->sbidService->updateCampaignBudget($customerId, $budgetResourceName, $newBudget);
+                if ($dryRun) {
                     $campaignUpdates[$budgetId] = true;
-                    $this->info("Updated SHOPPING campaign {$campaignId} (SKU: {$pm->sku}): Budget=\${$currentBudget} → \${$newBudget} (ACOS={$acos}%)");
-                } catch (\Exception $e) {
-                    $this->error("Failed to update SHOPPING campaign budget {$campaignId}: " . $e->getMessage());
+                    $skipCounters['total_processed']++;
+                    $this->info("[DRY RUN] Would update SHOPPING campaign {$campaignId} (SKU: {$pm->sku}): Budget=\${$currentBudget} → \${$newBudget} (ACOS={$acos}%)");
+                } else {
+                    try {
+                        $budgetResourceName = "customers/{$customerId}/campaignBudgets/{$budgetId}";
+                        $this->sbidService->updateCampaignBudget($customerId, $budgetResourceName, $newBudget);
+                        $campaignUpdates[$budgetId] = true;
+                        $skipCounters['total_processed']++;
+                        $this->info("Updated SHOPPING campaign {$campaignId} (SKU: {$pm->sku}): Budget=\${$currentBudget} → \${$newBudget} (ACOS={$acos}%)");
+                    } catch (\Exception $e) {
+                        $this->error("Failed to update SHOPPING campaign budget {$campaignId}: " . $e->getMessage());
+                    }
                 }
+            } else {
+                $skipCounters['duplicate_budget']++;
             }
         }
 
             $processedCount = count($campaignUpdates);
-            $this->info("Done. Processed: {$processedCount} unique SHOPPING campaign budgets.");
+            $action = $dryRun ? "Would process" : "Processed";
+            $this->info("Done. {$action}: {$processedCount} unique SHOPPING campaign budgets.");
+            $this->info("Skip Statistics:");
+            $this->info("  - Zero Inventory: {$skipCounters['zero_inventory']}");
+            $this->info("  - NRA (Not Running Ads): {$skipCounters['nra_skip']}");
+            $this->info("  - No Matching Campaign: {$skipCounters['no_matching_campaign']}");
+            $this->info("  - Campaign Not ENABLED: {$skipCounters['campaign_not_enabled']}");
+            $this->info("  - No Budget ID: {$skipCounters['no_budget_id']}");
+            $this->info("  - Duplicate Budget (already processed): {$skipCounters['duplicate_budget']}");
+            $this->info("  - Total Individual Campaigns {$action}: {$skipCounters['total_campaigns_processed']}");
+            $this->info("  - Total Unique Budgets {$action}: {$skipCounters['total_processed']}");
+            
+            if ($dryRun) {
+                $this->warn("\n⚠️  This was a DRY RUN. No budgets were actually updated.");
+                $this->info("Run without --dry-run to perform actual updates.");
+            }
 
             return 0;
         } catch (\Exception $e) {
