@@ -509,4 +509,57 @@ class GoogleAdsSbidService
         }
     }
 
+    /**
+     * Enable a campaign by setting its status to ENABLED
+     */
+    public function enableCampaign($customerId, $campaignResourceName)
+    {
+        try {
+            // Validate inputs
+            if (empty($customerId) || empty($campaignResourceName)) {
+                throw new \InvalidArgumentException("Invalid parameters for campaign enable");
+            }
+
+            $campaignService = $this->getClient()->getCampaignServiceClient();
+
+            $campaign = new Campaign([
+                'resource_name' => $campaignResourceName,
+                'status' => CampaignStatus::ENABLED
+            ]);
+
+            $operation = new CampaignOperation();
+            $operation->setUpdate($campaign);
+            $operation->setUpdateMask(new FieldMask(['paths' => ['status']]));
+
+            $request = new MutateCampaignsRequest([
+                'customer_id' => $customerId,
+                'operations' => [$operation]
+            ]);
+
+            $response = $campaignService->mutateCampaigns($request);
+            
+            // Validate response
+            if (!$response || !$response->getResults()) {
+                throw new \Exception("No response received from Google Ads API");
+            }
+
+            $results = $response->getResults();
+            if (count($results) === 0) {
+                throw new \Exception("No results returned from campaign enable operation");
+            }
+            
+            return $response;
+            
+        } catch (\Exception $e) {
+            Log::error("Failed to enable campaign", [
+                'customer_id' => $customerId,
+                'campaign_resource' => $campaignResourceName,
+                'error_message' => $e->getMessage(),
+                'error_code' => $e->getCode(),
+                'error_trace' => $e->getTraceAsString()
+            ]);
+            throw $e;
+        }
+    }
+
 }

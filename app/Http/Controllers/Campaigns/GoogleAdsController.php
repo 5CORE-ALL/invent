@@ -142,6 +142,7 @@ class GoogleAdsController extends Controller
                 SUM(ga4_sold_units) as orders, 
                 SUM(ga4_ad_sales) as sales
             ')
+            ->where('advertising_channel_type', 'SHOPPING')
             ->whereDate('date', '>=', $thirtyDaysAgo)
             ->groupBy('date')
             ->orderBy('date', 'asc')
@@ -1165,7 +1166,7 @@ class GoogleAdsController extends Controller
     // Chart filter methods
     public function filterGoogleShoppingChart(Request $request)
     {
-        return $this->getChartData($request);
+        return $this->getChartData($request, ['advertising_channel_type' => 'SHOPPING']);
     }
 
     public function filterGoogleShoppingRunningChart(Request $request)
@@ -1783,6 +1784,70 @@ class GoogleAdsController extends Controller
                 'message' => 'Error fetching chart data: ' . $e->getMessage(),
                 'data' => [],
                 'status' => 500,
+            ], 500);
+        }
+    }
+
+    public function toggleGoogleShoppingCampaignStatus(Request $request)
+    {
+        try {
+            $campaignId = $request->input('campaign_id');
+            $status = $request->input('status'); // 'ENABLED' or 'PAUSED'
+
+            if (!$campaignId || !$status) {
+                return response()->json([
+                    'status' => 400,
+                    'message' => 'Campaign ID and status are required'
+                ], 400);
+            }
+
+            if (!in_array($status, ['ENABLED', 'PAUSED'])) {
+                return response()->json([
+                    'status' => 400,
+                    'message' => 'Status must be ENABLED or PAUSED'
+                ], 400);
+            }
+
+            $customerId = env('GOOGLE_ADS_LOGIN_CUSTOMER_ID');
+            if (empty($customerId)) {
+                return response()->json([
+                    'status' => 500,
+                    'message' => 'GOOGLE_ADS_LOGIN_CUSTOMER_ID is not configured'
+                ], 500);
+            }
+
+            $campaignResourceName = "customers/{$customerId}/campaigns/{$campaignId}";
+
+            try {
+                if ($status === 'PAUSED') {
+                    $this->sbidService->pauseCampaign($customerId, $campaignResourceName);
+                } else {
+                    $this->sbidService->enableCampaign($customerId, $campaignResourceName);
+                }
+
+                // Update database
+                DB::table('google_ads_campaigns')
+                    ->where('campaign_id', $campaignId)
+                    ->update(['campaign_status' => $status]);
+
+                return response()->json([
+                    'status' => 200,
+                    'message' => "Campaign {$status} successfully",
+                    'campaign_id' => $campaignId,
+                    'campaign_status' => $status
+                ]);
+            } catch (\Exception $e) {
+                Log::error("Failed to {$status} Google Shopping campaign {$campaignId}: " . $e->getMessage());
+                return response()->json([
+                    'status' => 500,
+                    'message' => "Failed to {$status} campaign: " . $e->getMessage()
+                ], 500);
+            }
+        } catch (\Exception $e) {
+            Log::error("Error in toggleGoogleShoppingCampaignStatus: " . $e->getMessage());
+            return response()->json([
+                'status' => 500,
+                'message' => 'Error toggling campaign status: ' . $e->getMessage()
             ], 500);
         }
     }

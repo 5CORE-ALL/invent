@@ -361,7 +361,7 @@
                     <!-- Stats Row -->
                     <div class="row text-center mb-4">
                         <!-- Clicks -->
-                        <div class="col-md-3 mb-3 mb-md-0">
+                        <div class="col-md-2 mb-3 mb-md-0">
                             <div class="p-3 border rounded bg-light h-100">
                                 <div class="text-muted small">Clicks</div>
                                 <div class="h3 mb-0 fw-bold text-primary card-clicks">{{ $clicks->sum() }}</div>
@@ -369,31 +369,67 @@
                         </div>
 
                         <!-- Spend -->
-                        <div class="col-md-3 mb-3 mb-md-0">
+                        <div class="col-md-2 mb-3 mb-md-0">
                             <div class="p-3 border rounded bg-light h-100">
                                 <div class="text-muted small">Spend</div>
                                 <div class="h3 mb-0 fw-bold text-success card-spend">
-                                    US${{ number_format($spend->sum(), 0) }}
+                                    ${{ number_format($spend->sum(), 0) }}
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Sales -->
+                        <div class="col-md-2 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Sales</div>
+                                <div class="h3 mb-0 fw-bold text-info card-sales">
+                                    ${{ number_format($sales->sum(), 0) }}
                                 </div>
                             </div>
                         </div>
 
                         <!-- Orders -->
-                        <div class="col-md-3 mb-3 mb-md-0">
+                        <div class="col-md-2 mb-3 mb-md-0">
                             <div class="p-3 border rounded bg-light h-100">
                                 <div class="text-muted small">Orders</div>
                                 <div class="h3 mb-0 fw-bold text-danger card-orders">{{ $orders->sum() }}</div>
                             </div>
                         </div>
 
-                        <!-- Sales -->
-                        <div class="col-md-3">
+                        <!-- ACOS -->
+                        <div class="col-md-2 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">ACOS</div>
+                                <div class="h3 mb-0 fw-bold text-warning card-acos">
+                                    @php
+                                        $totalSpend = $spend->sum();
+                                        $totalSales = $sales->sum();
+                                        if ($totalSales > 0) {
+                                            $acos = ($totalSpend / $totalSales) * 100;
+                                        } elseif ($totalSpend > 0 && $totalSales == 0) {
+                                            $acos = 100; // Standard: 100% when spend but no sales
+                                        } else {
+                                            $acos = 0;
+                                        }
+                                    @endphp
+                                    {{ number_format($acos, 0) }}%
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- CVR -->
+                        <div class="col-md-2">
                             <div class="p-3 border rounded bg-light h-100">
                                 <div class="d-flex justify-content-between align-items-center">
                                     <div>
-                                        <div class="text-muted small">Sales</div>
-                                        <div class="h3 mb-0 fw-bold text-info card-sales">
-                                            US${{ number_format($sales->sum(), 0) }}
+                                        <div class="text-muted small">CVR</div>
+                                        <div class="h3 mb-0 fw-bold text-danger card-cvr">
+                                            @php
+                                                $totalOrders = $orders->sum();
+                                                $totalClicks = $clicks->sum();
+                                                $cvr = $totalClicks > 0 ? ($totalOrders / $totalClicks) * 100 : 0;
+                                            @endphp
+                                            {{ number_format($cvr, 2) }}%
                                         </div>
                                     </div>
                                     <button id="toggleChartBtn" class="btn btn-sm btn-info ms-2">
@@ -973,12 +1009,27 @@
                         field: "sku",
                         hozAlign: "left",
                         formatter: function(cell) {
+                            let row = cell.getRow().getData();
                             let sku = cell.getValue();
+                            let campaignId = row.campaign_id || '';
+                            let campaignStatus = (row.campaignStatus || '').toUpperCase();
+                            let isEnabled = campaignStatus === 'ENABLED';
+                            
                             return `
-                                <span>${sku}</span>
-                                <i class="fa fa-info-circle text-primary toggle-cols-btn" 
-                                data-sku="${sku}" 
-                                style="cursor:pointer; margin-left:8px;"></i>
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <span>${sku}</span>
+                                    ${campaignId ? `
+                                        <div class="form-check form-switch ms-2">
+                                            <input class="form-check-input campaign-toggle-switch" 
+                                                   type="checkbox" 
+                                                   role="switch" 
+                                                   data-sku="${sku}"
+                                                   data-campaign-id="${campaignId}"
+                                                   ${isEnabled ? 'checked' : ''}
+                                                   style="cursor: pointer; width: 3rem; height: 1.5rem;">
+                                        </div>
+                                    ` : ''}
+                                </div>
                             `;
                         }
                     },
@@ -1239,7 +1290,7 @@
                             if (sales_L30 > 0) {
                                 acos = (spend_L30 / sales_L30) * 100;
                             } else if (spend_L30 > 0 && sales_L30 == 0) {
-                                acos = 100;
+                                acos = 100; // Standard: 100% when spend but no sales
                             } else {
                                 acos = 0;
                             }
@@ -1271,7 +1322,7 @@
                             if (salesA > 0) {
                                 acosA = (spendA / salesA) * 100;
                             } else if (spendA > 0 && salesA == 0) {
-                                acosA = 100;
+                                acosA = 100; // Standard: 100% when spend but no sales
                             }
 
                             // Calculate ACOS for B
@@ -1281,7 +1332,7 @@
                             if (salesB > 0) {
                                 acosB = (spendB / salesB) * 100;
                             } else if (spendB > 0 && salesB == 0) {
-                                acosB = 100;
+                                acosB = 100; // Standard: 100% when spend but no sales
                             }
 
                             // Calculate SBGT for A
@@ -1328,7 +1379,7 @@
                             if (sales_L30 > 0) {
                                 acos = (spend_L30 / sales_L30) * 100;
                             } else if (spend_L30 > 0 && sales_L30 == 0) {
-                                acos = 100;
+                                acos = 100; // Standard: 100% when spend but no sales
                             } else {
                                 acos = 0;
                             }
@@ -1346,7 +1397,7 @@
                             if (salesA > 0) {
                                 acosA = (spendA / salesA) * 100;
                             } else if (spendA > 0 && salesA == 0) {
-                                acosA = 100;
+                                acosA = 9999; // Very high ACOS when spend but no sales
                             }
 
                             var spendB = parseFloat(dataB.spend_L30 || 0);
@@ -1355,7 +1406,7 @@
                             if (salesB > 0) {
                                 acosB = (spendB / salesB) * 100;
                             } else if (spendB > 0 && salesB == 0) {
-                                acosB = 100;
+                                acosB = 9999; // Very high ACOS when spend but no sales
                             }
 
                             return acosA - acosB;
@@ -1571,29 +1622,6 @@
 
                             return sbidA - sbidB;
                         }
-                    },
-                    {
-                        title: "Status",
-                        field: "campaignStatus",
-                        formatter: function(cell) {
-                            const value = cell.getValue()?.toUpperCase();
-                            let dotColor = '';
-
-                            if (value === 'ENABLED') {
-                                dotColor = 'green';
-                            } else if (value === 'PAUSED') {
-                                dotColor = 'red';
-                            } else {
-                                dotColor = 'gray';
-                            }
-
-                            return `
-                                <div style="display: flex; align-items: center; justify-content: center;">
-                                    <span class="status-dot ${dotColor}" title="${value || ''}"></span>
-                                </div>
-                            `;
-                        },
-                        hozAlign: "center"
                     },
                     {
                         title: "CAMPAIGN",
@@ -1965,7 +1993,7 @@
                     if (sales_L30 > 0) {
                         acos = (spend_L30 / sales_L30) * 100;
                     } else if (spend_L30 > 0 && sales_L30 == 0) {
-                        acos = 100;
+                        acos = 100; // Standard: 100% when spend but no sales
                     }
 
                     if (acosMin && acos < parseFloat(acosMin)) return false;
@@ -2251,14 +2279,59 @@
             });
 
 
-            document.addEventListener("click", function(e) {
-                if (e.target.classList.contains("toggle-cols-btn")) {
-                    let colsToToggle = ["INV", "L30", "DIL %", "NRL", "NRA"];
-
-                    colsToToggle.forEach(colName => {
-                        let col = table.getColumn(colName);
-                        if (col) {
-                            col.toggle();
+            // Handle campaign toggle switch
+            document.addEventListener("change", function(e) {
+                if (e.target.classList.contains("campaign-toggle-switch")) {
+                    e.stopPropagation();
+                    const switchElement = e.target;
+                    const campaignId = switchElement.getAttribute('data-campaign-id');
+                    const sku = switchElement.getAttribute('data-sku');
+                    const isChecked = switchElement.checked;
+                    const status = isChecked ? 'ENABLED' : 'PAUSED';
+                    
+                    // Disable switch during request
+                    switchElement.disabled = true;
+                    
+                    $.ajax({
+                        url: "{{ route('google.shopping.toggle.campaign.status') }}",
+                        type: "POST",
+                        data: {
+                            campaign_id: campaignId,
+                            status: status,
+                            _token: "{{ csrf_token() }}"
+                        },
+                        success: function(response) {
+                            // If we're in success callback, the HTTP request was successful
+                            // Check response body status
+                            if (response && response.status === 200) {
+                                // Update the row data
+                                const row = table.getRows().find(row => {
+                                    const rowData = row.getData();
+                                    return rowData.campaign_id === campaignId;
+                                });
+                                
+                                if (row) {
+                                    row.update({campaignStatus: status});
+                                }
+                                
+                                // Show success message (don't show alert, just log)
+                                const message = response.message || (status === 'ENABLED' ? 'Campaign enabled successfully' : 'Campaign paused successfully');
+                                console.log(message);
+                            } else {
+                                // Response indicates error even though HTTP was successful
+                                switchElement.checked = !isChecked;
+                                alert('Failed to update campaign status: ' + (response?.message || 'Unknown error'));
+                            }
+                        },
+                        error: function(xhr) {
+                            // Revert switch state on error
+                            switchElement.checked = !isChecked;
+                            const errorMsg = xhr.responseJSON?.message || 'Failed to update campaign status';
+                            alert(errorMsg);
+                        },
+                        complete: function() {
+                            // Re-enable switch after request
+                            switchElement.disabled = false;
                         }
                     });
                 }
@@ -3020,6 +3093,25 @@
                     $('.card-spend').text('US$' + Math.round(response.totals.spend));
                     $('.card-orders').text(response.totals.orders);
                     $('.card-sales').text('US$' + Math.round(response.totals.sales));
+                    
+                    // Calculate and update ACOS
+                    const totalSpend = response.totals.spend || 0;
+                    const totalSales = response.totals.sales || 0;
+                    let acos;
+                    if (totalSales > 0) {
+                        acos = (totalSpend / totalSales) * 100;
+                    } else if (totalSpend > 0 && totalSales == 0) {
+                        acos = 100; // Standard: 100% when spend but no sales
+                    } else {
+                        acos = 0;
+                    }
+                    $('.card-acos').text(acos.toFixed(2) + '%');
+                    
+                    // Calculate and update CVR
+                    const totalOrders = response.totals.orders || 0;
+                    const totalClicks = response.totals.clicks || 0;
+                    const cvr = totalClicks > 0 ? (totalOrders / totalClicks) * 100 : 0;
+                    $('.card-cvr').text(cvr.toFixed(2) + '%');
                 }
             });
         }
