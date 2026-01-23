@@ -857,6 +857,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/cvr-master-breakdown/{sku}', [CvrMasterController::class, 'getBreakdownData'])->name('cvr.master.breakdown');
     Route::get('/cvr-master-column-visibility', [CvrMasterController::class, 'getColumnVisibility'])->name('cvr.master.column.get');
     Route::post('/cvr-master-column-visibility', [CvrMasterController::class, 'saveColumnVisibility'])->name('cvr.master.column.set');
+    Route::post('/cvr-master-remark', [CvrMasterController::class, 'saveRemark'])->name('cvr.master.remark.save');
+    Route::get('/cvr-master-remark-history/{sku}', [CvrMasterController::class, 'getRemarkHistory'])->name('cvr.master.remark.history');
+    Route::get('/cvr-master-remark-latest/{sku}', [CvrMasterController::class, 'getLatestRemark'])->name('cvr.master.remark.latest');
+    Route::post('/cvr-master-remark-toggle/{id}', [CvrMasterController::class, 'toggleRemarkSolved'])->name('cvr.master.remark.toggle');
 
     // TikTok Pricing Routes (Tabulator)
     Route::get('/tiktok-pricing', [\App\Http\Controllers\MarketPlace\TikTokPricingController::class, 'tiktokTabulatorView'])->name('tiktok.pricing');

@@ -33,6 +33,7 @@ use App\Models\TemuViewData;
 use App\Models\TemuAdData;
 use App\Models\MarketplacePercentage;
 use App\Models\AmazonSpCampaignReport;
+use App\Models\CvrRemark;
 use Carbon\Carbon;
 
 class CvrMasterController extends Controller
@@ -248,6 +249,20 @@ class CvrMasterController extends Controller
                 'ebay1_metrics' => $ebayMetrics->count(),
                 'ebay2_metrics' => $ebay2Metrics->count(),
                 'ebay3_metrics' => $ebay3Metrics->count()
+            ]);
+
+            // Fetch latest remarks for all SKUs in one query
+            $latestRemarks = CvrRemark::whereIn('sku', $skus)
+                ->select('sku', 'remark', 'is_solved', 'created_at')
+                ->orderBy('created_at', 'desc')
+                ->get()
+                ->groupBy('sku')
+                ->map(function($remarks) {
+                    return $remarks->first(); // Get latest remark for each SKU
+                });
+            
+            Log::info('CVR Master - Latest Remarks fetched', [
+                'total_remarks' => $latestRemarks->count()
             ]);
 
             // Process data (skip PARENT rows from database)
@@ -643,6 +658,11 @@ class CvrMasterController extends Controller
                 $avgAD = count($adValues) > 0 ? round(array_sum($adValues) / count($adValues), 2) : 0;
                 $avgPFT = count($pftValues) > 0 ? round(array_sum($pftValues) / count($pftValues), 2) : 0;
 
+                // Get latest remark for this SKU
+                $latestRemark = $latestRemarks->get($sku);
+                $remarkText = $latestRemark ? $latestRemark->remark : null;
+                $remarkSolved = $latestRemark ? $latestRemark->is_solved : false;
+
                 $result[] = (object) [
                     "sku" => $sku,
                     "parent" => $parent,
@@ -657,6 +677,8 @@ class CvrMasterController extends Controller
                     "avg_gpft" => $avgGPFT,
                     "avg_ad" => $avgAD,
                     "avg_pft" => $avgPFT,
+                    "latest_remark" => $remarkText,
+                    "remark_solved" => $remarkSolved,
                 ];
             }
 
@@ -1332,6 +1354,108 @@ class CvrMasterController extends Controller
             Log::error('Error fetching breakdown data for SKU ' . $sku . ': ' . $e->getMessage());
             Log::error('Stack trace: ' . $e->getTraceAsString());
             return response()->json(['error' => 'Failed to fetch breakdown data'], 500);
+        }
+    }
+
+    /**
+     * Save a new remark for a SKU
+     */
+    public function saveRemark(Request $request)
+    {
+        try {
+            $request->validate([
+                'sku' => 'required|string',
+                'remark' => 'required|string|max:200',
+            ]);
+
+            $remark = CvrRemark::create([
+                'sku' => $request->sku,
+                'remark' => $request->remark,
+                'user_id' => auth()->id(),
+                'is_solved' => false,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Remark saved successfully',
+                'remark' => $remark->load('user'),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error saving CVR remark: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to save remark'], 500);
+        }
+    }
+
+    /**
+     * Get remark history for a SKU
+     */
+    public function getRemarkHistory($sku)
+    {
+        try {
+            $remarks = CvrRemark::where('sku', $sku)
+                ->with('user')
+                ->orderBy('created_at', 'desc')
+                ->get()
+                ->map(function($remark) {
+                    return [
+                        'id' => $remark->id,
+                        'remark' => $remark->remark,
+                        'user_name' => $remark->user ? $remark->user->name : 'Unknown',
+                        'is_solved' => $remark->is_solved,
+                        'created_at' => $remark->created_at->format('Y-m-d H:i:s'),
+                    ];
+                });
+
+            return response()->json($remarks);
+        } catch (\Exception $e) {
+            Log::error('Error fetching remark history for SKU ' . $sku . ': ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to fetch remark history'], 500);
+        }
+    }
+
+    /**
+     * Get latest remark for a SKU
+     */
+    public function getLatestRemark($sku)
+    {
+        try {
+            $remark = CvrRemark::where('sku', $sku)
+                ->latest()
+                ->first();
+
+            if ($remark) {
+                return response()->json([
+                    'remark' => $remark->remark,
+                    'user_name' => $remark->user ? $remark->user->name : 'Unknown',
+                    'created_at' => $remark->created_at->format('Y-m-d H:i:s'),
+                    'is_solved' => $remark->is_solved,
+                ]);
+            }
+
+            return response()->json(null);
+        } catch (\Exception $e) {
+            Log::error('Error fetching latest remark for SKU ' . $sku . ': ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to fetch latest remark'], 500);
+        }
+    }
+
+    /**
+     * Toggle solved status for a remark
+     */
+    public function toggleRemarkSolved(Request $request, $id)
+    {
+        try {
+            $remark = CvrRemark::findOrFail($id);
+            $remark->is_solved = !$remark->is_solved;
+            $remark->save();
+
+            return response()->json([
+                'success' => true,
+                'is_solved' => $remark->is_solved,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error toggling remark solved status: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to update remark'], 500);
         }
     }
 }

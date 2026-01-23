@@ -153,6 +153,44 @@
     ])
     <div class="toast-container"></div>
     
+    <!-- Remark History Modal -->
+    <div class="modal fade" id="remarkHistoryModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header" style="background-color: #6c757d;">
+                    <h5 class="modal-title text-white">
+                        <i class="fas fa-history me-2"></i> 
+                        Remark History - <span id="historySkuName"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover mb-0">
+                            <thead style="background-color: #6c757d; color: white;">
+                                <tr>
+                                    <th style="width: 50%;">Remark</th>
+                                    <th>User</th>
+                                    <th>Date</th>
+                                    <th>Status</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="remarkHistoryTableBody">
+                                <tr>
+                                    <td colspan="5" class="text-center text-muted py-4">No remarks yet</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- OV L30 Details Modal -->
     <div class="modal fade" id="ovl30DetailsModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-centered">
@@ -766,6 +804,79 @@
                         return `<span style="color: ${color}; font-weight: 600;">${Math.round(value)}%</span>`;
                     },
                     width: 90
+                },
+                {
+                    title: "A Rmk",
+                    field: "latest_remark",
+                    hozAlign: "left",
+                    width: 200,
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        
+                        // Don't show for parent rows
+                        if (rowData.is_parent_summary === true) {
+                            return '';
+                        }
+                        
+                        const remark = cell.getValue();
+                        if (remark) {
+                            const solvedBadge = rowData.remark_solved ? '<span class="badge bg-success ms-1" style="font-size: 9px;">✓</span>' : '';
+                            return `<small>${remark}${solvedBadge}</small>`;
+                        }
+                        
+                        return '<small class="text-muted">No remarks</small>';
+                    }
+                },
+                {
+                    title: "Hsty",
+                    field: "remark_history",
+                    hozAlign: "center",
+                    width: 70,
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const sku = rowData.sku;
+                        
+                        // Don't show for parent rows
+                        if (rowData.is_parent_summary === true) {
+                            return '';
+                        }
+                        
+                        return `<i class="fas fa-history text-info remark-history-icon" 
+                                   style="cursor: pointer; font-size: 16px;" 
+                                   data-sku="${sku}"
+                                   title="View remark history"></i>`;
+                    }
+                },
+                {
+                    title: "Action",
+                    field: "action",
+                    hozAlign: "left",
+                    width: 280,
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const sku = rowData.sku;
+                        
+                        // Don't show for parent rows
+                        if (rowData.is_parent_summary === true) {
+                            return '';
+                        }
+                        
+                        return `
+                            <div class="d-flex gap-1">
+                                <textarea class="form-control form-control-sm remark-input" 
+                                          data-sku="${sku}" 
+                                          placeholder="Add remark (max 200 chars)" 
+                                          maxlength="200" 
+                                          rows="1" 
+                                          style="font-size: 11px; resize: none;"></textarea>
+                                <button class="btn btn-sm btn-primary submit-remark-btn" 
+                                        data-sku="${sku}"
+                                        style="white-space: nowrap;">
+                                    <i class="fas fa-save"></i>
+                                </button>
+                            </div>
+                        `;
+                    }
                 }
             ]
         });
@@ -782,6 +893,140 @@
             const sku = $(this).data('sku');
             navigator.clipboard.writeText(sku).then(() => {
                 showToast(`Copied: ${sku}`, 'success');
+            });
+        });
+
+        // ==================== REMARK FUNCTIONS ====================
+        
+        // Submit remark
+        $(document).on('click', '.submit-remark-btn', function(e) {
+            e.stopPropagation();
+            const sku = $(this).data('sku');
+            const remarkInput = $(`.remark-input[data-sku="${sku}"]`);
+            const remark = remarkInput.val().trim();
+            
+            if (!remark) {
+                showToast('Please enter a remark', 'error');
+                return;
+            }
+            
+            $.ajax({
+                url: '/cvr-master-remark',
+                method: 'POST',
+                data: {
+                    sku: sku,
+                    remark: remark,
+                    _token: '{{ csrf_token() }}'
+                },
+                success: function(response) {
+                    showToast('Remark saved successfully', 'success');
+                    remarkInput.val(''); // Clear input
+                    
+                    // Update the cell directly
+                    const row = table.getRow(function(row){ return row.getData().sku === sku; });
+                    if (row) {
+                        row.update({latest_remark: remark, remark_solved: false});
+                    }
+                },
+                error: function() {
+                    showToast('Failed to save remark', 'error');
+                }
+            });
+        });
+
+        // Open remark history modal
+        $(document).on('click', '.remark-history-icon', function(e) {
+            e.stopPropagation();
+            const sku = $(this).data('sku');
+            loadRemarkHistory(sku);
+        });
+
+        function loadRemarkHistory(sku) {
+            $('#historySkuName').text(sku);
+            const modal = new bootstrap.Modal(document.getElementById('remarkHistoryModal'));
+            modal.show();
+            
+            $('#remarkHistoryTableBody').html(`
+                <tr>
+                    <td colspan="5" class="text-center">
+                        <div class="spinner-border spinner-border-sm text-info me-2" role="status"></div>
+                        Loading history...
+                    </td>
+                </tr>
+            `);
+            
+            $.ajax({
+                url: `/cvr-master-remark-history/${sku}`,
+                method: 'GET',
+                success: function(data) {
+                    if (data.length === 0) {
+                        $('#remarkHistoryTableBody').html(`
+                            <tr><td colspan="5" class="text-center text-muted py-4">No remarks yet for this SKU</td></tr>
+                        `);
+                        return;
+                    }
+                    
+                    let html = '';
+                    data.forEach(item => {
+                        const statusClass = item.is_solved ? 'success' : 'warning';
+                        const statusText = item.is_solved ? 'Solved' : 'Pending';
+                        const statusIcon = item.is_solved ? 'check-circle' : 'clock';
+                        
+                        html += `
+                            <tr>
+                                <td>${item.remark}</td>
+                                <td>${item.user_name}</td>
+                                <td><small>${item.created_at}</small></td>
+                                <td>
+                                    <span class="badge bg-${statusClass}">
+                                        <i class="fas fa-${statusIcon}"></i> ${statusText}
+                                    </span>
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-${item.is_solved ? 'warning' : 'success'} toggle-solved-btn" 
+                                            data-id="${item.id}"
+                                            title="${item.is_solved ? 'Mark as Pending' : 'Mark as Solved'}">
+                                        <i class="fas fa-${item.is_solved ? 'undo' : 'check'}"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                    
+                    $('#remarkHistoryTableBody').html(html);
+                },
+                error: function() {
+                    $('#remarkHistoryTableBody').html(`
+                        <tr><td colspan="5" class="text-center text-danger py-4">Failed to load history</td></tr>
+                    `);
+                }
+            });
+        }
+
+        // Toggle solved status
+        $(document).on('click', '.toggle-solved-btn', function(e) {
+            e.stopPropagation();
+            const id = $(this).data('id');
+            const sku = $('#historySkuName').text();
+            
+            $.ajax({
+                url: `/cvr-master-remark-toggle/${id}`,
+                method: 'POST',
+                data: { _token: '{{ csrf_token() }}' },
+                success: function(response) {
+                    showToast('Status updated', 'success');
+                    loadRemarkHistory(sku); // Reload history
+                    
+                    // Update the row in table if it's the latest remark
+                    const row = table.getRow(function(row){ return row.getData().sku === sku; });
+                    if (row) {
+                        const currentData = row.getData();
+                        row.update({remark_solved: response.is_solved});
+                    }
+                },
+                error: function() {
+                    showToast('Failed to update status', 'error');
+                }
             });
         });
 
