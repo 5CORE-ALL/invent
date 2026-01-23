@@ -29,6 +29,7 @@ use App\Models\TemuViewData;
 use App\Models\TemuAdData;
 use App\Models\ChannelMaster;
 use App\Models\MarketplacePercentage;
+use App\Models\AmazonSpCampaignReport;
 use Carbon\Carbon;
 
 class CvrMasterController extends Controller
@@ -208,14 +209,37 @@ class CvrMasterController extends Controller
 
             // Fetch Amazon data (using full SKU)
             $amazonData = AmazonDatasheet::where('sku', $fullSku)->first();
+            
+            // Get Amazon percentage
+            $amazonMarketplace = MarketplacePercentage::where('marketplace', 'Amazon')->first();
+            $amazonPercentage = $amazonMarketplace && $amazonMarketplace->percentage ? ($amazonMarketplace->percentage / 100) : 0.80;
+            
+            // Calculate Amazon GPFT% (line 1887-1890: (price × percentage - ship - lp) / price × 100)
+            $amazonPrice = $amazonData->price ?? 0;
+            $amazonL30 = $amazonData->l30 ?? 0;
+            $amazonGPFT = $amazonPrice > 0 ? (($amazonPrice * $amazonPercentage - $ship - $lp) / $amazonPrice) * 100 : 0;
+            
+            // Get Amazon ad spend from AmazonSpCampaignReport (L30)
+            $amazonAdSpend = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+                ->where('report_date_range', 'L30')
+                ->where('campaignName', 'LIKE', '%' . $fullSku . '%')
+                ->sum('cost');
+            
+            // Calculate Amazon AD% (line 1881-1885: AD_Spend / Revenue * 100)
+            $amazonRevenue = $amazonPrice * $amazonL30;
+            $amazonAD = $amazonRevenue > 0 ? ($amazonAdSpend / $amazonRevenue) * 100 : 0;
+            
+            // Amazon NPFT% (line 1892-1893: GPFT% - AD%)
+            $amazonNPFT = $amazonGPFT - $amazonAD;
+            
             $breakdownData[] = [
                 'marketplace' => 'AMZ',
                 'sku' => $amazonData ? $fullSku : 'Not Listed',
-                'price' => $amazonData->price ?? 0,
+                'price' => $amazonPrice,
                 'views' => $amazonData->sessions_l30 ?? 0,
                 'l30' => $amazonData->l30 ?? 0,
-                'gpft' => 0, // Can calculate if needed
-                'npft' => 0,
+                'gpft' => $amazonGPFT,
+                'npft' => $amazonNPFT,
                 'is_listed' => $amazonData ? true : false,
             ];
 
