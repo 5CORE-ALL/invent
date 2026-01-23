@@ -20,6 +20,10 @@ use Google\Ads\GoogleAds\V20\Services\AdGroupAdOperation;
 use Google\Ads\GoogleAds\V20\Services\MutateAdGroupAdsRequest;
 use Google\Ads\GoogleAds\V20\Resources\AdGroupAd;
 use Google\Ads\GoogleAds\V20\Enums\AdGroupAdStatusEnum\AdGroupAdStatus;
+use Google\Ads\GoogleAds\V20\Services\CampaignOperation;
+use Google\Ads\GoogleAds\V20\Services\MutateCampaignsRequest;
+use Google\Ads\GoogleAds\V20\Resources\Campaign;
+use Google\Ads\GoogleAds\V20\Enums\CampaignStatusEnum\CampaignStatus;
 
 class GoogleAdsSbidService
 {
@@ -444,6 +448,59 @@ class GoogleAdsSbidService
             Log::error("Failed to pause ad", [
                 'customer_id' => $customerId,
                 'ad_group_ad_resource' => $adGroupAdResourceName,
+                'error_message' => $e->getMessage(),
+                'error_code' => $e->getCode(),
+                'error_trace' => $e->getTraceAsString()
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Pause a campaign by setting its status to PAUSED
+     */
+    public function pauseCampaign($customerId, $campaignResourceName)
+    {
+        try {
+            // Validate inputs
+            if (empty($customerId) || empty($campaignResourceName)) {
+                throw new \InvalidArgumentException("Invalid parameters for campaign pause");
+            }
+
+            $campaignService = $this->getClient()->getCampaignServiceClient();
+
+            $campaign = new Campaign([
+                'resource_name' => $campaignResourceName,
+                'status' => CampaignStatus::PAUSED
+            ]);
+
+            $operation = new CampaignOperation();
+            $operation->setUpdate($campaign);
+            $operation->setUpdateMask(new FieldMask(['paths' => ['status']]));
+
+            $request = new MutateCampaignsRequest([
+                'customer_id' => $customerId,
+                'operations' => [$operation]
+            ]);
+
+            $response = $campaignService->mutateCampaigns($request);
+            
+            // Validate response
+            if (!$response || !$response->getResults()) {
+                throw new \Exception("No response received from Google Ads API");
+            }
+
+            $results = $response->getResults();
+            if (count($results) === 0) {
+                throw new \Exception("No results returned from campaign pause operation");
+            }
+            
+            return $response;
+            
+        } catch (\Exception $e) {
+            Log::error("Failed to pause campaign", [
+                'customer_id' => $customerId,
+                'campaign_resource' => $campaignResourceName,
                 'error_message' => $e->getMessage(),
                 'error_code' => $e->getCode(),
                 'error_trace' => $e->getTraceAsString()
