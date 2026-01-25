@@ -808,11 +808,13 @@ class GoogleAdsController extends Controller
                 $skuForMetrics = strtoupper(trim($pm->sku));
                 
                 foreach ($rangesNeeded as $rangeName) {
+                    // null = include all statuses (ENABLED + PAUSED) for historical metrics;
+                    // PAUSED campaigns can have non-zero clicks/spend/sales in the date range
                     $metrics = $this->aggregateMetricsByRange(
                         $googleCampaigns, 
                         $skuForMetrics, 
                         $dateRanges[$rangeName], 
-                        'ENABLED'
+                        null
                     );
                     
                     $campaignMap[$mapKey]["spend_$rangeName"] = $metrics['spend'];

@@ -67,45 +67,61 @@ class FetchGoogleAdsCampaigns extends Command
             $allActiveCampaigns = $this->fetchAllActiveCampaigns($customerId);
             $this->info("Found " . count($allActiveCampaigns) . " active campaigns");
 
-            // Step 2: Fetch metrics for the date range
-            $this->info("Step 2: Fetching metrics for date range...");
-            $query = $this->buildQuery($startDate, $endDate);
-            $results = $this->googleAdsService->runQuery($customerId, $query);
-            $this->info("Found " . count($results) . " records with metrics");
-
-            // Step 3: Process metrics data
+            // Step 2: Fetch metrics in 7-day chunks to avoid memory exhaustion (30 days × 400+ campaigns = OOM)
+            $this->info("Step 2: Fetching metrics for date range (in 7-day chunks)...");
             $insertedCount = 0;
             $updatedCount = 0;
             $processedCampaignIds = [];
+            $chunkDays = 7;
+            $cursor = Carbon::parse($startDate);
+            $endDateObj = Carbon::parse($endDate);
 
-            foreach ($results as $row) {
-                try {
-                    $data = $this->prepareData($row);
-                    $processedCampaignIds[$data['campaign_id']] = true;
-                    
-                    // Update or create record
-                    $campaign = GoogleAdsCampaign::updateOrCreate(
-                        [
-                            'campaign_id' => $data['campaign_id'],
-                            'date' => $data['date']
-                        ],
-                        $data
-                    );
-
-                    if ($campaign->wasRecentlyCreated) {
-                        $insertedCount++;
-                    } else {
-                        $updatedCount++;
-                    }
-
-                } catch (\Exception $e) {
-                    Log::error('Error processing campaign data: ' . $e->getMessage(), [
-                        'row' => $row,
-                        'trace' => $e->getTraceAsString()
-                    ]);
-                    $this->error('Error processing record: ' . $e->getMessage());
+            while ($cursor->lte($endDateObj)) {
+                $chunkStart = $cursor->format('Y-m-d');
+                $chunkEnd = $cursor->copy()->addDays($chunkDays - 1);
+                if ($chunkEnd->gt($endDateObj)) {
+                    $chunkEnd = $endDateObj->copy();
                 }
+                $chunkEndStr = $chunkEnd->format('Y-m-d');
+
+                $query = $this->buildQuery($chunkStart, $chunkEndStr);
+                $results = $this->googleAdsService->runQuery($customerId, $query);
+                $this->info("  Chunk {$chunkStart} to {$chunkEndStr}: " . count($results) . " records");
+
+                foreach ($results as $row) {
+                    try {
+                        $data = $this->prepareData($row);
+                        $processedCampaignIds[$data['campaign_id']] = true;
+
+                        $campaign = GoogleAdsCampaign::updateOrCreate(
+                            [
+                                'campaign_id' => $data['campaign_id'],
+                                'date' => $data['date']
+                            ],
+                            $data
+                        );
+
+                        if ($campaign->wasRecentlyCreated) {
+                            $insertedCount++;
+                        } else {
+                            $updatedCount++;
+                        }
+                    } catch (\Exception $e) {
+                        Log::error('Error processing campaign data: ' . $e->getMessage(), [
+                            'trace' => $e->getTraceAsString()
+                        ]);
+                        $this->error('Error processing record: ' . $e->getMessage());
+                    }
+                }
+
+                unset($results);
+                if (function_exists('gc_collect_cycles')) {
+                    gc_collect_cycles();
+                }
+                $cursor->addDays($chunkDays);
             }
+
+            $this->info("Found " . ($insertedCount + $updatedCount) . " records with metrics (inserted: {$insertedCount}, updated: {$updatedCount})");
 
             // Step 4: For active campaigns without metrics, create records with zero metrics
             $zeroMetricsCount = 0;
@@ -380,9 +396,11 @@ class FetchGoogleAdsCampaigns extends Command
             'metrics_video_quartile_p100_rate' => $metrics['videoQuartileP100Rate'] ?? 0,
             'metrics_video_view_rate' => $metrics['videoViewRate'] ?? 0,
             
-            // GA4 Metrics - Using Google Ads conversion metrics as proxy
-            // allConversionsValue = conversion value (revenue), in account currency - same units as Amazon sales30d
-            'ga4_sold_units' => $metrics['allConversions'] ?? 0,
+            // ga4_sold_units: Use conversions (primary=Purchase) to align with GA4 "Key events purchase"
+            // allConversions = add-to-cart, begin-checkout, purchase, etc. — too high vs GA4
+            // conversions = primary conversion (Purchase) — closer to GA4 Key events purchase (e.g. 97)
+            'ga4_sold_units' => $metrics['conversions'] ?? 0,
+            // allConversionsValue = conversion value (revenue), same units as Amazon sales30d
             'ga4_ad_sales' => $metrics['allConversionsValue'] ?? 0,
             
             // Date
