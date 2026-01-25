@@ -1875,4 +1875,83 @@ class GoogleAdsController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Enable or pause multiple Google Shopping campaigns.
+     */
+    public function toggleBulkGoogleShoppingCampaignStatus(Request $request)
+    {
+        try {
+            $campaignIds = $request->input('campaign_ids');
+            $status = $request->input('status'); // 'ENABLED' or 'PAUSED'
+
+            if (!is_array($campaignIds) || empty($campaignIds) || !$status) {
+                return response()->json([
+                    'status' => 400,
+                    'message' => 'campaign_ids (array) and status are required'
+                ], 400);
+            }
+
+            if (!in_array($status, ['ENABLED', 'PAUSED'])) {
+                return response()->json([
+                    'status' => 400,
+                    'message' => 'Status must be ENABLED or PAUSED'
+                ], 400);
+            }
+
+            $campaignIds = array_values(array_filter(array_unique($campaignIds)));
+
+            $customerId = env('GOOGLE_ADS_LOGIN_CUSTOMER_ID');
+            if (empty($customerId)) {
+                return response()->json([
+                    'status' => 500,
+                    'message' => 'GOOGLE_ADS_LOGIN_CUSTOMER_ID is not configured'
+                ], 500);
+            }
+
+            $updated = 0;
+            $errors = [];
+
+            foreach ($campaignIds as $campaignId) {
+                if (empty($campaignId)) {
+                    continue;
+                }
+                $campaignResourceName = "customers/{$customerId}/campaigns/{$campaignId}";
+                try {
+                    if ($status === 'PAUSED') {
+                        $this->sbidService->pauseCampaign($customerId, $campaignResourceName);
+                    } else {
+                        $this->sbidService->enableCampaign($customerId, $campaignResourceName);
+                    }
+                    DB::table('google_ads_campaigns')
+                        ->where('campaign_id', $campaignId)
+                        ->update(['campaign_status' => $status]);
+                    $updated++;
+                } catch (\Exception $e) {
+                    Log::error("Bulk toggle: failed to {$status} campaign {$campaignId}: " . $e->getMessage());
+                    $errors[] = ['campaign_id' => $campaignId, 'message' => $e->getMessage()];
+                }
+            }
+
+            $failed = count($errors);
+            $msg = "{$updated} campaign(s) {$status}.";
+            if ($failed > 0) {
+                $msg .= " {$failed} failed.";
+            }
+
+            return response()->json([
+                'status' => 200,
+                'message' => $msg,
+                'updated' => $updated,
+                'failed' => $failed,
+                'errors' => $errors
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Error in toggleBulkGoogleShoppingCampaignStatus: " . $e->getMessage());
+            return response()->json([
+                'status' => 500,
+                'message' => 'Error in bulk toggle: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 }

@@ -1805,6 +1805,24 @@
                                             Amz FBM</a>
                                     </li>
 
+                                    <li>
+                                        <a data-bs-toggle="collapse" href="#amazonTargetingCheck" aria-expanded="false"
+                                            aria-controls="amazonTargetingCheck">
+                                            <span>TARGETING CHECK</span>
+                                            <span class="menu-arrow"></span>
+                                        </a>
+                                        <div class="collapse" id="amazonTargetingCheck">
+                                            <ul class="side-nav-fourth-level">
+                                                <li>
+                                                    <a href="{{ route('amazon.fbm.targeting.check.kw') }}">TARGET KW</a>
+                                                </li>
+                                                <li>
+                                                    <a href="{{ route('amazon.fbm.targeting.check.pt') }}">TARGET PT</a>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </li>
+
                                  
 
 
