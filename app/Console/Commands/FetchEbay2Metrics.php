@@ -110,6 +110,7 @@ class FetchEbay2Metrics extends Command
                 [
                     'ebay_price' => $row['price'] ?? null,
                     'ebay_stock' => $row['quantity'] ?? null,
+                    'ebay_title' => $row['title'] ?? null,
                     'report_range' => now()->toDateString(),
                 ]
             );
@@ -128,6 +129,9 @@ class FetchEbay2Metrics extends Command
             $this->info("🗑️  Cleaned up {$deletedCount} inactive SKU records");
         }
         DB::connection()->disconnect();
+
+        // Fetch and update titles for all items
+        $this->updateTitles($token, $itemIdToSku);
 
         // Update views per itemId -> sku list
         $this->updateViews($token, $itemIdToSku);
@@ -475,6 +479,7 @@ class FetchEbay2Metrics extends Command
     {
         $out = [];
         $seen = []; // Track item_id + sku combinations to avoid duplicates
+        $firstItem = true; // Flag to log first item structure
 
         foreach ($xml->ActiveInventoryReport->SKUDetails as $item) {
             $itemId = (string) $item->ItemID;
@@ -482,10 +487,17 @@ class FetchEbay2Metrics extends Command
                 continue;
             }
 
+            // Debug: Log first item structure to see available fields
+            if ($firstItem) {
+                $this->info('XML Item fields: ' . implode(', ', array_keys((array)$item)));
+                $firstItem = false;
+            }
+
             // capture primary SKU (if present) and variations
             $primarySku = trim((string) ($item->SKU ?? ''));
             $price = isset($item->Price) ? (float) $item->Price : null;
             $quantity = isset($item->Quantity) ? (int) $item->Quantity : null;
+            $title = isset($item->Title) ? preg_replace('/[^\x20-\x7E]/', '', trim((string) $item->Title)) : null;
 
             // Process variations first to collect SKUs with prices and quantities
             $variationData = [];
@@ -499,6 +511,7 @@ class FetchEbay2Metrics extends Command
                     'sku' => $varSku,
                     'price' => $varPrice,
                     'quantity' => $varQuantity,
+                    'title' => $title,
                 ];
             }
 
@@ -512,6 +525,7 @@ class FetchEbay2Metrics extends Command
                         'sku' => $primarySku,
                         'price' => $price,
                         'quantity' => $quantity,
+                        'title' => $title,
                     ];
                     $seen[$key] = true;
                 }
@@ -556,6 +570,9 @@ class FetchEbay2Metrics extends Command
         $rows = array_map(fn ($l) => str_getcsv($l, "\t"), $lines);
         $headers = array_shift($rows);
 
+        // Debug: Log available headers to identify the correct title field name
+        $this->info('Available TSV headers: ' . implode(', ', $headers));
+
         $data = [];
         foreach ($rows as $row) {
             if (count($headers) != count($row)) {
@@ -567,15 +584,125 @@ class FetchEbay2Metrics extends Command
             if (! $itemId || $sku === '') {
                 continue;
             }
+            
+            // Extract and sanitize title
+            $title = isset($d['title']) ? preg_replace('/[^\x20-\x7E]/', '', trim($d['title'])) : null;
+            
             $data[] = [
                 'item_id' => $itemId,
                 'sku' => $sku,
                 'price' => $d['price'] ?? null,
                 'quantity' => isset($d['availableQuantity']) ? (int) $d['availableQuantity'] : null,
+                'title' => $title,
             ];
         }
 
         return $data;
+    }
+
+    private function updateTitles($token, $map)
+    {
+        $this->info('🔄 Fetching titles for active listings...');
+        
+        $itemTitles = [];
+        $pageNumber = 1;
+        $totalPages = 1;
+        
+        do {
+            try {
+                $xmlBody = '<?xml version="1.0" encoding="utf-8"?>
+                    <GetMyeBaySellingRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+                        <ActiveList>
+                            <Include>true</Include>
+                            <Pagination>
+                                <EntriesPerPage>200</EntriesPerPage>
+                                <PageNumber>' . $pageNumber . '</PageNumber>
+                            </Pagination>
+                        </ActiveList>
+                        <OutputSelector>ActiveList.ItemArray.Item.ItemID</OutputSelector>
+                        <OutputSelector>ActiveList.ItemArray.Item.Title</OutputSelector>
+                        <OutputSelector>ActiveList.PaginationResult</OutputSelector>
+                    </GetMyeBaySellingRequest>';
+
+                $response = Http::timeout(60)
+                    ->withHeaders([
+                        'X-EBAY-API-SITEID' => '0',
+                        'X-EBAY-API-COMPATIBILITY-LEVEL' => '967',
+                        'X-EBAY-API-CALL-NAME' => 'GetMyeBaySelling',
+                        'X-EBAY-API-IAF-TOKEN' => $token,
+                    ])
+                    ->withBody($xmlBody, 'text/xml')
+                    ->post('https://api.ebay.com/ws/api.dll');
+
+                if (!$response->successful()) {
+                    $this->error("Failed to fetch titles page {$pageNumber}");
+                    break;
+                }
+
+                $xml = simplexml_load_string($response->body());
+                
+                if (isset($xml->Errors)) {
+                    $this->error('eBay API error: ' . (string)$xml->Errors->LongMessage);
+                    break;
+                }
+
+                $listNode = $xml->ActiveList ?? null;
+
+                // Get total pages from first response
+                if ($pageNumber == 1 && $listNode && isset($listNode->PaginationResult->TotalNumberOfPages)) {
+                    $totalPages = (int) $listNode->PaginationResult->TotalNumberOfPages;
+                    $totalEntries = (int) $listNode->PaginationResult->TotalNumberOfEntries;
+                    $this->info("Found {$totalEntries} active listings across {$totalPages} pages");
+                }
+
+                // Process items and extract titles
+                if ($listNode && isset($listNode->ItemArray->Item)) {
+                    foreach ($listNode->ItemArray->Item as $item) {
+                        $itemId = (string) ($item->ItemID ?? '');
+                        $title = (string) ($item->Title ?? '');
+                        
+                        // Clean the title to remove non-printable characters
+                        $title = preg_replace('/[^\x20-\x7E]/', '', trim($title));
+                        
+                        if ($itemId && $title) {
+                            $itemTitles[$itemId] = $title;
+                        }
+                    }
+                }
+
+                $pageNumber++;
+                sleep(1); // Small delay between pages
+                
+            } catch (\Exception $e) {
+                $this->error("Error fetching titles: " . $e->getMessage());
+                break;
+            }
+            
+        } while ($pageNumber <= $totalPages);
+
+        // Update database with titles and links
+        $this->info("📝 Updating " . count($itemTitles) . " titles and links in database...");
+        
+        foreach ($map as $itemId => $skus) {
+            $title = $itemTitles[$itemId] ?? null;
+            
+            // Create eBay product link
+            $ebayLink = $itemId ? "https://www.ebay.com/itm/{$itemId}" : null;
+            
+            if (!empty($skus)) {
+                foreach ($skus as $sku) {
+                    Ebay2Metric::where('item_id', $itemId)
+                        ->where('sku', $sku)
+                        ->update([
+                            'ebay_title' => $title,
+                            'ebay_link' => $ebayLink
+                        ]);
+                }
+            }
+        }
+        
+        DB::connection()->disconnect();
+        $this->info('✅ Titles and links updated');
     }
 
     private function updateViews($token, $map)

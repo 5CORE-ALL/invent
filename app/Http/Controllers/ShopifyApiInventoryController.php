@@ -221,7 +221,7 @@ class ShopifyApiInventoryController extends Controller
         while ($hasMore) {
             $pageCount++;
             // Include price and compare_at_price in fields to get both B2B and B2C prices
-            $queryParams = ['limit' => 250, 'fields' => 'id,title,variants,image,images'];
+            $queryParams = ['limit' => 250, 'fields' => 'id,title,handle,variants,image,images'];
             if ($pageInfo) {
                 $queryParams['page_info'] = $pageInfo;
             }
@@ -269,12 +269,40 @@ class ShopifyApiInventoryController extends Controller
                         // You can extend this to fetch from metafields if needed
                         $b2bPrice = !empty($variant['compare_at_price']) ? $variant['compare_at_price'] : null;
                         
+                        // Create product link using handle
+                        $productHandle = $product['handle'] ?? null;
+                        if ($productHandle && $this->shopifyStoreUrlName) {
+                            // Remove protocol if present in store URL
+                            $storeUrl = str_replace(['https://', 'http://'], '', $this->shopifyStoreUrlName);
+                            $productLink = "https://{$storeUrl}/products/{$productHandle}";
+                            
+                            // Debug first product
+                            if ($totalVariants === 1) {
+                                Log::info('=== Product Link Creation DEBUG ===', [
+                                    'shopifyStoreUrlName' => $this->shopifyStoreUrlName,
+                                    'storeUrl' => $storeUrl,
+                                    'productHandle' => $productHandle,
+                                    'productLink' => $productLink,
+                                ]);
+                            }
+                        } else {
+                            $productLink = null;
+                            // Debug why link is null
+                            if ($totalVariants === 1) {
+                                Log::warning('=== Product Link is NULL ===', [
+                                    'productHandle' => $productHandle,
+                                    'shopifyStoreUrlName' => $this->shopifyStoreUrlName,
+                                ]);
+                            }
+                        }
+                        
                         $inventoryData[$variant['sku']] = [
                             'variant_id'        => $variant['id'],
                             'inventory'         => $variant['inventory_quantity'] ?? 0,
                             'product_title'     => $product['title'] ?? '',
                             'sku'               => $variant['sku'] ?? '',
                             'variant_title'     => $variant['title'] ?? '',
+                            'product_link'      => $productLink,
                             'inventory_item_id' => $variant['inventory_item_id'],
                             'on_hand'           => $variant['old_inventory_quantity'] ?? 0,   // OnHand
                             'available_to_sell' => $variant['inventory_quantity'] ?? 0,       // AvailableToSell
@@ -290,6 +318,8 @@ class ShopifyApiInventoryController extends Controller
                                 'product_title' => $product['title'] ?? '',
                                 'sku'           => $variant['sku'],
                                 'image'         => $imageUrl,
+                                'product_link'  => $productLink,
+                                'handle'        => $productHandle,
                             ]);
                         }
                     } else {
@@ -369,7 +399,7 @@ class ShopifyApiInventoryController extends Controller
         // Step 2: Fetch ALL Products (with pagination)
         $skuMap = [];
         $imageMap = [];
-        $nextPageUrl = "$shopUrl/admin/api/2025-01/products.json?limit=250&fields=variants,image,title,id";
+        $nextPageUrl = "$shopUrl/admin/api/2025-01/products.json?limit=250&fields=variants,image,title,handle,id";
         $pageCount = 0;
         $maxPages = 500; // Safety limit
 
@@ -646,7 +676,8 @@ class ShopifyApiInventoryController extends Controller
                 'b2c_price' => $data['b2c_price'] ?? null,
                 'image_src' => $data['image_src'],
                 'product_title' => $data['product_title'] ?? null,
-                'variant_title' => $data['variant_title'] ?? null
+                'variant_title' => $data['variant_title'] ?? null,
+                'product_link' => $data['product_link'] ?? null
             ];
         }
 
@@ -698,6 +729,15 @@ class ShopifyApiInventoryController extends Controller
                     if (empty($sku)) {
                         continue;
                     }
+                    
+                    // Debug first 3 SKUs to see if product_link is present
+                    if ($updateCount < 3) {
+                        Log::info('=== saveSkus DEBUG ===', [
+                            'sku' => $sku,
+                            'product_title' => $item['product_title'] ?? null,
+                            'product_link' => $item['product_link'] ?? null,
+                        ]);
+                    }
 
                     if (stripos($sku, 'SS HD 2PK ORG WOB') !== false || stripos($sku, 'SS ECO 2PK BLK') !== false) {
                         Log::info('=== saveSkus: Saving SKU ===', [
@@ -723,6 +763,9 @@ class ShopifyApiInventoryController extends Controller
                             'b2b_price' => $item['b2b_price'] ?? null,
                             'b2c_price' => $item['b2c_price'] ?? null,
                             'image_src' => $item['image_src'],
+                            'product_title' => $item['product_title'] ?? null,
+                            'variant_title' => $item['variant_title'] ?? null,
+                            'product_link' => $item['product_link'] ?? null,
                             'updated_at' => now()
                         ]
                     );

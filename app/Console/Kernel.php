@@ -590,11 +590,28 @@ $schedule->command('amazon:sync-inventory')->everySixHours();
             ->timezone('Asia/Kolkata')
             ->name('reverb-daily');
 
-        // Walmart
+        // Walmart - Optimized schedule to avoid rate limits
+        
+        // Walmart Orders - Daily (existing)
         $schedule->command('walmart:daily --days=60')
             ->dailyAt('01:20')
             ->timezone('Asia/Kolkata')
-            ->name('walmart-daily');
+            ->name('walmart-daily')
+            ->withoutOverlapping();
+        
+        // Walmart Pricing & Listing Quality - Every 3 hours (conservative)
+        $schedule->command('walmart:pricing-sales')
+            ->cron('0 */3 * * *')  // 00:00, 03:00, 06:00, 09:00, 12:00, 15:00, 18:00, 21:00
+            ->timezone('America/Los_Angeles')
+            ->name('walmart-pricing-sales')
+            ->withoutOverlapping();
+        
+        // Walmart Inventory - Every 4 hours (offset from pricing)
+        $schedule->command('walmart:fetch-inventory')
+            ->cron('30 */4 * * *')  // 00:30, 04:30, 08:30, 12:30, 16:30, 20:30
+            ->timezone('America/Los_Angeles')
+            ->name('walmart-inventory')
+            ->withoutOverlapping();
 
         // Wayfair
         $schedule->command('wayfair:daily --days=60')

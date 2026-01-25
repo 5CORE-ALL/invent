@@ -12,11 +12,11 @@ use Illuminate\Support\Facades\DB;
 class FetchEbayListingStatus extends Command
 {
     protected $signature = 'ebay:fetch-listing-status';
-    protected $description = 'Fetch listing status for all SKUs from eBay API and store in ebay_metrics table';
+    protected $description = 'Fetch listing status and titles for all SKUs from eBay API and store in ebay_metrics table';
 
     public function handle()
     {
-        $this->info('Starting eBay listing status fetch (GetMyeBaySelling - Complete)...');
+        $this->info('Starting eBay listing status and title fetch (GetMyeBaySelling - Complete)...');
 
         // Get access token
         $accessToken = $this->getAccessToken();
@@ -30,17 +30,27 @@ class FetchEbayListingStatus extends Command
         // Step 1: Fetch all ACTIVE listings
         $this->info('Fetching active listings from eBay...');
         $activeListings = $this->fetchListingsByStatus($accessToken, 'Active');
-        foreach ($activeListings as $sku) {
-            $allListings[$sku] = 'ACTIVE';
+        foreach ($activeListings as $item) {
+            $allListings[$item['sku']] = [
+                'status' => 'ACTIVE', 
+                'title' => $item['title'],
+                'item_id' => $item['item_id'],
+                'ebay_link' => $item['ebay_link']
+            ];
         }
         $this->info("Found " . count($activeListings) . " active listings");
         
         // Step 2: Fetch all UNSOLD listings (ended without sale)
         $this->info('Fetching unsold listings from eBay...');
         $unsoldListings = $this->fetchListingsByStatus($accessToken, 'Unsold');
-        foreach ($unsoldListings as $sku) {
-            if (!isset($allListings[$sku])) {
-                $allListings[$sku] = 'INACTIVE';
+        foreach ($unsoldListings as $item) {
+            if (!isset($allListings[$item['sku']])) {
+                $allListings[$item['sku']] = [
+                    'status' => 'INACTIVE', 
+                    'title' => $item['title'],
+                    'item_id' => $item['item_id'],
+                    'ebay_link' => $item['ebay_link']
+                ];
             }
         }
         $this->info("Found " . count($unsoldListings) . " unsold listings");
@@ -48,9 +58,14 @@ class FetchEbayListingStatus extends Command
         // Step 3: Fetch all SOLD listings
         $this->info('Fetching sold listings from eBay...');
         $soldListings = $this->fetchListingsByStatus($accessToken, 'Sold');
-        foreach ($soldListings as $sku) {
-            if (!isset($allListings[$sku])) {
-                $allListings[$sku] = 'INACTIVE';
+        foreach ($soldListings as $item) {
+            if (!isset($allListings[$item['sku']])) {
+                $allListings[$item['sku']] = [
+                    'status' => 'INACTIVE', 
+                    'title' => $item['title'],
+                    'item_id' => $item['item_id'],
+                    'ebay_link' => $item['ebay_link']
+                ];
             }
         }
         $this->info("Found " . count($soldListings) . " sold listings");
@@ -64,7 +79,12 @@ class FetchEbayListingStatus extends Command
 
         foreach ($allMetricSkus as $sku) {
             if (!isset($allListings[$sku])) {
-                $allListings[$sku] = 'MISSING';
+                $allListings[$sku] = [
+                    'status' => 'MISSING', 
+                    'title' => null,
+                    'item_id' => null,
+                    'ebay_link' => null
+                ];
             }
         }
 
@@ -74,30 +94,52 @@ class FetchEbayListingStatus extends Command
         if (!empty($allListings)) {
             // Split into chunks to avoid SQL query size limits
             $listingsArray = [];
-            foreach ($allListings as $sku => $status) {
-                $listingsArray[] = ['sku' => $sku, 'listing_status' => $status];
+            foreach ($allListings as $sku => $data) {
+                $listingsArray[] = [
+                    'sku' => $sku, 
+                    'listing_status' => $data['status'],
+                    'ebay_title' => $data['title'],
+                    'item_id' => $data['item_id'],
+                    'ebay_link' => $data['ebay_link']
+                ];
             }
             
             $chunks = array_chunk($listingsArray, 500, true);
             
             foreach ($chunks as $chunk) {
-                $cases = [];
+                $statusCases = [];
+                $titleCases = [];
+                $itemIdCases = [];
+                $linkCases = [];
                 $skuList = [];
                 
                 foreach ($chunk as $data) {
                     $sku = addslashes($data['sku']);
                     $status = $data['listing_status'];
-                    $cases[] = "WHEN '{$sku}' THEN '{$status}'";
+                    $title = $data['ebay_title'] ? addslashes($data['ebay_title']) : '';
+                    $itemId = $data['item_id'] ?? '';
+                    $link = $data['ebay_link'] ? addslashes($data['ebay_link']) : '';
+                    
+                    $statusCases[] = "WHEN '{$sku}' THEN '{$status}'";
+                    $titleCases[] = "WHEN '{$sku}' THEN '{$title}'";
+                    $itemIdCases[] = "WHEN '{$sku}' THEN '{$itemId}'";
+                    $linkCases[] = "WHEN '{$sku}' THEN '{$link}'";
                     $skuList[] = "'{$sku}'";
                 }
                 
-                if (!empty($cases)) {
-                    $caseSql = implode(' ', $cases);
+                if (!empty($statusCases)) {
+                    $statusCaseSql = implode(' ', $statusCases);
+                    $titleCaseSql = implode(' ', $titleCases);
+                    $itemIdCaseSql = implode(' ', $itemIdCases);
+                    $linkCaseSql = implode(' ', $linkCases);
                     $skuListSql = implode(',', $skuList);
                     
                     DB::statement("
                         UPDATE ebay_metrics 
-                        SET listing_status = CASE sku {$caseSql} END,
+                        SET listing_status = CASE sku {$statusCaseSql} END,
+                            ebay_title = CASE sku {$titleCaseSql} END,
+                            item_id = CASE sku {$itemIdCaseSql} END,
+                            ebay_link = CASE sku {$linkCaseSql} END,
                             updated_at = NOW()
                         WHERE sku IN ({$skuListSql})
                     ");
@@ -107,9 +149,10 @@ class FetchEbayListingStatus extends Command
             $this->info("✓ Database updated successfully!");
         }
 
-        $activeCount = array_count_values($allListings)['ACTIVE'] ?? 0;
-        $inactiveCount = array_count_values($allListings)['INACTIVE'] ?? 0;
-        $missingCount = array_count_values($allListings)['MISSING'] ?? 0;
+        $statuses = array_column($allListings, 'status');
+        $activeCount = array_count_values($statuses)['ACTIVE'] ?? 0;
+        $inactiveCount = array_count_values($statuses)['INACTIVE'] ?? 0;
+        $missingCount = array_count_values($statuses)['MISSING'] ?? 0;
 
         $this->info("\n=== Summary ===");
         $this->info("Total SKUs updated: " . count($allListings));
@@ -122,7 +165,7 @@ class FetchEbayListingStatus extends Command
 
     private function fetchListingsByStatus($accessToken, $listType)
     {
-        $allSkus = [];
+        $allItems = [];
         $pageNumber = 1;
         $totalPages = 1;
         
@@ -141,6 +184,7 @@ class FetchEbayListingStatus extends Command
                         </ActiveList>
                         <OutputSelector>ActiveList.ItemArray.Item.ItemID</OutputSelector>
                         <OutputSelector>ActiveList.ItemArray.Item.SKU</OutputSelector>
+                        <OutputSelector>ActiveList.ItemArray.Item.Title</OutputSelector>
                         <OutputSelector>ActiveList.PaginationResult</OutputSelector>';
                 } elseif ($listType === 'Unsold') {
                     $xmlBody .= '<UnsoldList>
@@ -152,6 +196,7 @@ class FetchEbayListingStatus extends Command
                         </UnsoldList>
                         <OutputSelector>UnsoldList.ItemArray.Item.ItemID</OutputSelector>
                         <OutputSelector>UnsoldList.ItemArray.Item.SKU</OutputSelector>
+                        <OutputSelector>UnsoldList.ItemArray.Item.Title</OutputSelector>
                         <OutputSelector>UnsoldList.PaginationResult</OutputSelector>';
                 } elseif ($listType === 'Sold') {
                     $xmlBody .= '<SoldList>
@@ -163,6 +208,7 @@ class FetchEbayListingStatus extends Command
                         </SoldList>
                         <OutputSelector>SoldList.ItemArray.Item.ItemID</OutputSelector>
                         <OutputSelector>SoldList.ItemArray.Item.SKU</OutputSelector>
+                        <OutputSelector>SoldList.ItemArray.Item.Title</OutputSelector>
                         <OutputSelector>SoldList.PaginationResult</OutputSelector>';
                 }
                 
@@ -211,8 +257,22 @@ class FetchEbayListingStatus extends Command
                 if ($listNode && isset($listNode->ItemArray->Item)) {
                     foreach ($listNode->ItemArray->Item as $item) {
                         $sku = (string) ($item->SKU ?? '');
+                        $title = (string) ($item->Title ?? '');
+                        $itemId = (string) ($item->ItemID ?? '');
+                        
+                        // Clean the title to remove non-printable characters
+                        $title = preg_replace('/[^\x20-\x7E]/', '', trim($title));
+                        
+                        // Create eBay product link
+                        $ebayLink = $itemId ? "https://www.ebay.com/itm/{$itemId}" : null;
+                        
                         if ($sku && !stripos($sku, 'PARENT')) {
-                            $allSkus[] = $sku;
+                            $allItems[] = [
+                                'sku' => $sku,
+                                'title' => $title,
+                                'item_id' => $itemId,
+                                'ebay_link' => $ebayLink
+                            ];
                         }
                     }
                 }
@@ -227,7 +287,7 @@ class FetchEbayListingStatus extends Command
             
         } while ($pageNumber <= $totalPages);
 
-        return array_unique($allSkus);
+        return $allItems;
     }
 
     private function getAccessToken()

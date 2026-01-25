@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\WalmartPricingSales;
 use App\Models\WalmartDailyData;
+use App\Services\WalmartRateLimiter;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
@@ -28,6 +29,7 @@ class FetchWalmartPricingSales extends Command
 
     protected $baseUrl = 'https://marketplace.walmartapis.com';
     protected $token;
+    protected $rateLimiter;
 
     /**
      * Traffic level to numeric mapping
@@ -48,7 +50,10 @@ class FetchWalmartPricingSales extends Command
         $days = 30; // Always fetch 30 days data
         $startTime = microtime(true);
 
-        $this->info("Fetching Walmart Pricing & Sales Data...");
+        // Initialize rate limiter
+        $this->rateLimiter = new WalmartRateLimiter();
+
+        $this->info("Fetching Walmart Pricing & Sales Data (Incremental Save Mode)...");
 
         // Get access token
         $this->token = $this->getAccessToken();
@@ -59,34 +64,44 @@ class FetchWalmartPricingSales extends Command
 
         $this->info('Access token received.');
 
-        // Step 1: Fetch pricing insights
-        $this->info('Step 1/5: Fetching pricing insights...');
-        $pricingData = $this->fetchPricingInsights();
-        $this->info("  Fetched pricing data for " . count($pricingData) . " SKUs");
-
-        // Step 2: Fetch listing quality for views/pageViews
-        $this->info('Step 2/5: Fetching listing quality (views)...');
-        $listingQualityData = $this->fetchListingQuality();
-        $this->info("  Fetched listing quality for " . count($listingQualityData) . " SKUs");
-
-        // Step 3: Calculate order counts from WalmartDailyData or fetch from API
-        $this->info('Step 3/5: Calculating order counts...');
+        // Step 1: Calculate order counts first (needed for merging)
+        $this->info('Step 1/4: Calculating order counts...');
         $orderCounts = $this->calculateOrderCounts($days);
         $this->info("  Calculated order counts for " . count($orderCounts) . " SKUs");
 
-        // Step 4: Submit inventory feed and get feed ID
-        $this->info('Step 4/5: Submitting inventory feed...');
-        $feedId = $this->submitInventoryFeed($pricingData);
-        if ($feedId) {
-            $this->info("  Feed submitted successfully. Feed ID: {$feedId}");
+        // Step 2: Fetch and save pricing insights incrementally
+        $this->info('Step 2/4: Fetching pricing insights (saving as we go)...');
+        
+        // Check rate limit status before starting
+        $remaining = $this->rateLimiter->getRemainingRequests('pricing');
+        if ($remaining < 10) {
+            $this->warn("  Warning: Only {$remaining} pricing API requests remaining. Waiting 60s to reset...");
+            sleep(60);
+            $this->rateLimiter->reset(); // Clear the counter
         }
+        
+        $pricingCount = $this->fetchAndSavePricingInsights($orderCounts);
+        $this->info("  ✓ Saved pricing data for {$pricingCount} SKUs");
 
-        // Step 5: Merge and store data
-        $this->info('Step 5/5: Storing data...');
-        $this->mergeAndStoreData($pricingData, $orderCounts, $listingQualityData);
+        // Step 3: Fetch and save listing quality incrementally
+        $this->info('Step 3/4: Fetching listing quality (saving as we go)...');
+        
+        // Check rate limit status before starting
+        $remaining = $this->rateLimiter->getRemainingRequests('listing');
+        if ($remaining < 10) {
+            $this->warn("  Warning: Only {$remaining} listing API requests remaining. Waiting 60s to reset...");
+            sleep(60);
+            $this->rateLimiter->reset(); // Clear the counter
+        }
+        
+        $listingCount = $this->fetchAndSaveListingQuality();
+        $this->info("  ✓ Saved listing quality for {$listingCount} SKUs");
+
+        // Step 4: Skip inventory feed submission (should be run separately to avoid rate limits)
+        $this->comment('Step 4/4: Skipping inventory feed submission (run separately: walmart:submit-inventory-feed)');
 
         $elapsed = round(microtime(true) - $startTime, 2);
-        $this->info("Walmart pricing & sales data fetched and stored successfully in {$elapsed} seconds.");
+        $this->info("✓ Walmart pricing & sales data fetched and stored successfully in {$elapsed} seconds.");
 
         return 0;
     }
@@ -133,55 +148,77 @@ class FetchWalmartPricingSales extends Command
         $maxPages = 100; // Safety limit
 
         do {
-            $response = Http::withoutVerifying()->withHeaders([
-                'WM_QOS.CORRELATION_ID' => uniqid(),
-                'WM_SEC.ACCESS_TOKEN' => $this->token,
-                'WM_SVC.NAME' => 'Walmart Marketplace',
-                'accept' => 'application/json',
-                'content-type' => 'application/json',
-            ])->post($this->baseUrl . '/v3/price/getPricingInsights', [
-                'pageNumber' => $pageNumber,
-                'sort' => [
-                    'sortField' => 'TRAFFIC',
-                    'sortOrder' => 'DESC'
-                ]
-            ]);
+            try {
+                // Use rate limiter with retry logic
+                $response = $this->rateLimiter->executeWithRetry(function() use ($pageNumber) {
+                    $response = Http::withoutVerifying()->withHeaders([
+                        'WM_QOS.CORRELATION_ID' => uniqid(),
+                        'WM_SEC.ACCESS_TOKEN' => $this->token,
+                        'WM_SVC.NAME' => 'Walmart Marketplace',
+                        'accept' => 'application/json',
+                        'content-type' => 'application/json',
+                    ])->post($this->baseUrl . '/v3/price/getPricingInsights', [
+                        'pageNumber' => $pageNumber,
+                        'sort' => [
+                            'sortField' => 'TRAFFIC',
+                            'sortOrder' => 'DESC'
+                        ]
+                    ]);
 
-            if (!$response->successful()) {
-                $errorBody = $response->body();
-                
-                // Check for rate limit error
-                if (strpos($errorBody, 'REQUEST_THRESHOLD_VIOLATED') !== false) {
-                    $this->warn("Rate limit hit on page {$pageNumber}. Waiting 60 seconds...");
-                    sleep(60);
-                    continue; // Retry same page
+                    // Check for token expiration and refresh
+                    if ($response->status() == 401 || strpos($response->body(), 'UNAUTHORIZED') !== false) {
+                        $this->warn("  Token expired, refreshing...");
+                        $this->token = $this->getAccessToken();
+                        if (!$this->token) {
+                            throw new \Exception('Failed to refresh access token');
+                        }
+                        
+                        // Retry with new token
+                        $response = Http::withoutVerifying()->withHeaders([
+                            'WM_QOS.CORRELATION_ID' => uniqid(),
+                            'WM_SEC.ACCESS_TOKEN' => $this->token,
+                            'WM_SVC.NAME' => 'Walmart Marketplace',
+                            'accept' => 'application/json',
+                            'content-type' => 'application/json',
+                        ])->post($this->baseUrl . '/v3/price/getPricingInsights', [
+                            'pageNumber' => $pageNumber,
+                            'sort' => [
+                                'sortField' => 'TRAFFIC',
+                                'sortOrder' => 'DESC'
+                            ]
+                        ]);
+                    }
+
+                    // Throw exception on failure so retry logic can handle it
+                    if (!$response->successful()) {
+                        throw new \Exception($response->body());
+                    }
+
+                    return $response;
+                }, 'pricing', 3);
+
+                $data = $response->json();
+                $items = $data['data']['pricingInsightsResponseList'] ?? [];
+
+                if (empty($items)) {
+                    break;
                 }
-                
-                $this->error("Pricing insights API failed: " . $errorBody);
-                break;
-            }
 
-            $data = $response->json();
-            $items = $data['data']['pricingInsightsResponseList'] ?? [];
-
-            if (empty($items)) {
-                break;
-            }
-
-            foreach ($items as $item) {
-                $sku = $item['sku'] ?? null;
-                if ($sku) {
-                    $allPricingData[$sku] = $item;
+                foreach ($items as $item) {
+                    $sku = $item['sku'] ?? null;
+                    if ($sku) {
+                        $allPricingData[$sku] = $item;
+                    }
                 }
-            }
 
-            $this->info("  Page {$pageNumber}: " . count($items) . " items (Total: " . count($allPricingData) . ")");
+                $remaining = $this->rateLimiter->getRemainingRequests('pricing');
+                $this->info("  Page {$pageNumber}: " . count($items) . " items (Total: " . count($allPricingData) . ", Remaining: {$remaining})");
 
-            $pageNumber++;
+                $pageNumber++;
 
-            // Rate limiting - wait between pages
-            if ($pageNumber < $maxPages && !empty($items)) {
-                sleep(1);
+            } catch (\Exception $e) {
+                $this->error("Failed to fetch pricing page {$pageNumber}: " . $e->getMessage());
+                break;
             }
 
         } while ($pageNumber < $maxPages && !empty($items));
@@ -196,93 +233,428 @@ class FetchWalmartPricingSales extends Command
     {
         $allQualityData = [];
         $page = 1;
-        $limit = 50;
-        $maxPages = 100; // Safety limit
+        $limit = 200; // Increased from 50 to reduce total requests
+        $maxPages = 20; // Reduced - most SKUs should be in first few pages
+        $duplicatePageCount = 0; // Track consecutive pages with no new SKUs
 
         do {
-            $response = Http::withoutVerifying()->withHeaders([
-                'WM_QOS.CORRELATION_ID' => uniqid(),
-                'WM_SEC.ACCESS_TOKEN' => $this->token,
-                'WM_SVC.NAME' => 'Walmart Marketplace',
-                'accept' => 'application/json',
-                'content-type' => 'application/json',
-            ])->post($this->baseUrl . '/v3/insights/items/listingQuality/items', [
-                'limit' => $limit,
-                'page' => $page,
-            ]);
+            try {
+                $countBefore = count($allQualityData);
+                
+                // Use rate limiter with retry logic
+                $response = $this->rateLimiter->executeWithRetry(function() use ($page, $limit) {
+                    $response = Http::withoutVerifying()->withHeaders([
+                        'WM_QOS.CORRELATION_ID' => uniqid(),
+                        'WM_SEC.ACCESS_TOKEN' => $this->token,
+                        'WM_SVC.NAME' => 'Walmart Marketplace',
+                        'accept' => 'application/json',
+                        'content-type' => 'application/json',
+                    ])->post($this->baseUrl . '/v3/insights/items/listingQuality/items', [
+                        'limit' => $limit,
+                        'page' => $page,
+                    ]);
 
-            // If unauthorized, try refreshing token
-            if ($response->status() == 401) {
-                $this->token = $this->getAccessToken();
-                if (!$this->token) {
-                    $this->error('Failed to refresh access token');
+                    // If unauthorized, refresh token and retry once
+                    if ($response->status() == 401 || strpos($response->body(), 'UNAUTHORIZED') !== false) {
+                        $this->warn("  Token expired, refreshing...");
+                        $this->token = $this->getAccessToken();
+                        if (!$this->token) {
+                            throw new \Exception('Failed to refresh access token');
+                        }
+
+                        $response = Http::withoutVerifying()->withHeaders([
+                            'WM_QOS.CORRELATION_ID' => uniqid(),
+                            'WM_SEC.ACCESS_TOKEN' => $this->token,
+                            'WM_SVC.NAME' => 'Walmart Marketplace',
+                            'accept' => 'application/json',
+                            'content-type' => 'application/json',
+                        ])->post($this->baseUrl . '/v3/insights/items/listingQuality/items', [
+                            'limit' => $limit,
+                            'page' => $page,
+                        ]);
+                    }
+
+                    if (!$response->successful()) {
+                        throw new \Exception($response->body());
+                    }
+
+                    return $response;
+                }, 'listing', 3);
+
+                $data = $response->json();
+                $items = $data['payload'] ?? [];
+
+                if (empty($items)) {
                     break;
                 }
 
-                $response = Http::withoutVerifying()->withHeaders([
-                    'WM_QOS.CORRELATION_ID' => uniqid(),
-                    'WM_SEC.ACCESS_TOKEN' => $this->token,
-                    'WM_SVC.NAME' => 'Walmart Marketplace',
-                    'accept' => 'application/json',
-                    'content-type' => 'application/json',
-                ])->post($this->baseUrl . '/v3/insights/items/listingQuality/items', [
-                    'limit' => $limit,
-                    'page' => $page,
-                ]);
-            }
-
-            if (!$response->successful()) {
-                $errorBody = $response->body();
-                
-                // Check for rate limit error
-                if (strpos($errorBody, 'REQUEST_THRESHOLD_VIOLATED') !== false) {
-                    $this->warn("Rate limit hit on page {$page}. Waiting 60 seconds...");
-                    sleep(60);
-                    continue; // Retry same page
+                $newSkuCount = 0;
+                foreach ($items as $item) {
+                    $sku = $item['sku'] ?? null;
+                    if ($sku && !isset($allQualityData[$sku])) {
+                        $newSkuCount++;
+                        // Get last30DaysPageViews from stats, fallback to pageViews
+                        $pageViews = $item['stats']['last30DaysPageViews'] 
+                            ?? $item['stats']['pageViews'] 
+                            ?? $item['last30DaysPageViews']
+                            ?? null;
+                        
+                        $allQualityData[$sku] = [
+                            'quality_score' => $item['qualityScore'] ?? null,
+                            'offer_score' => $item['offerScore'] ?? null,
+                            'content_score' => $item['contentScore'] ?? null,
+                            'page_views' => $pageViews ? (int) $pageViews : null,
+                            'issues' => $item['issues'] ?? [],
+                        ];
+                    }
                 }
-                
-                $this->error("Listing quality API failed: " . $errorBody);
-                break;
-            }
 
-            $data = $response->json();
-            $items = $data['payload'] ?? [];
+                $remaining = $this->rateLimiter->getRemainingRequests('listing');
+                $countAfter = count($allQualityData);
+                $this->info("  Page {$page}: {$newSkuCount} new SKUs (Total: {$countAfter}, Remaining: {$remaining})");
 
-            if (empty($items)) {
-                break;
-            }
-
-            foreach ($items as $item) {
-                $sku = $item['sku'] ?? null;
-                if ($sku) {
-                    // Get last30DaysPageViews from stats, fallback to pageViews
-                    $pageViews = $item['stats']['last30DaysPageViews'] 
-                        ?? $item['stats']['pageViews'] 
-                        ?? $item['last30DaysPageViews']
-                        ?? null;
-                    
-                    $allQualityData[$sku] = [
-                        'quality_score' => $item['qualityScore'] ?? null,
-                        'offer_score' => $item['offerScore'] ?? null,
-                        'content_score' => $item['contentScore'] ?? null,
-                        'page_views' => $pageViews ? (int) $pageViews : null,
-                        'issues' => $item['issues'] ?? [],
-                    ];
+                // Check if we're getting duplicate pages
+                if ($countAfter == $countBefore) {
+                    $duplicatePageCount++;
+                    if ($duplicatePageCount >= 2) {
+                        $this->comment("  No new SKUs in last 2 pages, stopping pagination.");
+                        break;
+                    }
+                } else {
+                    $duplicatePageCount = 0; // Reset counter if we got new SKUs
                 }
-            }
 
-            $this->info("  Page {$page}: " . count($items) . " items (Total: " . count($allQualityData) . ")");
+                $page++;
 
-            $page++;
-
-            // Rate limiting - wait between pages
-            if ($page <= $maxPages && !empty($items)) {
-                sleep(1);
+            } catch (\Exception $e) {
+                $this->error("Failed to fetch listing quality page {$page}: " . $e->getMessage());
+                break;
             }
 
         } while ($page <= $maxPages && count($items) >= $limit);
 
         return $allQualityData;
+    }
+
+    /**
+     * Fetch pricing insights and save incrementally (NEW - saves during fetch)
+     */
+    protected function fetchAndSavePricingInsights(array $orderCounts): int
+    {
+        $allPricingData = [];
+        $pageNumber = 0;
+        $maxPages = 100;
+        $totalSaved = 0;
+        $batchSize = 50; // Save every 50 SKUs
+
+        do {
+            try {
+                // Use rate limiter with retry logic
+                $response = $this->rateLimiter->executeWithRetry(function() use ($pageNumber) {
+                    $response = Http::withoutVerifying()->withHeaders([
+                        'WM_QOS.CORRELATION_ID' => uniqid(),
+                        'WM_SEC.ACCESS_TOKEN' => $this->token,
+                        'WM_SVC.NAME' => 'Walmart Marketplace',
+                        'accept' => 'application/json',
+                        'content-type' => 'application/json',
+                    ])->post($this->baseUrl . '/v3/price/getPricingInsights', [
+                        'pageNumber' => $pageNumber,
+                        'sort' => [
+                            'sortField' => 'TRAFFIC',
+                            'sortOrder' => 'DESC'
+                        ]
+                    ]);
+
+                    // Check for token expiration and refresh
+                    if ($response->status() == 401 || strpos($response->body(), 'UNAUTHORIZED') !== false) {
+                        $this->warn("  Token expired, refreshing...");
+                        $this->token = $this->getAccessToken();
+                        if (!$this->token) {
+                            throw new \Exception('Failed to refresh access token');
+                        }
+                        
+                        // Retry with new token
+                        $response = Http::withoutVerifying()->withHeaders([
+                            'WM_QOS.CORRELATION_ID' => uniqid(),
+                            'WM_SEC.ACCESS_TOKEN' => $this->token,
+                            'WM_SVC.NAME' => 'Walmart Marketplace',
+                            'accept' => 'application/json',
+                            'content-type' => 'application/json',
+                        ])->post($this->baseUrl . '/v3/price/getPricingInsights', [
+                            'pageNumber' => $pageNumber,
+                            'sort' => [
+                                'sortField' => 'TRAFFIC',
+                                'sortOrder' => 'DESC'
+                            ]
+                        ]);
+                    }
+
+                    if (!$response->successful()) {
+                        throw new \Exception($response->body());
+                    }
+
+                    return $response;
+                }, 'pricing', 3);
+
+                $data = $response->json();
+                $items = $data['data']['pricingInsightsResponseList'] ?? [];
+
+                if (empty($items)) {
+                    break;
+                }
+
+                foreach ($items as $item) {
+                    $sku = $item['sku'] ?? null;
+                    if ($sku) {
+                        $allPricingData[$sku] = $item;
+                    }
+                }
+
+                $remaining = $this->rateLimiter->getRemainingRequests('pricing');
+                $this->info("  Page {$pageNumber}: " . count($items) . " items (Total: " . count($allPricingData) . ", Remaining: {$remaining})");
+
+                // Save in batches during fetch
+                if (count($allPricingData) >= $batchSize) {
+                    $saved = $this->saveIncrementalBatch($allPricingData, $orderCounts, []);
+                    $totalSaved += $saved;
+                    $this->comment("  → Saved batch: {$saved} SKUs (Total saved: {$totalSaved})");
+                    $allPricingData = []; // Clear batch
+                }
+
+                $pageNumber++;
+
+            } catch (\Exception $e) {
+                $this->error("Failed to fetch pricing page {$pageNumber}: " . $e->getMessage());
+                break;
+            }
+
+        } while ($pageNumber < $maxPages && !empty($items));
+
+        // Save remaining data
+        if (!empty($allPricingData)) {
+            $saved = $this->saveIncrementalBatch($allPricingData, $orderCounts, []);
+            $totalSaved += $saved;
+            $this->comment("  → Saved final batch: {$saved} SKUs (Total saved: {$totalSaved})");
+        }
+
+        return $totalSaved;
+    }
+
+    /**
+     * Fetch listing quality and save incrementally (NEW - saves during fetch)
+     */
+    protected function fetchAndSaveListingQuality(): int
+    {
+        $allQualityData = [];
+        $page = 1;
+        $limit = 200;
+        $maxPages = 20;
+        $duplicatePageCount = 0;
+        $totalSaved = 0;
+        $batchSize = 100; // Save every 100 SKUs
+
+        do {
+            try {
+                $countBefore = count($allQualityData);
+                
+                $response = $this->rateLimiter->executeWithRetry(function() use ($page, $limit) {
+                    $response = Http::withoutVerifying()->withHeaders([
+                        'WM_QOS.CORRELATION_ID' => uniqid(),
+                        'WM_SEC.ACCESS_TOKEN' => $this->token,
+                        'WM_SVC.NAME' => 'Walmart Marketplace',
+                        'accept' => 'application/json',
+                        'content-type' => 'application/json',
+                    ])->post($this->baseUrl . '/v3/insights/items/listingQuality/items', [
+                        'limit' => $limit,
+                        'page' => $page,
+                    ]);
+
+                    if ($response->status() == 401 || strpos($response->body(), 'UNAUTHORIZED') !== false) {
+                        $this->warn("  Token expired, refreshing...");
+                        $this->token = $this->getAccessToken();
+                        if (!$this->token) {
+                            throw new \Exception('Failed to refresh access token');
+                        }
+
+                        $response = Http::withoutVerifying()->withHeaders([
+                            'WM_QOS.CORRELATION_ID' => uniqid(),
+                            'WM_SEC.ACCESS_TOKEN' => $this->token,
+                            'WM_SVC.NAME' => 'Walmart Marketplace',
+                            'accept' => 'application/json',
+                            'content-type' => 'application/json',
+                        ])->post($this->baseUrl . '/v3/insights/items/listingQuality/items', [
+                            'limit' => $limit,
+                            'page' => $page,
+                        ]);
+                    }
+
+                    if (!$response->successful()) {
+                        throw new \Exception($response->body());
+                    }
+
+                    return $response;
+                }, 'listing', 3);
+
+                $data = $response->json();
+                $items = $data['payload'] ?? [];
+
+                if (empty($items)) {
+                    break;
+                }
+
+                $newSkuCount = 0;
+                foreach ($items as $item) {
+                    $sku = $item['sku'] ?? null;
+                    if ($sku && !isset($allQualityData[$sku])) {
+                        $newSkuCount++;
+                        $pageViews = $item['stats']['last30DaysPageViews'] 
+                            ?? $item['stats']['pageViews'] 
+                            ?? $item['last30DaysPageViews']
+                            ?? null;
+                        
+                        $allQualityData[$sku] = [
+                            'quality_score' => $item['qualityScore'] ?? null,
+                            'offer_score' => $item['offerScore'] ?? null,
+                            'content_score' => $item['contentScore'] ?? null,
+                            'page_views' => $pageViews ? (int) $pageViews : null,
+                            'issues' => $item['issues'] ?? [],
+                        ];
+                    }
+                }
+
+                $remaining = $this->rateLimiter->getRemainingRequests('listing');
+                $countAfter = count($allQualityData);
+                $this->info("  Page {$page}: {$newSkuCount} new SKUs (Total: {$countAfter}, Remaining: {$remaining})");
+
+                // Save in batches during fetch
+                if (count($allQualityData) >= $batchSize) {
+                    $saved = $this->updateListingQualityBatch($allQualityData);
+                    $totalSaved += $saved;
+                    $this->comment("  → Updated batch: {$saved} SKUs (Total updated: {$totalSaved})");
+                    $allQualityData = []; // Clear batch
+                }
+
+                // Check for duplicates
+                if ($countAfter == $countBefore) {
+                    $duplicatePageCount++;
+                    if ($duplicatePageCount >= 2) {
+                        $this->comment("  No new SKUs in last 2 pages, stopping pagination.");
+                        break;
+                    }
+                } else {
+                    $duplicatePageCount = 0;
+                }
+
+                $page++;
+
+            } catch (\Exception $e) {
+                $this->error("Failed to fetch listing quality page {$page}: " . $e->getMessage());
+                break;
+            }
+
+        } while ($page <= $maxPages && count($items) >= $limit);
+
+        // Save remaining data
+        if (!empty($allQualityData)) {
+            $saved = $this->updateListingQualityBatch($allQualityData);
+            $totalSaved += $saved;
+            $this->comment("  → Updated final batch: {$saved} SKUs (Total updated: {$totalSaved})");
+        }
+
+        return $totalSaved;
+    }
+
+    /**
+     * Save incremental batch (pricing data with orders)
+     */
+    protected function saveIncrementalBatch(array $pricingData, array $orderCounts, array $listingQualityData): int
+    {
+        $bulkData = [];
+        
+        foreach ($pricingData as $sku => $pricing) {
+            $orders = $orderCounts[$sku] ?? [
+                'l30_orders' => 0,
+                'l30_qty' => 0,
+                'l30_revenue' => 0,
+                'l60_orders' => 0,
+                'l60_qty' => 0,
+                'l60_revenue' => 0,
+            ];
+            $quality = $listingQualityData[$sku] ?? [];
+
+            $views = $this->trafficMap[$pricing['traffic'] ?? ''] ?? null;
+            $pageViews = $quality['page_views'] ?? null;
+
+            $bulkData[] = [
+                'sku' => $sku,
+                'item_id' => $pricing['itemId'] ?? null,
+                'item_name' => isset($pricing['itemName']) ? substr($pricing['itemName'], 0, 500) : null,
+                'current_price' => $pricing['currentPrice'] ?? null,
+                'buy_box_base_price' => $pricing['buyBoxBasePrice'] ?? null,
+                'buy_box_total_price' => $pricing['buyBoxTotalPrice'] ?? null,
+                'buy_box_win_rate' => $pricing['buyBoxWinRate'] ?? null,
+                'competitor_price' => $pricing['competitorPrice'] ?? null,
+                'comparison_price' => $pricing['comparisonPrice'] ?? null,
+                'price_differential' => $pricing['priceDifferential'] ?? null,
+                'price_competitive_score' => $pricing['priceCompetitiveScore'] ?? null,
+                'price_competitive' => ($pricing['priceCompetitive'] ?? false) ? 1 : 0,
+                'repricer_strategy_type' => $pricing['repricerStrategyType'] ?? null,
+                'repricer_strategy_name' => $pricing['repricerStrategyName'] ?? null,
+                'repricer_status' => $pricing['repricerStatus'] ?? null,
+                'repricer_min_price' => $pricing['repricerMinPrice'] ?? null,
+                'repricer_max_price' => $pricing['repricerMaxPrice'] ?? null,
+                'gmv30' => $pricing['gmv30'] ?? null,
+                'inventory_count' => $pricing['inventoryCount'] ?? null,
+                'fulfillment' => $pricing['fulfillment'] ?? null,
+                'sales_rank' => $pricing['salesRank'] ?? null,
+                'l30_orders' => $orders['l30_orders'],
+                'l30_qty' => $orders['l30_qty'],
+                'l30_revenue' => $orders['l30_revenue'],
+                'l60_orders' => $orders['l60_orders'],
+                'l60_qty' => $orders['l60_qty'],
+                'l60_revenue' => $orders['l60_revenue'],
+                'traffic' => $pricing['traffic'] ?? null,
+                'views' => $views,
+                'page_views' => $pageViews,
+                'in_demand' => ($pricing['inDemand'] ?? false) ? 1 : 0,
+                'promo_status' => $pricing['promoStatus'] ?? null,
+                'promo_details' => isset($pricing['promoDetails']) ? json_encode($pricing['promoDetails']) : null,
+                'reduced_referral_status' => $pricing['reducedReferralStatus'] ?? null,
+                'walmart_funded_status' => $pricing['walmartFundedStatus'] ?? null,
+                'created_at' => now()->toDateTimeString(),
+                'updated_at' => now()->toDateTimeString(),
+            ];
+        }
+
+        if (!empty($bulkData)) {
+            $this->bulkUpsert($bulkData);
+            // Note: Not syncing to apicentral - using walmart_pricing table only
+        }
+
+        return count($bulkData);
+    }
+
+    /**
+     * Update listing quality data for existing SKUs
+     */
+    protected function updateListingQualityBatch(array $listingQualityData): int
+    {
+        $updated = 0;
+        
+        foreach ($listingQualityData as $sku => $quality) {
+            try {
+                WalmartPricingSales::where('sku', $sku)->update([
+                    'page_views' => $quality['page_views'] ?? null,
+                    'updated_at' => now()->toDateTimeString(),
+                ]);
+                $updated++;
+            } catch (\Exception $e) {
+                // Skip if SKU doesn't exist yet
+                continue;
+            }
+        }
+
+        return $updated;
     }
 
     /**
@@ -544,17 +916,22 @@ class FetchWalmartPricingSales extends Command
             $this->bulkUpsert($bulkData);
         }
 
-        $this->info("  Stored data for " . count($allSkus) . " SKUs");
+        $this->info("Stored data for " . count($allSkus) . " SKUs");
         
-        // Also update walmart_metrics in apicentral for sync command
-        $this->updateWalmartMetrics($bulkData);
+        // Note: Not syncing to apicentral - using walmart_pricing table only
     }
     
     /**
      * Update walmart_metrics table in apicentral with latest data
+     * DISABLED: Using walmart_pricing table only (no apicentral sync)
      */
     protected function updateWalmartMetrics(array $data): void
     {
+        // Disabled - not syncing to apicentral
+        // All data stays in walmart_pricing table
+        return;
+        
+        /* Original apicentral sync code (disabled)
         foreach ($data as $item) {
             DB::connection('apicentral')->table('walmart_metrics')->updateOrInsert(
                 ['sku' => $item['sku']],
@@ -564,13 +941,12 @@ class FetchWalmartPricingSales extends Command
                     'l60' => $item['l60_qty'] ?? 0,
                     'l60_amt' => $item['l60_revenue'] ?? 0,
                     'price' => $item['current_price'] ?? 0,
-                    'stock' => $item['inventory_count'] ?? 0,  // Inventory from API
+                    'stock' => $item['inventory_count'] ?? 0,
                     'updated_at' => now(),
                 ]
             );
         }
-        
-        $this->info("  Updated walmart_metrics in apicentral with inventory data");
+        */
     }
 
     /**
@@ -607,6 +983,9 @@ class FetchWalmartPricingSales extends Command
 
     /**
      * Submit inventory feed to Walmart and get feed ID
+     * 
+     * NOTE: This should be run separately to avoid rate limit conflicts
+     * Use the dedicated command: php artisan walmart:submit-inventory-feed
      */
     protected function submitInventoryFeed(array $pricingData): ?string
     {
@@ -619,15 +998,18 @@ class FetchWalmartPricingSales extends Command
         $xml = $this->createInventoryFeedXml($pricingData);
         
         try {
-            $response = Http::withoutVerifying()
-                ->withHeaders([
-                    'WM_QOS.CORRELATION_ID' => uniqid(),
-                    'WM_SEC.ACCESS_TOKEN' => $this->token,
-                    'WM_SVC.NAME' => 'Walmart Marketplace',
-                    'Content-Type' => 'multipart/form-data',
-                ])
-                ->attach('file', $xml, 'inventory_feed.xml', ['Content-Type' => 'application/xml'])
-                ->post($this->baseUrl . '/v3/feeds?feedType=inventory');
+            // Use rate limiter for feeds
+            $response = $this->rateLimiter->executeWithRetry(function() use ($xml) {
+                return Http::withoutVerifying()
+                    ->withHeaders([
+                        'WM_QOS.CORRELATION_ID' => uniqid(),
+                        'WM_SEC.ACCESS_TOKEN' => $this->token,
+                        'WM_SVC.NAME' => 'Walmart Marketplace',
+                        'Content-Type' => 'multipart/form-data',
+                    ])
+                    ->attach('file', $xml, 'inventory_feed.xml', ['Content-Type' => 'application/xml'])
+                    ->post($this->baseUrl . '/v3/feeds?feedType=inventory');
+            }, 'feeds', 2);
 
             if ($response->successful()) {
                 $responseBody = $response->body();

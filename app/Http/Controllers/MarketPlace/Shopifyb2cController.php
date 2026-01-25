@@ -38,7 +38,7 @@ class Shopifyb2cController extends Controller
         // Get percentage from cache or database
         $percentage = Cache::remember('shopifyb2c_marketplace_percentage', now()->addDays(30), function () {
             $marketplaceData = MarketplacePercentage::where('marketplace', 'ShopifyB2C')->first();
-            return $marketplaceData ? $marketplaceData->percentage : 100; // Default to 100 if not set
+            return $marketplaceData ? $marketplaceData->percentage : 95; // Default to 100 if not set
         });
 
         return view('market-places.shopifyb2c', [
@@ -751,7 +751,22 @@ class Shopifyb2cController extends Controller
         // Auto-save daily summary in background (non-blocking)
         $this->saveDailySummaryIfNeeded($data ?? []);
         
-        return response()->json($data);
+        // Calculate campaign totals from google_ads_campaigns (like Amazon does)
+        $yesterday = \Carbon\Carbon::yesterday();
+        $startDate = $yesterday->copy()->subDays(29);
+        
+        $totalGoogleSpend = DB::table('google_ads_campaigns')
+            ->whereDate('date', '>=', $startDate->format('Y-m-d'))
+            ->whereDate('date', '<=', $yesterday->format('Y-m-d'))
+            ->where('advertising_channel_type', 'SHOPPING')
+            ->sum('metrics_cost_micros') / 1000000;
+        
+        return response()->json([
+            'data' => $data,
+            'campaign_totals' => [
+                'google_spend_L30' => $totalGoogleSpend
+            ]
+        ]);
     }
 
     public function getViewShopifyB2cTabularData()
@@ -901,12 +916,20 @@ class Shopifyb2cController extends Controller
             $b2cL30 = $processedItem["B2B L30"]; // Rename for clarity: it's from shopify_b2c_daily_data
             $ovL30 = $processedItem["L30"];
             
-            if ($price > 0 && $b2cL30 > 0) {
+            // Calculate GPFT% and ROI% based on price (even if no sales)
+            if ($price > 0) {
                 $grossProfit = ($price * $percentageValue) - $lp - $ship;
                 $processedItem["GPFT%"] = ($grossProfit / $price) * 100;
                 $processedItem["ROI%"] = $lp > 0 ? ($grossProfit / $lp) * 100 : 0;
-                $processedItem["Profit"] = $grossProfit * $b2cL30;
-                $processedItem["Sales L30"] = $price * $b2cL30;
+                
+                // Total profit and sales only when there are actual sales
+                if ($b2cL30 > 0) {
+                    $processedItem["Profit"] = $grossProfit * $b2cL30;
+                    $processedItem["Sales L30"] = $price * $b2cL30;
+                } else {
+                    $processedItem["Profit"] = 0;
+                    $processedItem["Sales L30"] = 0;
+                }
             } else {
                 $processedItem["GPFT%"] = 0;
                 $processedItem["ROI%"] = 0;

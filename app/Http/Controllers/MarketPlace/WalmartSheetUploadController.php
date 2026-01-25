@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\WalmartPriceData;
 use App\Models\WalmartListingViewsData;
 use App\Models\WalmartOrderData;
+use App\Models\WalmartDailyData;
 use App\Models\ProductMaster;
 use App\Models\WalmartCampaignReport;
 use App\Models\ShopifySku;
@@ -379,17 +380,18 @@ class WalmartSheetUploadController extends Controller
             $listingData = WalmartListingViewsData::whereIn('sku', $skus)->get()->keyBy('sku');
             
             // Aggregate orders by SKU (sum quantities and count orders)
-            // Note: walmart_order_data table is already truncated to only contain L30 data
-            $orderData = WalmartOrderData::selectRaw('
+            // Using walmart_daily_data table with L30 period filter
+            $orderData = WalmartDailyData::selectRaw('
                 sku,
                 COUNT(*) as total_orders,
-                SUM(qty) as total_qty,
-                SUM(item_cost) as total_revenue,
+                SUM(quantity) as total_qty,
+                SUM(unit_price * quantity) as total_revenue,
                 MAX(order_date) as last_order_date,
-                SUM(shipping_cost) as total_shipping,
-                SUM(tax) as total_tax
+                SUM(shipping_charge) as total_shipping,
+                SUM(tax_amount) as total_tax
             ')
-            ->where('status', '!=', 'Canceled') // Exclude canceled orders only
+            ->where('period', 'l30') // Filter for L30 period
+            ->where('status', '!=', 'Cancelled') // Exclude cancelled orders
             ->whereIn('sku', $skus)
             ->groupBy('sku')
             ->get()
@@ -865,9 +867,12 @@ class WalmartSheetUploadController extends Controller
         try {
             $priceCount = WalmartPriceData::count();
             $listingCount = WalmartListingViewsData::count();
-            $orderCount = WalmartOrderData::count();
+            $orderCount = WalmartDailyData::where('period', 'l30')->count();
             
-            $totalRevenue = WalmartOrderData::where('status', '!=', 'Canceled')->sum('item_cost');
+            $totalRevenue = WalmartDailyData::where('period', 'l30')
+                ->where('status', '!=', 'Cancelled')
+                ->selectRaw('SUM(unit_price * quantity) as revenue')
+                ->value('revenue');
             $totalQty = \App\Models\ShopifySku::sum('quantity');
             $avgConversionRate = WalmartListingViewsData::avg('conversion_rate');
             $totalPageViews = WalmartListingViewsData::sum('page_views');

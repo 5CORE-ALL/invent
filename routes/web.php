@@ -2529,6 +2529,12 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/amazon/pink-dil/hl/ads/data', 'getAmazonPinkDilHlAdsData');
     });
 
+
+    Route::get('/ai-title-manager', [\App\Http\Controllers\ProductMaster\ProductMasterController::class, 'aiTitleManager'])->name('ai.title.manager');
+    Route::get('/api/ai-title-data', [\App\Http\Controllers\ProductMaster\ProductMasterController::class, 'getAiTitleData'])->name('ai.title.data');
+    Route::post('/api/ai-title-generate', [\App\Http\Controllers\ProductMaster\ProductMasterController::class, 'generateAiTitle'])->name('ai.title.generate');
+    Route::post('/api/ai-title-push', [\App\Http\Controllers\ProductMaster\ProductMasterController::class, 'pushTitleToMarketplace'])->name('ai.title.push');
+
     //FaceBook Adds Manager 
     Route::controller(FacebookAddsManagerController::class)->group(function () {
         Route::get('/meta-all-ads-control', 'metaAllAds')->name('meta.all.ads');
@@ -3131,3 +3137,4 @@ Route::prefix('shopify/meta-campaigns')->middleware(['auth'])->group(function ()
     Route::post('/fetch', [\App\Http\Controllers\ShopifyMetaCampaignController::class, 'fetch'])->name('shopify.meta.campaigns.fetch');
 });
 
+// AI Title Manager Routes

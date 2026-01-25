@@ -808,6 +808,11 @@
             });
         }
 
+        // Campaign totals from backend (like Amazon page)
+        let campaignTotals = {
+            google_spend_L30: 0
+        };
+
         // Initialize Tabulator
         table = new Tabulator("#reverb-table", {
             ajaxURL: "/shopify-b2c-data-json",
@@ -824,6 +829,14 @@
                         "page_size": "SKU Count"
                     }
                 }
+            },
+            ajaxResponse: function(url, params, response) {
+                // Extract campaign totals from response (like Amazon)
+                if (response.campaign_totals) {
+                    campaignTotals = response.campaign_totals;
+                }
+                // Return only the data array to Tabulator
+                return response.data || response;
             },
             initialSort: [{
                 column: "L30",
@@ -1577,12 +1590,27 @@
         // Update summary badges
         function updateSummary() {
             const inventoryFilter = $('#inventory-filter').val();
-            const data = table.getData('active').filter(row => {
-                // Don't filter by INV for summary - respect the dropdown filter instead
-                return !(row.Parent && row.Parent.startsWith('PARENT'));
+            const nrlFilter = $('#nrl-filter').val();
+            
+            // Get ALL data (ignore search filter) and manually apply ONLY dropdown filters
+            const allData = table.getData();
+            const data = allData.filter(row => {
+                // Exclude parent rows
+                if (row.Parent && row.Parent.startsWith('PARENT')) return false;
+                
+                // Apply inventory filter
+                const inv = parseFloat(row.INV) || 0;
+                if (inventoryFilter === 'zero' && inv !== 0) return false;
+                if (inventoryFilter === 'more' && inv <= 0) return false;
+                
+                // Apply NRL filter
+                if (nrlFilter === 'req' && row.nr_req === 'NR') return false;
+                if (nrlFilter === 'nr' && row.nr_req !== 'NR') return false;
+                
+                return true;
             });
             
-            console.log('UpdateSummary - Total rows:', data.length);
+            console.log('UpdateSummary - Total rows (ignoring search):', data.length);
 
             let totalPft = 0, totalSales = 0, totalGpft = 0, totalPrice = 0, priceCount = 0;
             let totalInv = 0, totalL30 = 0, totalB2BL30 = 0, zeroSoldCount = 0, moreSoldCount = 0, totalDil = 0, dilCount = 0;
@@ -1669,21 +1697,13 @@
             $('#more-amz-badge').text(`> Amz: ${moreAmzCount}`);
             $('#missing-count-badge').text(`Missing: ${missingCount}`);
             
-            // Calculate TCOS and Spend from ALL data (unfiltered) - table.getData('all')
-            const allData = table.getData('all');
-            let totalSpendAll = 0;
-            let totalSalesAll = 0;
-            
-            allData.forEach(row => {
-                // Total Spend from googleSpent
-                totalSpendAll += parseFloat(row.googleSpent) || 0;
-                
-                // Total Sales from Sales L30
-                totalSalesAll += parseFloat(row['Sales L30']) || 0;
-            });
+            // Calculate Total Spend from campaign totals (like Amazon - avoids double-counting)
+            // This matches what Google Ads actually shows
+            const totalSpend = campaignTotals.google_spend_L30 || 0;
             
             // TCOS% = (Total Spend / Total Sales) × 100
-            const tcosPercent = totalSalesAll > 0 ? (totalSpendAll / totalSalesAll) * 100 : 0;
+            // Use totalSales from filtered data (already calculated above at line 1594)
+            const tcosPercent = totalSales > 0 ? (totalSpend / totalSales) * 100 : 0;
             
             // NPFT% = GPFT% - TCOS%
             const npftPercent = avgGpft - tcosPercent;
@@ -1692,7 +1712,7 @@
             const nroiPercent = avgRoi - tcosPercent;
             
             $('#total-tcos-badge').text(`Total TCOS: ${tcosPercent.toFixed(1)}%`);
-            $('#total-spend-badge').text(`Total Spend: $${totalSpendAll.toFixed(2)}`);
+            $('#total-spend-badge').text(`Total Spend: $${totalSpend.toFixed(2)}`);
             $('#avg-npft-badge').text(`NPFT %: ${npftPercent.toFixed(1)}%`);
             $('#nroi-percent-badge').text(`NROI%: ${nroiPercent.toFixed(1)}%`);
         }
