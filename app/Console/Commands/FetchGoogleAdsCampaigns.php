@@ -381,7 +381,7 @@ class FetchGoogleAdsCampaigns extends Command
             'metrics_video_view_rate' => $metrics['videoViewRate'] ?? 0,
             
             // GA4 Metrics - Using Google Ads conversion metrics as proxy
-            // Using all_conversions_value for sales and all_conversions for units sold
+            // allConversionsValue = conversion value (revenue), in account currency - same units as Amazon sales30d
             'ga4_sold_units' => $metrics['allConversions'] ?? 0,
             'ga4_ad_sales' => $metrics['allConversionsValue'] ?? 0,
             

@@ -404,10 +404,10 @@
                                     @php
                                         $totalSpend = $spend->sum();
                                         $totalSales = $sales->sum();
-                                        if ($totalSales > 0) {
+                                        if ($totalSales >= 1) {
                                             $acos = ($totalSpend / $totalSales) * 100;
-                                        } elseif ($totalSpend > 0 && $totalSales == 0) {
-                                            $acos = 100; // Standard: 100% when spend but no sales
+                                        } elseif ($totalSpend > 0) {
+                                            $acos = 100; // Spend but no/negligible sales
                                         } else {
                                             $acos = 0;
                                         }
@@ -1282,15 +1282,15 @@
                         hozAlign: "right",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var spend_L30 = parseFloat(row.spend_L30 || 0);
-                            var sales_L30 = parseFloat(row.ad_sales_L30 || 0);
+                            // Use same rounded values as Spend L30 / Sales L30 display so ACOS matches (83/1=8300%, not 82.94/1=8294%)
+                            var spend_L30 = Math.round(parseFloat(row.spend_L30 || 0));
+                            var sales_L30 = Math.round(parseFloat(row.ad_sales_L30 || 0));
                             var acos = 0;
 
-                            // Calculate ACOS L30
-                            if (sales_L30 > 0) {
+                            if (sales_L30 >= 1) {
                                 acos = (spend_L30 / sales_L30) * 100;
-                            } else if (spend_L30 > 0 && sales_L30 == 0) {
-                                acos = 100; // Standard: 100% when spend but no sales
+                            } else if (spend_L30 > 0) {
+                                acos = 100; // Spend but no/negligible sales
                             } else {
                                 acos = 0;
                             }
@@ -1315,24 +1315,22 @@
                             var dataA = aRow.getData();
                             var dataB = bRow.getData();
 
-                            // Calculate ACOS for A
-                            var spendA = parseFloat(dataA.spend_L30 || 0);
-                            var salesA = parseFloat(dataA.ad_sales_L30 || 0);
+                            var spendA = Math.round(parseFloat(dataA.spend_L30 || 0));
+                            var salesA = Math.round(parseFloat(dataA.ad_sales_L30 || 0));
                             var acosA = 0;
-                            if (salesA > 0) {
+                            if (salesA >= 1) {
                                 acosA = (spendA / salesA) * 100;
-                            } else if (spendA > 0 && salesA == 0) {
-                                acosA = 100; // Standard: 100% when spend but no sales
+                            } else if (spendA > 0) {
+                                acosA = 100;
                             }
 
-                            // Calculate ACOS for B
-                            var spendB = parseFloat(dataB.spend_L30 || 0);
-                            var salesB = parseFloat(dataB.ad_sales_L30 || 0);
+                            var spendB = Math.round(parseFloat(dataB.spend_L30 || 0));
+                            var salesB = Math.round(parseFloat(dataB.ad_sales_L30 || 0));
                             var acosB = 0;
-                            if (salesB > 0) {
+                            if (salesB >= 1) {
                                 acosB = (spendB / salesB) * 100;
-                            } else if (spendB > 0 && salesB == 0) {
-                                acosB = 100; // Standard: 100% when spend but no sales
+                            } else if (spendB > 0) {
+                                acosB = 100;
                             }
 
                             // Calculate SBGT for A
@@ -1372,14 +1370,15 @@
                         hozAlign: "right",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var spend_L30 = parseFloat(row.spend_L30 || 0);
-                            var sales_L30 = parseFloat(row.ad_sales_L30 || 0);
+                            // Use rounded spend/sales (same as column display) so ACOS matches: 83/1=8300%
+                            var spend_L30 = Math.round(parseFloat(row.spend_L30 || 0));
+                            var sales_L30 = Math.round(parseFloat(row.ad_sales_L30 || 0));
                             var acos = 0;
 
-                            if (sales_L30 > 0) {
+                            if (sales_L30 >= 1) {
                                 acos = (spend_L30 / sales_L30) * 100;
-                            } else if (spend_L30 > 0 && sales_L30 == 0) {
-                                acos = 100; // Standard: 100% when spend but no sales
+                            } else if (spend_L30 > 0) {
+                                acos = 100;
                             } else {
                                 acos = 0;
                             }
@@ -1391,23 +1390,13 @@
                             var dataA = aRow.getData();
                             var dataB = bRow.getData();
 
-                            var spendA = parseFloat(dataA.spend_L30 || 0);
-                            var salesA = parseFloat(dataA.ad_sales_L30 || 0);
-                            var acosA = 0;
-                            if (salesA > 0) {
-                                acosA = (spendA / salesA) * 100;
-                            } else if (spendA > 0 && salesA == 0) {
-                                acosA = 9999; // Very high ACOS when spend but no sales
-                            }
+                            var spendA = Math.round(parseFloat(dataA.spend_L30 || 0));
+                            var salesA = Math.round(parseFloat(dataA.ad_sales_L30 || 0));
+                            var acosA = (salesA >= 1) ? (spendA / salesA) * 100 : (spendA > 0 ? 100 : 0);
 
-                            var spendB = parseFloat(dataB.spend_L30 || 0);
-                            var salesB = parseFloat(dataB.ad_sales_L30 || 0);
-                            var acosB = 0;
-                            if (salesB > 0) {
-                                acosB = (spendB / salesB) * 100;
-                            } else if (spendB > 0 && salesB == 0) {
-                                acosB = 9999; // Very high ACOS when spend but no sales
-                            }
+                            var spendB = Math.round(parseFloat(dataB.spend_L30 || 0));
+                            var salesB = Math.round(parseFloat(dataB.ad_sales_L30 || 0));
+                            var acosB = (salesB >= 1) ? (spendB / salesB) * 100 : (spendB > 0 ? 100 : 0);
 
                             return acosA - acosB;
                         }
@@ -1986,15 +1975,9 @@
                 let acosMin = $("#acos-min").val();
                 let acosMax = $("#acos-max").val();
                 if (acosMin || acosMax) {
-                    let spend_L30 = parseFloat(data.spend_L30 || 0);
-                    let sales_L30 = parseFloat(data.ad_sales_L30 || 0);
-                    let acos = 0;
-
-                    if (sales_L30 > 0) {
-                        acos = (spend_L30 / sales_L30) * 100;
-                    } else if (spend_L30 > 0 && sales_L30 == 0) {
-                        acos = 100; // Standard: 100% when spend but no sales
-                    }
+                    let spend_L30 = Math.round(parseFloat(data.spend_L30 || 0));
+                    let sales_L30 = Math.round(parseFloat(data.ad_sales_L30 || 0));
+                    let acos = (sales_L30 >= 1) ? (spend_L30 / sales_L30) * 100 : (spend_L30 > 0 ? 100 : 0);
 
                     if (acosMin && acos < parseFloat(acosMin)) return false;
                     if (acosMax && acos > parseFloat(acosMax)) return false;
@@ -3094,14 +3077,14 @@
                     $('.card-orders').text(response.totals.orders);
                     $('.card-sales').text('US$' + Math.round(response.totals.sales));
                     
-                    // Calculate and update ACOS
+                    // Calculate and update ACOS (sales < 1 = no sales, avoid 10759% type values)
                     const totalSpend = response.totals.spend || 0;
                     const totalSales = response.totals.sales || 0;
                     let acos;
-                    if (totalSales > 0) {
+                    if (totalSales >= 1) {
                         acos = (totalSpend / totalSales) * 100;
-                    } else if (totalSpend > 0 && totalSales == 0) {
-                        acos = 100; // Standard: 100% when spend but no sales
+                    } else if (totalSpend > 0) {
+                        acos = 100;
                     } else {
                         acos = 0;
                     }
