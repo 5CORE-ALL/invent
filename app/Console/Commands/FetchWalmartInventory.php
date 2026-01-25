@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use App\Models\ProductStockMapping;
+use App\Services\WalmartRateLimiter;
 
 class FetchWalmartInventory extends Command
 {
@@ -26,6 +27,7 @@ class FetchWalmartInventory extends Command
 
     protected $baseUrl = 'https://marketplace.walmartapis.com';
     protected $token;
+    protected $rateLimiter;
 
     /**
      * Execute the console command.
@@ -33,6 +35,10 @@ class FetchWalmartInventory extends Command
     public function handle()
     {
         $startTime = microtime(true);
+        
+        // Initialize rate limiter
+        $this->rateLimiter = new WalmartRateLimiter();
+        
         $this->info("Fetching Walmart Inventory...");
 
         // Get access token
@@ -96,44 +102,30 @@ class FetchWalmartInventory extends Command
         $maxPages = 100; // Safety limit
 
         do {
-            $url = $this->baseUrl . '/v3/inventories';
-            
-            // Add cursor if we have one
-            if ($cursor) {
-                $url .= '?nextCursor=' . urlencode($cursor);
-            }
-
-            $response = Http::withoutVerifying()->withHeaders([
-                'WM_QOS.CORRELATION_ID' => uniqid(),
-                'WM_SEC.ACCESS_TOKEN' => $this->token,
-                'WM_SVC.NAME' => 'Walmart Marketplace',
-                'Accept' => 'application/json',
-            ])->get($url);
-
-            if (!$response->successful()) {
-                $errorBody = $response->body();
-                $statusCode = $response->status();
+            try {
+                $url = $this->baseUrl . '/v3/inventories';
                 
-                $this->error("Inventory API failed (Status: {$statusCode})");
-                $this->error("Response: " . substr($errorBody, 0, 500));
-                
-                Log::error('Walmart Inventory API Error', [
-                    'status' => $statusCode,
-                    'response' => $errorBody,
-                    'url' => $url
-                ]);
-                
-                // Check for rate limit
-                if (strpos($errorBody, 'REQUEST_THRESHOLD_VIOLATED') !== false) {
-                    $this->warn("Rate limit hit. Waiting 60 seconds...");
-                    sleep(60);
-                    continue; // Retry same page
+                // Add cursor if we have one
+                if ($cursor) {
+                    $url .= '?nextCursor=' . urlencode($cursor);
                 }
-                
-                break;
-            }
 
-            $data = $response->json();
+                // Use rate limiter with retry logic
+                $response = $this->rateLimiter->executeWithRetry(function() use ($url) {
+                    return Http::withoutVerifying()->withHeaders([
+                        'WM_QOS.CORRELATION_ID' => uniqid(),
+                        'WM_SEC.ACCESS_TOKEN' => $this->token,
+                        'WM_SVC.NAME' => 'Walmart Marketplace',
+                        'Accept' => 'application/json',
+                    ])->get($url);
+                }, 'inventory', 3);
+
+                if (!$response->successful()) {
+                    $this->error("Inventory API failed: " . $response->body());
+                    break;
+                }
+
+                $data = $response->json();
             
             // Correct path: inventories are inside 'elements'
             $inventories = $data['elements']['inventories'] ?? [];
@@ -158,37 +150,11 @@ class FetchWalmartInventory extends Command
                 }
 
                 if ($sku) {
-                    // Save to product_stock_mappings
+                    // Save to product_stock_mappings only (no apicentral sync)
                     ProductStockMapping::updateOrCreate(
                         ['sku' => $sku],
                         ['inventory_walmart' => $quantity]
                     );
-                    
-                    // Save to apicentral.walmart_metrics (insert or update)
-                    $existing = DB::connection('apicentral')->table('walmart_metrics')->where('sku', $sku)->exists();
-                    
-                    if ($existing) {
-                        // Update existing record
-                        DB::connection('apicentral')->table('walmart_metrics')
-                            ->where('sku', $sku)
-                            ->update([
-                                'stock' => $quantity,
-                                'updated_at' => now()
-                            ]);
-                    } else {
-                        // Insert new record with default values for required fields
-                        DB::connection('apicentral')->table('walmart_metrics')->insert([
-                            'sku' => $sku,
-                            'l30' => 0,
-                            'l30_amt' => 0,
-                            'l60' => 0,
-                            'l60_amt' => 0,
-                            'price' => 0,
-                            'stock' => $quantity,
-                            'created_at' => now(),
-                            'updated_at' => now(),
-                        ]);
-                    }
                     
                     $pageSaved++;
                     $totalProcessed++;
@@ -196,11 +162,16 @@ class FetchWalmartInventory extends Command
             }
 
             $pageCount++;
-            $this->info("  Page {$pageCount}: Saved {$pageSaved} items (Total: {$totalProcessed})");
+            $remaining = $this->rateLimiter->getRemainingRequests('inventory');
+            $this->info("  Page {$pageCount}: Saved {$pageSaved} items (Total: {$totalProcessed}, Remaining: {$remaining})");
 
-            // Rate limiting
-            if ($cursor && $pageCount < $maxPages) {
-                sleep(1);
+            } catch (\Exception $e) {
+                $this->error("Failed to fetch inventory page {$pageCount}: " . $e->getMessage());
+                Log::error('Walmart Inventory Fetch Error', [
+                    'page' => $pageCount,
+                    'error' => $e->getMessage()
+                ]);
+                break;
             }
 
         } while ($cursor && $pageCount < $maxPages);
@@ -229,17 +200,10 @@ class FetchWalmartInventory extends Command
                 $updated++;
             }
 
-            // ONLY update stock for existing records in apicentral (don't insert new)
-            DB::connection('apicentral')->table('walmart_metrics')
-                ->where('sku', $sku)
-                ->update([
-                    'stock' => $quantity,
-                    'updated_at' => now(),
-                ]);
+            // Note: Not syncing to apicentral - using local tables only
         }
 
         $this->info("✓ Saved {$saved} new SKUs, updated {$updated} existing SKUs in product_stock_mappings");
-        $this->info("✓ Updated stock in apicentral.walmart_metrics (only for existing SKUs)");
         $this->info("✓ Total inventory updated: " . count($inventory) . " SKUs");
     }
 }

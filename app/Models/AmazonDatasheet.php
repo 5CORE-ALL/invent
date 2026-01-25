@@ -24,6 +24,7 @@ class AmazonDatasheet extends Model
         'sessions_l60',
         'sessions_l90',        
         'asin',
+        'amazon_title',
         'sku',
         'price',
         'organic_views',

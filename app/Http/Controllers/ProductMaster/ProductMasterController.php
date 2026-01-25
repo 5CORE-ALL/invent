@@ -11,6 +11,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
@@ -4441,6 +4442,448 @@ GRAPHQL;
                 'success' => false,
                 'message' => 'Failed to save images data: '.$e->getMessage(),
             ], 500);
+        }
+    }
+
+    // AI Title Generator Methods
+    
+    public function aiTitleManager()
+    {
+        return view('product-master.ai-title-manager');
+    }
+
+    public function getAiTitleData(Request $request)
+    {
+        $products = DB::table('product_master')
+            ->select('id', 'parent', 'sku', 'values')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        $data = [];
+
+        foreach ($products as $product) {
+            // Decode JSON values
+            $values = json_decode($product->values, true);
+            $imagePath = $values['image_path'] ?? null;
+            
+            // Get marketplace data for this SKU
+            $marketplaces = $this->getMarketplaceData($product->sku, $product->parent);
+
+            if (!empty($marketplaces)) {
+                foreach ($marketplaces as $marketplace => $info) {
+                    $data[] = [
+                        'id' => $product->id . '_' . $marketplace,
+                        'product_id' => $product->id,
+                        'parent' => $product->parent,
+                        'sku' => $product->sku,
+                        'img' => $imagePath,
+                        'marketplace' => $marketplace,
+                        'marketplace_title' => $info['title'],
+                        'marketplace_link' => $info['link'],
+                        'item_id' => $info['item_id'] ?? null,
+                    ];
+                }
+            }
+        }
+
+        return response()->json($data);
+    }
+
+    private function getMarketplaceData($sku, $parent)
+    {
+        $marketplaces = [];
+        $searchSku = $sku ?: $parent;
+
+        if (!$searchSku) {
+            return $marketplaces;
+        }
+
+        // Amazon
+        $amazon = DB::table('amazon_datsheets')
+            ->where('sku', $searchSku)
+            ->first(['amazon_title', 'amazon_link', 'asin']);
+        if ($amazon) {
+            $marketplaces['amazon'] = [
+                'title' => $amazon->amazon_title,
+                'link' => $amazon->amazon_link,
+                'item_id' => $amazon->asin,
+            ];
+        }
+
+        // eBay
+        $ebay = DB::table('ebay_metrics')
+            ->where('sku', $searchSku)
+            ->first(['ebay_title', 'ebay_link', 'item_id']);
+        if ($ebay) {
+            $marketplaces['ebay'] = [
+                'title' => $ebay->ebay_title,
+                'link' => $ebay->ebay_link,
+                'item_id' => $ebay->item_id,
+            ];
+        }
+
+        // eBay2
+        $ebay2 = DB::table('ebay_2_metrics')
+            ->where('sku', $searchSku)
+            ->first(['ebay_title', 'ebay_link', 'item_id']);
+        if ($ebay2) {
+            $marketplaces['ebay2'] = [
+                'title' => $ebay2->ebay_title,
+                'link' => $ebay2->ebay_link,
+                'item_id' => $ebay2->item_id,
+            ];
+        }
+
+        // eBay3
+        $ebay3 = DB::table('ebay_3_metrics')
+            ->where('sku', $searchSku)
+            ->first(['ebay_title', 'ebay_link', 'item_id']);
+        if ($ebay3) {
+            $marketplaces['ebay3'] = [
+                'title' => $ebay3->ebay_title,
+                'link' => $ebay3->ebay_link,
+                'item_id' => $ebay3->item_id,
+            ];
+        }
+
+        // Shopify
+        $shopify = DB::table('shopify_skus')
+            ->where('sku', $searchSku)
+            ->first(['product_title', 'product_link', 'variant_id']);
+        if ($shopify) {
+            $marketplaces['shopify'] = [
+                'title' => $shopify->product_title,
+                'link' => $shopify->product_link,
+                'item_id' => $shopify->variant_id,
+            ];
+        }
+
+        return $marketplaces;
+    }
+
+    public function generateAiTitle(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'marketplace' => 'required|string',
+                'description' => 'required|string',
+                'keywords' => 'nullable|string',
+                'current_title' => 'nullable|string',
+                'mode' => 'required|in:generate,improve',
+            ]);
+
+            $marketplace = $validated['marketplace'];
+            $description = $validated['description'];
+            $keywords = $validated['keywords'] ?? '';
+            $currentTitle = $validated['current_title'] ?? '';
+            $mode = $validated['mode'];
+            
+            $maxChars = config("marketplaces.character_limits.{$marketplace}", 150);
+
+            $title = $mode === 'improve' 
+                ? $this->improveTitle($marketplace, $description, $keywords, $currentTitle, $maxChars)
+                : $this->generateTitle($marketplace, $description, $keywords, $maxChars);
+
+            if ($title === null) {
+                Log::error('AI title generation returned null', [
+                    'marketplace' => $marketplace,
+                    'mode' => $mode
+                ]);
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Temporary issue, please retry. Check logs for details.'
+                ], 500);
+            }
+
+            $score = $this->calculateTitleScore($title, $keywords, $maxChars);
+            $titleLength = strlen($title);
+
+            return response()->json([
+                'success' => true,
+                'title' => $title,
+                'characters' => $titleLength,
+                'max_chars' => $maxChars,
+                'remaining' => $maxChars - $titleLength,
+                'score' => $score,
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::error('Validation error in generateAiTitle', ['errors' => $e->errors()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error: ' . json_encode($e->errors())
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Exception in generateAiTitle', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Server error: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    private function generateTitle($marketplace, $description, $keywords, $maxChars)
+    {
+        // Fallback mode if no API key
+        if (!env('OPENAI_API_KEY')) {
+            return $this->generateFallbackTitle($description, $keywords, $maxChars);
+        }
+
+        $prompt = "Generate a product title for {$marketplace} marketplace.
+
+Requirements:
+- Maximum {$maxChars} characters
+- Include these keywords naturally: {$keywords}
+- Based on: {$description}
+- Follow {$marketplace} marketplace rules
+- Optimize for search and conversion
+- Be specific and descriptive
+
+Return ONLY the title text, nothing else.";
+
+        $title = $this->callOpenAI($prompt, $maxChars);
+        
+        // If API fails, use fallback
+        return $title ?? $this->generateFallbackTitle($description, $keywords, $maxChars);
+    }
+
+    private function generateFallbackTitle($description, $keywords, $maxChars)
+    {
+        // Simple rule-based title generation
+        $keywordList = array_filter(array_map('trim', explode(',', $keywords)));
+        $title = $description;
+        
+        // Add keywords if not in description
+        foreach ($keywordList as $keyword) {
+            if (stripos($title, $keyword) === false) {
+                $title .= ' ' . ucwords($keyword);
+            }
+        }
+        
+        // Trim to max length
+        if (strlen($title) > $maxChars) {
+            $title = substr($title, 0, $maxChars);
+            $lastSpace = strrpos($title, ' ');
+            if ($lastSpace !== false) {
+                $title = substr($title, 0, $lastSpace);
+            }
+        }
+        
+        return trim($title);
+    }
+
+    private function improveTitle($marketplace, $description, $keywords, $currentTitle, $maxChars)
+    {
+        // Fallback mode if no API key
+        if (!env('OPENAI_API_KEY')) {
+            return $this->generateFallbackTitle($description, $keywords, $maxChars);
+        }
+
+        $prompt = "Improve this product title for {$marketplace}.
+
+Current: {$currentTitle}
+Description: {$description}
+Keywords: {$keywords}
+
+Requirements:
+- Maximum {$maxChars} characters
+- Better keyword placement
+- Improved readability
+- Better buyer appeal
+
+Return ONLY the improved title, nothing else.";
+
+        $title = $this->callOpenAI($prompt, $maxChars);
+        
+        // If API fails, use fallback
+        return $title ?? $this->generateFallbackTitle($description, $keywords, $maxChars);
+    }
+
+    private function callOpenAI($prompt, $maxChars)
+    {
+        $apiKey = env('OPENAI_API_KEY');
+        if (!$apiKey) {
+            Log::error('OpenAI API key not configured');
+            return null;
+        }
+
+        $maxRetries = 3;
+        $attempt = 0;
+
+        while ($attempt < $maxRetries) {
+            $attempt++;
+
+            try {
+                $response = Http::timeout(60)
+                    ->withHeaders([
+                        'Authorization' => 'Bearer ' . $apiKey,
+                        'Content-Type' => 'application/json',
+                    ])
+                    ->post('https://api.openai.com/v1/chat/completions', [
+                        'model' => 'gpt-4o',
+                        'messages' => [
+                            [
+                                'role' => 'system',
+                                'content' => 'You are an expert at writing product titles for e-commerce marketplaces. Always follow character limits strictly and return ONLY the title text without any quotes or extra text.'
+                            ],
+                            [
+                                'role' => 'user',
+                                'content' => $prompt
+                            ]
+                        ],
+                        'max_tokens' => 150,
+                        'temperature' => 0.7,
+                    ]);
+
+                if ($response->successful()) {
+                    $responseData = $response->json();
+                    $title = trim($responseData['choices'][0]['message']['content'] ?? '');
+                    $title = trim($title, '"\'');
+                    
+                    if (strlen($title) > $maxChars) {
+                        $title = substr($title, 0, $maxChars);
+                        $lastSpace = strrpos($title, ' ');
+                        if ($lastSpace !== false && $lastSpace > $maxChars * 0.8) {
+                            $title = substr($title, 0, $lastSpace);
+                        }
+                    }
+                    
+                    Log::info('OpenAI title generated successfully', ['length' => strlen($title), 'model' => 'gpt-4o']);
+                    return $title;
+                }
+
+                // Log error details
+                Log::error('OpenAI API Error', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                    'attempt' => $attempt
+                ]);
+
+                if ($response->status() === 429 || $response->status() >= 500) {
+                    if ($attempt < $maxRetries) {
+                        sleep(2 * $attempt);
+                        continue;
+                    }
+                }
+
+                return null;
+
+            } catch (\Exception $e) {
+                Log::error('OpenAI API Exception', [
+                    'message' => $e->getMessage(),
+                    'attempt' => $attempt
+                ]);
+                
+                if ($attempt < $maxRetries) {
+                    sleep(2 * $attempt);
+                    continue;
+                }
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    private function calculateTitleScore($title, $keywords, $maxChars)
+    {
+        $score = 0;
+        $titleLower = strtolower($title);
+        $keywordList = array_filter(array_map('trim', array_map('strtolower', explode(',', $keywords))));
+
+        // Keyword usage (40 points)
+        $keywordsFound = 0;
+        foreach ($keywordList as $keyword) {
+            if (!empty($keyword) && strpos($titleLower, $keyword) !== false) {
+                $keywordsFound++;
+            }
+        }
+        $score += count($keywordList) > 0 ? ($keywordsFound / count($keywordList)) * 40 : 20;
+
+        // Length optimization (20 points)
+        $titleLength = strlen($title);
+        $optimalMin = $maxChars * 0.7;
+        $optimalMax = $maxChars * 0.95;
+        
+        if ($titleLength >= $optimalMin && $titleLength <= $optimalMax) {
+            $score += 20;
+        } elseif ($titleLength > $optimalMax && $titleLength <= $maxChars) {
+            $score += 15;
+        } else {
+            $score += ($titleLength / $optimalMin) * 20;
+        }
+
+        // Readability (20 points)
+        $wordCount = str_word_count($title);
+        if ($wordCount >= 5 && $wordCount <= 15) {
+            $score += 20;
+        } elseif ($wordCount > 15) {
+            $score += 10;
+        } else {
+            $score += ($wordCount / 5) * 20;
+        }
+
+        // Capitalization (10 points)
+        $words = explode(' ', $title);
+        $properlyCapitalized = 0;
+        foreach ($words as $word) {
+            if (!empty($word) && (ucfirst(strtolower($word)) === $word || strtoupper($word) === $word)) {
+                $properlyCapitalized++;
+            }
+        }
+        $score += count($words) > 0 ? ($properlyCapitalized / count($words)) * 10 : 0;
+
+        // Punctuation (10 points)
+        $punctuationCount = preg_match_all('/[!?.,;:]/', $title);
+        $score += $punctuationCount <= 3 ? 10 : ($punctuationCount <= 5 ? 5 : 0);
+
+        return min(100, round($score));
+    }
+
+    public function pushTitleToMarketplace(Request $request)
+    {
+        $validated = $request->validate([
+            'sku' => 'required|string',
+            'parent' => 'nullable|string',
+            'marketplace' => 'required|string',
+            'title' => 'required|string',
+        ]);
+
+        $sku = $validated['sku'];
+        $parent = $validated['parent'];
+        $marketplace = $validated['marketplace'];
+        $title = $validated['title'];
+        
+        $searchSku = $sku ?: $parent;
+        $table = config("marketplaces.tables.{$marketplace}");
+        $titleColumn = config("marketplaces.title_columns.{$marketplace}");
+
+        if (!$table || !$titleColumn) {
+            return response()->json(['success' => false, 'message' => 'Invalid marketplace'], 400);
+        }
+
+        try {
+            $updated = DB::table($table)
+                ->where('sku', $searchSku)
+                ->update([
+                    $titleColumn => $title,
+                    'updated_at' => now()
+                ]);
+
+            if ($updated > 0) {
+                return response()->json(['success' => true, 'message' => 'Title updated successfully']);
+            }
+
+            return response()->json(['success' => false, 'message' => 'No matching record found'], 404);
+
+        } catch (\Exception $e) {
+            Log::error('Push title error', ['error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => 'Failed to update title'], 500);
         }
     }
 }

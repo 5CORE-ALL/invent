@@ -116,6 +116,10 @@ class FetchAmazonListings extends Command
             $asin = $data['asin1'] ?? null;
             $sku = isset($data['seller-sku']) ? preg_replace('/[^\x20-\x7E]/', '', trim($data['seller-sku'])) : null;
             $price = isset($data['price']) && is_numeric($data['price']) ? $data['price'] : null;
+            $amazonTitle = isset($data['item-name']) ? preg_replace('/[^\x20-\x7E]/', '', trim($data['item-name'])) : null;
+            
+            // Create Amazon product link
+            $amazonLink = $asin ? "https://www.amazon.com/dp/{$asin}" : null;
 
             if ($asin) {
                 AmazonDatasheet::updateOrCreate(
@@ -123,6 +127,8 @@ class FetchAmazonListings extends Command
                     [
                         'sku' => $sku,
                         'price' => $price,
+                        'amazon_title' => $amazonTitle,
+                        'amazon_link' => $amazonLink,
                     ]
                 );
                 $processedCount++;
@@ -130,7 +136,7 @@ class FetchAmazonListings extends Command
         }
 
         $this->info("Processed: $processedCount | DEFAULT channel: $defaultChannelCount | Skipped: $skippedCount");
-        $this->info('ASIN and price and sku data imported successfully.');
+        $this->info('ASIN, SKU, price, Amazon title, and product link imported successfully.');
 
         $this->getUnitOrderedAndSessionsData();
     }

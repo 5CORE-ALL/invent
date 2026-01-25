@@ -14,6 +14,8 @@ class EbayMetric extends Model
     protected $fillable = [
         'item_id',
         'sku',
+        'ebay_title',
+        'ebay_link',
         'ebay_price',
         'ebay_l30',
         'ebay_l60',

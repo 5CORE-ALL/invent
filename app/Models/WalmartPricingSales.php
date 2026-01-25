@@ -9,7 +9,7 @@ class WalmartPricingSales extends Model
 {
     use HasFactory;
 
-    protected $table = 'walmart_pricing_sales';
+    protected $table = 'walmart_pricing';
 
     protected $fillable = [
         'sku',
