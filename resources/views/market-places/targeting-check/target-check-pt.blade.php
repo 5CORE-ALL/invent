@@ -29,17 +29,34 @@
             text-align: center;
             background: #D8F3F3;
             border-right: 1px solid #262626;
-            padding: 10px 8px;
+            padding: 5px;
             font-weight: 700;
             color: #1e293b;
             font-size: 0.9rem;
             letter-spacing: 0.02em;
+            min-height: 120px;
+            height: auto;
         }
         .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
-            white-space: normal;
-            word-wrap: break-word;
-            line-height: 1.25;
-            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 120px;
+            padding: 10px 5px;
+        }
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-content-holder {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            transform: rotate(180deg);
+            white-space: nowrap;
+            line-height: 1.5;
+        }
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-title-holder {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            transform: rotate(180deg);
+            white-space: nowrap;
+            line-height: 1.5;
         }
         .tabulator .tabulator-header .tabulator-col .tabulator-col-sorter,
         .tabulator .tabulator-header .tabulator-col .tabulator-arrow,
@@ -95,6 +112,10 @@
         #historyModal .table th { background: #f8fafc; font-weight: 600; color: #475569; font-size: 0.8rem; text-transform: uppercase; }
         #historyModal .table td { font-size: 0.875rem; vertical-align: middle; }
         .tabulator-placeholder { color: #94a3b8; font-size: 0.95rem; padding: 2rem !important; }
+        .tabulator .tabulator-footer { background: #f4f7fa; border-top: 1px solid #262626; font-size: 1rem; color: #4b5563; padding: 5px; }
+        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page { padding: 8px 16px; margin: 0 4px; border-radius: 6px; font-size: 0.95rem; font-weight: 500; transition: all 0.2s; }
+        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page:hover { background: #e0eaff; color: #2563eb; }
+        .tabulator .tabulator-footer .tabulator-paginator .tabulator-page.active { background: #2563eb; color: white; }
     </style>
 @endsection
 @section('content')
@@ -105,6 +126,34 @@
             <div class="card tc-card">
                 <div class="card-body">
                     <h4 class="tc-title mb-4"><i class="fa-solid fa-bullseye me-2"></i>TARGET PT</h4>
+                    <div class="mb-3 d-flex align-items-center gap-2 flex-wrap">
+                        <label class="form-label mb-0">INV:</label>
+                        <select id="invFilterSelect" class="form-select form-select-sm" style="width:130px">
+                            <option value="all">All</option>
+                            <option value="eq0">INV 0</option>
+                            <option value="gt0" selected>INV &gt; 0</option>
+                        </select>
+                    </div>
+                    <!-- Search and count - just above table (like amazon-utilized-kw) -->
+                    <div class="row mb-3">
+                        <div class="col-12">
+                            <div class="d-flex align-items-center gap-3">
+                                <div class="flex-grow-1">
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-white border-end-0" style="border-color: #e2e8f0;">
+                                            <i class="fa-solid fa-search" style="color: #94a3b8;"></i>
+                                        </span>
+                                        <input type="text" id="tc-search-input" class="form-control form-control-md border-start-0"
+                                            placeholder="Search by campaign or SKU..." style="border-color: #e2e8f0;">
+                                    </div>
+                                </div>
+                                <div>
+                                    <span id="tc-pagination-count" class="badge badge-light"
+                                        style="font-weight: 500; color: #000; font-size: 1rem; padding: 8px 12px;">Showing 0 of 0 rows</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     <div id="target-check-table"></div>
                 </div>
             </div>
@@ -149,6 +198,9 @@
                 layout: "fitDataFill",
                 resizableColumns: true,
                 height: "600px",
+                pagination: "local",
+                paginationSize: 50,
+                paginationSizeSelector: [25, 50, 100, 200],
                 placeholder: "No matching PT campaigns found. Only SKUs with a campaign name ending in ' PT' or ' PT.' (FBM) are shown.",
                 ajaxResponse: function(_u, _p, res) {
                     try { return (res && Array.isArray(res.data)) ? res.data : []; } catch(e) { return []; }
@@ -168,6 +220,11 @@
                 { title: "INV", field: "INV", width: 60, minWidth: 52 },
                 { title: "L30", field: "L30", width: 58, minWidth: 50 },
                 { title: "DIL", field: "dil", width: 80, minWidth: 70, formatter: function(c) {
+                    const p = parseFloat(c.getValue()) || 0;
+                    return '<span class="dil-percent-value '+getDilColor(p)+'">'+p+'%</span>';
+                }},
+                { title: "A L30", field: "a_l30", width: 62, minWidth: 52 },
+                { title: "A Dil", field: "a_dil", width: 72, minWidth: 62, formatter: function(c) {
                     const p = parseFloat(c.getValue()) || 0;
                     return '<span class="dil-percent-value '+getDilColor(p)+'">'+p+'%</span>';
                 }},
@@ -215,6 +272,46 @@
                 }},
                 ],
             });
+            document.getElementById('invFilterSelect').addEventListener('change', function() {
+                table.setData(dataUrl + (dataUrl.indexOf('?') >= 0 ? '&' : '?') + 'inv_filter=' + encodeURIComponent(this.value));
+            });
+
+            function tcSearchFilter(data) {
+                var v = (document.getElementById('tc-search-input') || {}).value || '';
+                v = String(v).toLowerCase().trim();
+                if (!v) return true;
+                var sku = String(data.sku || '').toLowerCase();
+                var camp = String(data.campaign || '').toLowerCase();
+                return sku.indexOf(v) !== -1 || camp.indexOf(v) !== -1;
+            }
+            function updateTcPaginationCount() {
+                try {
+                    if (!table) return;
+                    var filtered = table.getData('active');
+                    var total = (filtered && filtered.length) ? filtered.length : 0;
+                    var pageSize = table.getPageSize() || 50;
+                    var page = table.getPage() || 1;
+                    var start = total > 0 ? ((page - 1) * pageSize) + 1 : 0;
+                    var end = total > 0 ? Math.min(page * pageSize, total) : 0;
+                    var el = document.getElementById('tc-pagination-count');
+                    if (el) el.textContent = total === 0 ? 'Showing 0 of 0 rows' : 'Showing ' + start + ' to ' + end + ' of ' + total + ' rows';
+                } catch (e) { console.error(e); }
+            }
+
+            var tcSearchTimeout;
+            document.getElementById('tc-search-input').addEventListener('keyup', function() {
+                if (tcSearchTimeout) clearTimeout(tcSearchTimeout);
+                tcSearchTimeout = setTimeout(function() {
+                    table.setFilter(tcSearchFilter);
+                    updateTcPaginationCount();
+                }, 300);
+            });
+
+            table.on('dataLoaded', function() { table.setFilter(tcSearchFilter); setTimeout(updateTcPaginationCount, 100); });
+            table.on('dataFiltered', function() { setTimeout(updateTcPaginationCount, 100); });
+            table.on('dataProcessed', function() { setTimeout(updateTcPaginationCount, 100); });
+            table.on('pageSizeChanged', function() { setTimeout(updateTcPaginationCount, 100); });
+
             function doSave(sku, checked, campaign, issue, remark) {
             const fd = new FormData();
             fd.append('_token', document.querySelector('meta[name="csrf-token"]').content);

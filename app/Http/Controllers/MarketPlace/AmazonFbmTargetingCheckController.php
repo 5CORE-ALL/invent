@@ -40,7 +40,7 @@ class AmazonFbmTargetingCheckController extends Controller
      */
     public function targetKwData(Request $request)
     {
-        return $this->fetchTargetingCheckData('kw');
+        return $this->fetchTargetingCheckData('kw', $request);
     }
 
     /**
@@ -48,7 +48,7 @@ class AmazonFbmTargetingCheckController extends Controller
      */
     public function targetPtData(Request $request)
     {
-        return $this->fetchTargetingCheckData('pt');
+        return $this->fetchTargetingCheckData('pt', $request);
     }
 
     /**
@@ -139,8 +139,9 @@ class AmazonFbmTargetingCheckController extends Controller
     /**
      * @param string $type 'kw' or 'pt'
      */
-    protected function fetchTargetingCheckData(string $type): \Illuminate\Http\JsonResponse
+    protected function fetchTargetingCheckData(string $type, Request $request): \Illuminate\Http\JsonResponse
     {
+        $invFilter = $request->query('inv_filter', 'gt0');
         $productMasters = ProductMaster::where('sku', 'NOT LIKE', 'PARENT %')
             ->orderBy('parent', 'asc')
             ->orderBy('sku', 'asc')
@@ -223,6 +224,22 @@ class AmazonFbmTargetingCheckController extends Controller
             $tc = $targetingByKey[$sku] ?? null;
             $campaignDisplay = ($tc && $tc->campaign) ? $tc->campaign : $campaignName;
 
+            // Remove no campaign: exclude rows with empty campaign
+            if (($campaignDisplay ?? '') === '') {
+                continue;
+            }
+            // INV filter: all | eq0 (INV=0) | gt0 (INV>0, default)
+            if ($invFilter === 'gt0' && $inv <= 0) {
+                continue;
+            }
+            if ($invFilter === 'eq0' && $inv != 0) {
+                continue;
+            }
+
+            $amazonSheet = $amazonDatasheetsBySku[$skuUpper] ?? null;
+            $aL30 = (float) (optional($amazonSheet)->units_ordered_l30 ?? 0);
+            $aDil = $inv > 0 ? round(($aL30 / $inv) * 100) : 0;
+
             // Shopify se image; na mile to ProductMaster (main_image, image1, Values.image_path)
             $shopifyImg = optional($shopify)->image_src;
             $imagePath = ($shopifyImg !== null && trim((string) $shopifyImg) !== '')
@@ -236,6 +253,8 @@ class AmazonFbmTargetingCheckController extends Controller
                 'INV' => $inv,
                 'L30' => $l30,
                 'dil' => $dil,
+                'a_l30' => $aL30,
+                'a_dil' => $aDil,
                 'checked' => $tc ? (bool) $tc->checked : false,
                 'campaign' => $campaignDisplay,
                 'issue' => $tc->issue ?? '',
