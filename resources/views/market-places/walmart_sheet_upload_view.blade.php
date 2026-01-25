@@ -360,7 +360,7 @@
                         @csrf
                         <div class="mb-3">
                             <label class="form-label fw-bold"><i class="fa fa-file-excel text-success me-1"></i>Choose File</label>
-                            <input type="file" class="form-control" name="excel_file" accept=".xlsx,.xls,.csv" required>
+                            <input type="file" class="form-control" name="price_file" accept=".xlsx,.xls,.csv" required>
                         </div>
                         <div class="alert alert-warning">
                             <i class="fa fa-exclamation-triangle me-2"></i><strong>Warning:</strong> This will TRUNCATE (clear) the table before uploading!
@@ -388,7 +388,7 @@
                         @csrf
                         <div class="mb-3">
                             <label class="form-label fw-bold"><i class="fa fa-file-excel text-success me-1"></i>Choose File</label>
-                            <input type="file" class="form-control" name="excel_file" accept=".xlsx,.xls,.csv" required>
+                            <input type="file" class="form-control" name="listing_file" accept=".xlsx,.xls,.csv" required>
                         </div>
                         <div class="alert alert-warning">
                             <i class="fa fa-exclamation-triangle me-2"></i><strong>Warning:</strong> This will TRUNCATE (clear) the table before uploading!
@@ -416,7 +416,7 @@
                         @csrf
                         <div class="mb-3">
                             <label class="form-label fw-bold"><i class="fa fa-file-excel text-success me-1"></i>Choose File</label>
-                            <input type="file" class="form-control" name="excel_file" accept=".xlsx,.xls,.csv" required>
+                            <input type="file" class="form-control" name="order_file" accept=".xlsx,.xls,.csv" required>
                         </div>
                         <div class="alert alert-warning">
                             <i class="fa fa-exclamation-triangle me-2"></i><strong>Warning:</strong> This will TRUNCATE (clear) the table before uploading!
