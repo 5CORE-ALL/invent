@@ -4,7 +4,7 @@
             <div class="modal-header">
                 <h5 class="modal-title" id="aiTitleModalLabel">
                     <i class="fas fa-magic"></i>
-                    AI Title Generator - <span id="modalMarketplace"></span>
+                    AI Title Generator
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
@@ -15,6 +15,17 @@
                         Product SKU
                     </label>
                     <input type="text" class="form-control" id="productSku" readonly>
+                </div>
+
+                <!-- Marketplace Selection Tabs -->
+                <div class="mb-4">
+                    <label class="form-label fw-bold">
+                        <i class="fas fa-store"></i>
+                        Select Marketplace
+                    </label>
+                    <div class="d-flex flex-wrap gap-2" id="marketplaceTabs">
+                        <!-- Dynamic tabs will be inserted here -->
+                    </div>
                 </div>
 
                 <div class="row">
@@ -59,7 +70,7 @@
                                 </h6>
                                 <div class="improvement-counter">
                                     <i class="fas fa-sync-alt"></i>
-                                    Improvements: <span id="improvementCounter">0 / 3</span>
+                                    Improvements: <span id="improvementCounter">0</span>
                                 </div>
                             </div>
                             
@@ -81,6 +92,28 @@
                                 <div class="mb-3">
                                     <span class="score-badge score-low" id="scoreValue">0</span>
                                     <div class="mt-2 text-muted small">Title Quality Score</div>
+                                </div>
+
+                                <!-- SEO Keywords Display -->
+                                <div class="mb-3 text-start" id="seoKeywordsSection" style="display: none;">
+                                    <div class="bg-white p-3 rounded border">
+                                        <h6 class="fw-bold mb-2 text-success">
+                                            <i class="fas fa-search"></i>
+                                            SEO Keywords Found
+                                        </h6>
+                                        <div id="seoKeywordsList" class="small"></div>
+                                    </div>
+                                </div>
+
+                                <!-- Improvements Needed -->
+                                <div class="mb-3 text-start" id="improvementsSection" style="display: none;">
+                                    <div class="bg-warning bg-opacity-10 p-3 rounded border border-warning">
+                                        <h6 class="fw-bold mb-2 text-warning">
+                                            <i class="fas fa-exclamation-triangle"></i>
+                                            Improvements Needed
+                                        </h6>
+                                        <ul id="improvementsList" class="mb-0 small"></ul>
+                                    </div>
                                 </div>
 
                                 <div class="d-flex flex-wrap justify-content-center gap-2">

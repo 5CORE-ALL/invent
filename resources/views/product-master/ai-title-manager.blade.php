@@ -167,7 +167,6 @@
         let table;
         let currentRow = null;
         let improvementCount = 0;
-        let maxImprovements = 3;
         let isApproved = false;
         let currentAiTitle = null;
 
@@ -209,24 +208,23 @@
                         width: 150,
                     },
                     {
-                        title: "Marketplace",
-                        field: "marketplace",
-                        width: 140,
+                        title: "Marketplaces",
+                        field: "marketplaces",
+                        width: 200,
                         formatter: function(cell) {
-                            const marketplace = cell.getValue();
-                            const icon = marketplaceConfig.icons[marketplace] || 'fas fa-store';
-                            const color = marketplaceConfig.colors[marketplace] || '#000';
-                            return `<div style="text-align: center;"><i class="${icon}" style="font-size: 24px; color: ${color};"></i><div style="font-size: 10px; margin-top: 3px; text-transform: uppercase; font-weight: 600;">${marketplace}</div></div>`;
-                        }
-                    },
-                    {
-                        title: "Current Title",
-                        field: "marketplace_title",
-                        width: 350,
-                        formatter: function(cell) {
-                            const title = cell.getValue() || 'No title';
-                            const truncated = title.length > 100 ? title.substring(0, 100) + '...' : title;
-                            return `<div style="font-size: 12px; line-height: 1.4;">${truncated}</div>`;
+                            const marketplaces = cell.getValue();
+                            let html = '<div style="display: flex; gap: 8px; align-items: center;">';
+                            
+                            for (const [marketplace, data] of Object.entries(marketplaces)) {
+                                const icon = marketplaceConfig.icons[marketplace] || 'fas fa-store';
+                                const color = marketplaceConfig.colors[marketplace] || '#000';
+                                html += `<div title="${marketplace.toUpperCase()}" style="text-align: center;">
+                                    <i class="${icon}" style="font-size: 22px; color: ${color};"></i>
+                                </div>`;
+                            }
+                            
+                            html += '</div>';
+                            return html;
                         }
                     },
                     {
@@ -277,48 +275,106 @@
             });
         }
 
+        let selectedMarketplace = null;
+        let allMarketplaceData = {};
+
         function openAiModal(rowData) {
             currentRow = rowData;
+            allMarketplaceData = rowData.marketplaces || {};
             improvementCount = 0;
             isApproved = false;
             currentAiTitle = null;
 
-            // Set modal content
-            $('#modalMarketplace').text(currentRow.marketplace.toUpperCase());
-            $('#originalTitle').val(currentRow.marketplace_title || 'No title available');
-            $('#aiTitle').val('');
             $('#productSku').val(currentRow.sku);
             
+            // Create marketplace tabs
+            createMarketplaceTabs();
+            
+            // Select first marketplace by default
+            const firstMarketplace = Object.keys(allMarketplaceData)[0];
+            if (firstMarketplace) {
+                selectMarketplace(firstMarketplace);
+            }
+
+            $('#aiTitleModal').modal('show');
+        }
+
+        function createMarketplaceTabs() {
+            let tabsHtml = '';
+            
+            for (const [marketplace, data] of Object.entries(allMarketplaceData)) {
+                const icon = marketplaceConfig.icons[marketplace] || 'fas fa-store';
+                const color = marketplaceConfig.colors[marketplace] || '#000';
+                
+                tabsHtml += `
+                    <button class="btn btn-outline-secondary marketplace-tab" 
+                            data-marketplace="${marketplace}"
+                            onclick="selectMarketplace('${marketplace}')"
+                            style="min-width: 120px;">
+                        <i class="${icon}" style="color: ${color};"></i>
+                        <span class="ms-2">${marketplace.toUpperCase()}</span>
+                    </button>
+                `;
+            }
+            
+            $('#marketplaceTabs').html(tabsHtml);
+        }
+
+        function selectMarketplace(marketplace) {
+            selectedMarketplace = marketplace;
+            const data = allMarketplaceData[marketplace];
+            
+            if (!data) return;
+            
+            // Update tab active state
+            $('.marketplace-tab').removeClass('active btn-primary').addClass('btn-outline-secondary');
+            $(`.marketplace-tab[data-marketplace="${marketplace}"]`).removeClass('btn-outline-secondary').addClass('active btn-primary');
+            
+            // Set original title
+            $('#originalTitle').val(data.title || 'No title available');
+            
             // Set marketplace link
-            if (currentRow.marketplace_link) {
-                $('#originalLink').attr('href', currentRow.marketplace_link).show();
+            if (data.link) {
+                $('#originalLink').attr('href', data.link).show();
             } else {
                 $('#originalLink').hide();
             }
             
             // Calculate original title stats
-            const originalLength = (currentRow.marketplace_title || '').length;
-            const maxChars = marketplaceConfig.character_limits[currentRow.marketplace] || 150;
+            const originalLength = (data.title || '').length;
+            const maxChars = marketplaceConfig.character_limits[marketplace] || 150;
             $('#originalChars').text(`${originalLength} / ${maxChars}`);
             $('#originalRemaining').text(maxChars - originalLength);
 
             // Reset AI section
+            $('#aiTitle').val('');
             $('#aiChars').text('0 / 0');
             $('#aiRemaining').text('0');
             $('#scoreValue').text('0').removeClass().addClass('score-badge score-low');
-            $('#improvementCounter').text('0 / 3');
+            $('#improvementCounter').text('0');
+            $('#seoKeywordsSection').hide();
+            $('#improvementsSection').hide();
+            
+            // Reset state
+            improvementCount = 0;
+            isApproved = false;
+            currentAiTitle = null;
             
             // Reset buttons
-            $('#btnApprove').prop('disabled', true);
+            $('#btnApprove').removeClass('btn-success').addClass('btn-warning').html('<i class="fas fa-check-circle"></i> Approve').prop('disabled', true);
             $('#btnImprove').prop('disabled', true);
             $('#btnPush').prop('disabled', true);
             $('#btnCopy').prop('disabled', true);
-
-            $('#aiTitleModal').modal('show');
         }
 
         async function generateTitle() {
-            const description = currentRow.marketplace_title || currentRow.sku;
+            if (!selectedMarketplace) {
+                alert('Please select a marketplace first');
+                return;
+            }
+
+            const marketplaceData = allMarketplaceData[selectedMarketplace];
+            const description = marketplaceData.title || currentRow.sku;
             const keywords = '';
 
             $('#btnGenerate').prop('disabled', true).html('<span class="loading-spinner"></span> Generating...');
@@ -331,7 +387,7 @@
                         'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
                     },
                     body: JSON.stringify({
-                        marketplace: currentRow.marketplace,
+                        marketplace: selectedMarketplace,
                         description: description,
                         keywords: keywords,
                         mode: 'generate'
@@ -356,11 +412,27 @@
         }
 
         async function improveTitle() {
-            if (!currentAiTitle || improvementCount >= maxImprovements) return;
+            console.log('Improve button clicked', {
+                currentAiTitle: currentAiTitle,
+                improvementCount: improvementCount,
+                isApproved: isApproved
+            });
 
+            if (!currentAiTitle) {
+                alert('No AI title to improve. Please generate a title first.');
+                return;
+            }
+
+            if (!isApproved) {
+                alert('Please click the Approve button first before improving the title.');
+                return;
+            }
+
+            console.log('Starting improvement...');
             $('#btnImprove').prop('disabled', true).html('<span class="loading-spinner"></span> Improving...');
 
             try {
+                const marketplaceData = allMarketplaceData[selectedMarketplace];
                 const response = await fetch('{{ route("ai.title.generate") }}', {
                     method: 'POST',
                     headers: {
@@ -368,8 +440,8 @@
                         'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
                     },
                     body: JSON.stringify({
-                        marketplace: currentRow.marketplace,
-                        description: currentRow.marketplace_title || currentRow.sku,
+                        marketplace: selectedMarketplace,
+                        description: marketplaceData.title || currentRow.sku,
                         keywords: '',
                         current_title: currentAiTitle,
                         mode: 'improve'
@@ -382,17 +454,18 @@
                     currentAiTitle = data.title;
                     improvementCount++;
                     displayAiTitle(data);
-                    $('#improvementCounter').text(`${improvementCount} / ${maxImprovements}`);
+                    $('#improvementCounter').text(improvementCount);
                     
-                    if (improvementCount >= maxImprovements) {
-                        $('#btnImprove').prop('disabled', true);
-                    }
+                    // Always re-enable button (no limit)
+                    $('#btnImprove').prop('disabled', false).html('<i class="fas fa-rocket"></i> Improve');
+                    console.log('Improvement successful, count:', improvementCount);
                 } else {
                     alert(data.message || 'Failed to improve title');
+                    $('#btnImprove').prop('disabled', false).html('<i class="fas fa-rocket"></i> Improve');
                 }
             } catch (error) {
-                alert('Network error. Please try again.');
-            } finally {
+                console.error('Improve error:', error);
+                alert('Network error: ' + error.message);
                 $('#btnImprove').prop('disabled', false).html('<i class="fas fa-rocket"></i> Improve');
             }
         }
@@ -410,14 +483,47 @@
             
             $('#scoreValue').text(score).removeClass().addClass('score-badge ' + scoreClass);
             
+            // Display SEO Keywords
+            if (data.seo_keywords && Object.keys(data.seo_keywords).length > 0) {
+                let keywordsHtml = '<div class="d-flex flex-wrap gap-2">';
+                for (const [keyword, count] of Object.entries(data.seo_keywords)) {
+                    keywordsHtml += `<span class="badge bg-success">${keyword} (${count})</span>`;
+                }
+                keywordsHtml += '</div>';
+                $('#seoKeywordsList').html(keywordsHtml);
+                $('#seoKeywordsSection').show();
+            } else {
+                $('#seoKeywordsSection').hide();
+            }
+            
+            // Display Improvements Needed
+            if (data.improvements_needed && data.improvements_needed.length > 0) {
+                let improvementsHtml = '';
+                data.improvements_needed.forEach(improvement => {
+                    improvementsHtml += `<li>${improvement}</li>`;
+                });
+                $('#improvementsList').html(improvementsHtml);
+                
+                // Only show if there are actual improvements (not just "Looks good!")
+                if (data.improvements_needed[0] !== 'Looks good!') {
+                    $('#improvementsSection').show();
+                } else {
+                    $('#improvementsSection').hide();
+                }
+            } else {
+                $('#improvementsSection').hide();
+            }
+            
             $('#btnPush').prop('disabled', false);
         }
 
         function approveTitle() {
+            console.log('Approving title...');
             isApproved = true;
             $('#btnApprove').removeClass('btn-warning').addClass('btn-success').html('<i class="fas fa-check-circle"></i> Approved');
-            $('#btnImprove').prop('disabled', false);
+            $('#btnImprove').prop('disabled', false).removeClass('disabled');
             $('#btnApprove').prop('disabled', true);
+            console.log('Title approved, improve button enabled');
         }
 
         function copyTitle() {
@@ -437,6 +543,11 @@
                 return;
             }
 
+            if (!selectedMarketplace) {
+                alert('No marketplace selected');
+                return;
+            }
+
             $('#btnPush').prop('disabled', true).html('<span class="loading-spinner"></span> Pushing...');
 
             try {
@@ -449,7 +560,7 @@
                     body: JSON.stringify({
                         sku: currentRow.sku,
                         parent: currentRow.parent,
-                        marketplace: currentRow.marketplace,
+                        marketplace: selectedMarketplace,
                         title: title
                     })
                 });

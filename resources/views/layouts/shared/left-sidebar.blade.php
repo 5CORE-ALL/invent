@@ -92,6 +92,8 @@
 
             </li>
 
+
+
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#suppliers" aria-expanded="false" aria-controls="suppliers"
                     class="side-nav-link">
@@ -1704,6 +1706,13 @@
                         </li>
                     </ul>
                 </div>
+            </li>
+
+            <li class="side-nav-item">
+                <a href="{{ url('ai-title-manager') }}" class="side-nav-link">
+                    <i class="ri-magic-line"></i>
+                    <span>Marketplace AI Title </span>
+                </a>
             </li>
 
             <li class="side-nav-item">

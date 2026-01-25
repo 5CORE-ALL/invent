@@ -4466,23 +4466,19 @@ GRAPHQL;
             $values = json_decode($product->values, true);
             $imagePath = $values['image_path'] ?? null;
             
-            // Get marketplace data for this SKU
+            // Get all marketplace data for this SKU
             $marketplaces = $this->getMarketplaceData($product->sku, $product->parent);
 
             if (!empty($marketplaces)) {
-                foreach ($marketplaces as $marketplace => $info) {
-                    $data[] = [
-                        'id' => $product->id . '_' . $marketplace,
-                        'product_id' => $product->id,
-                        'parent' => $product->parent,
-                        'sku' => $product->sku,
-                        'img' => $imagePath,
-                        'marketplace' => $marketplace,
-                        'marketplace_title' => $info['title'],
-                        'marketplace_link' => $info['link'],
-                        'item_id' => $info['item_id'] ?? null,
-                    ];
-                }
+                // Group all marketplaces for single SKU
+                $data[] = [
+                    'id' => $product->id,
+                    'product_id' => $product->id,
+                    'parent' => $product->parent,
+                    'sku' => $product->sku,
+                    'img' => $imagePath,
+                    'marketplaces' => $marketplaces, // All marketplace data
+                ];
             }
         }
 
@@ -4596,7 +4592,7 @@ GRAPHQL;
                 ], 500);
             }
 
-            $score = $this->calculateTitleScore($title, $keywords, $maxChars);
+            $scoreData = $this->calculateTitleScore($title, $keywords, $maxChars);
             $titleLength = strlen($title);
 
             return response()->json([
@@ -4605,7 +4601,9 @@ GRAPHQL;
                 'characters' => $titleLength,
                 'max_chars' => $maxChars,
                 'remaining' => $maxChars - $titleLength,
-                'score' => $score,
+                'score' => $scoreData['score'],
+                'seo_keywords' => $scoreData['seo_keywords'],
+                'improvements_needed' => $scoreData['improvements_needed'],
             ]);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -4629,38 +4627,91 @@ GRAPHQL;
 
     private function generateTitle($marketplace, $description, $keywords, $maxChars)
     {
-        // Fallback mode if no API key
-        if (!env('OPENAI_API_KEY')) {
-            return $this->generateFallbackTitle($description, $keywords, $maxChars);
+        $prompt = "Create a HIGHLY SEO-OPTIMIZED product title for {$marketplace}.
+
+CURRENT TITLE: {$description}
+
+STRICT RULES:
+1. MAX {$maxChars} characters - DO NOT EXCEED
+2. NO duplicate words/brands
+3. START with brand name ONCE only
+4. USE commas (,) to separate features
+5. USE pipe (|) or dash (-) for main sections
+6. INCLUDE: Brand, Type, Size, Key Features, Benefits
+7. ADD power words: Premium, Professional, Heavy-Duty, High-Quality
+8. FRONT-LOAD most searchable keywords
+9. NO filler words: the, a, an, with, for, of
+
+PERFECT STRUCTURE:
+[Brand] [Product Type], [Size/Spec], [Key Feature 1], [Key Feature 2] | [Use Case/Benefit]
+
+REAL EXAMPLES:
+
+Bad: Core 5 5 Core Microphone Stand w Boom
+Good: 5 Core Microphone Stand Set, Dual 63\" Adjustable Tripod, Floor Standing with Boom Arm | Professional Studio Recording Equipment
+
+Bad: Speaker Bluetooth Wireless Portable
+Good: Premium Bluetooth Speaker, 20W Portable Wireless, IPX7 Waterproof, 12Hr Battery | Deep Bass Home/Outdoor Audio
+
+Bad: Camera Mount Universal Tripod Adapter
+Good: Universal Camera Mount Adapter, 1/4\"-3/8\" Tripod Thread, Heavy-Duty Aluminum | DSLR/GoPro/Smartphone Compatible
+
+CREATE NEW TITLE:
+Return ONLY the optimized title (no quotes, no explanation).";
+
+        // Try Claude first (working API key)
+        if (env('CLAUDE_API_KEY')) {
+            $title = $this->callClaudeAI($prompt, $maxChars);
+            if ($title) return $title;
         }
-
-        $prompt = "Generate a product title for {$marketplace} marketplace.
-
-Requirements:
-- Maximum {$maxChars} characters
-- Include these keywords naturally: {$keywords}
-- Based on: {$description}
-- Follow {$marketplace} marketplace rules
-- Optimize for search and conversion
-- Be specific and descriptive
-
-Return ONLY the title text, nothing else.";
-
-        $title = $this->callOpenAI($prompt, $maxChars);
         
-        // If API fails, use fallback
-        return $title ?? $this->generateFallbackTitle($description, $keywords, $maxChars);
+        // Try OpenAI
+        if (env('OPENAI_API_KEY')) {
+            $title = $this->callOpenAI($prompt, $maxChars);
+            if ($title) return $title;
+        }
+        
+        // Use fallback if both fail
+        return $this->generateFallbackTitle($description, $keywords, $maxChars);
     }
 
     private function generateFallbackTitle($description, $keywords, $maxChars)
     {
-        // Simple rule-based title generation
-        $keywordList = array_filter(array_map('trim', explode(',', $keywords)));
-        $title = $description;
+        Log::warning('Using fallback title generation (API not available)');
         
-        // Add keywords if not in description
+        // Extract key information from description
+        $words = explode(' ', $description);
+        
+        // Power words to add variety
+        $powerWords = ['Premium', 'Professional', 'Heavy Duty', 'High Quality', 'Universal', 'Adjustable', 'Portable'];
+        $randomPowerWord = $powerWords[array_rand($powerWords)];
+        
+        // Rearrange and optimize
+        $brand = '';
+        $productType = '';
+        $features = [];
+        
+        // Extract brand (usually first 1-2 words or words with "Core" in them)
+        foreach ($words as $word) {
+            if (stripos($word, 'Core') !== false) {
+                $brand = $word . ' ' . ($words[0] ?? '');
+                break;
+            }
+        }
+        
+        // Build optimized title with variation
+        $variations = [
+            "{$brand} {$randomPowerWord} {$description}",
+            "{$brand} {$description} | {$randomPowerWord} Quality",
+            "{$randomPowerWord} {$description} - {$brand}",
+        ];
+        
+        $title = $variations[array_rand($variations)];
+        
+        // Add keywords if not present
+        $keywordList = array_filter(array_map('trim', explode(',', $keywords)));
         foreach ($keywordList as $keyword) {
-            if (stripos($title, $keyword) === false) {
+            if (stripos($title, $keyword) === false && strlen($title) + strlen($keyword) < $maxChars - 3) {
                 $title .= ' ' . ucwords($keyword);
             }
         }
@@ -4679,38 +4730,110 @@ Return ONLY the title text, nothing else.";
 
     private function improveTitle($marketplace, $description, $keywords, $currentTitle, $maxChars)
     {
-        // Fallback mode if no API key
-        if (!env('OPENAI_API_KEY')) {
-            return $this->generateFallbackTitle($description, $keywords, $maxChars);
+        $prompt = "You are an expert {$marketplace} SEO specialist. SIGNIFICANTLY improve this product title.
+
+Current title: {$currentTitle}
+Original description: {$description}
+Target keywords: {$keywords}
+
+IMPROVEMENT GOALS:
+1. Make it MORE SEO-friendly (higher search ranking)
+2. Add missing high-value keywords
+3. Improve keyword positioning (most important first)
+4. Make it more compelling to buyers
+5. Add specific details (measurements, materials, features)
+6. Use power words and benefits
+7. Remove redundant words
+8. Better structure with | or - separators
+9. Stay within {$maxChars} characters (STRICT)
+
+MAKE SIGNIFICANT CHANGES - don't just trim or rearrange.
+Add value, improve clarity, boost searchability.
+
+Return ONLY the dramatically improved title without quotes.";
+
+        // Try Claude first (working API key)
+        if (env('CLAUDE_API_KEY')) {
+            $title = $this->callClaudeAI($prompt, $maxChars);
+            if ($title) return $title;
+        }
+        
+        // Try OpenAI
+        if (env('OPENAI_API_KEY')) {
+            $title = $this->callOpenAI($prompt, $maxChars);
+            if ($title) return $title;
+        }
+        
+        // Use fallback if both fail
+        return $this->generateFallbackTitle($description, $keywords, $maxChars);
+    }
+
+    private function callClaudeAI($prompt, $maxChars)
+    {
+        $apiKey = env('CLAUDE_API_KEY');
+        if (!$apiKey) {
+            return null;
         }
 
-        $prompt = "Improve this product title for {$marketplace}.
+        Log::info('Calling Claude AI', ['model' => 'claude-3-5-sonnet']);
 
-Current: {$currentTitle}
-Description: {$description}
-Keywords: {$keywords}
+        try {
+            $response = Http::timeout(60)
+                ->withHeaders([
+                    'x-api-key' => $apiKey,
+                    'anthropic-version' => '2023-06-01',
+                    'content-type' => 'application/json',
+                ])
+                ->post('https://api.anthropic.com/v1/messages', [
+                    'model' => 'claude-sonnet-4-20250514',
+                    'max_tokens' => 1024,
+                    'messages' => [
+                        [
+                            'role' => 'user',
+                            'content' => $prompt
+                        ]
+                    ],
+                ]);
 
-Requirements:
-- Maximum {$maxChars} characters
-- Better keyword placement
-- Improved readability
-- Better buyer appeal
+            if ($response->successful()) {
+                $responseData = $response->json();
+                $title = trim($responseData['content'][0]['text'] ?? '');
+                $title = trim($title, '"\'');
+                
+                // Remove any explanatory text
+                $lines = explode("\n", $title);
+                $title = trim($lines[0]);
+                
+                if (strlen($title) > $maxChars) {
+                    $title = substr($title, 0, $maxChars);
+                    $lastSpace = strrpos($title, ' ');
+                    if ($lastSpace !== false && $lastSpace > $maxChars * 0.8) {
+                        $title = substr($title, 0, $lastSpace);
+                    }
+                }
+                
+                Log::info('✓ Claude AI title generated', ['length' => strlen($title), 'title' => $title]);
+                return $title;
+            }
 
-Return ONLY the improved title, nothing else.";
+            Log::error('Claude API Error', ['status' => $response->status(), 'body' => $response->body()]);
+            return null;
 
-        $title = $this->callOpenAI($prompt, $maxChars);
-        
-        // If API fails, use fallback
-        return $title ?? $this->generateFallbackTitle($description, $keywords, $maxChars);
+        } catch (\Exception $e) {
+            Log::error('Claude API Exception', ['message' => $e->getMessage()]);
+            return null;
+        }
     }
 
     private function callOpenAI($prompt, $maxChars)
     {
         $apiKey = env('OPENAI_API_KEY');
         if (!$apiKey) {
-            Log::error('OpenAI API key not configured');
+            Log::warning('OpenAI API key not configured - using fallback');
             return null;
         }
+
+        Log::info('Calling OpenAI API', ['model' => 'gpt-4o']);
 
         $maxRetries = 3;
         $attempt = 0;
@@ -4729,21 +4852,25 @@ Return ONLY the improved title, nothing else.";
                         'messages' => [
                             [
                                 'role' => 'system',
-                                'content' => 'You are an expert at writing product titles for e-commerce marketplaces. Always follow character limits strictly and return ONLY the title text without any quotes or extra text.'
+                                'content' => 'You are an expert at writing SEO-optimized product titles for e-commerce marketplaces. Create compelling, keyword-rich titles that rank well in search. Always follow character limits strictly and return ONLY the title text without any quotes or extra text.'
                             ],
                             [
                                 'role' => 'user',
                                 'content' => $prompt
                             ]
                         ],
-                        'max_tokens' => 150,
-                        'temperature' => 0.7,
+                        'max_tokens' => 200,
+                        'temperature' => 0.8,
                     ]);
 
                 if ($response->successful()) {
                     $responseData = $response->json();
                     $title = trim($responseData['choices'][0]['message']['content'] ?? '');
                     $title = trim($title, '"\'');
+                    
+                    // Remove any explanatory text (sometimes AI adds context)
+                    $lines = explode("\n", $title);
+                    $title = trim($lines[0]);
                     
                     if (strlen($title) > $maxChars) {
                         $title = substr($title, 0, $maxChars);
@@ -4753,19 +4880,24 @@ Return ONLY the improved title, nothing else.";
                         }
                     }
                     
-                    Log::info('OpenAI title generated successfully', ['length' => strlen($title), 'model' => 'gpt-4o']);
+                    Log::info('✓ OpenAI title generated successfully', [
+                        'length' => strlen($title),
+                        'model' => 'gpt-4o',
+                        'title' => $title
+                    ]);
                     return $title;
                 }
 
                 // Log error details
-                Log::error('OpenAI API Error', [
+                Log::error('✗ OpenAI API Error', [
                     'status' => $response->status(),
-                    'body' => $response->body(),
+                    'body' => substr($response->body(), 0, 500),
                     'attempt' => $attempt
                 ]);
 
                 if ($response->status() === 429 || $response->status() >= 500) {
                     if ($attempt < $maxRetries) {
+                        Log::info("Retrying OpenAI API (attempt {$attempt})...");
                         sleep(2 * $attempt);
                         continue;
                     }
@@ -4774,9 +4906,10 @@ Return ONLY the improved title, nothing else.";
                 return null;
 
             } catch (\Exception $e) {
-                Log::error('OpenAI API Exception', [
+                Log::error('✗ OpenAI API Exception', [
                     'message' => $e->getMessage(),
-                    'attempt' => $attempt
+                    'attempt' => $attempt,
+                    'trace' => substr($e->getTraceAsString(), 0, 500)
                 ]);
                 
                 if ($attempt < $maxRetries) {
@@ -4787,6 +4920,7 @@ Return ONLY the improved title, nothing else.";
             }
         }
 
+        Log::error('OpenAI API failed after all retries');
         return null;
     }
 
@@ -4794,18 +4928,77 @@ Return ONLY the improved title, nothing else.";
     {
         $score = 0;
         $titleLower = strtolower($title);
+        $improvements = [];
+        $seoKeywords = [];
+        
+        // Stop words to ignore (common filler words)
+        $stopWords = ['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 
+                      'of', 'with', 'by', 'from', 'is', 'are', 'was', 'were', 'be', 'been'];
+        
+        // Extract all words from title
+        $words = str_word_count($title, 1);
+        $wordFrequency = [];
+        
+        foreach ($words as $word) {
+            $wordLower = strtolower($word);
+            
+            // Skip stop words and very short words
+            if (in_array($wordLower, $stopWords) || strlen($wordLower) < 3) {
+                continue;
+            }
+            
+            // Count frequency
+            if (!isset($wordFrequency[$wordLower])) {
+                $wordFrequency[$wordLower] = 0;
+            }
+            $wordFrequency[$wordLower]++;
+        }
+        
+        // Sort by frequency and take top keywords
+        arsort($wordFrequency);
+        $topKeywords = array_slice($wordFrequency, 0, 8, true);
+        
+        foreach ($topKeywords as $keyword => $count) {
+            $seoKeywords[ucwords($keyword)] = $count;
+        }
+        
+        // Extract numbers and specs (sizes, quantities, etc.)
+        preg_match_all('/\b\d+[\w]*\b/i', $title, $matches);
+        if (!empty($matches[0])) {
+            $specs = array_unique($matches[0]);
+            $seoKeywords['📏 Specs/Numbers'] = count($specs);
+        }
+        
+        // Count power words
+        $powerWords = ['premium', 'professional', 'heavy duty', 'high quality', 'universal', 
+                       'adjustable', 'portable', 'durable', 'best', 'top', 'pro'];
+        $powerWordCount = 0;
+        foreach ($powerWords as $pw) {
+            if (stripos($title, $pw) !== false) {
+                $powerWordCount++;
+            }
+        }
+        if ($powerWordCount > 0) {
+            $seoKeywords['💪 Power Words'] = $powerWordCount;
+        }
+
         $keywordList = array_filter(array_map('trim', array_map('strtolower', explode(',', $keywords))));
 
-        // Keyword usage (40 points)
+        // 1. Keyword usage (40 points)
         $keywordsFound = 0;
         foreach ($keywordList as $keyword) {
             if (!empty($keyword) && strpos($titleLower, $keyword) !== false) {
                 $keywordsFound++;
             }
         }
-        $score += count($keywordList) > 0 ? ($keywordsFound / count($keywordList)) * 40 : 20;
+        $keywordScore = count($keywordList) > 0 ? ($keywordsFound / count($keywordList)) * 40 : 20;
+        $score += $keywordScore;
+        
+        if ($keywordScore < 30) {
+            $improvements[] = 'Add more target keywords';
+        }
 
-        // Length optimization (20 points)
+        // 2. Length optimization (20 points)
         $titleLength = strlen($title);
         $optimalMin = $maxChars * 0.7;
         $optimalMax = $maxChars * 0.95;
@@ -4814,21 +5007,38 @@ Return ONLY the improved title, nothing else.";
             $score += 20;
         } elseif ($titleLength > $optimalMax && $titleLength <= $maxChars) {
             $score += 15;
+            $improvements[] = 'Too close to limit';
         } else {
             $score += ($titleLength / $optimalMin) * 20;
+            $improvements[] = 'Title too short';
         }
 
-        // Readability (20 points)
+        // 3. Readability (20 points)
         $wordCount = str_word_count($title);
         if ($wordCount >= 5 && $wordCount <= 15) {
             $score += 20;
         } elseif ($wordCount > 15) {
             $score += 10;
+            $improvements[] = 'Too many words';
         } else {
             $score += ($wordCount / 5) * 20;
+            $improvements[] = 'Add more details';
         }
 
-        // Capitalization (10 points)
+        // 4. Power words check
+        $powerWords = ['premium', 'professional', 'heavy duty', 'high quality', 'best', 'top'];
+        $hasPowerWord = false;
+        foreach ($powerWords as $pw) {
+            if (stripos($title, $pw) !== false) {
+                $hasPowerWord = true;
+                break;
+            }
+        }
+        if (!$hasPowerWord) {
+            $improvements[] = 'Add power words';
+        }
+
+        // 5. Capitalization (10 points)
         $words = explode(' ', $title);
         $properlyCapitalized = 0;
         foreach ($words as $word) {
@@ -4836,13 +5046,31 @@ Return ONLY the improved title, nothing else.";
                 $properlyCapitalized++;
             }
         }
-        $score += count($words) > 0 ? ($properlyCapitalized / count($words)) * 10 : 0;
+        $capScore = count($words) > 0 ? ($properlyCapitalized / count($words)) * 10 : 0;
+        $score += $capScore;
+        
+        if ($capScore < 8) {
+            $improvements[] = 'Fix capitalization';
+        }
 
-        // Punctuation (10 points)
+        // 6. Punctuation (10 points)
         $punctuationCount = preg_match_all('/[!?.,;:]/', $title);
         $score += $punctuationCount <= 3 ? 10 : ($punctuationCount <= 5 ? 5 : 0);
+        
+        if ($punctuationCount > 5) {
+            $improvements[] = 'Too much punctuation';
+        }
 
-        return min(100, round($score));
+        // 7. Check for brand name at start
+        if (!preg_match('/^[A-Z0-9]/', $title)) {
+            $improvements[] = 'Start with brand name';
+        }
+
+        return [
+            'score' => min(100, round($score)),
+            'seo_keywords' => $seoKeywords,
+            'improvements_needed' => empty($improvements) ? ['Looks good!'] : $improvements
+        ];
     }
 
     public function pushTitleToMarketplace(Request $request)
