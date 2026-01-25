@@ -98,7 +98,9 @@ class UpdateShoppingBudgetCronCommand extends Command
 
         $this->info("Found " . $productMasters->count() . " product masters");
 
-        // Fetch SHOPPING campaigns data within L30 range
+        // Fetch SHOPPING campaigns (ENABLED + PAUSED; exclude only ARCHIVED) so L30
+        // aggregation matches the UI. We only *update* campaigns that are ENABLED (see
+        // $matchedCampaign and $campaignRanges aggregate below).
         $googleCampaigns = GoogleAdsCampaign::select(
                 'campaign_id',
                 'campaign_name',
@@ -110,7 +112,7 @@ class UpdateShoppingBudgetCronCommand extends Command
                 'ga4_ad_sales'
             )
             ->where('advertising_channel_type', 'SHOPPING')
-            ->where('campaign_status', 'ENABLED')
+            ->where('campaign_status', '!=', 'ARCHIVED')
             ->whereBetween('date', [$dateRanges['L30']['start'], $dateRanges['L30']['end']])
             ->get();
 
@@ -209,7 +211,7 @@ class UpdateShoppingBudgetCronCommand extends Command
                 continue;
             }
 
-            // Aggregate metrics for L30 range (matching frontend logic)
+            // Aggregate metrics for L30 (include ENABLED + PAUSED so ACOS matches UI/SBGT)
             $campaignRanges = $googleCampaigns->filter(function ($c) use ($sku, $dateRanges) {
                 $campaign = strtoupper(trim($c->campaign_name));
                 $campaignCleaned = rtrim(trim($campaign), '.'); // Remove trailing dots
@@ -226,7 +228,10 @@ class UpdateShoppingBudgetCronCommand extends Command
                 }
                 
                 $matchesCampaign = $exactMatch;
-                $matchesStatus = $c->campaign_status === 'ENABLED';
+                // Include all statuses (ENABLED + PAUSED) so ACOS aligns with UI; else
+                // ENABLED-only can undercount spend/overcount sales → ACOS < 10% → BGT=5
+                // while UI shows ACOS 100% and SBGT 1.
+                $matchesStatus = true;
                 
                 $campaignDate = is_string($c->date) ? $c->date : (is_object($c->date) && method_exists($c->date, 'format') ? $c->date->format('Y-m-d') : (string)$c->date);
                 $matchesDate = $campaignDate >= $dateRanges['L30']['start'] && $campaignDate <= $dateRanges['L30']['end'];
@@ -247,15 +252,13 @@ class UpdateShoppingBudgetCronCommand extends Command
                 $acos = 0; // No spend and no sales
             }
             
-            // Get current budget
-            $currentBudget = $matchedCampaign->budget_amount_micros ? $matchedCampaign->budget_amount_micros / 1000000 : 0;
+            // Get current budget from latest-by-date row (same as frontend BGT in getGoogleShoppingAdsData)
+            $latestCampaign = $googleCampaigns->where('campaign_id', $campaignId)->sortByDesc('date')->first();
+            $currentBudget = ($latestCampaign && $latestCampaign->budget_amount_micros) ? $latestCampaign->budget_amount_micros / 1000000 : 0;
 
-            // Determine budget value based on ACOS (matching SBGT formula)
-            // ACOS < 10% → budget = 5
-            // ACOS 10%-30% → budget = 4
-            // ACOS 30%-40% → budget = 3
-            // ACOS 40%-50% → budget = 2
-            // ACOS > 50% → budget = 1
+            // Determine budget (BGT) from ACOS — same buckets as SBGT. When ACOS ≥ 50%
+            // (e.g. 100% when Sales=0), BGT = $1 so it aligns with SBGT=1 in the UI.
+            // ACOS < 10% → $5 | 10–30% → $4 | 30–40% → $3 | 40–50% → $2 | ≥50% → $1
             $newBudget = 1;
             if ($acos < 10) {
                 $newBudget = 5;

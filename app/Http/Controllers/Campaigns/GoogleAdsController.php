@@ -759,15 +759,22 @@ class GoogleAdsController extends Controller
             // Use SKU as key (since we're looping by SKUs, not campaigns)
             $mapKey = 'SKU_' . $pm->sku;
 
+            // BGT from latest-by-date row only (never $matchedCampaign; first() can be an older row)
+            $initialBudget = 0;
+            if ($campaignId) {
+                $latestForBgt = $googleCampaigns->where('campaign_id', $campaignId)->sortByDesc('date')->first();
+                if ($latestForBgt && $latestForBgt->budget_amount_micros) {
+                    $initialBudget = $latestForBgt->budget_amount_micros / 1000000;
+                }
+            }
+
             if (!isset($campaignMap[$mapKey])) {
                 $campaignMap[$mapKey] = [
                     'parent' => $parent,
                     'sku' => $pm->sku,
                     'campaign_id' => $campaignId,
                     'campaignName' => $campaignName,
-                    'campaignBudgetAmount' => $matchedCampaign && $matchedCampaign->budget_amount_micros 
-                        ? $matchedCampaign->budget_amount_micros / 1000000 
-                        : 0,
+                    'campaignBudgetAmount' => $initialBudget,
                     'status' => $matchedCampaign ? $matchedCampaign->campaign_status : null,
                     'campaignStatus' => $matchedCampaign ? $matchedCampaign->campaign_status : null,
                     'price' => ($shopify && isset($shopify->price)) ? (float)$shopify->price : 0,
@@ -824,13 +831,28 @@ class GoogleAdsController extends Controller
                     $campaignMap[$mapKey]["ad_sold_$rangeName"] = $metrics['ad_sold'];
                 }
                 
-                // Get budget from latest campaign record
-                $latestCampaign = $googleCampaigns->where('campaign_id', $campaignId)
-                    ->sortByDesc('date')
-                    ->first();
-                if ($latestCampaign && $latestCampaign->budget_amount_micros) {
-                    $campaignMap[$mapKey]['campaignBudgetAmount'] = $latestCampaign->budget_amount_micros / 1000000;
+                // targetBudget = dollar value from ACOS (same as budget:update-shopping); when it differs
+                // from BGT, the cron will update Google; BGT column can show "2 → 1" until Fetch runs
+                $spendL30 = $campaignMap[$mapKey]['spend_L30'] ?? 0;
+                $salesL30 = $campaignMap[$mapKey]['ad_sales_L30'] ?? 0;
+                $acos = 0;
+                if ($salesL30 > 0) {
+                    $acos = ($spendL30 / $salesL30) * 100;
+                } elseif ($spendL30 > 0) {
+                    $acos = 100;
                 }
+                $targetBudget = 1;
+                if ($acos < 10) {
+                    $targetBudget = 5;
+                } elseif ($acos < 30) {
+                    $targetBudget = 4;
+                } elseif ($acos < 40) {
+                    $targetBudget = 3;
+                } elseif ($acos < 50) {
+                    $targetBudget = 2;
+                }
+                $campaignMap[$mapKey]['targetBudget'] = $targetBudget;
+                
                 $campaignMap[$mapKey]['status'] = $matchedCampaign->campaign_status ?? null;
                 $campaignMap[$mapKey]['campaignStatus'] = $matchedCampaign->campaign_status ?? null;
             }

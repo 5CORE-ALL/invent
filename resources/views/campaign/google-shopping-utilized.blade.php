@@ -974,7 +974,7 @@
             var table = new Tabulator("#budget-under-table", {
                 index: "sku",
                 ajaxURL: "/google/shopping/data",
-                layout: "fitData",
+                layout: "fitDataFill",
                 movableColumns: true,
                 resizableColumns: true,
                 height: "700px",
@@ -1012,23 +1012,29 @@
                             let row = cell.getRow().getData();
                             let sku = cell.getValue();
                             let campaignId = row.campaign_id || '';
+                            let campaignName = row.campaignName || '';
                             let campaignStatus = (row.campaignStatus || '').toUpperCase();
                             let isEnabled = campaignStatus === 'ENABLED';
                             
                             return `
-                                <div class="d-flex align-items-center justify-content-between">
+                                <div class="d-flex align-items-center justify-content-between flex-wrap gap-1">
                                     <span>${sku}</span>
-                                    ${campaignId ? `
-                                        <div class="form-check form-switch ms-2">
-                                            <input class="form-check-input campaign-toggle-switch" 
-                                                   type="checkbox" 
-                                                   role="switch" 
-                                                   data-sku="${sku}"
-                                                   data-campaign-id="${campaignId}"
-                                                   ${isEnabled ? 'checked' : ''}
-                                                   style="cursor: pointer; width: 3rem; height: 1.5rem;">
-                                        </div>
-                                    ` : ''}
+                                    <div class="d-flex align-items-center gap-1">
+                                        ${campaignId ? `
+                                            <div class="form-check form-switch">
+                                                <input class="form-check-input campaign-toggle-switch" 
+                                                       type="checkbox" 
+                                                       role="switch" 
+                                                       data-sku="${sku}"
+                                                       data-campaign-id="${campaignId}"
+                                                       ${isEnabled ? 'checked' : ''}
+                                                       style="cursor: pointer; width: 3rem; height: 1.5rem;">
+                                            </div>
+                                        ` : ''}
+                                        ${campaignId && campaignName ? `
+                                            <button class="btn btn-sm btn-outline-primary campaign-chart-btn" data-campaign-name="${String(campaignName).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" title="Campaign chart"><i class="fas fa-chart-line"></i></button>
+                                        ` : ''}
+                                    </div>
                                 </div>
                             `;
                         }
@@ -1610,17 +1616,6 @@
                             }
 
                             return sbidA - sbidB;
-                        }
-                    },
-                    {
-                        title: "CAMPAIGN",
-                        field: "campaignName",
-                        width: 250,
-                        minWidth: 200,
-                        formatter: function(cell) {
-                            const campaignName = cell.getValue();
-                            const rowData = cell.getRow().getData();
-                            return `<span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block; max-width: 200px;">${campaignName || ''}</span> <button class="btn btn-sm btn-outline-primary ms-2" onclick="showCampaignChart('${campaignName || ''}')"><i class="fas fa-chart-line"></i></button>`;
                         }
                     }
                 ],
@@ -2261,6 +2256,17 @@
                 loadUtilizationCounts();
             });
 
+
+            // Handle campaign chart button (moved from removed CAMPAIGN column into SKU column)
+            document.addEventListener("click", function(e) {
+                const btn = e.target.closest(".campaign-chart-btn");
+                if (btn) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const name = btn.getAttribute("data-campaign-name");
+                    if (name) showCampaignChart(name);
+                }
+            });
 
             // Handle campaign toggle switch
             document.addEventListener("change", function(e) {
