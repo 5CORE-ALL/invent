@@ -73,6 +73,7 @@ use App\Http\Controllers\Channels\ReturnController;
 use App\Http\Controllers\Channels\ExpensesController;
 use App\Http\Controllers\Channels\ReviewController;
 use App\Http\Controllers\Channels\HealthController;
+use App\Http\Controllers\MarketPlace\AmazonFbmTargetingCheckController;
 use App\Http\Controllers\MarketPlace\OverallAmazonController;
 use App\Http\Controllers\MarketPlace\Shopifyb2cLowVisibilityController;
 use App\Http\Controllers\MarketPlace\Shopifyb2cZeroController;
@@ -1000,6 +1001,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::get('/targeting-amazon', action: [OverallAmazonController::class, 'targetingAmazon'])->name('targeting.amazon');
     Route::get('/targeting-amazon-data', action: [OverallAmazonController::class, 'targetingAmazonData'])->name('targeting.amazon.data');
+
+    // Amz FBM Targeting Check - TARGET KW / TARGET PT
+    Route::get('/amazon-fbm-targeting-check-kw', action: [AmazonFbmTargetingCheckController::class, 'targetKw'])->name('amazon.fbm.targeting.check.kw');
+    Route::get('/amazon-fbm-targeting-check-pt', action: [AmazonFbmTargetingCheckController::class, 'targetPt'])->name('amazon.fbm.targeting.check.pt');
+    Route::get('/amazon-fbm-targeting-check-kw-data', action: [AmazonFbmTargetingCheckController::class, 'targetKwData'])->name('amazon.fbm.targeting.check.kw.data');
+    Route::get('/amazon-fbm-targeting-check-pt-data', action: [AmazonFbmTargetingCheckController::class, 'targetPtData'])->name('amazon.fbm.targeting.check.pt.data');
+    Route::get('/amazon-fbm-targeting-check-history', action: [AmazonFbmTargetingCheckController::class, 'getHistory'])->name('amazon.fbm.targeting.check.history');
+    Route::post('/amazon-fbm-targeting-check-save', action: [AmazonFbmTargetingCheckController::class, 'save'])->name('amazon.fbm.targeting.check.save');
 
     Route::get('/overall-amazon', action: [OverallAmazonController::class, 'overallAmazon'])->name('overall.amazon');
     Route::get('/adv-amazon/total-sales/save-data', action: [OverallAmazonController::class, 'getAmazonTotalSalesSaveData'])->name('adv-amazon.total-sales.save-data');
@@ -3010,6 +3019,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         
         // Toggle campaign status
         Route::post('/google/shopping/toggle-campaign-status', 'toggleGoogleShoppingCampaignStatus')->name('google.shopping.toggle.campaign.status');
+        Route::post('/google/shopping/toggle-bulk-campaign-status', 'toggleBulkGoogleShoppingCampaignStatus')->name('google.shopping.toggle.bulk.campaign.status');
         Route::get('/google/serp/report/chart/filter', 'filterGoogleSerpReportChart')->name('google.serp.report.chart.filter');
         Route::get('/google/pmax/chart/filter', 'filterGooglePmaxChart')->name('google.shopping.pmax.chart.filter');
 
@@ -3039,6 +3049,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::controller(TiktokAdsController::class)->group(function () {
         Route::get('/tiktok/ads', 'index')->name('tiktokshop.ads');
+        Route::get('/tiktok/utilized', 'utilized')->name('tiktok.utilized');
+        Route::get('/tiktok/utilized/data', 'getUtilizedData')->name('tiktok.utilized.data');
+        Route::post('/tiktok/utilized/upload', 'uploadUtilized')->name('tiktok.utilized.upload');
+        Route::post('/tiktok/utilized/update', 'updateUtilized')->name('tiktok.utilized.update');
     });
     Route::prefix('repricer/amazon-search')->group(function () {
         Route::get('/', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'index']);

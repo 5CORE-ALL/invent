@@ -544,9 +544,17 @@
                                             style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-chart-line me-1" style="color: #64748b;"></i>Statistics
                                         </label>
-                                        <a href="javascript:void(0)" id="export-btn" class="btn btn-sm btn-success d-flex align-items-center">
-                                            <i class="fas fa-file-export me-1"></i> Export Excel/CSV
-                                        </a>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <button type="button" id="bulk-enable-campaigns-btn" class="btn btn-sm btn-success d-none" title="Enable selected campaigns">
+                                                <i class="fa fa-play-circle me-1"></i> Enable
+                                            </button>
+                                            <button type="button" id="bulk-pause-campaigns-btn" class="btn btn-sm btn-warning d-none" title="Pause selected campaigns">
+                                                <i class="fa fa-pause-circle me-1"></i> Pause
+                                            </button>
+                                            <a href="javascript:void(0)" id="export-btn" class="btn btn-sm btn-success d-flex align-items-center">
+                                                <i class="fas fa-file-export me-1"></i> Export Excel/CSV
+                                            </a>
+                                        </div>
                                     </div>
                                     <div class="d-flex gap-2 flex-wrap align-items-center">
                                         <div class="badge-count-item"
@@ -1635,9 +1643,15 @@
 
             table.on("rowSelectionChanged", function(data, rows) {
                 if (data.length > 0) {
-                    document.getElementById("apr-all-sbid-btn").classList.remove("d-none");
+                    const apr = document.getElementById("apr-all-sbid-btn");
+                    if (apr) apr.classList.remove("d-none");
+                    document.getElementById("bulk-enable-campaigns-btn").classList.remove("d-none");
+                    document.getElementById("bulk-pause-campaigns-btn").classList.remove("d-none");
                 } else {
-                    document.getElementById("apr-all-sbid-btn").classList.add("d-none");
+                    const apr = document.getElementById("apr-all-sbid-btn");
+                    if (apr) apr.classList.add("d-none");
+                    document.getElementById("bulk-enable-campaigns-btn").classList.add("d-none");
+                    document.getElementById("bulk-pause-campaigns-btn").classList.add("d-none");
                 }
             });
 
@@ -2325,6 +2339,51 @@
                     });
                 }
             });
+
+            // Bulk Enable campaigns
+            document.getElementById("bulk-enable-campaigns-btn").addEventListener("click", function() {
+                runBulkCampaignToggle("ENABLED");
+            });
+            // Bulk Pause campaigns
+            document.getElementById("bulk-pause-campaigns-btn").addEventListener("click", function() {
+                runBulkCampaignToggle("PAUSED");
+            });
+
+            function runBulkCampaignToggle(status) {
+                const selected = table.getSelectedRows();
+                const campaignIds = selected.map(function(r) { return r.getData().campaign_id; }).filter(function(id) { return id; });
+                if (campaignIds.length === 0) {
+                    alert("Select at least one row with a campaign.");
+                    return;
+                }
+                const overlay = document.getElementById("progress-overlay");
+                overlay.style.display = "flex";
+                $.ajax({
+                    url: "{{ route('google.shopping.toggle.bulk.campaign.status') }}",
+                    type: "POST",
+                    data: {
+                        campaign_ids: campaignIds,
+                        status: status,
+                        _token: "{{ csrf_token() }}"
+                    },
+                    success: function(res) {
+                        if (res && res.status === 200 && res.updated > 0) {
+                            campaignIds.forEach(function(cid) {
+                                const row = table.getRows().find(function(r) { return r.getData().campaign_id === cid; });
+                                if (row) row.update({ campaignStatus: status });
+                            });
+                            if (typeof table !== "undefined" && table) table.redraw(true);
+                            alert(res.message || (status === "ENABLED" ? "Campaigns enabled." : "Campaigns paused."));
+                        } else {
+                            alert((res && res.message) || "Update failed.");
+                        }
+                    },
+                    error: function(xhr) {
+                        alert((xhr.responseJSON && xhr.responseJSON.message) || "Request failed.");
+                    },
+                    complete: function() { overlay.style.display = "none"; }
+                });
+            }
 
             // Handle editable-select changes (NRL, NRA)
             document.addEventListener("change", function(e) {
