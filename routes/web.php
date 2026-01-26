@@ -3049,6 +3049,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::controller(TiktokAdsController::class)->group(function () {
         Route::get('/tiktok/ads', 'index')->name('tiktokshop.ads');
+        Route::get('/tiktok/utilized', 'utilized')->name('tiktok.utilized');
+        Route::get('/tiktok/utilized/data', 'getUtilizedData')->name('tiktok.utilized.data');
+        Route::post('/tiktok/utilized/upload', 'uploadUtilized')->name('tiktok.utilized.upload');
+        Route::post('/tiktok/utilized/update', 'updateUtilized')->name('tiktok.utilized.update');
     });
     Route::prefix('repricer/amazon-search')->group(function () {
         Route::get('/', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'index']);
