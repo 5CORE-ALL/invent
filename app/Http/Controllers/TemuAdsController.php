@@ -94,7 +94,8 @@ class TemuAdsController extends Controller
                 SUM(spend) as spend_l30,
                 SUM(clicks) as clicks_l30,
                 AVG(acos_ad) as acos_l30,
-                AVG(roas) as roas_l30')
+                AVG(roas) as roas_l30,
+                COALESCE(MAX(status), "Not Created") as status_l30')
             ->groupBy('goods_id')
             ->get()
             ->keyBy('goods_id');
@@ -106,7 +107,8 @@ class TemuAdsController extends Controller
                 SUM(spend) as spend_l7,
                 SUM(clicks) as clicks_l7,
                 AVG(acos_ad) as acos_l7,
-                AVG(roas) as roas_l7')
+                AVG(roas) as roas_l7,
+                COALESCE(MAX(status), "Not Created") as status_l7')
             ->groupBy('goods_id')
             ->get()
             ->keyBy('goods_id');
@@ -177,6 +179,14 @@ class TemuAdsController extends Controller
             // Campaign exists if there's any record in temu_campaign_reports for this goods_id
             $hasCampaign = ($adL30 !== null) || ($adL7 !== null);
 
+            // Determine status - use L30 if available, otherwise L7, otherwise 'Not Created'
+            $status = 'Not Created';
+            if ($adL30 && isset($adL30->status_l30) && !empty($adL30->status_l30)) {
+                $status = $adL30->status_l30;
+            } elseif ($adL7 && isset($adL7->status_l7) && !empty($adL7->status_l7)) {
+                $status = $adL7->status_l7;
+            }
+
             $row = [
                 'sku' => $sku,
                 'parent' => $product->parent,
@@ -189,13 +199,15 @@ class TemuAdsController extends Controller
                 // L30 ad metrics
                 'spend_l30' => $adL30 ? round((float)$adL30->spend_l30, 2) : 0,
                 'clicks_l30' => $adL30 ? (int)$adL30->clicks_l30 : 0,
-                'acos_l30' => $adL30 ? round((float)$adL30->acos_l30, 2) : 0,
+                'acos_l30' => $adL30 && $adL30->roas_l30 > 0 ? round((100 / (float)$adL30->roas_l30), 2) : 0,
                 'roas_l30' => $adL30 ? round((float)$adL30->roas_l30, 2) : 0,
                 // L7 ad metrics
                 'spend_l7' => $adL7 ? round((float)$adL7->spend_l7, 2) : 0,
                 'clicks_l7' => $adL7 ? (int)$adL7->clicks_l7 : 0,
-                'acos_l7' => $adL7 ? round((float)$adL7->acos_l7, 2) : 0,
+                'acos_l7' => $adL7 && $adL7->roas_l7 > 0 ? round((100 / (float)$adL7->roas_l7), 2) : 0,
                 'roas_l7' => $adL7 ? round((float)$adL7->roas_l7, 2) : 0,
+                // Status
+                'status' => $status,
             ];
 
             $data[] = $row;
@@ -304,6 +316,70 @@ class TemuAdsController extends Controller
                     'created' => true
                 ]);
             }
+        }
+
+        // Save Status to TemuCampaignReport
+        if ($field === 'status') {
+            // Get goods_id from TemuPricing
+            $temuPricing = TemuPricing::where('sku', $sku)
+                ->whereNotNull('goods_id')
+                ->first();
+
+            if (!$temuPricing || !$temuPricing->goods_id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'SKU does not have a goods_id mapping'
+                ], 400);
+            }
+
+            // Validate status value
+            $validStatuses = ['Active', 'Inactive', 'Not Created'];
+            if (!in_array($value, $validStatuses)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid status value. Must be one of: ' . implode(', ', $validStatuses)
+                ], 400);
+            }
+
+            $goodsId = $temuPricing->goods_id;
+
+            // Update status for all records with this goods_id (both L30 and L7)
+            $updated = TemuCampaignReport::where('goods_id', $goodsId)
+                ->update(['status' => $value]);
+
+            // If no records exist, create records for both L30 and L7
+            if ($updated === 0) {
+                // Try to get goods_name from an existing TemuCampaignReport record (any report_range)
+                $existingRecord = TemuCampaignReport::where('goods_id', $goodsId)->first();
+                $goodsName = $existingRecord ? $existingRecord->goods_name : null;
+
+                // Create records for both report ranges
+                TemuCampaignReport::create([
+                    'goods_id' => $goodsId,
+                    'goods_name' => $goodsName,
+                    'report_range' => 'L30',
+                    'status' => $value,
+                ]);
+
+                TemuCampaignReport::create([
+                    'goods_id' => $goodsId,
+                    'goods_name' => $goodsName,
+                    'report_range' => 'L7',
+                    'status' => $value,
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Status created and saved successfully',
+                    'created' => true
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Status updated successfully',
+                'updated_count' => $updated
+            ]);
         }
 
         return response()->json([

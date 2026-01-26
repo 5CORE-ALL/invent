@@ -775,22 +775,35 @@
                 }
             });
 
-            // NRA update handler
+            // NRA and Status update handler
             $(document).on('change', '.editable-select', function() {
                 const sku = $(this).data('sku');
                 const field = $(this).data('field');
                 const value = $(this).val();
 
-                // Update the row data immediately
+                // Update select color for status field
+                if (field === 'status') {
+                    const statusColors = {
+                        "Active": "#10b981",
+                        "Inactive": "#ef4444",
+                        "Not Created": "#eab308"
+                    };
+                    const selectedColor = statusColors[value] || "#6b7280";
+                    $(this).css('color', selectedColor);
+                }
+
+                // Store old value for revert
                 const row = table.getRow(sku);
+                let oldValue = null;
                 if (row) {
                     const rowData = row.getData();
+                    oldValue = rowData[field];
                     rowData[field] = value;
                     row.update(rowData);
                 }
 
                 // Save to backend
-                            $.ajax({
+                $.ajax({
                     url: '{{ route("temu.ads.update") }}',
                     method: 'POST',
                     headers: {
@@ -802,21 +815,32 @@
                         field: field,
                         value: value
                     }),
-                                success: function(response) {
+                    success: function(response) {
                         if (response.success) {
                             updateButtonCounts();
                         }
                     },
                     error: function(xhr, status, error) {
-                        console.error('Error updating NRA:', error);
+                        console.error('Error updating ' + field + ':', error);
                         // Revert the change on error
-                        if (row) {
+                        if (row && oldValue !== null) {
                             const rowData = row.getData();
-                            rowData[field] = rowData[field] === 'RA' ? 'NRA' :
-                            'RA'; // Toggle back
+                            rowData[field] = oldValue;
                             row.update(rowData);
+                            // Also revert the select element
+                            $(this).val(oldValue);
+                            // Revert color for status field
+                            if (field === 'status') {
+                                const statusColors = {
+                                    "Active": "#10b981",
+                                    "Inactive": "#ef4444",
+                                    "Not Created": "#eab308"
+                                };
+                                const oldColor = statusColors[oldValue] || "#6b7280";
+                                $(this).css('color', oldColor);
+                            }
                         }
-                    }
+                    }.bind(this)
                 });
             });
 
@@ -1046,7 +1070,7 @@
                         formatter: function(cell) {
                             const value = parseFloat(cell.getValue() || 0);
                             return `<div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
-                                <span>${value.toFixed(2)}%</span>
+                                <span>${Math.round(value)}%</span>
                                 <i class="fa-solid fa-info-circle toggle-acos-l7-btn" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="Toggle L7 ACOS%"></i>
                             </div>`;
                         },
@@ -1170,6 +1194,40 @@
                         },
                         visible: false,
                         width: 100
+                    },
+                    {
+                        title: "Status",
+                        field: "status",
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const row = cell.getRow();
+                            const sku = row.getData().sku;
+                            const rowData = row.getData();
+                            // Default to "Not Created" if no value
+                            const defaultValue = "Not Created";
+                            const value = (cell.getValue()?.trim()) || defaultValue;
+                            
+                            // Set color based on selected value
+                            const statusColors = {
+                                "Active": "#10b981",
+                                "Inactive": "#ef4444",
+                                "Not Created": "#eab308"
+                            };
+                            const selectedColor = statusColors[value] || "#6b7280";
+
+                            return `
+                                <select class="form-select form-select-sm editable-select" 
+                                        data-sku="${sku}" 
+                                        data-field="status"
+                                        style="width: 120px; border: 1px solid #d1d5db; padding: 4px 8px; font-size: 0.875rem; color: ${selectedColor}; font-weight: 500;">
+                                    <option value="Active" ${value === 'Active' ? 'selected' : ''} style="color: #10b981; font-weight: 500;">Active</option>
+                                    <option value="Inactive" ${value === 'Inactive' ? 'selected' : ''} style="color: #ef4444; font-weight: 500;">Inactive</option>
+                                    <option value="Not Created" ${value === 'Not Created' ? 'selected' : ''} style="color: #eab308; font-weight: 500;">Not Created</option>
+                                </select>
+                            `;
+                        },
+                        visible: true,
+                        width: 130
                     }
                 ],
                 initialSort: [{
@@ -1197,14 +1255,19 @@
             // Initialize iconClicked flag
             window.iconClicked = false;
 
-            // ROAS L30 and L7 update handler
+            // ROAS L30, L7 and Status update handler
             table.on("cellEdited", function(cell) {
                 const field = cell.getField();
-                if (field === 'roas_l30' || field === 'roas_l7') {
+                if (field === 'roas_l30' || field === 'roas_l7' || field === 'status') {
                     const row = cell.getRow();
                     const rowData = row.getData();
                     const sku = rowData.sku;
-                    const value = parseFloat(cell.getValue() || 0);
+                    let value = cell.getValue();
+
+                    // Parse numeric value for ROAS fields
+                    if (field === 'roas_l30' || field === 'roas_l7') {
+                        value = parseFloat(value || 0);
+                    }
 
                     // Save to backend
                     $.ajax({
@@ -1226,11 +1289,11 @@
                             }
                         },
                         error: function(xhr, status, error) {
-                            console.error('Error updating ROAS:', error);
+                            console.error('Error updating ' + field + ':', error);
                             // Revert the change on error
-                            const oldValue = parseFloat(rowData[field] || 0);
+                            const oldValue = field === 'status' ? (rowData[field] || 'Not Created') : parseFloat(rowData[field] || 0);
                             cell.setValue(oldValue);
-                            alert('Error updating ROAS: ' + (xhr.responseJSON?.message || error));
+                            alert('Error updating ' + field + ': ' + (xhr.responseJSON?.message || error));
                         }
                     });
                 }

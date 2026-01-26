@@ -33,7 +33,8 @@ class TemuCampaignReport extends Model
         'cvr',
         'add_to_cart_number',
         'weekly_roas',
-        'target'
+        'target',
+        'status'
     ];
 
     protected $casts = [
