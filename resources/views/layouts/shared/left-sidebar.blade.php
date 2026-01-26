@@ -2875,6 +2875,8 @@
                                     </li>
                                     <li><a href="{{ route('tiktok.pricing') }}">TikTok Pricing</a>
                                     </li>
+                                    <li><a href="{{ route('tiktok.utilized') }}">TikTok Utilized</a>
+                                    </li>
                                 </ul>
                             </div>
                         </li>

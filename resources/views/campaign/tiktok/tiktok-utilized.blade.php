@@ -256,6 +256,24 @@
                                                     style="font-size: 0.75rem; display: block; margin-bottom: 2px;">RA</span>
                                                 <span class="fw-bold" id="ra-count" style="font-size: 1.1rem;">0</span>
                                             </div>
+                                            <div class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Total Spend</span>
+                                                <span class="fw-bold" id="total-spend"
+                                                    style="font-size: 1.1rem;">$0.00</span>
+                                            </div>
+                                            <div class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Total Ad Sales</span>
+                                                <span class="fw-bold" id="total-sales"
+                                                    style="font-size: 1.1rem;">$0.00</span>
+                                            </div>
+                                            <div class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Avg ACOS</span>
+                                                <span class="fw-bold" id="avg-acos"
+                                                    style="font-size: 1.1rem;">0%</span>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -500,6 +518,44 @@
                 const nraMissingCountEl = document.getElementById('nra-missing-count');
                 if (nraMissingCountEl) {
                     nraMissingCountEl.textContent = nraMissingCount;
+                }
+
+                // Calculate Total Spend, Total Sales, and Average ACOS
+                let totalSpend = 0;
+                let totalSales = 0;
+
+                allData.forEach(function(row) {
+                    const spend = parseFloat(row.spend || 0);
+                    const outRoas = parseFloat(row.out_roas || 0);
+
+                    totalSpend += spend;
+                    
+                    // Calculate sales from spend and ROAS: revenue = spend * ROAS
+                    if (outRoas > 0 && spend > 0) {
+                        totalSales += spend * outRoas;
+                    }
+                });
+
+                // Update Total Spend
+                const totalSpendEl = document.getElementById('total-spend');
+                if (totalSpendEl) {
+                    totalSpendEl.textContent = '$' + Math.round(totalSpend).toLocaleString();
+                }
+
+                // Update Total Sales
+                const totalSalesEl = document.getElementById('total-sales');
+                if (totalSalesEl) {
+                    totalSalesEl.textContent = '$' + Math.round(totalSales).toLocaleString();
+                }
+
+                // Update Average ACOS: (Total Spend / Total Sales) * 100
+                const avgAcosEl = document.getElementById('avg-acos');
+                if (avgAcosEl) {
+                    let avgAcos = 0;
+                    if (totalSales > 0) {
+                        avgAcos = (totalSpend / totalSales) * 100;
+                    }
+                    avgAcosEl.textContent = Math.round(avgAcos) + '%';
                 }
             }
 
