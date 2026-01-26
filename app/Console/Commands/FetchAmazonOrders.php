@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use App\Models\AmazonOrder;
 use App\Models\AmazonOrderItem;
 use App\Models\AmazonOrderCursor;
+use App\Models\AmazonDailySync;
 use App\Models\ProductMaster;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
@@ -25,19 +26,23 @@ class FetchAmazonOrders extends Command
         {--daily : Fetch orders for today only}
         {--yesterday : Fetch orders for yesterday only}
         {--last-days=30 : Fetch orders for last N days (default: 30)}
-        {--new-only : Only fetch orders newer than the latest order in database}
         {--from= : Fetch orders from this date (Y-m-d format)}
         {--to= : Fetch orders to this date (Y-m-d format)}
-        {--limit= : Maximum number of orders to fetch (no limit by default)}
+        {--with-items : Also fetch order items (line items) for each order}
+        {--auto-sync : Automatically sync pending/failed days}
+        {--resync-date= : Re-sync a specific date (Y-m-d format)}
+        {--resync-last-days= : Re-sync last N days}
+        {--initialize-days= : Initialize sync tracking for last N days (default: 90)}
+        {--status : Show sync status for all days}
         {--delay=3 : Delay in seconds between API requests (default: 3)}
-        {--reset-cursor : Reset cursor and start fresh (ignores existing cursor)}';
+        {--max-retries=3 : Maximum retries for failed API calls (default: 3)}';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'Fetch Amazon orders daily and insert into database (uses California/Pacific Time) - CURSOR-BASED';
+    protected $description = 'Fetch Amazon orders day-by-day with auto-resume on failure (uses California/Pacific Time)';
 
     /**
      * Execute the console command.
@@ -56,81 +61,119 @@ class FetchAmazonOrders extends Command
             return;
         }
 
+        // Show sync status
+        if ($this->option('status')) {
+            $this->showSyncStatus();
+            return;
+        }
+
+        // Initialize days tracking
+        if ($this->option('initialize-days')) {
+            $days = (int) $this->option('initialize-days');
+            $this->initializeDailyTracking($days);
+            return;
+        }
+
+        // Re-sync specific date
+        if ($this->option('resync-date')) {
+            $date = Carbon::parse($this->option('resync-date'), 'America/Los_Angeles');
+            $this->resyncSpecificDate($date);
+            return;
+        }
+
+        // Re-sync last N days
+        if ($this->option('resync-last-days')) {
+            $days = (int) $this->option('resync-last-days');
+            $this->resyncLastDays($days);
+            return;
+        }
+
         $accessToken = $this->getAccessToken();
         if (!$accessToken) {
             $this->error('Failed to get access token');
             return;
         }
 
-        $this->info('Access Token obtained successfully');
+        $this->info('✅ Access Token obtained successfully');
 
-        // Determine date range for cursor
-        $dateRange = $this->determineDateRange();
-        $startDate = $dateRange['start'];
-        $endDate = $dateRange['end'];
+        // Auto-sync mode: Process pending/failed days
+        if ($this->option('auto-sync')) {
+            $this->autoSyncPendingDays($accessToken);
+            return;
+        }
 
-        $this->info("Date Range: {$startDate->toDateTimeString()} to {$endDate->toDateTimeString()}");
+        // Determine dates to sync
+        $datesToSync = $this->determineDatesToSync();
 
-        // Execute cursor-based fetch
-        $this->fetchOrdersWithCursor($accessToken, $startDate, $endDate);
+        if (empty($datesToSync)) {
+            $this->warn('No dates to sync. All days are already completed.');
+            $this->info('Use --resync-date or --resync-last-days to re-fetch data.');
+            return;
+        }
+
+        $this->info("📅 Syncing " . count($datesToSync) . " day(s)...\n");
+
+        // Process each day sequentially
+        foreach ($datesToSync as $date) {
+            $this->syncSingleDay($accessToken, $date);
+            
+            // Small delay between days
+            if (count($datesToSync) > 1) {
+                sleep(2);
+            }
+        }
+
+        $this->info("\n🎉 All days processed!");
+        $this->showSyncStatus();
     }
 
     /**
-     * Determine date range based on command options
+     * Determine dates to sync based on command options
      */
-    private function determineDateRange()
+    private function determineDatesToSync()
     {
-        // Check if specific date range is provided
-        if ($this->option('from') && $this->option('to')) {
-            return [
-                'start' => Carbon::parse($this->option('from'))->startOfDay(),
-                'end' => Carbon::parse($this->option('to'))->endOfDay(),
-            ];
-        }
-
-        // Check if we should only fetch new orders
-        if ($this->option('new-only')) {
-            $lastOrderDate = AmazonOrder::max('order_date');
-            
-            if (!$lastOrderDate) {
-                $this->info('No existing orders found. Fetching last 30 days (California Time)...');
-                return [
-                    'start' => Carbon::today('America/Los_Angeles')->subDays(29)->startOfDay(),
-                    'end' => Carbon::today('America/Los_Angeles')->endOfDay(),
-                ];
-            }
-
-            return [
-                'start' => Carbon::parse($lastOrderDate)->addDay()->startOfDay(),
-                'end' => Carbon::today('America/Los_Angeles')->endOfDay(),
-            ];
-        }
+        $dates = [];
 
         // Daily-based fetching options (using California/Pacific Time)
         if ($this->option('daily')) {
             $date = Carbon::today('America/Los_Angeles');
-            return [
-                'start' => $date->copy()->startOfDay(),
-                'end' => $this->getEndDateWithAmazonDelay($date),
-            ];
+            $dates[] = $date;
+            $this->ensureDailySyncRecord($date);
+            return $dates;
         }
 
         if ($this->option('yesterday')) {
             $date = Carbon::yesterday('America/Los_Angeles');
-            return [
-                'start' => $date->copy()->startOfDay(),
-                'end' => $this->getEndDateWithAmazonDelay($date),
-            ];
+            $dates[] = $date;
+            $this->ensureDailySyncRecord($date);
+            return $dates;
         }
 
-        // Default: fetch orders for last N days
+        // Date range
+        if ($this->option('from') && $this->option('to')) {
+            $startDate = Carbon::parse($this->option('from'), 'America/Los_Angeles')->startOfDay();
+            $endDate = Carbon::parse($this->option('to'), 'America/Los_Angeles')->startOfDay();
+            
+            $currentDate = $startDate->copy();
+            while ($currentDate->lte($endDate)) {
+                $dates[] = $currentDate->copy();
+                $this->ensureDailySyncRecord($currentDate);
+                $currentDate->addDay();
+            }
+            return $dates;
+        }
+
+        // Default: last N days
         $lastDays = (int) ($this->option('last-days') ?: 30);
-        $this->info("Fetching orders for last {$lastDays} days (California Time)...");
+        $this->info("Processing last {$lastDays} days (California Time)...");
         
-        return [
-            'start' => Carbon::today('America/Los_Angeles')->subDays($lastDays - 1)->startOfDay(),
-            'end' => Carbon::now('America/Los_Angeles')->subMinutes(2), // Amazon 2-minute rule
-        ];
+        for ($i = $lastDays - 1; $i >= 0; $i--) {
+            $date = Carbon::today('America/Los_Angeles')->subDays($i);
+            $dates[] = $date;
+            $this->ensureDailySyncRecord($date);
+        }
+
+        return $dates;
     }
 
     /**
@@ -156,90 +199,91 @@ class FetchAmazonOrders extends Command
     }
 
     /**
-     * Cursor-based fetch: Insert orders immediately after each page, resume on failure
+     * Ensure a daily sync record exists for a given date
      */
-    private function fetchOrdersWithCursor($accessToken, $startDate, $endDate)
+    private function ensureDailySyncRecord($date)
     {
-        // Generate unique cursor key based on date range
-        $cursorKey = 'orders_' . $startDate->format('Ymd_His') . '_to_' . $endDate->format('Ymd_His');
+        $dateString = $date->format('Y-m-d');
         
-        // Check for existing cursor
-        $cursor = AmazonOrderCursor::where('cursor_key', $cursorKey)->first();
-        
-        // Reset cursor if requested
-        if ($this->option('reset-cursor') && $cursor) {
-            $this->warn("Resetting cursor: {$cursorKey}");
-            $cursor->delete();
-            $cursor = null;
-        }
-        
-        // If cursor is completed, exit
-        if ($cursor && $cursor->status === 'completed') {
-            $this->info("✅ Cursor already completed. Fetched {$cursor->orders_fetched} orders in {$cursor->pages_fetched} pages.");
-            $this->info("Completed at: {$cursor->completed_at}");
-            $this->info("Use --reset-cursor to fetch again.");
-            return;
-        }
-        
-        // Create or resume cursor
-        if (!$cursor) {
-            $cursor = AmazonOrderCursor::create([
-                'cursor_key' => $cursorKey,
-                'status' => 'running',
-                'started_at' => now(),
+        AmazonDailySync::firstOrCreate(
+            ['sync_date' => $dateString],
+            [
+                'status' => AmazonDailySync::STATUS_PENDING,
                 'orders_fetched' => 0,
                 'pages_fetched' => 0,
-            ]);
-            $this->info("🆕 Created new cursor: {$cursorKey}");
-        } else {
-            $this->info("🔄 Resuming cursor: {$cursorKey}");
-            $this->info("   Status: {$cursor->status}");
-            $this->info("   Progress: {$cursor->orders_fetched} orders, {$cursor->pages_fetched} pages");
-            $this->info("   Last page at: {$cursor->last_page_at}");
-            
-            // Reset status to running if it was failed
-            if ($cursor->status === 'failed') {
-                $cursor->update(['status' => 'running', 'error_message' => null]);
-            }
-        }
-        
-        // Execute cursor-based pagination
-        $this->executeCursorFetch($accessToken, $cursor, $startDate, $endDate);
+                'items_fetched' => 0,
+                'retry_count' => 0,
+            ]
+        );
     }
 
     /**
-     * Execute cursor-based fetch with immediate inserts and safe failure handling
+     * Sync a single day's orders with resume capability
      */
-    private function executeCursorFetch($accessToken, $cursor, $startDate, $endDate)
+    private function syncSingleDay($accessToken, $date)
+    {
+        $dateString = $date->format('Y-m-d');
+        
+        // Get or create sync record
+        $sync = AmazonDailySync::firstOrCreate(
+            ['sync_date' => $dateString],
+            [
+                'status' => AmazonDailySync::STATUS_PENDING,
+                'orders_fetched' => 0,
+                'pages_fetched' => 0,
+                'items_fetched' => 0,
+                'retry_count' => 0,
+            ]
+        );
+
+        // Check if already completed
+        if ($sync->status === AmazonDailySync::STATUS_COMPLETED) {
+            $this->info("✅ {$dateString}: Already completed ({$sync->orders_fetched} orders)");
+            return;
+        }
+
+        // Update to in-progress
+        if ($sync->status !== AmazonDailySync::STATUS_IN_PROGRESS) {
+            $sync->update([
+                'status' => AmazonDailySync::STATUS_IN_PROGRESS,
+                'started_at' => now(),
+                'error_message' => null,
+            ]);
+        }
+
+        $this->info("\n📅 Syncing: {$dateString}");
+        if ($sync->next_token) {
+            $this->info("   🔄 Resuming from page " . ($sync->pages_fetched + 1));
+        }
+
+        // Execute the fetch for this day
+        $this->executeDailySync($accessToken, $sync, $date);
+    }
+
+    /**
+     * Execute daily sync with immediate inserts and safe failure handling
+     */
+    private function executeDailySync($accessToken, $sync, $date)
     {
         $marketplaceId = env('SPAPI_MARKETPLACE_ID');
         $delay = (int) $this->option('delay') ?: 3;
-        $limit = $this->option('limit') ? (int) $this->option('limit') : null;
-        $maxRetries = 3; // Lower retries - we'll resume on next run
+        $maxRetries = (int) $this->option('max-retries') ?: 3;
+        
+        // Date range for this specific day
+        $startDate = $date->copy()->startOfDay();
+        $endDate = $this->getEndDateWithAmazonDelay($date);
         
         $createdAfter = $startDate->toIso8601ZuluString();
         $createdBefore = $endDate->toIso8601ZuluString();
         
         // Resume from saved NextToken if exists
-        $nextToken = $cursor->next_token;
+        $nextToken = $sync->next_token;
         
-        $totalOrdersFetched = $cursor->orders_fetched;
-        $totalPagesFetched = $cursor->pages_fetched;
+        $totalOrdersFetched = $sync->orders_fetched;
+        $totalPagesFetched = $sync->pages_fetched;
+        $totalItemsFetched = $sync->items_fetched ?? 0;
         
         do {
-            // Check limit before fetching more
-            if ($limit && $totalOrdersFetched >= $limit) {
-                $this->info("✅ Reached limit of {$limit} orders. Marking cursor as completed.");
-                $cursor->update([
-                    'status' => 'completed',
-                    'completed_at' => now(),
-                    'orders_fetched' => $totalOrdersFetched,
-                    'pages_fetched' => $totalPagesFetched,
-                    'next_token' => null,
-                ]);
-                break;
-            }
-
             // Build API request params
             $params = [
                 'MarketplaceIds' => $marketplaceId,
@@ -275,28 +319,28 @@ class FetchAmazonOrders extends Command
 
                 // Handle quota exceeded or rate limited - STOP SAFELY
                 if ($statusCode === 429 || $errorCode === 'QuotaExceeded') {
-                    $this->error("⚠️ Amazon API rate limit/quota exceeded.");
+                    $this->error("   ⚠️ Amazon API rate limit/quota exceeded.");
                     $this->error("   Error: {$errorMessage}");
-                    $this->info("💾 Saving cursor state for resume...");
+                    $this->info("   💾 Saving progress for resume...");
                     
-                    // Save cursor state as FAILED
-                    $cursor->update([
-                        'status' => 'failed',
+                    // Save sync state as FAILED
+                    $sync->update([
+                        'status' => AmazonDailySync::STATUS_FAILED,
                         'error_message' => "Rate limit/quota exceeded: {$errorMessage}",
                         'orders_fetched' => $totalOrdersFetched,
                         'pages_fetched' => $totalPagesFetched,
+                        'items_fetched' => $totalItemsFetched,
                         'last_page_at' => now(),
+                        'retry_count' => $sync->retry_count + 1,
                     ]);
                     
-                    Log::error("Amazon Orders API quota exceeded, cursor saved", [
-                        'cursor_key' => $cursor->cursor_key,
+                    Log::error("Amazon Orders API quota exceeded", [
+                        'date' => $sync->sync_date,
                         'next_token' => $nextToken ? substr($nextToken, 0, 50) . '...' : null,
                         'error' => $errorMessage,
                     ]);
                     
-                    $this->info("✅ Cursor saved. Run command again to resume from this point.");
-                    $this->info("   Orders fetched so far: {$totalOrdersFetched}");
-                    $this->info("   Pages fetched so far: {$totalPagesFetched}");
+                    $this->info("   ✅ Progress saved. Run command again to resume.");
                     
                     $shouldStop = true;
                     break; // Exit retry loop
@@ -306,18 +350,20 @@ class FetchAmazonOrders extends Command
                 $attempt++;
                 if ($attempt < $maxRetries) {
                     $waitTime = pow(2, $attempt) * 5; // 10s, 20s, 40s
-                    $this->warn("  ⚠️ API error (attempt {$attempt}/{$maxRetries}). Waiting {$waitTime}s...");
+                    $this->warn("   ⚠️ API error (attempt {$attempt}/{$maxRetries}). Waiting {$waitTime}s...");
                     Log::warning("Amazon API error, retrying", ['attempt' => $attempt, 'error' => $errorMessage]);
                     sleep($waitTime);
                 } else {
                     // Max retries reached - save and stop
-                    $this->error("❌ Max retries reached. Saving cursor state...");
-                    $cursor->update([
-                        'status' => 'failed',
+                    $this->error("   ❌ Max retries reached. Saving progress...");
+                    $sync->update([
+                        'status' => AmazonDailySync::STATUS_FAILED,
                         'error_message' => "Max retries reached: {$errorMessage}",
                         'orders_fetched' => $totalOrdersFetched,
                         'pages_fetched' => $totalPagesFetched,
+                        'items_fetched' => $totalItemsFetched,
                         'last_page_at' => now(),
+                        'retry_count' => $sync->retry_count + 1,
                     ]);
                     $shouldStop = true;
                 }
@@ -336,11 +382,13 @@ class FetchAmazonOrders extends Command
             $pageOrderCount = count($orders);
             $totalPagesFetched++;
             
-            $this->info("📄 Page {$totalPagesFetched}: Fetched {$pageOrderCount} orders");
+            $this->info("   📄 Page {$totalPagesFetched}: {$pageOrderCount} orders");
             
             // INSERT orders immediately (no batching in memory)
             $insertedCount = 0;
+            $updatedCount = 0;
             $skippedCount = 0;
+            $totalItemsFetchedThisPage = 0;
             
             foreach ($orders as $order) {
                 $orderId = $order['AmazonOrderId'] ?? null;
@@ -349,8 +397,8 @@ class FetchAmazonOrders extends Command
                     continue;
                 }
 
-                // Use firstOrCreate to avoid duplicates (does NOT update existing)
-                $orderRecord = AmazonOrder::firstOrCreate(
+                // Use updateOrCreate to ensure we have the latest data
+                $orderRecord = AmazonOrder::updateOrCreate(
                     ['amazon_order_id' => $orderId],
                     [
                         'order_date' => Carbon::parse($order['PurchaseDate']),
@@ -361,30 +409,77 @@ class FetchAmazonOrders extends Command
                     ]
                 );
 
-                // Check if it was just created (wasRecentlyCreated)
+                // Check if it was just created
                 if ($orderRecord->wasRecentlyCreated) {
                     $insertedCount++;
+                } else {
+                    $updatedCount++;
+                }
+
+                // Fetch order items if --with-items flag is set
+                if ($this->option('with-items')) {
+                    $items = $this->fetchOrderItemsWithRetry($accessToken, $orderId);
+                    
+                    foreach ($items as $item) {
+                        // Safely extract ItemPrice - it may not exist for some items
+                        $itemPrice = 0;
+                        $itemCurrency = 'USD';
+                        if (isset($item['ItemPrice']) && is_array($item['ItemPrice'])) {
+                            $itemPrice = floatval($item['ItemPrice']['Amount'] ?? 0);
+                            $itemCurrency = $item['ItemPrice']['CurrencyCode'] ?? 'USD';
+                        }
+                        
+                        AmazonOrderItem::updateOrCreate(
+                            [
+                                'amazon_order_id' => $orderRecord->id,
+                                'asin' => $item['ASIN'] ?? null,
+                                'sku' => $item['SellerSKU'] ?? null,
+                            ],
+                            [
+                                'quantity' => $item['QuantityOrdered'] ?? 1,
+                                'price' => $itemPrice,
+                                'currency' => $itemCurrency,
+                                'title' => $item['Title'] ?? null,
+                                'raw_data' => json_encode($item),
+                            ]
+                        );
+                        $totalItemsFetchedThisPage++;
+                    }
+
+                    // Small delay between item requests to respect rate limits
+                    if (count($items) > 0) {
+                        usleep(500000); // 500ms
+                    }
                 }
             }
             
             $totalOrdersFetched += $insertedCount;
+            $totalItemsFetched += $totalItemsFetchedThisPage;
             
-            $this->info("   ✅ Inserted: {$insertedCount}, Skipped (duplicates): " . ($pageOrderCount - $insertedCount - $skippedCount));
-            $this->info("   📊 Total orders fetched: {$totalOrdersFetched}");
+            if ($this->option('with-items')) {
+                $this->info("      ✅ New: {$insertedCount}, Updated: {$updatedCount}, Items: {$totalItemsFetchedThisPage}, Total Orders: {$totalOrdersFetched}, Total Items: {$totalItemsFetched}");
+            } else {
+                $this->info("      ✅ New: {$insertedCount}, Updated: {$updatedCount}, Total: {$totalOrdersFetched}");
+            }
             
-            // SAVE cursor state after EVERY successful page
-            $cursor->update([
+            // SAVE sync state after EVERY successful page
+            $sync->update([
                 'next_token' => $nextToken,
                 'orders_fetched' => $totalOrdersFetched,
                 'pages_fetched' => $totalPagesFetched,
+                'items_fetched' => $totalItemsFetched,
                 'last_page_at' => now(),
             ]);
             
             // If no more pages, mark as completed
             if (!$nextToken) {
-                $this->info("✅ All pages fetched. Marking cursor as completed.");
-                $cursor->update([
-                    'status' => 'completed',
+                if ($this->option('with-items')) {
+                    $this->info("   ✅ Day completed: {$totalOrdersFetched} orders, {$totalItemsFetched} items in {$totalPagesFetched} pages");
+                } else {
+                    $this->info("   ✅ Day completed: {$totalOrdersFetched} orders in {$totalPagesFetched} pages");
+                }
+                $sync->update([
+                    'status' => AmazonDailySync::STATUS_COMPLETED,
                     'completed_at' => now(),
                     'next_token' => null,
                 ]);
@@ -392,23 +487,238 @@ class FetchAmazonOrders extends Command
             }
             
             // Rate limiting between pages
-            $this->info("   ⏳ Waiting {$delay}s before next page...");
             sleep($delay);
             
         } while ($nextToken);
 
-        // Final summary
-        if ($cursor->status === 'completed') {
-            $this->info("\n🎉 ✅ Cursor fetch COMPLETED!");
-            $this->info("   Total Orders Fetched: {$totalOrdersFetched}");
-            $this->info("   Total Pages Fetched: {$totalPagesFetched}");
-            $this->info("   Started at: {$cursor->started_at}");
-            $this->info("   Completed at: {$cursor->completed_at}");
-        } else {
-            $this->warn("\n⚠️ Cursor fetch PAUSED (will resume on next run).");
-            $this->info("   Orders fetched so far: {$totalOrdersFetched}");
-            $this->info("   Pages fetched so far: {$totalPagesFetched}");
+        // If sync is still in progress (didn't complete), it failed
+        if ($sync->status === AmazonDailySync::STATUS_IN_PROGRESS) {
+            $sync->update(['status' => AmazonDailySync::STATUS_FAILED]);
         }
+    }
+
+    /**
+     * Show sync status for all tracked days
+     */
+    private function showSyncStatus()
+    {
+        $syncs = AmazonDailySync::orderBy('sync_date', 'desc')->take(90)->get();
+        
+        if ($syncs->isEmpty()) {
+            $this->warn('No sync records found. Use --initialize-days to create tracking records.');
+            return;
+        }
+
+        $this->info("\n📊 Sync Status (Last 90 days):\n");
+        
+        $statusCounts = [
+            'completed' => 0,
+            'failed' => 0,
+            'in_progress' => 0,
+            'pending' => 0,
+        ];
+
+        $this->table(
+            ['Date', 'Status', 'Orders', 'Items', 'Pages', 'Last Update', 'Error'],
+            $syncs->map(function ($sync) use (&$statusCounts) {
+                $statusCounts[$sync->status]++;
+                
+                $statusEmoji = [
+                    'completed' => '✅',
+                    'failed' => '❌',
+                    'in_progress' => '⏳',
+                    'pending' => '⏸️',
+                    'skipped' => '⏭️',
+                ];
+                
+                return [
+                    $sync->sync_date,
+                    ($statusEmoji[$sync->status] ?? '') . ' ' . $sync->status,
+                    $sync->orders_fetched,
+                    $sync->items_fetched ?? 0,
+                    $sync->pages_fetched,
+                    $sync->last_page_at ? $sync->last_page_at->diffForHumans() : '-',
+                    $sync->error_message ? substr($sync->error_message, 0, 50) . '...' : '-',
+                ];
+            })
+        );
+
+        $this->info("\nSummary:");
+        $this->info("  ✅ Completed: {$statusCounts['completed']}");
+        $this->info("  ❌ Failed: {$statusCounts['failed']}");
+        $this->info("  ⏳ In Progress: {$statusCounts['in_progress']}");
+        $this->info("  ⏸️ Pending: {$statusCounts['pending']}");
+    }
+
+    /**
+     * Initialize daily tracking for last N days
+     */
+    private function initializeDailyTracking($days)
+    {
+        $this->info("Initializing tracking for last {$days} days...");
+        
+        $created = 0;
+        $existing = 0;
+        
+        for ($i = $days - 1; $i >= 0; $i--) {
+            $date = Carbon::today('America/Los_Angeles')->subDays($i);
+            $dateString = $date->format('Y-m-d');
+            
+            $sync = AmazonDailySync::firstOrCreate(
+                ['sync_date' => $dateString],
+                [
+                    'status' => AmazonDailySync::STATUS_PENDING,
+                    'orders_fetched' => 0,
+                    'pages_fetched' => 0,
+                    'items_fetched' => 0,
+                    'retry_count' => 0,
+                ]
+            );
+
+            if ($sync->wasRecentlyCreated) {
+                $created++;
+            } else {
+                $existing++;
+            }
+        }
+
+        $this->info("✅ Initialized: {$created} new days, {$existing} existing days");
+        $this->showSyncStatus();
+    }
+
+    /**
+     * Auto-sync all pending or failed days
+     */
+    private function autoSyncPendingDays($accessToken)
+    {
+        $pendingSyncs = AmazonDailySync::needsSync()
+            ->orderBy('sync_date', 'asc')
+            ->get();
+
+        if ($pendingSyncs->isEmpty()) {
+            $this->info('✅ No pending or failed days to sync. All up to date!');
+            return;
+        }
+
+        $this->info("Found " . $pendingSyncs->count() . " day(s) needing sync.\n");
+
+        foreach ($pendingSyncs as $sync) {
+            $date = Carbon::parse($sync->sync_date, 'America/Los_Angeles');
+            $this->syncSingleDay($accessToken, $date);
+            
+            // Small delay between days
+            sleep(2);
+
+            // Refresh the sync record
+            $sync->refresh();
+            
+            // If this day failed, stop auto-sync to prevent cascading failures
+            if ($sync->status === AmazonDailySync::STATUS_FAILED) {
+                $this->warn("\n⚠️ Day {$sync->sync_date} failed. Stopping auto-sync.");
+                $this->info("Fix the issue and run again to continue from this point.");
+                break;
+            }
+        }
+
+        $this->info("\n🎉 Auto-sync completed!");
+        $this->showSyncStatus();
+    }
+
+    /**
+     * Re-sync a specific date (marks it as pending first)
+     */
+    private function resyncSpecificDate($date)
+    {
+        $accessToken = $this->getAccessToken();
+        if (!$accessToken) {
+            $this->error('Failed to get access token');
+            return;
+        }
+
+        $dateString = $date->format('Y-m-d');
+        
+        $sync = AmazonDailySync::where('sync_date', $dateString)->first();
+        
+        if (!$sync) {
+            $this->info("Creating new sync record for {$dateString}");
+            $sync = AmazonDailySync::create([
+                'sync_date' => $dateString,
+                'status' => AmazonDailySync::STATUS_PENDING,
+                'orders_fetched' => 0,
+                'pages_fetched' => 0,
+                'items_fetched' => 0,
+                'retry_count' => 0,
+            ]);
+        } else {
+            $this->info("Resetting sync record for {$dateString}");
+            $sync->update([
+                'status' => AmazonDailySync::STATUS_PENDING,
+                'next_token' => null,
+                'orders_fetched' => 0,
+                'pages_fetched' => 0,
+                'items_fetched' => 0,
+                'error_message' => null,
+                'started_at' => null,
+                'completed_at' => null,
+                'last_page_at' => null,
+            ]);
+        }
+
+        $this->syncSingleDay($accessToken, $date);
+    }
+
+    /**
+     * Re-sync last N days
+     */
+    private function resyncLastDays($days)
+    {
+        $accessToken = $this->getAccessToken();
+        if (!$accessToken) {
+            $this->error('Failed to get access token');
+            return;
+        }
+
+        $this->info("Re-syncing last {$days} days...\n");
+        
+        for ($i = $days - 1; $i >= 0; $i--) {
+            $date = Carbon::today('America/Los_Angeles')->subDays($i);
+            $dateString = $date->format('Y-m-d');
+            
+            $sync = AmazonDailySync::where('sync_date', $dateString)->first();
+            
+            if (!$sync) {
+                $sync = AmazonDailySync::create([
+                    'sync_date' => $dateString,
+                    'status' => AmazonDailySync::STATUS_PENDING,
+                    'orders_fetched' => 0,
+                    'pages_fetched' => 0,
+                    'items_fetched' => 0,
+                    'retry_count' => 0,
+                ]);
+            } else {
+                $sync->update([
+                    'status' => AmazonDailySync::STATUS_PENDING,
+                    'next_token' => null,
+                    'orders_fetched' => 0,
+                    'pages_fetched' => 0,
+                    'items_fetched' => 0,
+                    'error_message' => null,
+                    'started_at' => null,
+                    'completed_at' => null,
+                    'last_page_at' => null,
+                ]);
+            }
+
+            $this->syncSingleDay($accessToken, $date);
+            
+            // Small delay between days
+            if ($i > 0) {
+                sleep(2);
+            }
+        }
+
+        $this->info("\n🎉 Re-sync completed!");
+        $this->showSyncStatus();
     }
 
     /**
