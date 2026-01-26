@@ -1020,6 +1020,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon-column-visibility', [OverallAmazonController::class, 'getAmazonColumnVisibility'])->name('amazon.column.visibility');
     Route::post('/amazon-column-visibility', [OverallAmazonController::class, 'saveAmazonColumnVisibility'])->name('amazon.column.visibility.save');
     Route::get('/amazon-data-json', action: [OverallAmazonController::class, 'amazonDataJson'])->name('amazon.data.json');
+    Route::get('/amazon-campaign-data-by-sku', action: [OverallAmazonController::class, 'getCampaignDataBySku'])->name('amazon.campaign.data.by.sku');
     Route::post('/amazon/refresh-links', [OverallAmazonController::class, 'refreshAmazonLinks'])->name('amazon.refresh.links');
     Route::post('/save-amazon-nr', [OverallAmazonController::class, 'saveNrToDatabase']);
     Route::post('/save-amazon-sprice', [OverallAmazonController::class, 'saveSpriceToDatabase']);

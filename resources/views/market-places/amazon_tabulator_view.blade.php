@@ -41,6 +41,53 @@
         .tabulator .tabulator-header .tabulator-col.tabulator-sortable .tabulator-col-title {
             padding-right: 0px !important;
         }
+
+        .acos-info-icon {
+            transition: color 0.2s;
+        }
+
+        .acos-info-icon:hover {
+            color: #007bff !important;
+        }
+
+        #campaignModal .table {
+            font-size: 0.875rem;
+        }
+
+        #campaignModal .table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            white-space: nowrap;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            transform: rotate(180deg);
+            height: 60px;
+            width: 40px;
+            min-width: 40px;
+            font-size: 11px;
+            vertical-align: middle;
+            text-align: center;
+            padding: 5px;
+        }
+
+        #campaignModal .table td {
+            white-space: nowrap;
+            vertical-align: middle;
+            text-align: center;
+        }
+
+        /* Coloring for ACOS, 7UB, 1UB */
+        .green-bg {
+            color: #05bd30 !important;
+        }
+
+        .pink-bg {
+            color: #ff01d0 !important;
+        }
+
+        .red-bg {
+            color: #ff2727 !important;
+        }
     </style>
 @endsection
 
@@ -2275,6 +2322,7 @@
                             const rowData = cell.getRow().getData();
                             const spend = parseFloat(rowData.SPEND_L30 || rowData.AD_Spend_L30) || 0;
                             const sales = parseFloat(rowData.SALES_L30) || 0;
+                            const sku = rowData["(Child) sku"] || rowData.SKU || rowData.sku || '';
                             
                             // Calculate ACOS: (SPEND_L30 / SALES_L30) * 100
                             let acos = 0;
@@ -2286,7 +2334,7 @@
                             
                             // If spend > 0 but ACOS is 0, show red alert
                             if (spend > 0 && acos === 0) {
-                                return `<span style="color: #dc3545; font-weight: 600;">100%</span>`;
+                                return `<span style="color: #dc3545; font-weight: 600;">100%</span> <i class="fas fa-info-circle acos-info-icon" style="cursor: pointer; color: #6c757d; margin-left: 5px;" data-sku="${sku}" title="View Campaign Details"></i>`;
                             }
                             
                             let color = '';
@@ -2295,7 +2343,7 @@
                             else if (acos >= 30 && acos < 40) color = '#ffc107'; // yellow
                             else color = '#a00211'; // red
                             
-                            return `<span style="color: ${color}; font-weight: 600;">${acos.toFixed(0)}%</span>`;
+                            return `<span style="color: ${color}; font-weight: 600;">${acos.toFixed(0)}%</span> <i class="fas fa-info-circle acos-info-icon" style="cursor: pointer; color: #6c757d; margin-left: 5px;" data-sku="${sku}" title="View Campaign Details"></i>`;
                         },
                         sorter: function(a, b, aRow, bRow) {
                             const calcACOS = (row) => {
@@ -2310,7 +2358,7 @@
                             };
                             return calcACOS(aRow.getData()) - calcACOS(bRow.getData());
                         },
-                        width: 60
+                        width: 80
                     },
 
                     {
@@ -3995,5 +4043,196 @@
                 }
             });
         });
+
+        // ACOS Info Icon Click Handler
+        $(document).on('click', '.acos-info-icon', function(e) {
+            e.stopPropagation();
+            const sku = $(this).data('sku');
+            if (!sku) {
+                showToast('error', 'SKU not found');
+                return;
+            }
+            
+            $('#campaignModalLabel').text(`Campaign Details - ${sku}`);
+            $('#campaignModalBody').html('<div class="text-center"><i class="fa fa-spinner fa-spin"></i> Loading...</div>');
+            $('#campaignModal').modal('show');
+            
+            $.ajax({
+                url: '/amazon-campaign-data-by-sku',
+                type: 'GET',
+                data: { sku: sku },
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                success: function(response) {
+                    // Helper function to get ACOS color class
+                    function getAcosColorClass(acos) {
+                        if (acos === 0) return '';
+                        if (acos < 7) return 'pink-bg';
+                        if (acos >= 7 && acos <= 14) return 'green-bg';
+                        if (acos > 14) return 'red-bg';
+                        return '';
+                    }
+                    
+                    // Helper function to get UB color class
+                    function getUbColorClass(ub) {
+                        if (ub >= 66 && ub <= 99) return 'green-bg';
+                        if (ub > 99) return 'pink-bg';
+                        if (ub < 66) return 'red-bg';
+                        return '';
+                    }
+                    
+                    let html = '';
+                    
+                    // Check if HL campaigns exist - if yes, only show HL (not KW/PT)
+                    const hasHlCampaigns = response.hl_campaigns && response.hl_campaigns.length > 0;
+                    
+                    if (hasHlCampaigns) {
+                        // Only show HL campaigns
+                        response.hl_campaigns.forEach(function(campaign, index) {
+                            html += `<h5 class="mb-3">HL Campaign - ${campaign.campaign_name || 'N/A'}</h5>`;
+                            html += '<div class="table-responsive mb-4">';
+                            html += '<table class="table table-bordered table-sm">';
+                            html += '<thead><tr>';
+                            html += '<th>BGT</th><th>SBGT</th><th>ACOS</th><th>Clicks</th><th>Ad Spend</th><th>Ad Sales</th><th>Ad Sold</th>';
+                            html += '<th>AD CVR</th><th>7UB%</th><th>1UB%</th><th>AVG CPC</th><th>L7CPC</th><th>L1CPC</th><th>L BID</th><th>SBID</th>';
+                            html += '</tr></thead><tbody>';
+                            const acos = parseFloat(campaign.acos || 0);
+                            const ub7 = parseFloat(campaign['7ub'] || 0);
+                            const ub1 = parseFloat(campaign['1ub'] || 0);
+                            
+                            html += '<tr>';
+                            html += `<td>${(campaign.bgt || 0).toFixed(0)}</td>`;
+                            html += `<td>${(campaign.sbgt || 0).toFixed(0)}</td>`;
+                            html += `<td class="${getAcosColorClass(acos)}">${acos.toFixed(0)}%</td>`;
+                            html += `<td>${(campaign.clicks || 0).toFixed(0)}</td>`;
+                            html += `<td>${(campaign.ad_spend || 0).toFixed(0)}</td>`;
+                            html += `<td>${(campaign.ad_sales || 0).toFixed(0)}</td>`;
+                            html += `<td>${(campaign.ad_sold || 0).toFixed(0)}</td>`;
+                            html += `<td>${(campaign.ad_cvr || 0).toFixed(0)}%</td>`;
+                            html += `<td class="${getUbColorClass(ub7)}">${ub7.toFixed(0)}%</td>`;
+                            html += `<td class="${getUbColorClass(ub1)}">${ub1.toFixed(0)}%</td>`;
+                            html += `<td>${(campaign.avg_cpc || 0).toFixed(2)}</td>`;
+                            html += `<td>${(campaign.l7cpc || 0).toFixed(2)}</td>`;
+                            html += `<td>${(campaign.l1cpc || 0).toFixed(2)}</td>`;
+                            html += `<td>${(campaign.l_bid && campaign.l_bid !== '' && campaign.l_bid !== '0' && parseFloat(campaign.l_bid) > 0) ? parseFloat(campaign.l_bid).toFixed(2) : '-'}</td>`;
+                            // Show SBID if it exists and is > 0 (for over, under, or zero utilization cases)
+                            const showSbid = campaign.sbid && campaign.sbid > 0;
+                            html += `<td>${showSbid ? campaign.sbid.toFixed(2) : '-'}</td>`;
+                            html += '</tr>';
+                            html += '</tbody></table></div>';
+                        });
+                    } else {
+                        // Show KW and PT campaigns (only if no HL campaigns)
+                        // KW Campaigns
+                        if (response.kw_campaigns && response.kw_campaigns.length > 0) {
+                        response.kw_campaigns.forEach(function(campaign, index) {
+                            html += `<h5 class="mb-3">KW Campaign - ${campaign.campaign_name || 'N/A'}</h5>`;
+                            html += '<div class="table-responsive mb-4">';
+                            html += '<table class="table table-bordered table-sm">';
+                            html += '<thead><tr>';
+                            html += '<th>BGT</th><th>SBGT</th><th>ACOS</th><th>Clicks</th><th>Ad Spend</th><th>Ad Sales</th><th>Ad Sold</th>';
+                            html += '<th>AD CVR</th><th>7UB%</th><th>1UB%</th><th>AVG CPC</th><th>L7CPC</th><th>L1CPC</th><th>L BID</th><th>SBID</th>';
+                            html += '</tr></thead><tbody>';
+                            const acos = parseFloat(campaign.acos || 0);
+                            const ub7 = parseFloat(campaign['7ub'] || 0);
+                            const ub1 = parseFloat(campaign['1ub'] || 0);
+                            
+                            html += '<tr>';
+                            html += `<td>${(campaign.bgt || 0).toFixed(0)}</td>`;
+                            html += `<td>${(campaign.sbgt || 0).toFixed(0)}</td>`;
+                            html += `<td class="${getAcosColorClass(acos)}">${acos.toFixed(0)}%</td>`;
+                            html += `<td>${(campaign.clicks || 0).toFixed(0)}</td>`;
+                            html += `<td>${(campaign.ad_spend || 0).toFixed(0)}</td>`;
+                            html += `<td>${(campaign.ad_sales || 0).toFixed(0)}</td>`;
+                            html += `<td>${(campaign.ad_sold || 0).toFixed(0)}</td>`;
+                            html += `<td>${(campaign.ad_cvr || 0).toFixed(0)}%</td>`;
+                            html += `<td class="${getUbColorClass(ub7)}">${ub7.toFixed(0)}%</td>`;
+                            html += `<td class="${getUbColorClass(ub1)}">${ub1.toFixed(0)}%</td>`;
+                            html += `<td>${(campaign.avg_cpc || 0).toFixed(2)}</td>`;
+                            html += `<td>${(campaign.l7cpc || 0).toFixed(2)}</td>`;
+                            html += `<td>${(campaign.l1cpc || 0).toFixed(2)}</td>`;
+                            html += `<td>${(campaign.l_bid && campaign.l_bid !== '' && campaign.l_bid !== '0' && parseFloat(campaign.l_bid) > 0) ? parseFloat(campaign.l_bid).toFixed(2) : '-'}</td>`;
+                            // Show SBID if it exists and is > 0 (for over, under, or zero utilization cases)
+                            const showSbid = campaign.sbid && campaign.sbid > 0;
+                            html += `<td>${showSbid ? campaign.sbid.toFixed(2) : '-'}</td>`;
+                            html += '</tr>';
+                            html += '</tbody></table></div>';
+                        });
+                    } else {
+                        html += '<h5 class="mb-3">KW Campaigns</h5><p class="text-muted">No KW campaigns found</p>';
+                    }
+                    
+                    // PT Campaigns
+                    if (response.pt_campaigns && response.pt_campaigns.length > 0) {
+                        response.pt_campaigns.forEach(function(campaign, index) {
+                            html += `<h5 class="mb-3">PT Campaign - ${campaign.campaign_name || 'N/A'}</h5>`;
+                            html += '<div class="table-responsive mb-4">';
+                            html += '<table class="table table-bordered table-sm">';
+                            html += '<thead><tr>';
+                            html += '<th>BGT</th><th>SBGT</th><th>ACOS</th><th>Clicks</th><th>Ad Spend</th><th>Ad Sales</th><th>Ad Sold</th>';
+                            html += '<th>AD CVR</th><th>7UB%</th><th>1UB%</th><th>AVG CPC</th><th>L7CPC</th><th>L1CPC</th><th>L BID</th><th>SBID</th>';
+                            html += '</tr></thead><tbody>';
+                            const acos = parseFloat(campaign.acos || 0);
+                            const ub7 = parseFloat(campaign['7ub'] || 0);
+                            const ub1 = parseFloat(campaign['1ub'] || 0);
+                            
+                            html += '<tr>';
+                            html += `<td>${(campaign.bgt || 0).toFixed(0)}</td>`;
+                            html += `<td>${(campaign.sbgt || 0).toFixed(0)}</td>`;
+                            html += `<td class="${getAcosColorClass(acos)}">${acos.toFixed(0)}%</td>`;
+                            html += `<td>${(campaign.clicks || 0).toFixed(0)}</td>`;
+                            html += `<td>${(campaign.ad_spend || 0).toFixed(0)}</td>`;
+                            html += `<td>${(campaign.ad_sales || 0).toFixed(0)}</td>`;
+                            html += `<td>${(campaign.ad_sold || 0).toFixed(0)}</td>`;
+                            html += `<td>${(campaign.ad_cvr || 0).toFixed(0)}%</td>`;
+                            html += `<td class="${getUbColorClass(ub7)}">${ub7.toFixed(0)}%</td>`;
+                            html += `<td class="${getUbColorClass(ub1)}">${ub1.toFixed(0)}%</td>`;
+                            html += `<td>${(campaign.avg_cpc || 0).toFixed(2)}</td>`;
+                            html += `<td>${(campaign.l7cpc || 0).toFixed(2)}</td>`;
+                            html += `<td>${(campaign.l1cpc || 0).toFixed(2)}</td>`;
+                            html += `<td>${(campaign.l_bid && campaign.l_bid !== '' && campaign.l_bid !== '0' && parseFloat(campaign.l_bid) > 0) ? parseFloat(campaign.l_bid).toFixed(2) : '-'}</td>`;
+                            // Show SBID if it exists and is > 0 (for over, under, or zero utilization cases)
+                            const showSbid = campaign.sbid && campaign.sbid > 0;
+                            html += `<td>${showSbid ? campaign.sbid.toFixed(2) : '-'}</td>`;
+                            html += '</tr>';
+                            html += '</tbody></table></div>';
+                        });
+                        } else {
+                            html += '<h5 class="mb-3">PT Campaigns</h5><p class="text-muted">No PT campaigns found</p>';
+                        }
+                    }
+                    
+                    // Show empty message only if no campaigns at all
+                    if (!hasHlCampaigns && (!response.kw_campaigns || !response.kw_campaigns.length) && (!response.pt_campaigns || !response.pt_campaigns.length)) {
+                        html = '<p class="text-muted">No campaigns found for this SKU</p>';
+                    }
+                    
+                    $('#campaignModalBody').html(html);
+                },
+                error: function(xhr) {
+                    const error = xhr.responseJSON?.error || 'Failed to load campaign data';
+                    $('#campaignModalBody').html(`<div class="alert alert-danger">${error}</div>`);
+                }
+            });
+        });
     </script>
+    
+    <!-- Campaign Details Modal -->
+    <div class="modal fade" id="campaignModal" tabindex="-1" aria-labelledby="campaignModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="campaignModalLabel">Campaign Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="campaignModalBody">
+                    <!-- Content will be loaded here -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection

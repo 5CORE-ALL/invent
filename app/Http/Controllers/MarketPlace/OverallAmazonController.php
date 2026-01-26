@@ -3837,4 +3837,836 @@ class OverallAmazonController extends Controller
             ], 500);
         }
     }
+
+    public function getCampaignDataBySku(Request $request)
+    {
+        $sku = $request->input('sku');
+        
+        if (!$sku) {
+            return response()->json(['error' => 'SKU is required'], 400);
+        }
+
+        $cleanSku = strtoupper(trim(rtrim($sku, '.')));
+        
+        // Get price for the SKU from AmazonDatasheet
+        // Match AmazonSpBudgetController logic: for HL campaigns, price is stored with "PARENT" prefix
+        // First, determine if this is a parent SKU or child SKU
+        $isParentSku = stripos($cleanSku, 'PARENT') !== false;
+        $parentSkuForPrice = $cleanSku;
+        $parentValue = null;
+        
+        // If SKU doesn't contain PARENT, find parent SKU from ProductMaster (for HL campaigns)
+        if (!$isParentSku) {
+            $productMaster = ProductMaster::where('sku', $cleanSku)->first();
+            if ($productMaster && $productMaster->parent) {
+                $parentValue = strtoupper(trim($productMaster->parent));
+                $parentSkuForPrice = 'PARENT ' . $parentValue;
+            }
+        } else {
+            // Extract parent value from "PARENT DS 01" -> "DS 01"
+            $parentValue = str_replace('PARENT ', '', $cleanSku);
+        }
+        
+        // Fetch price using parent SKU (matching AmazonSpBudgetController line 2351)
+        $amazonSheet = AmazonDatasheet::where('sku', $parentSkuForPrice)->first();
+        $price = $amazonSheet ? floatval($amazonSheet->price ?? 0) : 0;
+        
+        // Fallback: if price is still 0 and we have parent value, calculate average from child SKUs
+        if ($price == 0 && $parentValue) {
+            // Get all child SKUs with this parent
+            $childSkus = ProductMaster::where('parent', $parentValue)
+                ->where('sku', 'NOT LIKE', 'PARENT %')
+                ->pluck('sku')
+                ->toArray();
+            
+            if (!empty($childSkus)) {
+                // Get average price from child SKUs
+                $childPrices = AmazonDatasheet::whereIn('sku', $childSkus)
+                    ->whereNotNull('price')
+                    ->where('price', '>', 0)
+                    ->pluck('price')
+                    ->toArray();
+                
+                if (!empty($childPrices)) {
+                    $price = array_sum($childPrices) / count($childPrices);
+                }
+            }
+        }
+        
+        // Final fallback: try without PARENT prefix
+        if ($price == 0 && $isParentSku) {
+            $parentSkuWithoutPrefix = str_replace('PARENT ', '', $cleanSku);
+            $parentSheet = AmazonDatasheet::where('sku', $parentSkuWithoutPrefix)->first();
+            if ($parentSheet) {
+                $price = floatval($parentSheet->price ?? 0);
+            }
+        }
+        
+        // Fetch last_sbid from day-before-yesterday's date records for KW campaigns
+        // This ensures last_sbid shows the PREVIOUS day's calculated SBID, not the current day's
+        // Example: On 15-01-2026, we fetch from 13-01-2026 records (which has SBID calculated on 14-01-2026)
+        // So last_sbid = previous day's calculated SBID, SBID = current day's calculated SBID
+        // Also try yesterday as fallback if day-before-yesterday doesn't have the record
+        $dayBeforeYesterday = date('Y-m-d', strtotime('-2 days'));
+        $yesterday = date('Y-m-d', strtotime('-1 day'));
+        $lastSbidMapKw = [];
+        $lastSbidReportsKw = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+            ->where(function($q) use ($dayBeforeYesterday, $yesterday) {
+                $q->where('report_date_range', $dayBeforeYesterday)
+                  ->orWhere('report_date_range', $yesterday);
+            })
+            ->where('campaignStatus', '!=', 'ARCHIVED')
+            ->where('campaignName', 'NOT LIKE', '%PT')
+            ->where('campaignName', 'NOT LIKE', '%PT.')
+            ->get()
+            ->sortBy(function($report) use ($dayBeforeYesterday) {
+                // Prioritize day-before-yesterday over yesterday
+                return $report->report_date_range === $dayBeforeYesterday ? 0 : 1;
+            })
+            ->groupBy('campaign_id');
+        
+        foreach ($lastSbidReportsKw as $campaignId => $reports) {
+            // Get the first report (they should all have the same last_sbid for the same campaign_id)
+            $report = $reports->first();
+            // Normalize campaign_id to string for consistent matching
+            $campaignIdStr = (string)$campaignId;
+            // Allow 0 values, only exclude null and empty string (but allow numeric 0 and string '0')
+            // Check: not null, not empty string, but allow 0 (numeric or string)
+            // Note: Using isset() to check if property exists, then checking for null/empty
+            if (!empty($campaignIdStr) && isset($report->last_sbid) && $report->last_sbid !== null && $report->last_sbid !== '') {
+                $lastSbidMapKw[$campaignIdStr] = $report->last_sbid;
+            } elseif (!empty($campaignIdStr) && isset($report->last_sbid) && ($report->last_sbid === 0 || $report->last_sbid === '0')) {
+                // Explicitly allow 0 values
+                $lastSbidMapKw[$campaignIdStr] = $report->last_sbid;
+            }
+            // Also create a map by campaignName for fallback matching
+            $campaignName = $report->campaignName ?? '';
+            if (!empty($campaignName) && $report->last_sbid !== null && $report->last_sbid !== '') {
+                // Normalize campaign name for matching
+                $normalizedName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $campaignName);
+                $normalizedName = preg_replace('/\s+/', ' ', $normalizedName);
+                $normalizedName = strtoupper(trim(rtrim($normalizedName, '.')));
+                if (!empty($normalizedName)) {
+                    $lastSbidMapKw['name_' . $normalizedName] = $report->last_sbid;
+                }
+            }
+        }
+        
+        // Get KW campaigns (exact SKU match, excluding PT)
+        $kwCampaigns = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+            ->where(function($q) use ($cleanSku) {
+                $q->where('report_date_range', 'L30')
+                  ->orWhere('report_date_range', 'L7')
+                  ->orWhere('report_date_range', 'L1');
+            })
+            ->where('campaignStatus', '!=', 'ARCHIVED')
+            ->get()
+            ->filter(function($item) use ($cleanSku) {
+                $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
+                $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                $campaignName = strtoupper(trim(rtrim($campaignName, '.')));
+                // Exclude PT campaigns
+                if (stripos($campaignName, ' PT') !== false || stripos($campaignName, 'PT.') !== false) {
+                    return false;
+                }
+                return $campaignName === $cleanSku;
+            })
+            ->groupBy('campaign_id')
+            ->map(function($group) use ($price, $lastSbidMapKw, $dayBeforeYesterday, $yesterday) {
+                $l30 = $group->where('report_date_range', 'L30')->first();
+                $l7 = $group->where('report_date_range', 'L7')->first();
+                $l1 = $group->where('report_date_range', 'L1')->first();
+                
+                $campaign = $l30 ?? $l7 ?? $l1;
+                if (!$campaign) return null;
+                
+                $budget = floatval($campaign->campaignBudgetAmount ?? 0);
+                $l7Spend = $l7 ? floatval($l7->spend ?? $l7->cost ?? 0) : 0;
+                $l1Spend = $l1 ? floatval($l1->spend ?? $l1->cost ?? 0) : 0;
+                $l7Clicks = $l7 ? floatval($l7->clicks ?? 0) : 0;
+                $l1Clicks = $l1 ? floatval($l1->clicks ?? 0) : 0;
+                $l30Clicks = $l30 ? floatval($l30->clicks ?? 0) : 0;
+                
+                // Use costPerClick from records (matching AmazonSpBudgetController)
+                $l7Cpc = $l7 ? floatval($l7->costPerClick ?? 0) : 0;
+                $l1Cpc = $l1 ? floatval($l1->costPerClick ?? 0) : 0;
+                
+                // Calculate avg_cpc (lifetime average from daily records)
+                $campaignId = $campaign->campaign_id ?? null;
+                $avgCpc = 0;
+                if ($campaignId) {
+                    try {
+                        $avgCpcRecord = DB::table('amazon_sp_campaign_reports')
+                            ->select(DB::raw('AVG(costPerClick) as avg_cpc'))
+                            ->where('campaign_id', $campaignId)
+                            ->where('ad_type', 'SPONSORED_PRODUCTS')
+                            ->where('campaignStatus', '!=', 'ARCHIVED')
+                            ->where('report_date_range', 'REGEXP', '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+                            ->where('costPerClick', '>', 0)
+                            ->whereNotNull('campaign_id')
+                            ->first();
+                        
+                        if ($avgCpcRecord && $avgCpcRecord->avg_cpc > 0) {
+                            $avgCpc = floatval($avgCpcRecord->avg_cpc);
+                        }
+                    } catch (\Exception $e) {
+                        // Continue without avg_cpc if there's an error
+                    }
+                }
+                
+                $ub7 = $budget > 0 ? ($l7Spend / ($budget * 7)) * 100 : 0;
+                $ub1 = $budget > 0 ? ($l1Spend / $budget) * 100 : 0;
+                
+                $l30Spend = $l30 ? floatval($l30->spend ?? $l30->cost ?? 0) : 0;
+                $l30Sales = $l30 ? floatval($l30->sales30d ?? 0) : 0;
+                $l30Purchases = $l30 ? floatval($l30->purchases30d ?? 0) : 0;
+                $l30UnitsSold = $l30 ? floatval($l30->unitsSoldClicks30d ?? 0) : 0;
+                
+                $adCvr = $l30Clicks > 0 ? (($l30Purchases / $l30Clicks) * 100) : 0;
+                
+                // Calculate ACOS for sbgt calculation (matching AmazonSpBudgetController logic)
+                if ($l30Spend > 0 && $l30Sales > 0) {
+                    $acos = ($l30Spend / $l30Sales) * 100;
+                } elseif ($l30Spend > 0 && $l30Sales == 0) {
+                    $acos = 100;
+                } else {
+                    $acos = 0;
+                }
+                
+                // Calculate sbgt: Budget = 10% of price (rounded up)
+                // BUT if ACOS > 20%, then budget = $1
+                // Maximum budget is $5
+                $sbgt = 0;
+                if ($price > 0) {
+                    if ($acos > 20) {
+                        $sbgt = 1;
+                    } else {
+                        $sbgt = ceil($price * 0.10);
+                        if ($sbgt < 1) $sbgt = 1;
+                    }
+                    // Cap maximum budget at $5
+                    if ($sbgt > 5) {
+                        $sbgt = 5;
+                    }
+                }
+                
+                // Get last_sbid from day-before-yesterday's records
+                // Normalize campaign_id to string for consistent matching
+                $campaignIdStr = $campaignId ? (string)$campaignId : null;
+                $lastSbid = '';
+                // Try matching by campaign_id first
+                if ($campaignIdStr && isset($lastSbidMapKw[$campaignIdStr])) {
+                    $lastSbid = $lastSbidMapKw[$campaignIdStr];
+                } else {
+                    // Fallback: try matching by campaignName
+                    $campaignName = $campaign->campaignName ?? '';
+                    if (!empty($campaignName)) {
+                        $normalizedName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $campaignName);
+                        $normalizedName = preg_replace('/\s+/', ' ', $normalizedName);
+                        $normalizedName = strtoupper(trim(rtrim($normalizedName, '.')));
+                        $nameKey = 'name_' . $normalizedName;
+                        if (isset($lastSbidMapKw[$nameKey])) {
+                            $lastSbid = $lastSbidMapKw[$nameKey];
+                        }
+                    }
+                }
+                
+                // Final fallback: Direct database query if still not found
+                if ($lastSbid === '' && $campaignIdStr) {
+                    try {
+                        $directLastSbid = DB::table('amazon_sp_campaign_reports')
+                            ->where('campaign_id', $campaignIdStr)
+                            ->where('ad_type', 'SPONSORED_PRODUCTS')
+                            ->where('campaignStatus', '!=', 'ARCHIVED')
+                            ->whereIn('report_date_range', [$dayBeforeYesterday, $yesterday])
+                            ->where(function($q) {
+                                $q->where('campaignName', 'NOT LIKE', '%PT')
+                                  ->where('campaignName', 'NOT LIKE', '%PT.');
+                            })
+                            ->orderByRaw("CASE WHEN report_date_range = ? THEN 0 ELSE 1 END", [$dayBeforeYesterday])
+                            ->value('last_sbid');
+                        
+                        if ($directLastSbid !== null && $directLastSbid !== '') {
+                            $lastSbid = $directLastSbid;
+                        }
+                    } catch (\Exception $e) {
+                        // Continue without last_sbid if there's an error
+                    }
+                }
+                
+                // Calculate SBID dynamically based on utilization type (matching utilized-kw logic)
+                $sbid = 0;
+                $utilizationType = 'all';
+                if ($ub7 > 99 && $ub1 > 99) {
+                    $utilizationType = 'over';
+                } elseif ($ub7 < 66 && $ub1 < 66) {
+                    $utilizationType = 'under';
+                } elseif ($ub7 >= 66 && $ub7 <= 99 && $ub1 >= 66 && $ub1 <= 99) {
+                    $utilizationType = 'correctly';
+                }
+                
+                // Special case: If UB7 and UB1 = 0%, use price-based default
+                $isZeroUtilizationPt = ($ub7 == 0 && $ub1 == 0);
+                if ($isZeroUtilizationPt) {
+                    if ($price < 50) {
+                        $sbid = 0.50;
+                    } elseif ($price >= 50 && $price < 100) {
+                        $sbid = 1.00;
+                    } elseif ($price >= 100 && $price < 200) {
+                        $sbid = 1.50;
+                    } else {
+                        $sbid = 2.00;
+                    }
+                } elseif ($utilizationType === 'over') {
+                    // Over-utilized: Priority L1 CPC → L7 CPC → AVG CPC → 1.00, then decrease by 10%
+                    if ($l1Cpc > 0) {
+                        $sbid = floor($l1Cpc * 0.90 * 100) / 100;
+                    } elseif ($l7Cpc > 0) {
+                        $sbid = floor($l7Cpc * 0.90 * 100) / 100;
+                    } elseif ($avgCpc > 0) {
+                        $sbid = floor($avgCpc * 0.90 * 100) / 100;
+                    } else {
+                        $sbid = 1.00;
+                    }
+                } elseif ($utilizationType === 'under') {
+                    // Under-utilized: Priority L1 CPC → L7 CPC → AVG CPC → 1.00, then increase by 10%
+                    if ($l1Cpc > 0) {
+                        $sbid = floor($l1Cpc * 1.10 * 100) / 100;
+                    } elseif ($l7Cpc > 0) {
+                        $sbid = floor($l7Cpc * 1.10 * 100) / 100;
+                    } elseif ($avgCpc > 0) {
+                        $sbid = floor($avgCpc * 1.10 * 100) / 100;
+                    } else {
+                        $sbid = 1.00;
+                    }
+                } else {
+                    // Correctly-utilized or all: no SBID change needed
+                    $sbid = 0;
+                }
+                
+                // Apply price-based caps
+                if ($price < 10 && $sbid > 0.10) {
+                    $sbid = 0.10;
+                } elseif ($price >= 10 && $price < 20 && $sbid > 0.20) {
+                    $sbid = 0.20;
+                }
+                
+                return [
+                    'campaign_name' => $campaign->campaignName,
+                    'bgt' => $budget,
+                    'sbgt' => $sbgt,
+                    'acos' => round($acos, 2),
+                    'clicks' => $l30Clicks,
+                    'ad_spend' => $l30Spend,
+                    'ad_sales' => $l30Sales,
+                    'ad_sold' => $l30UnitsSold,
+                    'ad_cvr' => round($adCvr, 2),
+                    '7ub' => round($ub7, 2),
+                    '1ub' => round($ub1, 2),
+                    'avg_cpc' => round($avgCpc, 2),
+                    'l7cpc' => round($l7Cpc, 2),
+                    'l1cpc' => round($l1Cpc, 2),
+                    'l_bid' => $lastSbid,
+                    'sbid' => $sbid > 0 ? round($sbid, 2) : 0,
+                ];
+            })
+            ->filter()
+            ->values();
+        
+        // Fetch last_sbid from day-before-yesterday's date records for PT campaigns
+        // This ensures last_sbid shows the PREVIOUS day's calculated SBID, not the current day's
+        // Also try yesterday as fallback if day-before-yesterday doesn't have the record
+        $lastSbidMapPt = [];
+        $lastSbidReportsPt = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+            ->where(function($q) use ($dayBeforeYesterday, $yesterday) {
+                $q->where('report_date_range', $dayBeforeYesterday)
+                  ->orWhere('report_date_range', $yesterday);
+            })
+            ->where('campaignStatus', '!=', 'ARCHIVED')
+            ->where(function($q) {
+                $q->where('campaignName', 'LIKE', '% PT')
+                  ->orWhere('campaignName', 'LIKE', '% PT.')
+                  ->orWhere('campaignName', 'LIKE', '%PT')
+                  ->orWhere('campaignName', 'LIKE', '%PT.');
+            })
+            ->get()
+            ->sortBy(function($report) use ($dayBeforeYesterday) {
+                // Prioritize day-before-yesterday over yesterday
+                return $report->report_date_range === $dayBeforeYesterday ? 0 : 1;
+            })
+            ->groupBy('campaign_id');
+        
+        foreach ($lastSbidReportsPt as $campaignId => $reports) {
+            // Get the first report (they should all have the same last_sbid for the same campaign_id)
+            $report = $reports->first();
+            // Normalize campaign_id to string for consistent matching
+            $campaignIdStr = (string)$campaignId;
+            // Allow 0 values, only exclude null and empty string (but allow numeric 0 and string '0')
+            // Check if last_sbid is set (not null) and not empty string, but allow 0
+            if (!empty($campaignIdStr) && isset($report->last_sbid) && $report->last_sbid !== '' && $report->last_sbid !== null) {
+                $lastSbidMapPt[$campaignIdStr] = $report->last_sbid;
+            }
+            // Also create a map by campaignName for fallback matching
+            $campaignName = $report->campaignName ?? '';
+            if (!empty($campaignName) && isset($report->last_sbid) && $report->last_sbid !== null && $report->last_sbid !== '') {
+                // Normalize campaign name for matching
+                $normalizedName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $campaignName);
+                $normalizedName = preg_replace('/\s+/', ' ', $normalizedName);
+                $normalizedName = strtoupper(trim(rtrim($normalizedName, '.')));
+                if (!empty($normalizedName)) {
+                    $lastSbidMapPt['name_' . $normalizedName] = $report->last_sbid;
+                }
+            } elseif (!empty($campaignName) && isset($report->last_sbid) && ($report->last_sbid === 0 || $report->last_sbid === '0')) {
+                // Explicitly allow 0 values for campaignName matching too
+                $normalizedName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $campaignName);
+                $normalizedName = preg_replace('/\s+/', ' ', $normalizedName);
+                $normalizedName = strtoupper(trim(rtrim($normalizedName, '.')));
+                if (!empty($normalizedName)) {
+                    $lastSbidMapPt['name_' . $normalizedName] = $report->last_sbid;
+                }
+            }
+        }
+        
+        // Get PT campaigns (ends with PT or PT.)
+        $ptCampaigns = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
+            ->where(function($q) use ($cleanSku) {
+                $q->where('report_date_range', 'L30')
+                  ->orWhere('report_date_range', 'L7')
+                  ->orWhere('report_date_range', 'L1');
+            })
+            ->where('campaignStatus', '!=', 'ARCHIVED')
+            ->get()
+            ->filter(function($item) use ($cleanSku) {
+                $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
+                $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                $cleanName = strtoupper(trim($campaignName));
+                return ($cleanName === $cleanSku . ' PT' || $cleanName === $cleanSku . ' PT.' || 
+                        $cleanName === $cleanSku . 'PT' || $cleanName === $cleanSku . 'PT.');
+            })
+            ->groupBy('campaign_id')
+            ->map(function($group) use ($price, $lastSbidMapPt) {
+                $l30 = $group->where('report_date_range', 'L30')->first();
+                $l7 = $group->where('report_date_range', 'L7')->first();
+                $l1 = $group->where('report_date_range', 'L1')->first();
+                
+                $campaign = $l30 ?? $l7 ?? $l1;
+                if (!$campaign) return null;
+                
+                $budget = floatval($campaign->campaignBudgetAmount ?? 0);
+                $l7Spend = $l7 ? floatval($l7->spend ?? $l7->cost ?? 0) : 0;
+                $l1Spend = $l1 ? floatval($l1->spend ?? $l1->cost ?? 0) : 0;
+                $l7Clicks = $l7 ? floatval($l7->clicks ?? 0) : 0;
+                $l1Clicks = $l1 ? floatval($l1->clicks ?? 0) : 0;
+                $l30Clicks = $l30 ? floatval($l30->clicks ?? 0) : 0;
+                
+                // Use costPerClick from records (matching AmazonSpBudgetController)
+                $l7Cpc = $l7 ? floatval($l7->costPerClick ?? 0) : 0;
+                $l1Cpc = $l1 ? floatval($l1->costPerClick ?? 0) : 0;
+                
+                // Calculate avg_cpc (lifetime average from daily records)
+                $campaignId = $campaign->campaign_id ?? null;
+                $avgCpc = 0;
+                if ($campaignId) {
+                    try {
+                        $avgCpcRecord = DB::table('amazon_sp_campaign_reports')
+                            ->select(DB::raw('AVG(costPerClick) as avg_cpc'))
+                            ->where('campaign_id', $campaignId)
+                            ->where('ad_type', 'SPONSORED_PRODUCTS')
+                            ->where('campaignStatus', '!=', 'ARCHIVED')
+                            ->where('report_date_range', 'REGEXP', '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+                            ->where('costPerClick', '>', 0)
+                            ->whereNotNull('campaign_id')
+                            ->first();
+                        
+                        if ($avgCpcRecord && $avgCpcRecord->avg_cpc > 0) {
+                            $avgCpc = floatval($avgCpcRecord->avg_cpc);
+                        }
+                    } catch (\Exception $e) {
+                        // Continue without avg_cpc if there's an error
+                    }
+                }
+                
+                $ub7 = $budget > 0 ? ($l7Spend / ($budget * 7)) * 100 : 0;
+                $ub1 = $budget > 0 ? ($l1Spend / $budget) * 100 : 0;
+                
+                $l30Spend = $l30 ? floatval($l30->spend ?? $l30->cost ?? 0) : 0;
+                $l30Sales = $l30 ? floatval($l30->sales30d ?? 0) : 0;
+                $l30Purchases = $l30 ? floatval($l30->purchases30d ?? 0) : 0;
+                $l30UnitsSold = $l30 ? floatval($l30->unitsSoldClicks30d ?? 0) : 0;
+                
+                $adCvr = $l30Clicks > 0 ? (($l30Purchases / $l30Clicks) * 100) : 0;
+                
+                // Calculate ACOS for sbgt calculation (matching AmazonSpBudgetController logic)
+                if ($l30Spend > 0 && $l30Sales > 0) {
+                    $acos = ($l30Spend / $l30Sales) * 100;
+                } elseif ($l30Spend > 0 && $l30Sales == 0) {
+                    $acos = 100;
+                } else {
+                    $acos = 0;
+                }
+                
+                // Calculate sbgt: Budget = 10% of price (rounded up)
+                // BUT if ACOS > 20%, then budget = $1
+                // Maximum budget is $5
+                $sbgt = 0;
+                if ($price > 0) {
+                    if ($acos > 20) {
+                        $sbgt = 1;
+                    } else {
+                        $sbgt = ceil($price * 0.10);
+                        if ($sbgt < 1) $sbgt = 1;
+                    }
+                    // Cap maximum budget at $5
+                    if ($sbgt > 5) {
+                        $sbgt = 5;
+                    }
+                }
+                
+                // Get last_sbid from day-before-yesterday's records
+                // Normalize campaign_id to string for consistent matching
+                $campaignIdStr = $campaignId ? (string)$campaignId : null;
+                $lastSbid = '';
+                // Try matching by campaign_id first
+                if ($campaignIdStr && isset($lastSbidMapPt[$campaignIdStr])) {
+                    $lastSbid = $lastSbidMapPt[$campaignIdStr];
+                } else {
+                    // Fallback: try matching by campaignName
+                    $campaignName = $campaign->campaignName ?? '';
+                    if (!empty($campaignName)) {
+                        $normalizedName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $campaignName);
+                        $normalizedName = preg_replace('/\s+/', ' ', $normalizedName);
+                        $normalizedName = strtoupper(trim(rtrim($normalizedName, '.')));
+                        $nameKey = 'name_' . $normalizedName;
+                        if (isset($lastSbidMapPt[$nameKey])) {
+                            $lastSbid = $lastSbidMapPt[$nameKey];
+                        }
+                    }
+                }
+                
+                // Calculate SBID dynamically based on utilization type (matching utilized-pt logic)
+                $sbid = 0;
+                $utilizationType = 'all';
+                if ($ub7 > 99 && $ub1 > 99) {
+                    $utilizationType = 'over';
+                } elseif ($ub7 < 66 && $ub1 < 66) {
+                    $utilizationType = 'under';
+                } elseif ($ub7 >= 66 && $ub7 <= 99 && $ub1 >= 66 && $ub1 <= 99) {
+                    $utilizationType = 'correctly';
+                }
+                
+                // Special case: If UB7 and UB1 = 0%, use price-based default
+                $isZeroUtilizationPt = ($ub7 == 0 && $ub1 == 0);
+                if ($isZeroUtilizationPt) {
+                    if ($price < 50) {
+                        $sbid = 0.50;
+                    } elseif ($price >= 50 && $price < 100) {
+                        $sbid = 1.00;
+                    } elseif ($price >= 100 && $price < 200) {
+                        $sbid = 1.50;
+                    } else {
+                        $sbid = 2.00;
+                    }
+                } elseif ($utilizationType === 'over') {
+                    // Over-utilized: Priority L1 CPC → L7 CPC → AVG CPC → 1.00, then decrease by 10%
+                    if ($l1Cpc > 0) {
+                        $sbid = floor($l1Cpc * 0.90 * 100) / 100;
+                    } elseif ($l7Cpc > 0) {
+                        $sbid = floor($l7Cpc * 0.90 * 100) / 100;
+                    } elseif ($avgCpc > 0) {
+                        $sbid = floor($avgCpc * 0.90 * 100) / 100;
+                    } else {
+                        $sbid = 1.00;
+                    }
+                } elseif ($utilizationType === 'under') {
+                    // Under-utilized: Priority L1 CPC → L7 CPC → AVG CPC → 1.00, then increase by 10%
+                    if ($l1Cpc > 0) {
+                        $sbid = floor($l1Cpc * 1.10 * 100) / 100;
+                    } elseif ($l7Cpc > 0) {
+                        $sbid = floor($l7Cpc * 1.10 * 100) / 100;
+                    } elseif ($avgCpc > 0) {
+                        $sbid = floor($avgCpc * 1.10 * 100) / 100;
+                    } else {
+                        $sbid = 1.00;
+                    }
+                } else {
+                    // Correctly-utilized or all: no SBID change needed
+                    $sbid = 0;
+                }
+                
+                // Apply price-based caps
+                if ($price < 10 && $sbid > 0.10) {
+                    $sbid = 0.10;
+                } elseif ($price >= 10 && $price < 20 && $sbid > 0.20) {
+                    $sbid = 0.20;
+                }
+                
+                return [
+                    'campaign_name' => $campaign->campaignName,
+                    'bgt' => $budget,
+                    'sbgt' => $sbgt,
+                    'acos' => round($acos, 2),
+                    'clicks' => $l30Clicks,
+                    'ad_spend' => $l30Spend,
+                    'ad_sales' => $l30Sales,
+                    'ad_sold' => $l30UnitsSold,
+                    'ad_cvr' => round($adCvr, 2),
+                    '7ub' => round($ub7, 2),
+                    '1ub' => round($ub1, 2),
+                    'avg_cpc' => round($avgCpc, 2),
+                    'l7cpc' => round($l7Cpc, 2),
+                    'l1cpc' => round($l1Cpc, 2),
+                    'l_bid' => $lastSbid,
+                    'sbid' => (($utilizationType === 'over' || $utilizationType === 'under' || $isZeroUtilizationPt) && $sbid > 0) ? round($sbid, 2) : 0,
+                    'utilization_type' => $utilizationType,
+                ];
+            })
+            ->filter()
+            ->values();
+        
+        // Check for HL campaigns (SPONSORED_BRANDS)
+        // HL campaigns match by parent SKU (without "PARENT" prefix) or parent SKU + ' HEAD'
+        // Use the price already fetched above (matching AmazonSpBudgetController logic)
+        $hlMatchSku = $cleanSku;
+        $hlPrice = $price; // Use price already fetched (matches AmazonSpBudgetController line 2351)
+        
+        // Determine matching SKU for HL campaigns (remove PARENT prefix for matching)
+        if (stripos($cleanSku, 'PARENT') !== false) {
+            $hlMatchSku = str_replace('PARENT ', '', $cleanSku);
+        } else {
+            // If SKU doesn't contain PARENT, find parent SKU from ProductMaster
+            $productMaster = ProductMaster::where('sku', $cleanSku)->first();
+            if ($productMaster && $productMaster->parent) {
+                $hlMatchSku = strtoupper(trim($productMaster->parent));
+            }
+        }
+        
+        $hlCampaigns = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+            ->where(function($q) {
+                $q->where('report_date_range', 'L30')
+                  ->orWhere('report_date_range', 'L7')
+                  ->orWhere('report_date_range', 'L1');
+            })
+            ->where('campaignStatus', '!=', 'ARCHIVED')
+            ->get()
+            ->filter(function($item) use ($hlMatchSku, $cleanSku) {
+                $campaignName = strtoupper(trim($item->campaignName));
+                // Check both with and without PARENT prefix
+                // Some HL campaigns might be named "PARENT DS 01" or "DS 01"
+                $expected1 = $hlMatchSku;
+                $expected2 = $hlMatchSku . ' HEAD';
+                $expected3 = $cleanSku; // Original SKU with PARENT prefix
+                $expected4 = $cleanSku . ' HEAD';
+                return ($campaignName === $expected1 || $campaignName === $expected2 || 
+                        $campaignName === $expected3 || $campaignName === $expected4);
+            })
+            ->groupBy('campaign_id')
+            ->map(function($group) use ($hlPrice, $dayBeforeYesterday, $yesterday) {
+                $l30 = $group->where('report_date_range', 'L30')->first();
+                $l7 = $group->where('report_date_range', 'L7')->first();
+                $l1 = $group->where('report_date_range', 'L1')->first();
+                
+                $campaign = $l30 ?? $l7 ?? $l1;
+                if (!$campaign) return null;
+                
+                // Get L7 and L1 from separate queries if not in group
+                if (!$l7) {
+                    $l7 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+                        ->where('report_date_range', 'L7')
+                        ->where('campaign_id', $campaign->campaign_id)
+                        ->where('campaignStatus', '!=', 'ARCHIVED')
+                        ->first();
+                }
+                if (!$l1) {
+                    $l1 = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+                        ->where('report_date_range', 'L1')
+                        ->where('campaign_id', $campaign->campaign_id)
+                        ->where('campaignStatus', '!=', 'ARCHIVED')
+                        ->first();
+                }
+                
+                $budget = floatval($campaign->campaignBudgetAmount ?? 0);
+                $l7Spend = $l7 ? floatval($l7->cost ?? $l7->spend ?? 0) : 0;
+                $l1Spend = $l1 ? floatval($l1->cost ?? $l1->spend ?? 0) : 0;
+                $l7Clicks = $l7 ? floatval($l7->clicks ?? 0) : 0;
+                $l1Clicks = $l1 ? floatval($l1->clicks ?? 0) : 0;
+                $l30Clicks = $l30 ? floatval($l30->clicks ?? 0) : 0;
+                
+                // For HL campaigns, calculate CPC as cost / clicks (not using costPerClick directly)
+                $l7Cpc = 0;
+                if ($l7 && $l7Clicks > 0) {
+                    $l7Cpc = $l7Spend / $l7Clicks;
+                }
+                
+                $l1Cpc = 0;
+                if ($l1 && $l1Clicks > 0) {
+                    $l1Cpc = $l1Spend / $l1Clicks;
+                }
+                
+                $campaignId = $campaign->campaign_id ?? null;
+                $avgCpc = 0;
+                if ($campaignId) {
+                    try {
+                        // For HL campaigns, calculate avg_cpc as AVG(cost / clicks) from daily records
+                        $avgCpcRecord = DB::table('amazon_sb_campaign_reports')
+                            ->select(DB::raw('AVG(CASE WHEN clicks > 0 THEN cost / clicks ELSE 0 END) as avg_cpc'))
+                            ->where('campaign_id', $campaignId)
+                            ->where('ad_type', 'SPONSORED_BRANDS')
+                            ->where('campaignStatus', '!=', 'ARCHIVED')
+                            ->where('report_date_range', 'REGEXP', '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+                            ->whereNotNull('campaign_id')
+                            ->first();
+                        
+                        if ($avgCpcRecord && $avgCpcRecord->avg_cpc > 0) {
+                            $avgCpc = floatval($avgCpcRecord->avg_cpc);
+                        }
+                    } catch (\Exception $e) {
+                        // Continue without avg_cpc if there's an error
+                    }
+                }
+                
+                $ub7 = $budget > 0 ? ($l7Spend / ($budget * 7)) * 100 : 0;
+                $ub1 = $budget > 0 ? ($l1Spend / $budget) * 100 : 0;
+                
+                // For HL campaigns, use 'cost' and 'sales' (not 'spend' and 'sales30d')
+                $l30Spend = $l30 ? floatval($l30->cost ?? 0) : 0;
+                $l30Sales = $l30 ? floatval($l30->sales ?? 0) : 0;
+                $l30Purchases = $l30 ? floatval($l30->unitsSold ?? 0) : 0;
+                $l30UnitsSold = $l30 ? floatval($l30->unitsSold ?? 0) : 0;
+                
+                $adCvr = $l30Clicks > 0 ? (($l30Purchases / $l30Clicks) * 100) : 0;
+                
+                // Calculate ACOS for HL campaigns
+                if ($l30Spend > 0 && $l30Sales > 0) {
+                    $acos = ($l30Spend / $l30Sales) * 100;
+                } elseif ($l30Spend > 0 && $l30Sales == 0) {
+                    $acos = 100;
+                } else {
+                    $acos = 0;
+                }
+                
+                // Calculate sbgt for HL (matching amazon-utilized-hl.blade.php mutator logic)
+                $sbgt = 0;
+                if ($acos > 20) {
+                    // Rule: If ACOS > 20%, budget = $1
+                    $sbgt = 1;
+                } else {
+                    // Calculate from price: ceil(price * 0.10)
+                    if ($hlPrice > 0) {
+                        $sbgt = ceil($hlPrice * 0.10);
+                    }
+                    // Minimum budget is always $1 (matching frontend logic)
+                    if ($sbgt < 1) $sbgt = 1;
+                    // Maximum budget cap: $5
+                    if ($sbgt > 5) $sbgt = 5;
+                }
+                
+                // Fetch last_sbid from day-before-yesterday's records for HL campaigns
+                $lastSbidMapHl = [];
+                $lastSbidReportsHl = AmazonSbCampaignReport::where('ad_type', 'SPONSORED_BRANDS')
+                    ->where(function($q) use ($dayBeforeYesterday, $yesterday) {
+                        $q->where('report_date_range', $dayBeforeYesterday)
+                          ->orWhere('report_date_range', $yesterday);
+                    })
+                    ->where('campaignStatus', '!=', 'ARCHIVED')
+                    ->get()
+                    ->sortBy(function($report) use ($dayBeforeYesterday) {
+                        return $report->report_date_range === $dayBeforeYesterday ? 0 : 1;
+                    })
+                    ->groupBy('campaign_id');
+                
+                foreach ($lastSbidReportsHl as $campaignIdHl => $reports) {
+                    $report = $reports->first();
+                    $campaignIdStrHl = (string)$campaignIdHl;
+                    if (!empty($campaignIdStrHl) && isset($report->last_sbid) && $report->last_sbid !== '' && $report->last_sbid !== null) {
+                        $lastSbidMapHl[$campaignIdStrHl] = $report->last_sbid;
+                    } elseif (!empty($campaignIdStrHl) && isset($report->last_sbid) && ($report->last_sbid === 0 || $report->last_sbid === '0')) {
+                        $lastSbidMapHl[$campaignIdStrHl] = $report->last_sbid;
+                    }
+                }
+                
+                $campaignIdStr = $campaignId ? (string)$campaignId : null;
+                $lastSbid = '';
+                if ($campaignIdStr && isset($lastSbidMapHl[$campaignIdStr])) {
+                    $lastSbid = $lastSbidMapHl[$campaignIdStr];
+                }
+                
+                // Calculate SBID for HL (matching amazon-utilized-hl.blade.php logic)
+                $sbid = 0;
+                $utilizationType = 'all';
+                if ($ub7 > 99 && $ub1 > 99) {
+                    $utilizationType = 'over';
+                } elseif ($ub7 < 66 && $ub1 < 66) {
+                    $utilizationType = 'under';
+                } elseif ($ub7 >= 66 && $ub7 <= 99 && $ub1 >= 66 && $ub1 <= 99) {
+                    $utilizationType = 'correctly';
+                }
+                
+                // Special case: If UB7 and UB1 = 0%, use default value
+                if ($ub7 == 0 && $ub1 == 0) {
+                    $sbid = 1.00;
+                } elseif ($utilizationType === 'over') {
+                    // Over-utilized: Priority L1 CPC → L7 CPC → AVG CPC → 1.00, then decrease by 10%
+                    if ($l1Cpc > 0) {
+                        $sbid = floor($l1Cpc * 0.90 * 100) / 100;
+                    } elseif ($l7Cpc > 0) {
+                        $sbid = floor($l7Cpc * 0.90 * 100) / 100;
+                    } elseif ($avgCpc > 0) {
+                        $sbid = floor($avgCpc * 0.90 * 100) / 100;
+                    } else {
+                        $sbid = 1.00;
+                    }
+                } elseif ($utilizationType === 'under') {
+                    // Under-utilized: Priority L1 CPC → L7 CPC → AVG CPC → 1.00, then increase by 10%
+                    if ($l1Cpc > 0) {
+                        $sbid = floor($l1Cpc * 1.10 * 100) / 100;
+                    } elseif ($l7Cpc > 0) {
+                        $sbid = floor($l7Cpc * 1.10 * 100) / 100;
+                    } elseif ($avgCpc > 0) {
+                        $sbid = floor($avgCpc * 1.10 * 100) / 100;
+                    } else {
+                        $sbid = 1.00;
+                    }
+                } else {
+                    // Correctly-utilized or all: no SBID change needed (set to 0)
+                    $sbid = 0;
+                }
+                
+                return [
+                    'campaign_name' => $campaign->campaignName,
+                    'bgt' => $budget,
+                    'sbgt' => $sbgt,
+                    'acos' => round($acos, 2),
+                    'clicks' => $l30Clicks,
+                    'ad_spend' => $l30Spend,
+                    'ad_sales' => $l30Sales,
+                    'ad_sold' => $l30UnitsSold,
+                    'ad_cvr' => round($adCvr, 2),
+                    '7ub' => round($ub7, 2),
+                    '1ub' => round($ub1, 2),
+                    'avg_cpc' => round($avgCpc, 2),
+                    'l7cpc' => round($l7Cpc, 2),
+                    'l1cpc' => round($l1Cpc, 2),
+                    'l_bid' => $lastSbid,
+                    'sbid' => ($utilizationType === 'over' || $utilizationType === 'under') && $sbid > 0 ? round($sbid, 2) : 0,
+                    'utilization_type' => $utilizationType,
+                ];
+            })
+            ->filter()
+            ->values();
+        
+        // If HL campaigns exist, only return HL campaigns (not KW/PT)
+        if ($hlCampaigns->count() > 0) {
+            return response()->json([
+                'hl_campaigns' => $hlCampaigns,
+                'kw_campaigns' => [],
+                'pt_campaigns' => []
+            ]);
+        }
+        
+        return response()->json([
+            'kw_campaigns' => $kwCampaigns,
+            'pt_campaigns' => $ptCampaigns,
+            'hl_campaigns' => []
+        ]);
+    }
 }

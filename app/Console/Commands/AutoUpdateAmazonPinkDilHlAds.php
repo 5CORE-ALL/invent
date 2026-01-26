@@ -49,30 +49,39 @@ class AutoUpdateAmazonPinkDilHlAds extends Command
                 return 0;
             }
 
+            $this->info("Found " . count($campaigns) . " campaigns to process");
+
             // Separate campaigns to pause vs update budget
             $campaignsToPause = [];
             $campaignsToUpdate = [];
 
             foreach ($campaigns as $campaign) {
-                // Check if (dil is pink (dilPercent > 50) AND ACOS > 20%) OR (ratings < 3.5)
+                // Check pause conditions:
+                // 1. Dil% > 100% AND Acos > 10%
+                // 2. Dil% is 50-100% AND Acos > 20%
+                // 3. Ratings < 3.5
                 // Note: No price condition for HL campaigns
                 $rating = isset($campaign->rating) && $campaign->rating !== null ? (float) $campaign->rating : null;
                 $dilPercent = $campaign->dilPercent ?? 0;
                 $acos = $campaign->acos_L30 ?? 0;
                 
                 // Check each condition separately for detailed logging
-                $condition1 = ($dilPercent > 50 && $acos > 20); // Pink dil AND ACOS > 20%
-                $condition2 = ($rating !== null && $rating < 3.5); // Rating < 3.5
+                $condition1 = ($dilPercent > 100 && $acos > 10); // Dil% > 100% AND ACOS > 10%
+                $condition2 = ($dilPercent >= 50 && $dilPercent <= 100 && $acos > 20); // Dil% 50-100% AND ACOS > 20%
+                $condition3 = ($rating !== null && $rating < 3.5); // Rating < 3.5
                 
-                $shouldPause = $condition1 || $condition2;
+                $shouldPause = $condition1 || $condition2 || $condition3;
                 
                 if ($shouldPause) {
                     // Determine which condition(s) triggered the pause
                     $pauseReasons = [];
                     if ($condition1) {
-                        $pauseReasons[] = "Dil Pink ($dilPercent% > 50%) AND ACOS High ($acos% > 20%)";
+                        $pauseReasons[] = "Dil% > 100% ($dilPercent% > 100%) AND ACOS > 10% ($acos% > 10%)";
                     }
                     if ($condition2) {
+                        $pauseReasons[] = "Dil% 50-100% ($dilPercent% between 50-100%) AND ACOS > 20% ($acos% > 20%)";
+                    }
+                    if ($condition3) {
                         $pauseReasons[] = "Low Rating ($rating < 3.5)";
                     }
                     
@@ -289,7 +298,11 @@ class AutoUpdateAmazonPinkDilHlAds extends Command
             $row['sbgt'] = 1;
 
             // Process ALL campaigns, not just pink dil ones
-            // We need to check for pause conditions: (dilPercent > 50 AND ACOS > 35%) OR (rating < 3.5)
+            // We need to check for pause conditions:
+            // 1. Dil% > 100% AND Acos > 10%
+            // 2. Dil% is 50-100% AND Acos > 20%
+            // 3. Ratings < 3.5
+            // Note: No price condition for HL campaigns
             if (!empty($row['campaignName'])) {
                 // Use OV L30 (overall L30) instead of A_L30 for dilPercent calculation
                 $dilPercent = $row['INV'] > 0 ? (($row['OV_L30'] / $row['INV']) * 100) : 0;

@@ -253,6 +253,21 @@
                                                     style="font-size: 0.75rem; display: block; margin-bottom: 2px;">RA</span>
                                                 <span class="fw-bold" id="ra-count" style="font-size: 1.1rem;">0</span>
                                                     </div>
+                                            <div class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Total Spend</span>
+                                                <span class="fw-bold" id="total-spend" style="font-size: 1.1rem;">$0</span>
+                                            </div>
+                                            <div class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Total Ad Sales</span>
+                                                <span class="fw-bold" id="total-sales" style="font-size: 1.1rem;">$0</span>
+                                            </div>
+                                            <div class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Avg ACOS</span>
+                                                <span class="fw-bold" id="avg-acos" style="font-size: 1.1rem;">0%</span>
+                                            </div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -518,6 +533,48 @@
                 const nraMissingCountEl = document.getElementById('nra-missing-count');
                 if (nraMissingCountEl) {
                     nraMissingCountEl.textContent = nraMissingCount;
+                }
+
+                // Calculate Total Spend, Total Sales, and Average ACOS
+                let totalSpend = 0;
+                let totalSales = 0;
+                let totalAcos = 0;
+                let acosCount = 0;
+
+                allData.forEach(function(row) {
+                    // Sum spend from L30
+                    const spendL30 = parseFloat(row.spend_l30 || 0);
+                    totalSpend += spendL30;
+
+                    // Sum sales from base_price_sales L30
+                    const salesL30 = parseFloat(row.base_price_sales_l30 || 0);
+                    totalSales += salesL30;
+
+                    // Calculate average ACOS from L30
+                    const acosL30 = parseFloat(row.acos_l30 || 0);
+                    if (acosL30 > 0) {
+                        totalAcos += acosL30;
+                        acosCount++;
+                    }
+                });
+
+                // Update Total Spend
+                const totalSpendEl = document.getElementById('total-spend');
+                if (totalSpendEl) {
+                    totalSpendEl.textContent = '$' + Math.round(totalSpend).toLocaleString('en-US');
+                }
+
+                // Update Total Sales
+                const totalSalesEl = document.getElementById('total-sales');
+                if (totalSalesEl) {
+                    totalSalesEl.textContent = '$' + Math.round(totalSales).toLocaleString('en-US');
+                }
+
+                // Update Average ACOS
+                const avgAcosEl = document.getElementById('avg-acos');
+                if (avgAcosEl) {
+                    const avgAcos = acosCount > 0 ? (totalAcos / acosCount) : 0;
+                    avgAcosEl.textContent = Math.round(avgAcos) + '%';
                 }
             }
 
@@ -1101,8 +1158,77 @@
                         width: 100
                     },
                     {
-                        title: "S ROAS",
-                        field: "roas_l30",
+                        title: "OUT ROAS",
+                        field: "out_roas_l30",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            const cellElement = cell.getElement();
+                            
+                            // Set up event listeners on the icon
+                            if (cellElement) {
+                                setTimeout(function() {
+                                    const icon = cellElement.querySelector('.toggle-out-roas-l7-btn');
+                                    if (icon) {
+                                        // Remove old listeners
+                                        $(icon).off('mousedown click');
+                                        
+                                        // Toggle column on click
+                                        $(icon).on('click', function(e) {
+                                            e.stopPropagation();
+                        e.preventDefault();
+                                            e.stopImmediatePropagation();
+                                            const isVisible = table.getColumn('out_roas_l7').isVisible();
+                                            if (isVisible) {
+                                                table.hideColumn('out_roas_l7');
+                } else {
+                                                table.showColumn('out_roas_l7');
+                                            }
+                                            return false;
+                                        });
+                                    }
+                                }, 0);
+                            }
+                            
+                            return `<div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
+                                <span>${value.toFixed(2)}</span>
+                                <i class="fa-solid fa-info-circle toggle-out-roas-l7-btn" style="cursor: pointer; font-size: 12px; color: #3b82f6; pointer-events: auto; z-index: 10; position: relative;" title="Toggle L7 OUT ROAS"></i>
+                            </div>`;
+                        },
+                        cellClick: function(e, cell) {
+                            // Check if the click is on the info icon
+                            if (e.target.classList.contains('toggle-out-roas-l7-btn') || 
+                                e.target.classList.contains('fa-info-circle') ||
+                                e.target.closest('.toggle-out-roas-l7-btn')) {
+                    e.stopPropagation();
+                                e.preventDefault();
+                                e.stopImmediatePropagation();
+                                const isVisible = table.getColumn('out_roas_l7').isVisible();
+                                if (isVisible) {
+                                    table.hideColumn('out_roas_l7');
+                    } else {
+                                    table.showColumn('out_roas_l7');
+                                }
+                                return false;
+                            }
+                        },
+                        visible: true,
+                        width: 100
+                    },
+                    {
+                        title: "OUT ROAS L7",
+                        field: "out_roas_l7",
+                        hozAlign: "right",
+                        formatter: function(cell) {
+                            const value = parseFloat(cell.getValue() || 0);
+                            return value.toFixed(2);
+                        },
+                        visible: false,
+                        width: 100
+                    },
+                    {
+                        title: "IN ROAS",
+                        field: "in_roas_l30",
                         hozAlign: "right",
                         editor: "number",
                         editorParams: {
@@ -1120,7 +1246,7 @@
                             // Set up event listeners on the icon
                             if (cellElement) {
                                 setTimeout(function() {
-                                    const icon = cellElement.querySelector('.toggle-roas-l7-btn');
+                                    const icon = cellElement.querySelector('.toggle-in-roas-l7-btn');
                                     if (icon) {
                                         // Remove old listeners
                                         $(icon).off('mousedown click');
@@ -1142,11 +1268,11 @@
                                             e.stopPropagation();
                         e.preventDefault();
                                             e.stopImmediatePropagation();
-                                            const isVisible = table.getColumn('roas_l7').isVisible();
+                                            const isVisible = table.getColumn('in_roas_l7').isVisible();
                                             if (isVisible) {
-                                                table.hideColumn('roas_l7');
+                                                table.hideColumn('in_roas_l7');
                 } else {
-                                                table.showColumn('roas_l7');
+                                                table.showColumn('in_roas_l7');
                                             }
                                             return false;
                                         });
@@ -1156,22 +1282,22 @@
                             
                             return `<div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
                                 <span>${value.toFixed(2)}</span>
-                                <i class="fa-solid fa-info-circle toggle-roas-l7-btn" data-field="roas_l7" style="cursor: pointer; font-size: 12px; color: #3b82f6; pointer-events: auto; z-index: 10; position: relative;" title="Toggle L7 S ROAS"></i>
+                                <i class="fa-solid fa-info-circle toggle-in-roas-l7-btn" data-field="in_roas_l7" style="cursor: pointer; font-size: 12px; color: #3b82f6; pointer-events: auto; z-index: 10; position: relative;" title="Toggle L7 IN ROAS"></i>
                             </div>`;
                         },
                         cellClick: function(e, cell) {
                             // Check if the click is on the info icon
-                            if (e.target.classList.contains('toggle-roas-l7-btn') || 
+                            if (e.target.classList.contains('toggle-in-roas-l7-btn') || 
                                 e.target.classList.contains('fa-info-circle') ||
-                                e.target.closest('.toggle-roas-l7-btn')) {
+                                e.target.closest('.toggle-in-roas-l7-btn')) {
                     e.stopPropagation();
                                 e.preventDefault();
                                 e.stopImmediatePropagation();
-                                const isVisible = table.getColumn('roas_l7').isVisible();
+                                const isVisible = table.getColumn('in_roas_l7').isVisible();
                                 if (isVisible) {
-                                    table.hideColumn('roas_l7');
+                                    table.hideColumn('in_roas_l7');
                     } else {
-                                    table.showColumn('roas_l7');
+                                    table.showColumn('in_roas_l7');
                                 }
                                 return false;
                             }
@@ -1180,8 +1306,8 @@
                         width: 100
                     },
                     {
-                        title: "S ROAS L7",
-                        field: "roas_l7",
+                        title: "IN ROAS L7",
+                        field: "in_roas_l7",
                         hozAlign: "right",
                         editor: "number",
                         editorParams: {
@@ -1255,19 +1381,14 @@
             // Initialize iconClicked flag
             window.iconClicked = false;
 
-            // ROAS L30, L7 and Status update handler
+            // IN ROAS L30 and L7 update handler
             table.on("cellEdited", function(cell) {
                 const field = cell.getField();
-                if (field === 'roas_l30' || field === 'roas_l7' || field === 'status') {
+                if (field === 'in_roas_l30' || field === 'in_roas_l7') {
                     const row = cell.getRow();
                     const rowData = row.getData();
                     const sku = rowData.sku;
-                    let value = cell.getValue();
-
-                    // Parse numeric value for ROAS fields
-                    if (field === 'roas_l30' || field === 'roas_l7') {
-                        value = parseFloat(value || 0);
-                    }
+                    let value = parseFloat(cell.getValue() || 0);
 
                     // Save to backend
                     $.ajax({
@@ -1291,7 +1412,7 @@
                         error: function(xhr, status, error) {
                             console.error('Error updating ' + field + ':', error);
                             // Revert the change on error
-                            const oldValue = field === 'status' ? (rowData[field] || 'Not Created') : parseFloat(rowData[field] || 0);
+                            const oldValue = parseFloat(rowData[field] || 0);
                             cell.setValue(oldValue);
                             alert('Error updating ' + field + ': ' + (xhr.responseJSON?.message || error));
                         }

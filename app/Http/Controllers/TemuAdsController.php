@@ -93,9 +93,11 @@ class TemuAdsController extends Controller
             ->selectRaw('goods_id, 
                 SUM(spend) as spend_l30,
                 SUM(clicks) as clicks_l30,
+                SUM(base_price_sales) as base_price_sales_l30,
                 AVG(acos_ad) as acos_l30,
                 AVG(roas) as roas_l30,
-                COALESCE(MAX(status), "Not Created") as status_l30')
+                AVG(in_roas) as in_roas_l30,
+                MAX(status) as status_l30')
             ->groupBy('goods_id')
             ->get()
             ->keyBy('goods_id');
@@ -106,9 +108,11 @@ class TemuAdsController extends Controller
             ->selectRaw('goods_id, 
                 SUM(spend) as spend_l7,
                 SUM(clicks) as clicks_l7,
+                SUM(base_price_sales) as base_price_sales_l7,
                 AVG(acos_ad) as acos_l7,
                 AVG(roas) as roas_l7,
-                COALESCE(MAX(status), "Not Created") as status_l7')
+                AVG(in_roas) as in_roas_l7,
+                MAX(status) as status_l7')
             ->groupBy('goods_id')
             ->get()
             ->keyBy('goods_id');
@@ -179,12 +183,20 @@ class TemuAdsController extends Controller
             // Campaign exists if there's any record in temu_campaign_reports for this goods_id
             $hasCampaign = ($adL30 !== null) || ($adL7 !== null);
 
-            // Determine status - use L30 if available, otherwise L7, otherwise 'Not Created'
-            $status = 'Not Created';
-            if ($adL30 && isset($adL30->status_l30) && !empty($adL30->status_l30)) {
+            // Determine status - If campaign exists, default to "Active", otherwise use status from database or "Not Created" (like TikTok)
+            $status = null;
+            // Get status from database (prioritize L30, fallback to L7)
+            if ($adL30 && isset($adL30->status_l30) && !empty($adL30->status_l30) && $adL30->status_l30 !== 'NULL') {
                 $status = $adL30->status_l30;
-            } elseif ($adL7 && isset($adL7->status_l7) && !empty($adL7->status_l7)) {
+            } elseif ($adL7 && isset($adL7->status_l7) && !empty($adL7->status_l7) && $adL7->status_l7 !== 'NULL') {
                 $status = $adL7->status_l7;
+            }
+            
+            // If campaign exists and status is null/empty, default to "Active" (like TikTok)
+            if ($hasCampaign && (empty($status) || $status === null)) {
+                $status = 'Active';
+            } elseif (empty($status) || $status === null) {
+                $status = 'Not Created';
             }
 
             $row = [
@@ -199,13 +211,17 @@ class TemuAdsController extends Controller
                 // L30 ad metrics
                 'spend_l30' => $adL30 ? round((float)$adL30->spend_l30, 2) : 0,
                 'clicks_l30' => $adL30 ? (int)$adL30->clicks_l30 : 0,
+                'base_price_sales_l30' => $adL30 ? round((float)$adL30->base_price_sales_l30, 2) : 0,
                 'acos_l30' => $adL30 && $adL30->roas_l30 > 0 ? round((100 / (float)$adL30->roas_l30), 2) : 0,
-                'roas_l30' => $adL30 ? round((float)$adL30->roas_l30, 2) : 0,
+                'in_roas_l30' => $adL30 ? round((float)$adL30->in_roas_l30, 2) : 0,
+                'out_roas_l30' => $adL30 ? round((float)$adL30->roas_l30, 2) : 0,
                 // L7 ad metrics
                 'spend_l7' => $adL7 ? round((float)$adL7->spend_l7, 2) : 0,
                 'clicks_l7' => $adL7 ? (int)$adL7->clicks_l7 : 0,
+                'base_price_sales_l7' => $adL7 ? round((float)$adL7->base_price_sales_l7, 2) : 0,
                 'acos_l7' => $adL7 && $adL7->roas_l7 > 0 ? round((100 / (float)$adL7->roas_l7), 2) : 0,
-                'roas_l7' => $adL7 ? round((float)$adL7->roas_l7, 2) : 0,
+                'in_roas_l7' => $adL7 ? round((float)$adL7->in_roas_l7, 2) : 0,
+                'out_roas_l7' => $adL7 ? round((float)$adL7->roas_l7, 2) : 0,
                 // Status
                 'status' => $status,
             ];
@@ -259,8 +275,8 @@ class TemuAdsController extends Controller
             ]);
         }
 
-        // Save ROAS L30 or L7 to TemuCampaignReport
-        if ($field === 'roas_l30' || $field === 'roas_l7') {
+        // Save IN ROAS L30 or L7 to TemuCampaignReport
+        if ($field === 'in_roas_l30' || $field === 'in_roas_l7') {
             // Get goods_id from TemuPricing
             $temuPricing = TemuPricing::where('sku', $sku)
                 ->whereNotNull('goods_id')
@@ -274,8 +290,8 @@ class TemuAdsController extends Controller
             }
 
             $goodsId = $temuPricing->goods_id;
-            $roasValue = (float) $value;
-            $reportRange = ($field === 'roas_l30') ? 'L30' : 'L7';
+            $inRoasValue = (float) $value;
+            $reportRange = ($field === 'in_roas_l30') ? 'L30' : 'L7';
 
             // Check if any records exist for this goods_id and report_range
             $existingRecords = TemuCampaignReport::where('goods_id', $goodsId)
@@ -286,11 +302,11 @@ class TemuAdsController extends Controller
                 // Update all existing records
                 $updated = TemuCampaignReport::where('goods_id', $goodsId)
                     ->where('report_range', $reportRange)
-                    ->update(['roas' => $roasValue]);
+                    ->update(['in_roas' => $inRoasValue]);
 
                 return response()->json([
                     'success' => true,
-                    'message' => 'ROAS ' . $reportRange . ' updated successfully',
+                    'message' => 'IN ROAS ' . $reportRange . ' updated successfully',
                     'updated_count' => $updated
                 ]);
             } else {
@@ -307,12 +323,12 @@ class TemuAdsController extends Controller
                     'goods_id' => $goodsId,
                     'goods_name' => $goodsName,
                     'report_range' => $reportRange,
-                    'roas' => $roasValue,
+                    'in_roas' => $inRoasValue,
                 ]);
 
                 return response()->json([
                     'success' => true,
-                    'message' => 'ROAS ' . $reportRange . ' created and saved successfully',
+                    'message' => 'IN ROAS ' . $reportRange . ' created and saved successfully',
                     'created' => true
                 ]);
             }

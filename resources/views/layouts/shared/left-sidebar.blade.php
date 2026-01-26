@@ -1910,22 +1910,19 @@
                                     <li>
                                         <a data-bs-toggle="collapse" href="#amazonBudget" aria-expanded="false"
                                             aria-controls="amazonBudget">
-                                            <span>Amz FBM Utilized's</span>
+                                            <span>Amz FBM AD</span>
                                             <span class="menu-arrow"></span>
                                         </a>
                                         <div class="collapse" id="amazonBudget">
                                             <ul class="side-nav-fourth-level">
                                                 <li>
-                                                    <a href="{{ route('amazon.utilized.kw') }}">Amazon KW
-                                                        Utilized's</a>
+                                                    <a href="{{ route('amazon.utilized.kw') }}">Amz KW Ad</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ route('amazon.utilized.pt') }}">Amazon PT
-                                                        Utilized's</a>
+                                                    <a href="{{ route('amazon.utilized.pt') }}">Amz PT Ad</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ route('amazon.utilized.hl') }}">Amazon HL
-                                                        Utilized's</a>
+                                                    <a href="{{ route('amazon.utilized.hl') }}">Amz HL Ad</a>
                                                 </li>
                                                 {{-- <li>
                                                     <a href=" {{ route('amazon-sp.amz-utilized-bgt-kw') }} "> >
