@@ -8,6 +8,7 @@ use App\Models\WalmartPriceData;
 use App\Models\WalmartListingViewsData;
 use App\Models\WalmartOrderData;
 use App\Models\WalmartDailyData;
+use App\Models\WalmartPricingSales;
 use App\Models\ProductMaster;
 use App\Models\WalmartCampaignReport;
 use App\Models\ShopifySku;
@@ -376,8 +377,11 @@ class WalmartSheetUploadController extends Controller
                 ->all();
             
             // 3. Fetch related data using ProductMaster SKUs
-            $priceData = WalmartPriceData::whereIn('sku', $skus)->get()->keyBy('sku');
+            // Note: Not using walmart_price_data (manual uploads) - using API data only
             $listingData = WalmartListingViewsData::whereIn('sku', $skus)->get()->keyBy('sku');
+            
+            // Fetch Walmart Pricing data from walmart_pricing table (from API)
+            $walmartPricing = WalmartPricingSales::whereIn('sku', $skus)->get()->keyBy('sku');
             
             // Aggregate orders by SKU (sum quantities and count orders)
             // Using walmart_daily_data table with L30 period filter
@@ -430,7 +434,6 @@ class WalmartSheetUploadController extends Controller
                 $sku = strtoupper($pm->sku);
                 $parent = $pm->parent;
                 
-                $price = $priceData->get($sku);
                 $listing = $listingData->get($sku);
                 $orders = $orderData->get($sku);
                 $shopify = $shopifyData->get($sku);
@@ -438,6 +441,7 @@ class WalmartSheetUploadController extends Controller
                 $dataView = $walmartDataView->get($sku);
                 $stockMapping = $productStockMappings->get($sku);
                 $listingStatus = $walmartListingStatus->get($sku);
+                $pricingApi = $walmartPricing->get($sku); // Walmart API pricing data
                 
                 // Get RL/NRL from listing status
                 $rlNrl = null;
@@ -476,18 +480,21 @@ class WalmartSheetUploadController extends Controller
                     $ship = floatval($pm->ship);
                 }
 
-                // Get ORIGINAL Walmart price (w_price) from walmart_price_data
-                $wPrice = floatval($price->price ?? $price->comparison_price ?? 0);
+                // Get API Price from walmart_pricing table (current_price from Walmart API)
+                $apiPrice = $pricingApi ? floatval($pricingApi->current_price ?? 0) : 0;
                 
-                // Get SAVED price (sprice) - check walmart_data_view first, then fallback to w_price
+                // Get Buybox Price from walmart_pricing table
+                $buyboxPrice = $pricingApi ? floatval($pricingApi->buy_box_base_price ?? $pricingApi->buy_box_total_price ?? 0) : 0;
+                
+                // Get SAVED price (sprice) from walmart_data_view
+                // If cleared or not set, show 0 (don't fall back to API price)
                 $sprice = 0;
-                if ($dataView && isset($dataView->value['sprice']) && $dataView->value['sprice'] > 0) {
-                    // Use saved sprice from walmart_data_view if available
+                if ($dataView && isset($dataView->value['sprice'])) {
                     $sprice = floatval($dataView->value['sprice']);
-                } else {
-                    // Fallback to walmart price
-                    $sprice = $wPrice;
                 }
+                // Note: If sprice not saved, shows as 0 (cleared state)
+                
+                // Note: w_price removed - using api_price instead (from Walmart API, not manual upload)
                 
                 // Get quantities (from Walmart orders)
                 $totalQty = $orders ? intval($orders->total_qty) : 0;
@@ -566,8 +573,8 @@ class WalmartSheetUploadController extends Controller
                 $wInvNumeric = ($wInv === 'Not Listed' || $wInv === null || $wInv === '') ? 0 : intval($wInv);
                 
                 // Check if SKU is missing in Walmart
-                // M is only shown when: INV > 0 AND product is not in Walmart
-                $isMissing = !$price && $inv > 0;
+                // M is only shown when: INV > 0 AND product is not in Walmart API
+                $isMissing = !$pricingApi && $inv > 0;
                 
                 // Map status logic (only when INV > 0)
                 $mapStatus = '';
@@ -594,11 +601,12 @@ class WalmartSheetUploadController extends Controller
                     'INV' => $inv,
                     'L30' => $shopify ? intval($shopify->quantity) : 0,
                     'inventory_walmart' => $wInv,
-                    'product_name' => $price->product_name ?? $listing->product_name ?? null,
+                    'product_name' => $pricingApi->item_name ?? $listing->product_name ?? null,
                     'lp' => $lp,
                     'ship' => $ship,
-                    'w_price' => $wPrice, // Original Walmart price from walmart_price_data
-                    'sprice' => $sprice,  // Saved/editable price from walmart_data_view or fallback to w_price
+                    'api_price' => $apiPrice, // Current price from Walmart API (walmart_pricing table)
+                    'buybox_price' => $buyboxPrice, // Buy box price from Walmart API
+                    'sprice' => $sprice,  // Saved/editable price from walmart_data_view or fallback to API price
                     'a_price' => $amazon ? floatval($amazon->price ?? 0) : null,
                     
                     // Listing metrics
@@ -769,14 +777,14 @@ class WalmartSheetUploadController extends Controller
                     $notMappedCount++;
                 }
                 
-                // Compare Walmart Price with Amazon Price
-                $wPrice = floatval($row['w_price'] ?? 0);
+                // Compare Walmart API Price with Amazon Price
+                $apiPrice = floatval($row['api_price'] ?? 0);
                 $aPrice = floatval($row['a_price'] ?? 0);
-                if ($aPrice > 0 && $wPrice > 0) {
-                    if ($wPrice < $aPrice) {
+                if ($aPrice > 0 && $apiPrice > 0) {
+                    if ($apiPrice < $aPrice) {
                         $lessAmzCount++;
-                        $bbIssueCount++; // BB Issue = W Price < A Price
-                    } elseif ($wPrice > $aPrice) {
+                        $bbIssueCount++; // BB Issue = API Price < A Price
+                    } elseif ($apiPrice > $aPrice) {
                         $moreAmzCount++;
                     }
                 }
@@ -1158,16 +1166,29 @@ class WalmartSheetUploadController extends Controller
             // Get existing value array or create new one
             $valueArray = is_array($dataView->value) ? $dataView->value : [];
             
-            // Update the specific field
-            $valueArray[$field] = floatval($value);
+            // If value is 0 or empty, DELETE the field (clear it)
+            if (empty($value) || floatval($value) == 0) {
+                unset($valueArray[$field]);  // Remove the key entirely
+                Log::info("Cleared {$field} for SKU: {$sku}");
+            } else {
+                // Update the specific field
+                $valueArray[$field] = floatval($value);
+                Log::info("Updated {$field} for SKU: {$sku} to {$value}");
+            }
             
-            // Save
-            $dataView->value = $valueArray;
-            $dataView->save();
+            // Save (or delete if array is now empty)
+            if (empty($valueArray)) {
+                // If no fields left, delete the entire record
+                $dataView->delete();
+                Log::info("Deleted walmart_data_view record for SKU: {$sku} (no fields left)");
+            } else {
+                $dataView->value = $valueArray;
+                $dataView->save();
+            }
             
             return response()->json([
                 'success' => true,
-                'message' => ucfirst($field) . ' updated successfully'
+                'message' => ucfirst($field) . ($value == 0 ? ' cleared' : ' updated') . ' successfully'
             ]);
             
         } catch (\Exception $e) {
