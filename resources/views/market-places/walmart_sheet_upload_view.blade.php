@@ -301,14 +301,14 @@
                         <span class="badge bg-primary fs-6 p-2" id="total-products-badge" style="color: black; font-weight: bold;">Total Products: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-quantity-badge" style="color: black; font-weight: bold;">Total Quantity: 0</span>
                         <!-- Clickable Filter Badges (Dark style like eBay) -->
-                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: 0 Sold items (INV>0)">0 Sold: 0</span>
-                        <span class="badge fs-6 p-2" id="more-than-zero-sold-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter: >0 Sold items (INV>0)">&gt;0 Sold: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: W L30 = 0 (Walmart Last 30 Days Quantity = 0, INV>0)">W 0 Sold: 0</span>
+                        <span class="badge fs-6 p-2" id="more-than-zero-sold-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter: W L30 > 0 (Walmart Last 30 Days Quantity > 0, INV>0)">W &gt;0 Sold: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: Missing items (INV>0)">Missing: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="map-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: Mapped items (INV>0)">Map: 0</span>
                         <span class="badge bg-warning fs-6 p-2" id="nmap-count-badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter: Not mapped items (INV>0)">Nmap: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="lt-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: W Price < Amazon (INV>0)">&lt; AMZ: 0</span>
-                        <span class="badge fs-6 p-2" id="gt-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter: W Price > Amazon (INV>0)">&gt; AMZ: 0</span>
-                        <span class="badge bg-danger fs-6 p-2" id="bb-issue-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: BB Issue items (W<A)">BB Issue: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="lt-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: API Price < Amazon (INV>0)">&lt; AMZ: 0</span>
+                        <span class="badge fs-6 p-2" id="gt-amz-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter: API Price > Amazon (INV>0)">&gt; AMZ: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="bb-issue-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: BB Issue items (API<A)">BB Issue: 0</span>
                         
                         <!-- Financial Metrics -->
                         <span class="badge bg-warning fs-6 p-2" id="total-spend-badge" style="color: black; font-weight: bold;">Total SPEND L30: $0.00</span>
@@ -334,6 +334,9 @@
                         </button>
                         <button id="sugg-amz-prc-btn" class="btn btn-sm btn-info">
                             <i class="fas fa-copy"></i> Sugg Amz Prc
+                        </button>
+                        <button id="clear-sprice-btn" class="btn btn-sm btn-danger">
+                            <i class="fas fa-eraser"></i> Clear S PRC
                         </button>
                     </div>
                 </div>
@@ -1043,6 +1046,10 @@
             applySuggestAmazonPrice();
         });
 
+        $('#clear-sprice-btn').on('click', function() {
+            clearSpriceForSelected();
+        });
+
         $('#discount-percentage-input').on('keypress', function(e) {
             if (e.which === 13) {
                 applyDiscount();
@@ -1103,8 +1110,8 @@
                 if (rows.length > 0) {
                     const row = rows[0]; // Get the first matching row
                     const rowData = row.getData();
-                    // Use only W Price for increase/decrease mode (not Amazon price)
-                    const currentPrice = parseFloat(rowData['w_price']) || 0;
+                    // Use API Price for increase/decrease mode (from Walmart API)
+                    const currentPrice = parseFloat(rowData['api_price']) || 0;
                     
                     if (currentPrice > 0) {
                         let newSPrice;
@@ -1139,7 +1146,7 @@
                 }
             });
             
-            showToast(`${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s) based on W Price`, 'success');
+            showToast(`${increaseModeActive ? 'Increase' : 'Discount'} applied to ${updatedCount} SKU(s) based on API Price`, 'success');
             $('#discount-percentage-input').val('');
         }
 
@@ -1227,6 +1234,87 @@
             });
         }
 
+        function clearSpriceForSelected() {
+            if (selectedSkus.size === 0) {
+                showToast('Please select SKUs first', 'error');
+                return;
+            }
+
+            // Confirm before clearing
+            if (!confirm(`Clear S PRC for ${selectedSkus.size} selected SKU(s)?\n\nThis will clear:\n- S PRC (Saved Price)\n- SROI% (Saved ROI)\n- SPFT% (Saved PFT)\n- SGPRFT% (Saved GPFT)\n\nAll values will be set to 0.`)) {
+                return;
+            }
+
+            let clearedCount = 0;
+            let failedCount = 0;
+
+            // Loop through selected SKUs
+            selectedSkus.forEach(sku => {
+                const rows = table.searchRows("sku", "=", sku);
+                
+                if (rows.length > 0) {
+                    const row = rows[0];
+                    const rowData = row.getData();
+                    const apiPrice = parseFloat(rowData['api_price']) || 0;
+                    
+                    // Clear sprice and all related calculated fields (SROI, SPFT, SGPRFT)
+                    row.update({
+                        sprice: 0,  // Clear saved price
+                        sroi_percent: 0,  // Clear SROI%
+                        spft_percent: 0,  // Clear SPFT%
+                        sgprft_percent: 0  // Clear SGPRFT%
+                    });
+                    
+                    // Save to backend
+                    fetch('/walmart-sheet-update-cell', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                        },
+                        body: JSON.stringify({
+                            sku: sku,
+                            field: 'sprice',
+                            value: 0  // Clear to 0
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(result => {
+                        if (result.success) {
+                            clearedCount++;
+                        } else {
+                            failedCount++;
+                            console.error('Failed to clear sprice for ' + sku);
+                        }
+                        
+                        // Show final toast after all requests complete
+                        if (clearedCount + failedCount === selectedSkus.size) {
+                            if (clearedCount > 0) {
+                                showToast(`S PRC, SROI%, SPFT%, SGPRFT% cleared for ${clearedCount} SKU(s)`, 'success');
+                            }
+                            if (failedCount > 0) {
+                                showToast(`Failed to clear ${failedCount} SKU(s)`, 'error');
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        failedCount++;
+                        console.error('Error clearing sprice:', error);
+                    });
+                    
+                } else {
+                    failedCount++;
+                }
+            });
+            
+            // Clear selection after clearing
+            setTimeout(() => {
+                selectedSkus.clear();
+                updateSelectedCount();
+                updateSelectAllCheckbox();
+            }, 500);
+        }
+
         function updateSummary() {
             if (!table) {
                 return;
@@ -1249,13 +1337,13 @@
             let totalViews = 0;
             let totalDilPercent = 0;
             let dilCount = 0;
-            let bbIssueCount = 0; // Count of items where W Price < A Price
+            let bbIssueCount = 0; // Count of items where API Price < A Price
             let missingCount = 0; // Count of items missing in Walmart
             let mapCount = 0; // Count of items with inventory mapped
             let nmapCount = 0; // Count of items with inventory not mapped
             let moreThanZeroSoldCount = 0; // Count of items with sales > 0
-            let gtAmzCount = 0; // Count of items where W Price > Amazon Price
-            let ltAmzCount = 0; // Count of items where W Price < Amazon Price
+            let gtAmzCount = 0; // Count of items where API Price > Amazon Price
+            let ltAmzCount = 0; // Count of items where API Price < Amazon Price
             
             data.forEach(row => {
                 const qty = parseInt(row['total_qty']) || 0;
@@ -1302,20 +1390,20 @@
                 // Walmart L30 (total sales value from actual orders)
                 totalWalmartL30 += salesAmt;
                 
-                // Count if W Price < A Price (BB Issue) and price comparisons
-                const wPrice = parseFloat(row['w_price']) || 0;
+                // Count if API Price < A Price (BB Issue) and price comparisons
+                const apiPrice = parseFloat(row['api_price']) || 0;
                 const aPrice = parseFloat(row['a_price']) || 0;
                 
-                if (wPrice > 0 && aPrice > 0) {
-                    // BB Issue: W Price < A Price
-                    if (wPrice < aPrice) {
+                if (apiPrice > 0 && aPrice > 0) {
+                    // BB Issue: API Price < A Price
+                    if (apiPrice < aPrice) {
                         bbIssueCount++;
                     }
                     
                     // Price comparison with Amazon
-                    if (wPrice > aPrice) {
+                    if (apiPrice > aPrice) {
                         gtAmzCount++;
-                    } else if (wPrice < aPrice) {
+                    } else if (apiPrice < aPrice) {
                         ltAmzCount++;
                     }
                 }
@@ -1332,11 +1420,14 @@
                     nmapCount++;
                 }
                 
-                // Count SKUs with 0 sold and more than 0 sold
-                if (qty === 0) {
-                    zeroSoldCount++;
-                } else if (qty > 0) {
-                    moreThanZeroSoldCount++;
+                // Count SKUs with 0 sold and more than 0 sold (Walmart L30 only, INV > 0)
+                // qty = total_qty from walmart_daily_data (period = L30)
+                if (INV > 0) { // Only count items with inventory
+                    if (qty === 0) {
+                        zeroSoldCount++;
+                    } else if (qty > 0) {
+                        moreThanZeroSoldCount++;
+                    }
                 }
                 
             });
@@ -1385,17 +1476,17 @@
             $('#total-products-badge').text('Total Products: ' + totalProducts.toLocaleString());
             $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
             
-            // 0 Sold badge (Red when count > 0)
+            // 0 Sold badge (Red when count > 0) - Walmart L30 only
             const zeroSoldBadge = $('#zero-sold-count-badge');
-            zeroSoldBadge.text('0 Sold: ' + zeroSoldCount.toLocaleString());
+            zeroSoldBadge.text('W 0 Sold: ' + zeroSoldCount.toLocaleString());
             if (zeroSoldCount === 0) {
                 zeroSoldBadge.removeClass('bg-danger').addClass('bg-success');
             } else {
                 zeroSoldBadge.removeClass('bg-success').addClass('bg-danger');
             }
             
-            // More than 0 Sold badge (always green)
-            $('#more-than-zero-sold-badge').text('>0 Sold: ' + moreThanZeroSoldCount.toLocaleString());
+            // More than 0 Sold badge (always green) - Walmart L30 only
+            $('#more-than-zero-sold-badge').text('W >0 Sold: ' + moreThanZeroSoldCount.toLocaleString());
             
             // Update Missing badge with green color when count is 0
             const missingBadge = $('#missing-count-badge');
@@ -1733,24 +1824,38 @@
                     }
                 },
                 {
-                    title: "W Price",
-                    field: "w_price",
+                    title: "W Prc",
+                    field: "api_price",
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const wPrice = parseFloat(cell.getValue()) || 0;
-                        const aPrice = parseFloat(rowData['a_price']) || 0;
-                        
-                        // If W Price < A Price, show in red (BB Issue)
-                        const isRedFlag = wPrice > 0 && aPrice > 0 && wPrice < aPrice;
-                        const color = isRedFlag ? '#a00211' : '#000';
-                        const fontWeight = isRedFlag ? 'bold' : 'normal';
-                        
-                        return `<span style="color: ${color}; font-weight: ${fontWeight};">$${wPrice.toFixed(2)}</span>`;
-                    }
+                        const value = cell.getValue();
+                        if (!value || parseFloat(value) === 0) return '-';
+                        return `<span style="color: #0066cc; font-weight: 500;">$${parseFloat(value).toFixed(2)}</span>`;
+                    },
+                    tooltip: "Current price from Walmart API"
                 },
-               
+                {
+                    title: "BB PRC",
+                    field: "buybox_price",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        const rowData = cell.getRow().getData();
+                        const apiPrice = parseFloat(rowData['api_price']) || 0;
+                        const buyboxPrice = parseFloat(value) || 0;
+                        
+                        if (!value || buyboxPrice === 0) return '-';
+                        
+                        // Green if we have buybox (buybox <= our price), Red if we don't
+                        const haveBuybox = buyboxPrice > 0 && apiPrice > 0 && Math.abs(buyboxPrice - apiPrice) < 0.5;
+                        const color = haveBuybox ? '#28a745' : '#ffa500';
+                        
+                        return `<span style="color: ${color}; font-weight: bold;">$${buyboxPrice.toFixed(2)}</span>`;
+                    },
+                    tooltip: "Buy Box price from Walmart API (Green = You have it)"
+                },
                 {
                     title: "GPRFT %",
                     field: "gpft", // Show GPFT% (Gross Profit % - BEFORE ads)
@@ -1829,6 +1934,7 @@
                         e.stopPropagation();
                     }
                 },
+                
                 {
                     title: "S PRC",
                     field: "sprice",
@@ -2058,11 +2164,11 @@
             // BB Issue Dropdown Filter
             if (bbIssueFilter !== 'all') {
                 table.addFilter(function(data) {
-                    const wPrice = parseFloat(data.w_price) || 0;
+                    const apiPrice = parseFloat(data.api_price) || 0;
                     const aPrice = parseFloat(data.a_price) || 0;
                     
                     if (bbIssueFilter === 'bb-issue') {
-                        return wPrice > 0 && aPrice > 0 && wPrice < aPrice;
+                        return apiPrice > 0 && aPrice > 0 && apiPrice < aPrice;
                     }
                     return true;
                 });
@@ -2093,19 +2199,22 @@
 
             // === BADGE FILTERS (CLICKABLE) - All work together ===
             
-            // 0 Sold Filter (mutually exclusive with >0 Sold)
+            // 0 Sold Filter - Walmart L30 only (mutually exclusive with >0 Sold)
+            // total_qty = Walmart L30 quantity from walmart_daily_data (period = 'l30')
             if (zeroSoldFilterActive) {
                 table.addFilter(function(data) {
-                    const qty = parseInt(data['total_qty']) || 0;
-                    return qty === 0;
+                    const wL30 = parseInt(data['total_qty']) || 0;
+                    const inv = parseFloat(data['INV']) || 0;
+                    return wL30 === 0 && inv > 0; // Walmart L30 = 0 AND has inventory
                 });
             }
             
-            // >0 Sold Filter (mutually exclusive with 0 Sold)
+            // >0 Sold Filter - Walmart L30 only (mutually exclusive with 0 Sold)
             if (moreThanZeroSoldFilterActive) {
                 table.addFilter(function(data) {
-                    const qty = parseInt(data['total_qty']) || 0;
-                    return qty > 0;
+                    const wL30 = parseInt(data['total_qty']) || 0;
+                    const inv = parseFloat(data['INV']) || 0;
+                    return wL30 > 0 && inv > 0; // Walmart L30 > 0 AND has inventory
                 });
             }
             
@@ -2133,9 +2242,9 @@
             // > AMZ Filter (mutually exclusive with < AMZ)
             if (gtAmzFilterActive) {
                 table.addFilter(function(data) {
-                    const wPriceVal = parseFloat(data['w_price']) || 0;
+                    const apiPriceVal = parseFloat(data['api_price']) || 0;
                     const aPriceVal = parseFloat(data['a_price']) || 0;
-                    return wPriceVal > 0 && aPriceVal > 0 && wPriceVal > aPriceVal;
+                    return apiPriceVal > 0 && aPriceVal > 0 && apiPriceVal > aPriceVal;
                 });
             }
             
@@ -2151,7 +2260,7 @@
             // BB Issue Badge Filter (works with all other filters)
             if (bbIssueFilterActive) {
                 table.addFilter(function(data) {
-                    const wPriceVal = parseFloat(data.w_price) || 0;
+                    const apiPriceVal = parseFloat(data.api_price) || 0;
                     const aPriceVal = parseFloat(data.a_price) || 0;
                     return wPriceVal > 0 && aPriceVal > 0 && wPriceVal < aPriceVal;
                 });
