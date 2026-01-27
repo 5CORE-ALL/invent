@@ -335,4 +335,132 @@ class TaskController extends Controller
         $users = User::select('id', 'name')->get();
         return response()->json($users);
     }
+
+    public function downloadTemplate()
+    {
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="task_import_template.csv"',
+        ];
+
+        $columns = ['Group', 'Task', 'Assignor', 'Assignee', 'Status', 'Priority', 'Image', 'Links'];
+        $sampleData = [
+            ['Marketplaces', 'Sample Task 1', 'John Doe', 'Jane Smith', 'Todo', 'Normal', '', 'https://example.com'],
+            ['Development', 'Sample Task 2', 'Jane Smith', 'John Doe', 'Working', 'High', '', 'L1: https://link1.com'],
+        ];
+
+        $callback = function() use ($columns, $sampleData) {
+            $file = fopen('php://output', 'w');
+            fputcsv($file, $columns);
+            foreach ($sampleData as $row) {
+                fputcsv($file, $row);
+            }
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
+    }
+
+    public function importCsv(Request $request)
+    {
+        $request->validate([
+            'csv_file' => 'required|file|mimes:csv,txt|max:2048',
+        ]);
+
+        $file = $request->file('csv_file');
+        $handle = fopen($file->getRealPath(), 'r');
+        
+        // Skip header row
+        $header = fgetcsv($handle);
+        
+        $imported = 0;
+        $skipped = 0;
+        $errors = [];
+
+        while (($row = fgetcsv($handle)) !== false) {
+            try {
+                // Map CSV columns: Group, Task, Assignor, Assignee, Status, Priority, Image, Links
+                $group = $row[0] ?? null;
+                $title = $row[1] ?? null;
+                $assignorName = $row[2] ?? null;
+                $assigneeName = $row[3] ?? null;
+                $status = $row[4] ?? 'pending';
+                $priority = $row[5] ?? 'normal';
+                $image = $row[6] ?? null;
+                $links = $row[7] ?? null;
+
+                // Skip if no title
+                if (empty($title)) {
+                    $skipped++;
+                    continue;
+                }
+
+                // Find users by name
+                $assignor = User::where('name', 'LIKE', '%' . $assignorName . '%')->first();
+                $assignee = User::where('name', 'LIKE', '%' . $assigneeName . '%')->first();
+
+                if (!$assignor) {
+                    $assignor = Auth::user(); // Default to current user
+                }
+
+                // Map status values
+                $statusMap = [
+                    'todo' => 'pending',
+                    'working' => 'in_progress',
+                    'archived' => 'archived',
+                    'done' => 'completed',
+                    'need help' => 'need_help',
+                    'need approval' => 'need_approval',
+                    'dependent' => 'dependent',
+                    'approved' => 'approved',
+                    'hold' => 'hold',
+                    'cancelled' => 'cancelled',
+                ];
+                $status = $statusMap[strtolower($status)] ?? 'pending';
+
+                // Map priority
+                $priorityMap = [
+                    'urgent' => 'high',
+                    'high' => 'high',
+                    'normal' => 'normal',
+                    'low' => 'low',
+                ];
+                $priority = $priorityMap[strtolower($priority)] ?? 'normal';
+
+                // Parse links (format: "L1: url")
+                $l1 = null;
+                if ($links && preg_match('/L1:\s*(.+)/i', $links, $matches)) {
+                    $l1 = trim($matches[1]);
+                }
+
+                // Create task
+                Task::create([
+                    'title' => $title,
+                    'group' => $group,
+                    'assignor_id' => $assignor->id,
+                    'assignee_id' => $assignee ? $assignee->id : null,
+                    'status' => $status,
+                    'priority' => $priority,
+                    'l1' => $l1,
+                    'etc_minutes' => 10, // Default
+                    'tid' => now(),
+                ]);
+
+                $imported++;
+            } catch (\Exception $e) {
+                $skipped++;
+                $errors[] = 'Row ' . ($imported + $skipped) . ': ' . $e->getMessage();
+            }
+        }
+
+        fclose($handle);
+
+        return response()->json([
+            'success' => true,
+            'imported' => $imported,
+            'skipped' => $skipped,
+            'errors' => $errors,
+            'message' => "$imported task(s) imported successfully!",
+        ]);
+    }
 }

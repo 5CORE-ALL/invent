@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Task Manager', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'Task Manager', 'sidenav' => 'condensed'])
 
 @section('css')
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
@@ -549,8 +549,8 @@
                     </div>
                     <div class="stat-content">
                         <div class="stat-label">ETC</div>
-                        <div class="stat-value">{{ $stats['etc_total'] }}</div>
-                        <div class="stat-unit">minutes</div>
+                        <div class="stat-value">{{ number_format($stats['etc_total'] / 60, 1) }}</div>
+                        <div class="stat-unit">hours</div>
                     </div>
                 </div>
             </div>
@@ -563,8 +563,8 @@
                     </div>
                     <div class="stat-content">
                         <div class="stat-label">ATC</div>
-                        <div class="stat-value">{{ $stats['atc_total'] }}</div>
-                        <div class="stat-unit">minutes</div>
+                        <div class="stat-value">{{ number_format($stats['atc_total'] / 60, 1) }}</div>
+                        <div class="stat-unit">hours</div>
                     </div>
                 </div>
             </div>
@@ -577,8 +577,8 @@
                     </div>
                     <div class="stat-content">
                         <div class="stat-label">DONE ETC</div>
-                        <div class="stat-value">{{ $stats['done_etc'] }}</div>
-                        <div class="stat-unit">minutes</div>
+                        <div class="stat-value">{{ number_format($stats['done_etc'] / 60, 1) }}</div>
+                        <div class="stat-unit">hours</div>
                     </div>
                 </div>
             </div>
@@ -591,8 +591,8 @@
                     </div>
                     <div class="stat-content">
                         <div class="stat-label">DONE ATC</div>
-                        <div class="stat-value">{{ $stats['done_atc'] }}</div>
-                        <div class="stat-unit">minutes</div>
+                        <div class="stat-value">{{ number_format($stats['done_atc'] / 60, 1) }}</div>
+                        <div class="stat-unit">hours</div>
                     </div>
                 </div>
             </div>
@@ -608,6 +608,10 @@
                                     <a href="{{ route('tasks.create') }}" class="btn btn-danger btn-create-task">
                                         <i class="mdi mdi-plus-circle me-2"></i> Create Task
                                     </a>
+                                    
+                                    <button type="button" class="btn btn-success ms-2" id="upload-csv-btn">
+                                        <i class="mdi mdi-file-upload me-2"></i> Upload CSV
+                                    </button>
                                     
                                     @if($isAdmin)
                                     <button type="button" class="btn btn-info ms-2" id="bulk-actions-btn">
@@ -868,6 +872,58 @@
         </div>
     </div>
 </div>
+
+<!-- CSV Upload Modal -->
+<div class="modal fade" id="csvUploadModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%); color: white;">
+                <h5 class="modal-title">
+                    <i class="mdi mdi-file-upload me-2"></i>Upload Tasks via CSV
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="csv-upload-form" enctype="multipart/form-data">
+                @csrf
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <h6 class="alert-heading"><i class="mdi mdi-information me-2"></i>CSV Format Required:</h6>
+                        <p class="mb-1"><strong>Columns:</strong> Group, Task, Assignor, Assignee, Status, Priority, Image, Links</p>
+                        <p class="mb-1"><strong>Status Options:</strong> Todo, Working, Archived, Done, Need Help, Need Approval, Dependent, Approved, Hold, Cancelled</p>
+                        <p class="mb-0"><strong>Priority Options:</strong> Low, Normal, High, Urgent</p>
+                        <p class="mb-0"><small class="text-muted">Note: Assignor and Assignee should match exact user names in the system</small></p>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="csv-file" class="form-label fw-bold">Select CSV File <span class="text-danger">*</span></label>
+                        <input type="file" class="form-control" id="csv-file" name="csv_file" accept=".csv,.txt" required>
+                    </div>
+
+                    <div class="mb-3">
+                        <a href="{{ route('tasks.downloadTemplate') }}" class="btn btn-sm btn-outline-primary">
+                            <i class="mdi mdi-download me-1"></i> Download Sample CSV Template
+                        </a>
+                    </div>
+
+                    <div id="upload-progress" style="display: none;">
+                        <div class="progress mb-2">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: 100%"></div>
+                        </div>
+                        <p class="text-center text-muted"><i class="mdi mdi-loading mdi-spin me-2"></i>Uploading and processing tasks...</p>
+                    </div>
+
+                    <div id="upload-result" style="display: none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success" id="upload-csv-submit">
+                        <i class="mdi mdi-upload me-1"></i> Upload & Import
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
 @endsection
 
 @section('script')
@@ -885,6 +941,16 @@
                 selectable: isAdmin,
                 ajaxURL: "{{ route('tasks.data') }}",
                 ajaxParams: {},
+                ajaxContentType: "json",
+                ajaxResponse: function(url, params, response) {
+                    console.log('===== TASK MANAGER DEBUG =====');
+                    console.log('Tasks loaded:', response.length);
+                    console.log('Current User ID:', currentUserId);
+                    console.log('Is Admin:', isAdmin);
+                    console.log('Tasks data:', response);
+                    console.log('==============================');
+                    return response;
+                },
                 layout: "fitData",
                 pagination: true,
                 paginationSize: 25,
@@ -1269,6 +1335,73 @@
                 }
             });
 
+            // Show CSV Upload Modal
+            $('#upload-csv-btn').on('click', function() {
+                $('#csvUploadModal').modal('show');
+            });
+
+            // Handle CSV Upload
+            $('#csv-upload-form').on('submit', function(e) {
+                e.preventDefault();
+                
+                var fileInput = $('#csv-file')[0];
+                if (!fileInput.files.length) {
+                    alert('Please select a CSV file');
+                    return;
+                }
+                
+                var formData = new FormData();
+                formData.append('csv_file', fileInput.files[0]);
+                formData.append('_token', '{{ csrf_token() }}');
+                
+                // Show progress
+                $('#upload-progress').show();
+                $('#upload-csv-submit').prop('disabled', true);
+                $('#upload-result').hide();
+                
+                $.ajax({
+                    url: '/tasks/import-csv',
+                    type: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(response) {
+                        $('#upload-progress').hide();
+                        $('#upload-csv-submit').prop('disabled', false);
+                        
+                        var resultHtml = `
+                            <div class="alert alert-success">
+                                <h6 class="alert-heading"><i class="mdi mdi-check-circle me-2"></i>Import Successful!</h6>
+                                <p class="mb-0">✅ ${response.imported} task(s) imported successfully</p>
+                                ${response.skipped > 0 ? '<p class="mb-0">⚠️ ' + response.skipped + ' row(s) skipped due to errors</p>' : ''}
+                            </div>
+                        `;
+                        
+                        $('#upload-result').html(resultHtml).show();
+                        
+                        setTimeout(function() {
+                            $('#csvUploadModal').modal('hide');
+                            $('#csv-upload-form')[0].reset();
+                            $('#upload-result').hide();
+                            location.reload(); // Reload to show new tasks
+                        }, 2000);
+                    },
+                    error: function(xhr) {
+                        $('#upload-progress').hide();
+                        $('#upload-csv-submit').prop('disabled', false);
+                        
+                        var errorMsg = xhr.responseJSON?.message || 'Upload failed. Please check your CSV format.';
+                        var resultHtml = `
+                            <div class="alert alert-danger">
+                                <h6 class="alert-heading"><i class="mdi mdi-alert-circle me-2"></i>Import Failed</h6>
+                                <p class="mb-0">${errorMsg}</p>
+                            </div>
+                        `;
+                        $('#upload-result').html(resultHtml).show();
+                    }
+                });
+            });
+
             // Show Bulk Actions Modal
             $('#bulk-actions-btn').on('click', function() {
                 if (selectedTasks.length === 0) {
@@ -1651,9 +1784,16 @@
             });
 
             // Delete Task
-            $(document).on('click', '.delete-task', function() {
+            $(document).on('click', '.delete-task', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                var taskId = $(this).data('id');
+                console.log('Delete clicked for task ID:', taskId);
+                
                 if(confirm('Are you sure you want to delete this task?')) {
-                    var taskId = $(this).data('id');
+                    console.log('Delete confirmed, sending request...');
+                    
                     $.ajax({
                         url: '/tasks/' + taskId,
                         type: 'DELETE',
@@ -1661,7 +1801,9 @@
                             _token: '{{ csrf_token() }}'
                         },
                         success: function(response) {
+                            console.log('Delete successful:', response);
                             table.replaceData();
+                            
                             // Show success message
                             var alertHtml = `
                                 <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -1674,7 +1816,13 @@
                             // Auto dismiss after 3 seconds
                             setTimeout(function() {
                                 $('.alert').fadeOut();
+                                location.reload(); // Reload page to update statistics
                             }, 3000);
+                        },
+                        error: function(xhr, status, error) {
+                            console.error('Delete failed:', xhr.responseJSON);
+                            var errorMsg = xhr.responseJSON?.message || 'Failed to delete task. You may not have permission.';
+                            alert('Error: ' + errorMsg);
                         }
                     });
                 }
