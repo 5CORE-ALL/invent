@@ -128,13 +128,12 @@
         }
         .stats-box {
             padding: 12px 16px;
-            min-width: 120px;
+            min-width: 130px;
             background: #fff;
             border-radius: 8px;
             box-shadow: 0 2px 6px rgba(0,0,0,0.08);
             border: 1px solid #e5e7eb;
             transition: all 0.2s;
-            flex: 0 1 auto;
         }
 
         .stats-box:hover {
@@ -157,21 +156,6 @@
         .stats-value.primary { color: #2563eb; }
         .stats-value.danger { color: #dc2626; }
         .stats-value.success { color: #16a34a; }
-
-        @media (max-width: 768px) {
-            .stats-box {
-                min-width: 100px;
-                padding: 10px 12px;
-            }
-            
-            .stats-value {
-                font-size: 18px;
-            }
-            
-            .stats-label {
-                font-size: 12px;
-            }
-        }
     </style>
 @endsection
 @section('content')
@@ -191,55 +175,50 @@
                         </h4>
 
                         <!-- Filters Row -->
+                        <!-- Stats Row -->
                         <div class="row g-3 mb-3">
-                            <!-- Left side controls -->
-                            <div class="col-12 col-lg-8">
-                                <div class="d-flex flex-wrap gap-2 align-items-center">
-                                    <input type="text" id="global-search" class="form-control form-control-md" placeholder="Search campaign..." style="min-width: 200px; flex: 1 1 auto; max-width: 300px;">
+                            <div class="col-12">
+                                <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center">
+                                    <!-- Left side controls -->
+                                    <div class="d-flex gap-2">
+                                        <input type="text" id="global-search" class="form-control form-select-md border-1 border-secondary" placeholder="Search campaign...">
 
-                                    <button id="export-btn" class="btn btn-success btn-md d-flex align-items-center gap-2" style="white-space: nowrap;">
-                                        <i class="fa-solid fa-file-excel"></i>
-                                        <span class="d-none d-md-inline">Export to Excel</span>
-                                        <span class="d-md-none">Export</span>
-                                    </button>
+                                        <select id="status-filter" class="form-select form-select-md" style="width: 140px;">
+                                            <option value="">All Status</option>
+                                            <option value="ENABLED">Enabled</option>
+                                            <option value="PAUSED">Paused</option>
+                                        </select>
 
-                                    <select id="status-filter" class="form-select form-select-md" style="width: 140px;">
-                                        <option value="">All Status</option>
-                                        <option value="ENABLED">Enabled</option>
-                                        <option value="PAUSED">Paused</option>
-                                    </select>
+                                        <select id="inv-filter" class="form-select form-select-md" style="width: 200px;">
+                                            <option value="">Select INV</option>
+                                            <option value="ALL">ALL</option>
+                                            <option value="INV_0">0 INV</option>
+                                            <option value="OTHERS">OTHERS</option>
+                                        </select>
 
-                                    <select id="inv-filter" class="form-select form-select-md" style="width: 200px;">
-                                        <option value="">Select INV</option>
-                                        <option value="ALL">ALL</option>
-                                        <option value="INV_0">0 INV</option>
-                                        <option value="OTHERS">OTHERS</option>
-                                    </select>
-
-                                    <select id="missingAds-filter" class="form-select form-select-md" style="width: 180px;">
-                                        <option value="">Select Missing Ads</option>
-                                        <option value="KW Running">KW Running</option>
-                                        <option value="KW Missing">KW Missing</option>
-                                    </select>
-                                </div>
-                            </div>
-
-                            <!-- Right side - Stats Boxes -->
-                            <div class="col-12 col-lg-4">
-                                <div class="d-flex flex-wrap gap-2 justify-content-lg-end justify-content-start">
-                                    <div class="stats-box">
-                                        <div class="stats-label">Total SKUs</div>
-                                        <div id="total-campaigns" class="stats-value primary">0</div>
-                                    </div>
-                                    
-                                    <div class="stats-box">
-                                        <div class="stats-label">KW Missing</div> 
-                                        <div id="kw-missing" class="stats-value danger">0</div>
+                                        <select id="missingAds-filter" class="form-select form-select-md" style="width: 180px;">
+                                            <option value="">Select Missing Ads</option>
+                                            <option value="KW Running">KW Running</option>
+                                            <option value="KW Missing">KW Missing</option>
+                                        </select>
                                     </div>
 
-                                    <div class="stats-box">
-                                        <div class="stats-label">KW Running</div>
-                                        <div id="kw-running" class="stats-value success">0</div>
+                                    <!-- Right side - Stats Boxes -->
+                                    <div class="d-flex flex-wrap gap-3">
+                                        <div class="stats-box">
+                                            <div class="stats-label">Total SKUs</div>
+                                            <div id="total-campaigns" class="stats-value primary">0</div>
+                                        </div>
+                                        
+                                        <div class="stats-box">
+                                            <div class="stats-label">KW Missing</div> 
+                                            <div id="kw-missing" class="stats-value danger">0</div>
+                                        </div>
+
+                                        <div class="stats-box">
+                                            <div class="stats-label">KW Running</div>
+                                            <div id="kw-running" class="stats-value success">0</div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -256,12 +235,9 @@
 
 @section('script')
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script>
         document.addEventListener("DOMContentLoaded", function() {
-            // Global map to track NRA values for all SKUs
-            const nraValuesMap = {};
 
             const invFilter  = document.querySelector("#inv-filter");
             const nrlFilter  = document.querySelector("#nrl-filter");
@@ -346,80 +322,30 @@
                     {
                         title: "NRA",
                         field: "NRA",
-                        download: true,
                         formatter: function(cell) {
                             const row = cell.getRow();
-                            const rowData = row.getData();
-                            const sku = rowData.sku;
-                            
-                            // Get value from rowData.NRA (this is the source of truth)
-                            // cell.getValue() can sometimes return stale values
-                            let value = rowData.NRA || cell.getValue() || '';
-                            
-                            // Handle null, undefined, or empty values and normalize
-                            if (value) {
-                                value = String(value).trim().toUpperCase();
-                            } else {
-                                value = '';
-                            }
-
-                            // Normalize value to match options (RA, NRA, LATER)
-                            let normalizedValue = '';
-                            if (value === 'RA' || value === 'NRA' || value === 'LATER') {
-                                normalizedValue = value;
-                            } else {
-                                normalizedValue = ''; // Empty if not matching
-                            }
+                            const sku = row.getData().sku;
+                            const value = cell.getValue()?.trim();
 
                             let bgColor = "";
-                            if (normalizedValue === "NRA") {
+                            if (value === "NRA") {
                                 bgColor = "background-color:#dc3545;color:#fff;"; // red
-                            } else if (normalizedValue === "RA") {
+                            } else if (value === "RA") {
                                 bgColor = "background-color:#28a745;color:#fff;"; // green
-                            } else if (normalizedValue === "LATER") {
+                            } else if (value === "LATER") {
                                 bgColor = "background-color:#ffc107;color:#000;"; // yellow
                             }
 
-                            // Build select with proper selected attribute
-                            const selectHTML = `
+                            return `
                                 <select class="form-select form-select-sm editable-select" 
                                         data-sku="${sku}" 
                                         data-field="NR"
-                                        data-value="${normalizedValue}"
                                         style="width: 100px; ${bgColor}">
-                                    <option value="RA" ${normalizedValue === 'RA' ? 'selected="selected"' : ''}>RA</option>
-                                    <option value="NRA" ${normalizedValue === 'NRA' ? 'selected="selected"' : ''}>NRA</option>
-                                    <option value="LATER" ${normalizedValue === 'LATER' ? 'selected="selected"' : ''}>LATER</option>
+                                    <option value="RA" ${value === 'RA' ? 'selected' : ''}>RA</option>
+                                    <option value="NRA" ${value === 'NRA' ? 'selected' : ''}>NRA</option>
+                                    <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>LATER</option>
                                 </select>
                             `;
-                            return selectHTML;
-                        },
-                        titleDownload: "NRA",
-                        accessorDownload: function(value, data, type, params, column) {
-                            // Priority 1: Check global map (most reliable)
-                            let nraValue = '';
-                            if (data.sku && typeof nraValuesMap !== 'undefined' && nraValuesMap[data.sku]) {
-                                nraValue = nraValuesMap[data.sku];
-                            }
-                            
-                            // Priority 2: Get value from row data
-                            if (!nraValue) {
-                                nraValue = data.NRA || '';
-                            }
-                            
-                            // Priority 3: Try to get from DOM element
-                            if (!nraValue && data.sku) {
-                                const allSelects = document.querySelectorAll('select.editable-select');
-                                const selectElement = Array.from(allSelects).find(select => {
-                                    return select.getAttribute('data-sku') === data.sku;
-                                });
-                                if (selectElement && selectElement.value) {
-                                    nraValue = selectElement.value;
-                                }
-                            }
-                            
-                            // Return the value, ensuring it's not null or undefined
-                            return nraValue || '';
                         },
                         hozAlign: "center",
                         visible: true
@@ -443,9 +369,6 @@
                             } 
                             
                         },
-                        accessorDownload: function(value, data, type, params, column) {
-                            return data.campaignName ? 'KW Running' : 'KW Missing';
-                        },
                     },
                     {
                         title: "Campaign",
@@ -454,14 +377,6 @@
                     },
                 ],
                 ajaxResponse: function(url, params, response) {
-                    // Populate map with all NRA values from server response
-                    if (response && response.data && Array.isArray(response.data)) {
-                        response.data.forEach(row => {
-                            if (row.sku && row.NRA) {
-                                nraValuesMap[row.sku] = row.NRA;
-                            }
-                        });
-                    }
                     return response.data;
                 }
             });
@@ -474,11 +389,6 @@
 
                 console.log(`SKU: ${sku}, Field: ${field}, Value: ${value}`);
 
-                // Store in global map immediately
-                if (sku) {
-                    nraValuesMap[sku] = value;
-                }
-
                 fetch('/walmart/save-nr', {
                     method: 'POST',
                     headers: {
@@ -490,17 +400,6 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        // Update Tabulator row data
-                        let row = table.getRow(sku);
-                        if (row) {
-                            row.update({NRA: value});
-                        }
-                        
-                        // Ensure map is updated
-                        if (sku) {
-                            nraValuesMap[sku] = value;
-                        }
-                        
                         let bgColor = "";
                         if (value === "NRA") {
                             bgColor = "background-color:#dc3545;color:#fff;"; 
@@ -519,30 +418,7 @@
                 });
             });
 
-            // Function to sync dropdown values to map
-            function syncDropdownsToMap() {
-                const allSelects = document.querySelectorAll('select.editable-select');
-                allSelects.forEach(select => {
-                    const sku = select.getAttribute('data-sku');
-                    const value = select.value || '';  // Empty string भी valid value है
-                    if (sku) {
-                        nraValuesMap[sku] = value;
-                    }
-                });
-            }
-
             table.on("tableBuilt", function () {
-                // Initialize nraValuesMap with ALL initial data (including empty NRA)
-                const initialData = table.getData();
-                initialData.forEach(row => {
-                    if (row.sku) {
-                        // Store initial value, even if empty (will be updated when user selects)
-                        nraValuesMap[row.sku] = row.NRA || '';
-                    }
-                });
-                
-                // Sync dropdowns after a short delay to ensure DOM is ready
-                setTimeout(syncDropdownsToMap, 500);
 
                 function combinedFilter(data) {
                     // 🔍 Global Search
@@ -617,120 +493,12 @@
                 $("#global-search").on("keyup", reapplyFiltersAndUpdate);
                 $("#status-filter, #inv-filter, #missingAds-filter").on("change", reapplyFiltersAndUpdate);
 
-                table.on("dataFiltered", function() {
-                    updateCampaignStats();
-                    setTimeout(syncDropdownsToMap, 100);
-                });
-                table.on("pageLoaded", function() {
-                    updateCampaignStats();
-                    setTimeout(syncDropdownsToMap, 100);
-                });
-                table.on("dataProcessed", function() {
-                    updateCampaignStats();
-                    setTimeout(syncDropdownsToMap, 100);
-                });
-                table.on("dataLoaded", function() {
-                    setTimeout(syncDropdownsToMap, 100);
-                });
+                table.on("dataFiltered", updateCampaignStats);
+                table.on("pageLoaded", updateCampaignStats);
+                table.on("dataProcessed", updateCampaignStats);
 
                 // ✅ Initial Stats Load
                 updateCampaignStats();
-            });
-
-            // ✅ Export Functionality - Custom Manual Export
-            document.getElementById("export-btn").addEventListener("click", function() {
-                // Get all active row data from Tabulator
-                let allRowData = table.getData("active");
-                
-                // STEP 1: Collect all visible dropdowns and their selected values
-                const allSelects = document.querySelectorAll('select.editable-select');
-                const dropdownValuesMap = {}; // Map to store SKU -> selected value from dropdowns
-                
-                allSelects.forEach(select => {
-                    const sku = select.getAttribute('data-sku');
-                    const value = select.value; // This will be "RA", "NRA", or "LATER"
-                    if (sku && value) {
-                        dropdownValuesMap[sku] = value;
-                    }
-                });
-                
-                // STEP 2: Prepare export data
-                const exportData = [];
-                
-                // Headers
-                exportData.push([
-                    "Parent",
-                    "SKU", 
-                    "INV",
-                    "OV L30",
-                    "DIL %",
-                    "WA L30",
-                    "NRA",
-                    "Missing Ads"
-                ]);
-                
-                // STEP 3: Process each row
-                allRowData.forEach((rowData, index) => {
-                    const sku = rowData.sku;
-                    let nraValue = '';
-                    
-                    // Priority 1: If dropdown exists (visible row), use its selected value
-                    if (sku && dropdownValuesMap.hasOwnProperty(sku)) {
-                        nraValue = dropdownValuesMap[sku];
-                    }
-                    // Priority 2: If rowData.NRA has value (from server), use it
-                    else if (rowData.NRA) {
-                        nraValue = rowData.NRA;
-                    }
-                    // Priority 3: If no value found and dropdown not visible, use "RA" as default
-                    // (Because RA is the first option in dropdown, so it's the default selected)
-                    else {
-                        nraValue = 'RA'; // Default value when dropdown is not visible and no server value
-                    }
-                    
-                    // Calculate DIL %
-                    const l30 = parseFloat(rowData.L30) || 0;
-                    const inv = parseFloat(rowData.INV) || 0;
-                    let dilPercent = '0%';
-                    if (!isNaN(l30) && !isNaN(inv) && inv !== 0) {
-                        dilPercent = Math.round((l30 / inv) * 100) + '%';
-                    }
-                    
-                    // Missing Ads status
-                    const missingAds = rowData.campaignName ? 'KW Running' : 'KW Missing';
-                    
-                    exportData.push([
-                        rowData.parent || '',
-                        sku || '',
-                        rowData.INV || 0,
-                        rowData.L30 || 0,
-                        dilPercent,
-                        rowData.WA_L30 || 0,
-                        nraValue || '',  // This should now have the correct value
-                        missingAds
-                    ]);
-                });
-                
-                // Create workbook using SheetJS
-                const wb = XLSX.utils.book_new();
-                const ws = XLSX.utils.aoa_to_sheet(exportData);
-                
-                // Set column widths
-                ws['!cols'] = [
-                    { wch: 15 }, // Parent
-                    { wch: 25 }, // SKU
-                    { wch: 10 }, // INV
-                    { wch: 10 }, // OV L30
-                    { wch: 10 }, // DIL %
-                    { wch: 10 }, // WA L30
-                    { wch: 10 }, // NRA
-                    { wch: 15 }  // Missing Ads
-                ];
-                
-                XLSX.utils.book_append_sheet(wb, ws, "Missing Ads");
-                
-                // Download file
-                XLSX.writeFile(wb, "walmart-missing-ads.xlsx");
             });
 
             document.addEventListener("click", function(e) {

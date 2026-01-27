@@ -562,15 +562,15 @@ class Ebay3CampaignReports extends Command
         $clientId = env('EBAY_3_APP_ID');
         $clientSecret = env('EBAY_3_CERT_ID');
 
-        $scope = 'https://api.ebay.com/oauth/api_scope/sell.marketing.readonly https://api.ebay.com/oauth/api_scope/sell.marketing';
-
+        // Don't specify scope - eBay will use all originally granted scopes
+        // If you need sell.marketing.readonly, regenerate the refresh token with updated scopes
         try {
             $response = Http::asForm()
                 ->withBasicAuth($clientId, $clientSecret)
                 ->post('https://api.ebay.com/identity/v1/oauth2/token', [
                     'grant_type' => 'refresh_token',
                     'refresh_token' => env('EBAY_3_REFRESH_TOKEN'),
-                    'scope' => $scope,
+                    // Scope parameter removed - will use original scopes from token
                 ]);
 
             if ($response->successful()) {

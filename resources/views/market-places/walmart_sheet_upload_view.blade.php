@@ -102,6 +102,150 @@
             background-color: #e83e8c;
         }
 
+        /* Status dot styling (for MISSING column) */
+        .status-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+
+        .status-dot.green {
+            background-color: #28a745;
+        }
+
+        .status-dot.red {
+            background-color: #dc3545;
+        }
+
+        .status-dot.yellow {
+            background-color: #ffc107;
+        }
+
+        /* Dot dropdown styling (for NRA column) */
+        .dot-dropdown {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+
+        .dot-dropdown-btn {
+            width: 100%;
+            padding: 4px 8px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            background: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            font-size: 0.875rem;
+        }
+
+        .dot-dropdown-btn:hover {
+            background-color: #f8f9fa;
+        }
+
+        .dot-dropdown-menu {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            z-index: 10000;
+            min-width: 120px;
+            width: 100%;
+            background: white;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            margin-top: 2px;
+        }
+
+        .dot-dropdown-menu.show {
+            display: block;
+        }
+
+        .dot-dropdown-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.875rem;
+        }
+
+        .dot-dropdown-item:hover {
+            background-color: #f8f9fa;
+        }
+
+        .dot-dropdown-item.selected {
+            background-color: #e7f3ff;
+        }
+
+        /* Ensure dropdowns can overflow cells */
+        .tabulator-cell {
+            position: relative;
+            overflow: visible !important;
+        }
+
+        .tabulator-row .tabulator-cell {
+            overflow: visible !important;
+        }
+
+        /* Info icon styling for AD% column */
+        .ads-info-icon {
+            transition: color 0.2s;
+            cursor: pointer;
+            margin-left: 5px;
+        }
+
+        .ads-info-icon:hover {
+            color: #007bff !important;
+        }
+
+        #campaignModal .table {
+            font-size: 0.875rem;
+        }
+
+        /* Vertical column headers (like eBay2 tabulator view) */
+        #campaignModal .table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            white-space: nowrap;
+            transform: rotate(180deg);
+            height: 80px;
+            min-width: 40px;
+            width: 40px;
+            padding: 5px;
+            vertical-align: middle;
+            text-align: center;
+            font-size: 11px;
+        }
+
+        #campaignModal .table th > * {
+            display: inline-block;
+        }
+
+        /* Text color classes for campaign modal (like eBay2 - only value colored) */
+        #campaignModal .green-bg {
+            color: #05bd30 !important;
+            font-weight: 600 !important;
+        }
+
+        #campaignModal .pink-bg {
+            color: #ff01d0 !important;
+            font-weight: 600 !important;
+        }
+
+        #campaignModal .red-bg {
+            color: #ff2727 !important;
+            font-weight: 600 !important;
+        }
+
         /* ========== DROPDOWN STYLING ========== */
         .manual-dropdown-container {
             position: relative;
@@ -283,6 +427,9 @@
                     <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#uploadOrderModal">
                         <i class="fa fa-shopping-cart"></i> Upload Order
                     </button>
+                    <button type="button" class="btn btn-sm btn-secondary" id="toggle-ads-columns-btn">
+                        <i class="fa fa-ad"></i> Show Ads Columns
+                    </button>
                 </div>
 
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
@@ -304,6 +451,7 @@
                         <span class="badge bg-danger fs-6 p-2" id="zero-sold-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: W L30 = 0 (Walmart Last 30 Days Quantity = 0, INV>0)">W 0 Sold: 0</span>
                         <span class="badge fs-6 p-2" id="more-than-zero-sold-badge" style="background-color: #28a745; color: white; font-weight: bold; cursor: pointer;" title="Click to filter: W L30 > 0 (Walmart Last 30 Days Quantity > 0, INV>0)">W &gt;0 Sold: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="missing-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: Missing items (INV>0)">Missing: 0</span>
+                        <span class="badge bg-danger fs-6 p-2" id="missing-ads-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: Missing Ads (INV>0, no campaign spend)">Missing Ads: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="map-count-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: Mapped items (INV>0)">Map: 0</span>
                         <span class="badge bg-warning fs-6 p-2" id="nmap-count-badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter: Not mapped items (INV>0)">Nmap: 0</span>
                         <span class="badge bg-danger fs-6 p-2" id="lt-amz-badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter: API Price < Amazon (INV>0)">&lt; AMZ: 0</span>
@@ -468,6 +616,24 @@
             </div>
         </div>
     </div>
+
+    <!-- Campaign Details Modal (ADS% info icon) -->
+    <div class="modal fade" id="campaignModal" tabindex="-1" aria-labelledby="campaignModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="campaignModalLabel">Campaign Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="campaignModalBody">
+                    <!-- Content loaded via JS -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -482,6 +648,7 @@
     let zeroSoldFilterActive = false;
     let moreThanZeroSoldFilterActive = false;
     let missingFilterActive = false;
+    let missingAdsFilterActive = false;
     let mapFilterActive = false;
     let nmapFilterActive = false;
     let gtAmzFilterActive = false;
@@ -1339,6 +1506,7 @@
             let dilCount = 0;
             let bbIssueCount = 0; // Count of items where API Price < A Price
             let missingCount = 0; // Count of items missing in Walmart
+            let missingAdsCount = 0; // Count of items with missing ads (INV>0, no campaign spend)
             let mapCount = 0; // Count of items with inventory mapped
             let nmapCount = 0; // Count of items with inventory not mapped
             let moreThanZeroSoldCount = 0; // Count of items with sales > 0
@@ -1411,6 +1579,14 @@
                 // Count missing items
                 if (row['missing'] === 'M') {
                     missingCount++;
+                }
+                
+                // Count missing ads (INV > 0 and no campaign spend)
+                if (INV > 0) {
+                    const spend = parseFloat(row['spend']) || 0;
+                    if (spend === 0) {
+                        missingAdsCount++;
+                    }
                 }
                 
                 // Count Map/Nmap items
@@ -1495,6 +1671,15 @@
                 missingBadge.removeClass('bg-danger').addClass('bg-success');
             } else {
                 missingBadge.removeClass('bg-success').addClass('bg-danger');
+            }
+            
+            // Update Missing Ads badge with green color when count is 0
+            const missingAdsBadge = $('#missing-ads-count-badge');
+            missingAdsBadge.text('Missing Ads: ' + missingAdsCount.toLocaleString());
+            if (missingAdsCount === 0) {
+                missingAdsBadge.removeClass('bg-danger').addClass('bg-success');
+            } else {
+                missingAdsBadge.removeClass('bg-success').addClass('bg-danger');
             }
             
             // Update Map badge
@@ -1692,6 +1877,7 @@
                     hozAlign: "center",
                     width: 50,
                     headerSort: true,
+                    visible: true, // Visible by default
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (value === 'M') {
@@ -1704,6 +1890,49 @@
                         if (a === 'M' && b !== 'M') return -1;
                         if (a !== 'M' && b === 'M') return 1;
                         return 0;
+                    }
+                },
+                {
+                    title: "MISSING",
+                    field: "hasCampaign",
+                    hozAlign: "center",
+                    width: 100,
+                    visible: false, // Hidden by default, only show when ads columns are visible
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        const inv = parseFloat(row.INV || 0);
+
+                        // Don't show red dot for 0 INV items
+                        if (inv === 0) {
+                            return `<div style="display: flex; align-items: center; justify-content: center;">
+                                <span class="status-dot green" title="0 INV - Not applicable"></span>
+                            </div>`;
+                        }
+
+                        const hasCampaign = row.hasCampaign ?? (row.campaign_name?.trim() !== '');
+                        
+                        // Check if NRA is selected (red dot) - value should be "NRA"
+                        const nraValue = row.nra;
+                        const isNRA = nraValue && String(nraValue).trim().toUpperCase() === "NRA";
+                        
+                        // Determine dot color and title
+                        let dotColor = 'red';
+                        let title = 'Campaign Missing';
+                        
+                        if (!hasCampaign && isNRA) {
+                            dotColor = 'yellow';
+                            title = 'Campaign Missing - NRA Selected';
+                        } else if (hasCampaign) {
+                            dotColor = 'green';
+                            title = 'Campaign Exists';
+                        } else {
+                            dotColor = 'red';
+                            title = 'Campaign Missing';
+                        }
+                        
+                        return `<div style="display: flex; align-items: center; justify-content: center;">
+                            <span class="status-dot ${dotColor}" title="${title}"></span>
+                        </div>`;
                     }
                 },
                 {
@@ -1828,6 +2057,7 @@
                     field: "api_price",
                     hozAlign: "center",
                     sorter: "number",
+                    visible: true, // Visible by default
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (!value || parseFloat(value) === 0) return '-';
@@ -1887,15 +2117,18 @@
                     sorter: "number",
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue()) || 0;
-                        let color = '#000';
+                        const rowData = cell.getRow().getData();
+                        const sku = rowData.sku || rowData.SKU || rowData["(Child) sku"] || '';
+                        const iconHtml = sku ? ` <i class="fas fa-info-circle ads-info-icon" style="cursor: pointer; color: #6c757d; margin-left: 5px;" data-sku="${sku}" title="View Campaign Details"></i>` : '';
                         
+                        let color = '#000';
                         if (value == 0 || value == 100) color = '#a00211';
                         else if (value > 0 && value <= 7) color = '#ff1493';
                         else if (value > 7 && value <= 14) color = '#28a745';
                         else if (value > 14 && value <= 21) color = '#ffc107';
                         else if (value > 21) color = '#a00211';
                         
-                        return `<span style="color: ${color}; font-weight: 600;">${value.toFixed(1)}%</span>`;
+                        return `<span style="color: ${color}; font-weight: 600;">${value.toFixed(1)}%</span>${iconHtml}`;
                     }
                 },
                 {
@@ -2052,6 +2285,7 @@
                     field: "spend",
                     hozAlign: "center",
                     sorter: "number",
+                    visible: true, // Visible by default
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue()) || 0;
                         return '$' + value.toFixed(2);
@@ -2084,6 +2318,243 @@
                         return '<span style="color: #28a745; font-weight: 600;">$' + value.toFixed(2) + '</span>';
                     },
                     visible: true
+                },
+                // Ads Columns (hidden by default) - matching image columns
+                {
+                    title: "Price",
+                    field: "api_price",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        return value > 0 ? '$' + value.toFixed(2) : '-';
+                    },
+                    visible: false
+                },
+                {
+                    title: "NRA",
+                    field: "nra",
+                    hozAlign: "center",
+                    width: 100,
+                    formatter: function(cell) {
+                        const row = cell.getRow();
+                        const rowData = row.getData();
+                        const sku = rowData.sku;
+                        let value = cell.getValue();
+                        
+                        // Check NRL value - if NRL is "NRL", then NRA should default to "NRA"
+                        const nrlValue = rowData.rl_nrl;
+                        const isNrlRed = nrlValue && String(nrlValue).trim().toUpperCase() === "NRL";
+                        
+                        // Handle different value formats
+                        let hasValue = false;
+                        if (value && value !== '' && value !== null && value !== undefined) {
+                            value = String(value).trim().toUpperCase();
+                            // Ensure value is either RA or NRA
+                            if (value === "RA" || value === "NRA") {
+                                hasValue = true;
+                            } else {
+                                // If NRL is NRL, default to NRA, otherwise default to RA
+                                value = isNrlRed ? "NRA" : "RA";
+                                hasValue = true;
+                            }
+                        } else {
+                            // If NRL is NRL, default to NRA, otherwise default to RA
+                            value = isNrlRed ? "NRA" : "RA";
+                            hasValue = true;
+                        }
+                        
+                        const isGreen = value === "RA";
+                        const dotClass = isGreen ? "green" : "red";
+                        const displayHtml = `<span class="status-dot ${dotClass}"></span>`;
+
+                        return `
+                            <div class="dot-dropdown" style="position: relative; width: 100%;">
+                                <button type="button" class="dot-dropdown-btn" data-sku="${sku}" data-field="nra" data-value="${value || (isNrlRed ? 'NRA' : 'RA')}" style="justify-content: center;">
+                                    ${displayHtml}
+                                </button>
+                                <div class="dot-dropdown-menu">
+                                    <div class="dot-dropdown-item ${value === 'RA' ? 'selected' : ''}" data-value="RA">
+                                        <span class="status-dot green"></span>
+                                    </div>
+                                    <div class="dot-dropdown-item ${value === 'NRA' ? 'selected' : ''}" data-value="NRA">
+                                        <span class="status-dot red"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    },
+                    visible: false
+                },
+                {
+                    title: "BGT",
+                    field: "campaign_budget",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        return value > 0 ? value.toFixed(0) : '-';
+                    },
+                    visible: false
+                },
+                {
+                    title: "ACOS L30",
+                    field: "ad_acos",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        let color = '#000';
+                        if (value === 0) color = '#6c757d';
+                        else if (value < 7) color = '#ff01d0'; // pink
+                        else if (value >= 7 && value <= 14) color = '#05bd30'; // green
+                        else if (value > 14) color = '#ff2727'; // red
+                        return '<span style="color: ' + color + '; font-weight: 600;">' + value.toFixed(0) + '%</span>';
+                    },
+                    visible: false
+                },
+                {
+                    title: "SPEND L30",
+                    field: "spend",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        return '$' + value.toFixed(2);
+                    },
+                    visible: false
+                },
+                {
+                    title: "Clicks L30",
+                    field: "ad_clicks",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseInt(cell.getValue()) || 0;
+                        return value.toLocaleString();
+                    },
+                    visible: false
+                },
+                {
+                    title: "D SOLD L30",
+                    field: "ad_sold",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseInt(cell.getValue()) || 0;
+                        return value.toLocaleString();
+                    },
+                    visible: false
+                },
+                {
+                    title: "ALD BGT",
+                    field: "ald_bgt",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        return value > 0 ? value.toFixed(0) : '-';
+                    },
+                    visible: false
+                },
+                {
+                    title: "AD CVR",
+                    field: "ad_cvr",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        return value.toFixed(2) + '%';
+                    },
+                    visible: false
+                },
+                {
+                    title: "7 UB%",
+                    field: "ub7",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        let color = '#000';
+                        if (value >= 66 && value <= 99) color = '#05bd30'; // green
+                        else if (value > 99) color = '#ff01d0'; // pink
+                        else color = '#ff2727'; // red
+                        return '<span style="color: ' + color + '; font-weight: 600;">' + value.toFixed(0) + '%</span>';
+                    },
+                    visible: false
+                },
+                {
+                    title: "1 UB%",
+                    field: "ub1",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        let color = '#000';
+                        if (value >= 66 && value <= 99) color = '#05bd30'; // green
+                        else if (value > 99) color = '#ff01d0'; // pink
+                        else color = '#ff2727'; // red
+                        return '<span style="color: ' + color + '; font-weight: 600;">' + value.toFixed(0) + '%</span>';
+                    },
+                    visible: false
+                },
+                {
+                    title: "L7 CPC",
+                    field: "l7_cpc",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        return value > 0 ? value.toFixed(2) : '0.00';
+                    },
+                    visible: false
+                },
+                {
+                    title: "L1 CPC",
+                    field: "l1_cpc",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        return value > 0 ? value.toFixed(2) : '0.00';
+                    },
+                    visible: false
+                },
+                {
+                    title: "SBID",
+                    field: "sbid",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        return value > 0 ? value.toFixed(2) : '-';
+                    },
+                    visible: false
+                },
+                {
+                    title: "CAMPAIGN",
+                    field: "campaign_name",
+                    hozAlign: "center",
+                    formatter: function(cell) {
+                        const value = cell.getValue() || '';
+                        return value || '-';
+                    },
+                    visible: false
+                },
+                {
+                    title: "Status",
+                    field: "campaign_status",
+                    hozAlign: "center",
+                    formatter: function(cell) {
+                        const value = (cell.getValue() || '').toString().toUpperCase();
+                        if (value === 'LIVE' || value === 'ENABLED' || value === 'ACTIVE' || value === 'RUNNING') {
+                            return '<span style="color: #28a745; font-weight: 600;">LIVE</span>';
+                        } else if (value === 'PAUSED' || value === 'PAUSE') {
+                            return '<span style="color: #ffc107; font-weight: 600;">PAUSED</span>';
+                        }
+                        return value || '-';
+                    },
+                    visible: false
                 }
             ]
         });
@@ -2092,6 +2563,111 @@
             const value = $(this).val();
             table.setFilter("sku", "like", value);
             updateSummary();
+        });
+
+        // Toggle Ads Columns button - Show only ads columns, hide all others
+        let adsColumnsVisible = false;
+        let originalColumnVisibility = {}; // Store original visibility state
+        // Columns to show when ads view is active (matching image exactly)
+        // Note: 'missing', 'api_price', 'spend' are NOT in adsColumnFields because they should be visible by default
+        const adsColumnFields = ['hasCampaign', 'nra', 'campaign_budget', 'ad_acos', 'ad_clicks', 'ad_sold', 'ald_bgt', 'ad_cvr', 'ub7', 'ub1', 'l7_cpc', 'l1_cpc', 'sbid', 'campaign_name', 'campaign_status']; // Only ads-specific columns
+        const columnsToKeepVisible = ['sku', 'api_price', 'spend', 'INV', 'L30', 'inventory_walmart', 'dil_calculated', 'total_qty', 'rl_nrl', '_select']; // Keep these columns visible (SKU, W Prc, Spend, INV, OV L30, W INV, Dil, W L30, NRL, Checkbox) - M column will be hidden when ads columns are shown
+        
+        $('#toggle-ads-columns-btn').on('click', function() {
+            adsColumnsVisible = !adsColumnsVisible;
+            
+            // Get all columns
+            const allColumns = table.getColumns();
+            
+            if (adsColumnsVisible) {
+                // Store original visibility state (only first time)
+                if (Object.keys(originalColumnVisibility).length === 0) {
+                    allColumns.forEach(col => {
+                        const field = col.getField();
+                        if (field) {
+                            originalColumnVisibility[field] = col.isVisible();
+                        }
+                    });
+                }
+                
+                // Hide all columns except SKU and ads columns
+                allColumns.forEach(col => {
+                    const field = col.getField();
+                    const title = col.getDefinition().title;
+                    
+                    // Hide W Prc and Spend when showing ads columns (they conflict with Price and SPEND L30)
+                    if (title === "W Prc" || title === "Spend") {
+                        col.hide();
+                    }
+                    // Hide M column when showing ads columns
+                    else if (title === "M" || field === "missing") {
+                        col.hide();
+                    }
+                    // Hide other columns that are not in keep visible or ads columns
+                    else if (field && !columnsToKeepVisible.includes(field) && !adsColumnFields.includes(field)) {
+                        col.hide();
+                    }
+                });
+                
+                // Show ads columns (including Price and SPEND L30 which replace W Prc and Spend)
+                adsColumnFields.forEach(field => {
+                    const col = table.getColumn(field);
+                    if (col) {
+                        col.show();
+                    }
+                });
+                
+                // Show Price and SPEND L30 columns (they use same field as W Prc and Spend but are separate columns)
+                const priceCol = allColumns.find(col => col.getDefinition().title === "Price");
+                const spendL30Col = allColumns.find(col => col.getDefinition().title === "SPEND L30");
+                if (priceCol) priceCol.show();
+                if (spendL30Col) spendL30Col.show();
+                
+                // Update button
+                $(this).html('<i class="fa fa-eye-slash"></i> Hide Ads Columns').removeClass('btn-secondary').addClass('btn-info');
+            } else {
+                // Restore original visibility
+                allColumns.forEach(col => {
+                    const field = col.getField();
+                    if (field && originalColumnVisibility.hasOwnProperty(field)) {
+                        if (originalColumnVisibility[field]) {
+                            col.show();
+                        } else {
+                            col.hide();
+                        }
+                    }
+                });
+                
+                // Hide ads columns
+                adsColumnFields.forEach(field => {
+                    const col = table.getColumn(field);
+                    if (col) {
+                        col.hide();
+                    }
+                });
+                
+                // Hide Price and SPEND L30 columns (show W Prc and Spend instead)
+                allColumns.forEach(col => {
+                    const title = col.getDefinition().title;
+                    if (title === "Price" || title === "SPEND L30") {
+                        col.hide();
+                    }
+                });
+                
+                // Show W Prc, Spend, and M columns again
+                allColumns.forEach(col => {
+                    const title = col.getDefinition().title;
+                    const field = col.getField();
+                    if (title === "W Prc" || title === "Spend" || title === "M" || field === "missing") {
+                        if (originalColumnVisibility[field]) {
+                            col.show();
+                        }
+                    }
+                });
+                
+                // Update button
+                $(this).html('<i class="fa fa-ad"></i> Show Ads Columns').removeClass('btn-info').addClass('btn-secondary');
+            }
         });
 
         // Apply filters - ALL filters work together (additive)
@@ -2225,6 +2801,15 @@
                 });
             }
             
+            // Missing Ads Filter (INV > 0 and spend = 0)
+            if (missingAdsFilterActive) {
+                table.addFilter(function(data) {
+                    const inv = parseFloat(data.INV || 0);
+                    const spend = parseFloat(data.spend || 0);
+                    return inv > 0 && spend === 0;
+                });
+            }
+            
             // Map Filter (mutually exclusive with Nmap, works with Missing)
             if (mapFilterActive) {
                 table.addFilter(function(data) {
@@ -2295,6 +2880,13 @@
             missingFilterActive = !missingFilterActive;
             mapFilterActive = false;
             nmapFilterActive = false;
+            missingAdsFilterActive = false;
+            applyFilters();
+        });
+        
+        // Missing Ads filter (independent filter)
+        $('#missing-ads-count-badge').on('click', function() {
+            missingAdsFilterActive = !missingAdsFilterActive;
             applyFilters();
         });
         
@@ -2558,6 +3150,298 @@
 
         $('#export-btn').on('click', function() {
             table.download("csv", "walmart_data.csv");
+        });
+
+        // ADS% Info Icon Click Handler – show KW campaign modal
+        $(document).on('click', '.ads-info-icon', function(e) {
+            e.stopPropagation();
+            const sku = $(this).data('sku');
+            if (!sku) {
+                showToast('error', 'SKU not found');
+                return;
+            }
+            $('#campaignModalLabel').text('Campaign Details - ' + sku);
+            $('#campaignModalBody').html('<div class="text-center"><i class="fa fa-spinner fa-spin"></i> Loading...</div>');
+            $('#campaignModal').modal('show');
+
+            $.ajax({
+                url: '/walmart-campaign-data-by-sku',
+                type: 'GET',
+                data: { sku: sku },
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                success: function(response) {
+                    function getAcosColorClass(acos) {
+                        // Handle edge cases
+                        if (acos === 0 || acos === null || isNaN(acos)) return '';
+                        // ACOS = 100% (spend but no sales) should be red
+                        if (acos >= 100) return 'red-bg';
+                        // ACOS < 7% = pink (excellent)
+                        if (acos < 7) return 'pink-bg';
+                        // ACOS 7-14% = green (good)
+                        if (acos >= 7 && acos <= 14) return 'green-bg';
+                        // ACOS > 14% = red (poor)
+                        if (acos > 14) return 'red-bg';
+                        return '';
+                    }
+                    function fmt(val, decimals) {
+                        if (val == null || val === '' || (typeof val === 'number' && isNaN(val))) return '-';
+                        return Number(val).toFixed(decimals || 0);
+                    }
+                    function fmtPct(val) {
+                        if (val == null || val === '' || (typeof val === 'number' && isNaN(val))) return '-';
+                        return Number(val).toFixed(0) + '%';
+                    }
+                    function getUbColorClass(ub) {
+                        if (ub == null || ub === '' || (typeof ub === 'number' && isNaN(ub))) return '';
+                        const n = parseFloat(ub);
+                        if (n >= 66 && n <= 99) return 'green-bg';
+                        if (n > 99) return 'pink-bg';
+                        return 'red-bg';
+                    }
+
+                    let html = '';
+
+                    function fmtBid(val) {
+                        if (val == null || val === '' || val === '0') return '-';
+                        const n = parseFloat(val);
+                        return (n > 0) ? n.toFixed(2) : '-';
+                    }
+
+                    if (response.kw_campaigns && response.kw_campaigns.length > 0) {
+                        response.kw_campaigns.forEach(function(c) {
+                            const acos = parseFloat(c.acos || 0);
+                            const acosColorClass = getAcosColorClass(acos);
+                            const ub7ColorClass = getUbColorClass(c['7ub']);
+                            const ub1ColorClass = getUbColorClass(c['1ub']);
+                            
+                            html += '<h5 class="mb-3">KW Campaign - ' + (c.campaign_name || 'N/A') + '</h5>';
+                            html += '<div class="mb-4">';
+                            html += '<div class="row">';
+                            html += '<div class="col-md-6">';
+                            html += '<table class="table table-sm table-borderless mb-0">';
+                            
+                            // Left column
+                            html += '<tr><td class="fw-bold" style="width: 40%;">BGT:</td><td>' + fmt(c.bgt, 0) + '</td></tr>';
+                            html += '<tr><td class="fw-bold">ALD BGT:</td><td>' + fmt(c.ald_bgt, 0) + '</td></tr>';
+                            html += '<tr><td class="fw-bold">ACOS:</td><td>' + (acosColorClass ? '<span class="' + acosColorClass + '">' + fmtPct(acos) + '</span>' : fmtPct(acos)) + '</td></tr>';
+                            html += '<tr><td class="fw-bold">Clicks:</td><td>' + fmt(c.clicks) + '</td></tr>';
+                            html += '<tr><td class="fw-bold">Ad Spend:</td><td>$' + fmt(c.ad_spend, 2) + '</td></tr>';
+                            html += '<tr><td class="fw-bold">Ad Sales:</td><td>$' + fmt(c.ad_sales, 2) + '</td></tr>';
+                            
+                            html += '</table></div>';
+                            html += '<div class="col-md-6">';
+                            html += '<table class="table table-sm table-borderless mb-0">';
+                            
+                            // Right column
+                            html += '<tr><td class="fw-bold" style="width: 40%;">Ad Sold:</td><td>' + fmt(c.ad_sold) + '</td></tr>';
+                            html += '<tr><td class="fw-bold">AD CVR:</td><td>' + fmtPct(c.ad_cvr) + '</td></tr>';
+                            const ub7Value = c['7ub'] != null ? fmtPct(c['7ub']) : '-';
+                            html += '<tr><td class="fw-bold">7UB%:</td><td>' + (ub7ColorClass ? '<span class="' + ub7ColorClass + '">' + ub7Value + '</span>' : ub7Value) + '</td></tr>';
+                            const ub1Value = c['1ub'] != null ? fmtPct(c['1ub']) : '-';
+                            html += '<tr><td class="fw-bold">1UB%:</td><td>' + (ub1ColorClass ? '<span class="' + ub1ColorClass + '">' + ub1Value + '</span>' : ub1Value) + '</td></tr>';
+                            html += '<tr><td class="fw-bold">L7CPC:</td><td>' + (c.l7cpc != null && !isNaN(c.l7cpc) ? fmt(c.l7cpc, 2) : '-') + '</td></tr>';
+                            html += '<tr><td class="fw-bold">L1CPC:</td><td>' + (c.l1cpc != null && !isNaN(c.l1cpc) ? fmt(c.l1cpc, 2) : '-') + '</td></tr>';
+                            html += '<tr><td class="fw-bold">SBID:</td><td>' + fmtBid(c.sbid) + '</td></tr>';
+                            
+                            html += '</table></div></div></div>';
+                        });
+                    } else {
+                        html += '<h5 class="mb-3">KW Campaigns</h5><p class="text-muted">No KW campaigns found</p>';
+                    }
+
+                    $('#campaignModalBody').html(html);
+                },
+                error: function(xhr) {
+                    console.error('Error loading campaign data:', xhr);
+                    $('#campaignModalBody').html('<div class="alert alert-danger">Error loading campaign data. Please try again.</div>');
+                }
+            });
+        });
+
+        // Dot dropdown handlers (for NRA column)
+        $(document).on("click", ".dot-dropdown-btn", function (e) {
+            e.stopPropagation();
+            e.preventDefault();
+            const $button = $(this);
+            const dropdown = $button.closest(".dot-dropdown");
+            const menu = dropdown.find(".dot-dropdown-menu");
+            
+            // Close all other dropdowns
+            $(".dot-dropdown-menu").not(menu).removeClass("show");
+            
+            // Toggle current dropdown
+            menu.toggleClass("show");
+        });
+
+        // Handle dot dropdown item selection
+        $(document).on("click", ".dot-dropdown-item", function (e) {
+            e.stopPropagation();
+            e.preventDefault();
+            const item = $(this);
+            const value = item.data("value");
+            const dropdown = item.closest(".dot-dropdown");
+            const button = dropdown.find(".dot-dropdown-btn");
+            const sku = button.data("sku");
+            const field = button.data("field");
+            const menu = dropdown.find(".dot-dropdown-menu");
+
+            // Update button display
+            const isGreen = value === "RA";
+            const dotClass = isGreen ? 'green' : 'red';
+            
+            button.html(`
+                <span class="status-dot ${dotClass}"></span>
+            `);
+            button.data("value", value);
+
+            // Update selected state
+            menu.find(".dot-dropdown-item").removeClass("selected");
+            item.addClass("selected");
+
+            // Close dropdown
+            menu.removeClass("show");
+
+            // Update table cell value using SKU to find the row
+            if (table && sku) {
+                try {
+                    // Find row by SKU
+                    const rows = table.getRows();
+                    let tabulatorRow = null;
+                    
+                    for (let i = 0; i < rows.length; i++) {
+                        const rowData = rows[i].getData();
+                        if (rowData.sku === sku) {
+                            tabulatorRow = rows[i];
+                            break;
+                        }
+                    }
+                    
+                    if (tabulatorRow) {
+                        const rowData = tabulatorRow.getData();
+                        rowData[field] = value;
+                        
+                        // If NRL is set to "NRL" (red dot), automatically set NRA to "NRA" (red dot) as well
+                        if (field === "rl_nrl" && value === "NRL") {
+                            rowData.nra = "NRA";
+                            
+                            // Update NRA dropdown button display
+                            const nraCell = tabulatorRow.getCell("nra");
+                            if (nraCell) {
+                                const nraCellElement = nraCell.getElement();
+                                const nraDropdown = $(nraCellElement).find(".dot-dropdown");
+                                const nraButton = nraDropdown.find(".dot-dropdown-btn");
+                                const nraMenu = nraDropdown.find(".dot-dropdown-menu");
+                                
+                                // Update NRA button display
+                                nraButton.html(`
+                                    <span class="status-dot red"></span>
+                                `);
+                                nraButton.data("value", "NRA");
+                                
+                                // Update NRA dropdown selected state
+                                nraMenu.find(".dot-dropdown-item").removeClass("selected");
+                                nraMenu.find('.dot-dropdown-item[data-value="NRA"]').addClass("selected");
+                            }
+                        }
+                        
+                        // Update the row data - this will trigger Tabulator to refresh the row
+                        tabulatorRow.update(rowData);
+                        
+                        // For the MISSING column, manually update its HTML if NRA was changed
+                        if (field === "nra" || (field === "rl_nrl" && value === "NRL")) {
+                            // Manually update the MISSING column cell HTML
+                            const missingCell = tabulatorRow.getCell("hasCampaign");
+                            if (missingCell) {
+                                const missingData = tabulatorRow.getData();
+                                const inv = parseFloat(missingData.INV || 0);
+                                const hasCampaign = missingData.hasCampaign ?? (missingData.campaign_name?.trim() !== '');
+                                const nraValue = missingData.nra;
+                                const isNRA = nraValue && String(nraValue).trim().toUpperCase() === "NRA";
+                                
+                                // Don't show red dot for 0 INV items
+                                if (inv === 0) {
+                                    const cellElement = missingCell.getElement();
+                                    if (cellElement) {
+                                        cellElement.innerHTML = `<div style="display: flex; align-items: center; justify-content: center;">
+                                            <span class="status-dot green" title="0 INV - Not applicable"></span>
+                                        </div>`;
+                                    }
+                                } else {
+                                    // If campaign is missing and NRA is selected, show yellow dot
+                                    let dotColor, title;
+                                    if (!hasCampaign && isNRA) {
+                                        dotColor = 'yellow';
+                                        title = 'Campaign Missing - NRA Selected';
+                                    } else if (hasCampaign) {
+                                        dotColor = 'green';
+                                        title = 'Campaign Exists';
+                                    } else {
+                                        dotColor = 'red';
+                                        title = 'Campaign Missing';
+                                    }
+                                    
+                                    const cellElement = missingCell.getElement();
+                                    if (cellElement) {
+                                        cellElement.innerHTML = `<div style="display: flex; align-items: center; justify-content: center;">
+                                            <span class="status-dot ${dotColor}" title="${title}"></span>
+                                        </div>`;
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        console.warn(`Row not found for SKU: ${sku}`);
+                    }
+                } catch (error) {
+                    console.error('Error updating table row:', error);
+                }
+            }
+
+            // Save to backend
+            const endpoint = field === "rl_nrl" ? '/walmart/save-nrl' : '/walmart/save-nra';
+            const savePromises = [fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                body: JSON.stringify({ sku, value: value })
+            })];
+
+            // If NRL is set to "NRL", also save NRA as "NRA"
+            if (field === "rl_nrl" && value === "NRL") {
+                savePromises.push(fetch('/walmart/save-nra', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    body: JSON.stringify({ sku, value: "NRA" })
+                }));
+            }
+
+            Promise.all(savePromises)
+            .then(responses => Promise.all(responses.map(r => r.json())))
+            .then(results => {
+                results.forEach((data, index) => {
+                    const savedField = index === 0 ? field : 'nra';
+                    if (data.success) {
+                        console.log(`Successfully saved ${savedField} for ${sku}: ${index === 0 ? value : 'NRA'}`);
+                    } else {
+                        console.error(`Failed to update ${savedField}:`, data);
+                    }
+                });
+            })
+            .catch(error => {
+                console.error('Error saving:', error);
+            });
+        });
+
+        // Close dropdowns when clicking outside
+        $(document).on("click", function (e) {
+            if (!$(e.target).closest(".dot-dropdown").length) {
+                $(".dot-dropdown-menu").removeClass("show");
+            }
         });
     });
 </script>

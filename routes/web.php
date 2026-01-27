@@ -1155,6 +1155,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/walmart-sheet-save-amazon-prices', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'saveAmazonPriceUpdates'])->name('walmart-sheet-save-amazon-prices');
     Route::post('/walmart-sheet-update-cell', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'updateCellData'])->name('walmart-sheet-update-cell');
     Route::get('/walmart-metrics-history', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'getMetricsHistory'])->name('walmart-metrics-history');
+    Route::get('/walmart-campaign-data-by-sku', [App\Http\Controllers\MarketPlace\WalmartSheetUploadController::class, 'getCampaignDataBySku'])->name('walmart.campaign.data.by.sku');
 
 
     //Listing Audit amazon
@@ -1196,6 +1197,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay-pricing-data', [EbayController::class, 'ebayViewData'])->name('ebay.pricing.data');
     Route::get('/ebay-data-json', [EbayController::class, 'ebayDataJson'])->name('ebay.data.json');
     Route::get('/ebay-campaign-data-by-sku', [EbayController::class, 'getCampaignDataBySku'])->name('ebay.campaign.data.by.sku');
+    Route::get('/ebay2-campaign-data-by-sku', [EbayTwoController::class, 'getCampaignDataBySku'])->name('ebay2.campaign.data.by.sku');
+    Route::get('/ebay3-campaign-data-by-sku', [EbayThreeController::class, 'getCampaignDataBySku'])->name('ebay3.campaign.data.by.sku');
     Route::get('/ebay-metrics-history', [EbayController::class, 'getMetricsHistory'])->name('ebay.metrics.history');
     Route::get('/ebay-ads-spend', [EbayController::class, 'getEbayAdsSpend'])->name('ebay.ads.spend');
     Route::get('/ebay-kw-pmt-spend-totals', [EbayController::class, 'getKwPmtSpendTotals'])->name('ebay.kw.pmt.spend.totals');
@@ -3120,6 +3123,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('channels-reviews/details', [ChannelWiseReviewsController::class, 'reviews_dashboard_details']);
     Route::post('channels-reviews/save', [ChannelWiseReviewsController::class, 'saveReview']);
 
+    // eBay Refresh Token Generation Routes (must be before catch-all routes)
+    // Unified route for all eBay accounts (eBay1, eBay2, eBay3)
+    Route::get('/ebay/generate-token', [\App\Http\Controllers\EbayTokenController::class, 'generate'])->name('ebay.token.generate');
+    Route::match(['get', 'post'], '/ebay/token-callback', [\App\Http\Controllers\EbayTokenController::class, 'callback'])->name('ebay.token.callback');
     // Task Manager Routes
     Route::get('/tasks', [\App\Http\Controllers\TaskController::class, 'index'])->name('tasks.index');
     Route::get('/tasks/data', [\App\Http\Controllers\TaskController::class, 'getData'])->name('tasks.data');
