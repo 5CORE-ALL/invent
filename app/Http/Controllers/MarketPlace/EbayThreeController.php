@@ -2025,4 +2025,395 @@ class EbayThreeController extends Controller
             Log::error('Error saving daily eBay3 summary: ' . $e->getMessage());
         }
     }
+
+    public function getCampaignDataBySku(Request $request)
+    {
+        $sku = $request->input('sku');
+        if (!$sku) {
+            return response()->json(['error' => 'SKU is required'], 400);
+        }
+        $cleanSku = strtoupper(trim((string) $sku));
+
+        $ebay3Metric = Ebay3Metric::where('sku', $sku)->first();
+        if (!$ebay3Metric) {
+            $ebay3Metric = Ebay3Metric::whereRaw('UPPER(TRIM(sku)) = ?', [$cleanSku])->first();
+        }
+        $itemId = $ebay3Metric && !empty($ebay3Metric->item_id) ? trim((string) $ebay3Metric->item_id) : null;
+
+        // For PARENT SKUs, use sum of child SKUs' INV (matching utilized page logic exactly)
+        // For regular SKUs, use the SKU's own INV
+        $inv = 0.0;
+        if (stripos($sku, 'PARENT') !== false) {
+            // PARENT SKU: sum all child SKUs' INV values (matching Ebay3UtilizedAdsController logic)
+            // Get the ProductMaster record for this PARENT SKU to get its parent field
+            $parentPm = ProductMaster::where('sku', $sku)->first();
+            if (!$parentPm) {
+                $parentPm = ProductMaster::whereRaw('UPPER(TRIM(sku)) = ?', [$cleanSku])->first();
+            }
+            
+            // Use the parent field from ProductMaster, or fallback to SKU itself
+            $parentKey = $parentPm ? ($parentPm->parent ?? $sku) : $sku;
+            
+            // Get all child SKUs that have this parent (matching utilized page approach)
+            $allProductMasters = ProductMaster::whereNull('deleted_at')->get();
+            foreach ($allProductMasters as $pm) {
+                // Skip PARENT SKUs
+                if (stripos($pm->sku, 'PARENT') !== false) {
+                    continue;
+                }
+                // Check if parent matches
+                $pmParent = $pm->parent ?? '';
+                if (!empty($pmParent) && strtoupper(trim($pmParent)) === strtoupper(trim($parentKey))) {
+                    // Get child SKU's INV value
+                    $childShopify = ShopifySku::where('sku', $pm->sku)->first();
+                    if (!$childShopify) {
+                        $childShopify = ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [strtoupper(trim($pm->sku))])->first();
+                    }
+                    $childInv = $childShopify ? (float) ($childShopify->inv ?? 0) : 0.0;
+                    $inv += $childInv;
+                }
+            }
+        } else {
+            // Regular SKU: use the SKU's own INV
+            $shopify = ShopifySku::where('sku', $sku)->first();
+            if (!$shopify) {
+                $shopify = ShopifySku::whereRaw('UPPER(TRIM(sku)) = ?', [$cleanSku])->first();
+            }
+            $inv = $shopify ? (float) ($shopify->inv ?? 0) : 0.0;
+        }
+
+        $dayBeforeYesterday = date('Y-m-d', strtotime('-2 days'));
+        $lastSbidMap = [];
+        $lastSbidReports = Ebay3PriorityReport::where('report_range', $dayBeforeYesterday)
+            ->where('campaignStatus', 'RUNNING')
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->get();
+        // Build lastSbidMap (matching utilized page logic exactly)
+        // Utilized page: if (!empty($report->campaign_id) && !empty($report->last_sbid)) { $lastSbidMap[$report->campaign_id] = $report->last_sbid; }
+        foreach ($lastSbidReports as $report) {
+            if (!empty($report->campaign_id) && !empty($report->last_sbid)) {
+                $lastSbidMap[(string) $report->campaign_id] = $report->last_sbid;
+            }
+        }
+
+        $kwCampaigns = [];
+        $kwL30 = Ebay3PriorityReport::where('report_range', 'L30')
+            ->whereIn('campaignStatus', ['RUNNING', 'PAUSED'])
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->whereRaw('UPPER(TRIM(campaign_name)) = ?', [$cleanSku])
+            ->get();
+        $kwL7 = Ebay3PriorityReport::where('report_range', 'L7')
+            ->whereIn('campaignStatus', ['RUNNING', 'PAUSED'])
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->whereRaw('UPPER(TRIM(campaign_name)) = ?', [$cleanSku])
+            ->get()
+            ->keyBy('campaign_id');
+        $kwL1 = Ebay3PriorityReport::where('report_range', 'L1')
+            ->whereIn('campaignStatus', ['RUNNING', 'PAUSED'])
+            ->where('campaign_name', 'NOT LIKE', 'Campaign %')
+            ->where('campaign_name', 'NOT LIKE', 'General - %')
+            ->where('campaign_name', 'NOT LIKE', 'Default%')
+            ->whereRaw('UPPER(TRIM(campaign_name)) = ?', [$cleanSku])
+            ->get()
+            ->keyBy('campaign_id');
+        $price = $ebay3Metric ? (float) ($ebay3Metric->ebay_price ?? 0) : 0;
+
+        foreach ($kwL30 as $r) {
+            $campaignId = $r->campaign_id ?? null;
+            $cid = $campaignId !== null ? (string) $campaignId : null;
+            
+            // Skip if no valid campaign_id (not a real campaign)
+            if (empty($cid) || $cid === '' || $cid === '0') {
+                continue;
+            }
+            
+            $rL7 = $cid ? $kwL7->get($cid) : null;
+            $rL1 = $cid ? $kwL1->get($cid) : null;
+            if (!$rL7 && $cid) {
+                $rL7 = $kwL7->first(fn ($x) => (string) ($x->campaign_id ?? '') === $cid);
+            }
+            if (!$rL1 && $cid) {
+                $rL1 = $kwL1->first(fn ($x) => (string) ($x->campaign_id ?? '') === $cid);
+            }
+
+            $spend = (float) str_replace(['USD ', 'USD'], '', $r->cpc_ad_fees_payout_currency ?? '0');
+            $sales = (float) str_replace(['USD ', 'USD'], '', $r->cpc_sale_amount_payout_currency ?? '0');
+            $clicks = (int) ($r->cpc_clicks ?? 0);
+            $sold = (int) ($r->cpc_attributed_sales ?? 0);
+            $acos = ($sales > 0) ? (($spend / $sales) * 100) : (($spend > 0) ? 100 : 0);
+            $adCvr = $clicks > 0 ? (($sold / $clicks) * 100) : 0;
+            $bgt = (float) ($r->campaignBudgetAmount ?? 0);
+
+            $l7Spend = $rL7 ? (float) str_replace(['USD ', 'USD'], '', $rL7->cpc_ad_fees_payout_currency ?? '0') : 0;
+            $l1Spend = $rL1 ? (float) str_replace(['USD ', 'USD'], '', $rL1->cpc_ad_fees_payout_currency ?? '0') : 0;
+            $l7Cpc = $rL7 ? (float) str_replace(['USD ', 'USD'], '', $rL7->cost_per_click ?? '0') : null;
+            $l1Cpc = $rL1 ? (float) str_replace(['USD ', 'USD'], '', $rL1->cost_per_click ?? '0') : null;
+
+            $ub7 = ($bgt > 0) ? (($l7Spend / ($bgt * 7)) * 100) : 0;
+            $ub1 = ($bgt > 0) ? (($l1Spend / $bgt) * 100) : 0;
+
+            // SBGT: ebay/utilized rule – ACOS-based only
+            $acosForSbgt = $acos;
+            if ($acosForSbgt === 0 && $spend > 0) {
+                $acosForSbgt = 100;
+            }
+            if ($acosForSbgt < 4) {
+                $sbgt = 9;
+            } elseif ($acosForSbgt >= 4 && $acosForSbgt < 8) {
+                $sbgt = 6;
+            } else {
+                $sbgt = 3;
+            }
+
+            // Get last_sbid from day-before-yesterday map only (matching utilized page logic)
+            // Utilized page: if (isset($lastSbidMap[$campaignId])) { $campaignMap[$key]['last_sbid'] = $lastSbidMap[$campaignId]; } else { $campaignMap[$key]['last_sbid'] = ''; }
+            // Do NOT use $r->last_sbid or $r->apprSbid as fallback - only use day-before-yesterday map
+            $lastSbid = null;
+            if ($cid && isset($lastSbidMap[$cid]) && !empty($lastSbidMap[$cid])) {
+                $lastSbidRaw = $lastSbidMap[$cid];
+                if ($lastSbidRaw !== null && $lastSbidRaw !== '' && $lastSbidRaw !== '0') {
+                    $f = is_numeric($lastSbidRaw) ? (float) $lastSbidRaw : null;
+                    if ($f !== null && $f > 0) {
+                        $lastSbid = $f;
+                    }
+                }
+            }
+            $l1CpcVal = $l1Cpc !== null ? (float) $l1Cpc : 0;
+            $l7CpcVal = $l7Cpc !== null ? (float) $l7Cpc : 0;
+
+            $sbid = $this->calculateSbidUtilized($ub7, $ub1, $inv, $bgt, $l1CpcVal, $l7CpcVal, $lastSbid, $price);
+
+            // Only include campaigns that have activity (spend, clicks, sales, or budget)
+            if ($spend > 0 || $clicks > 0 || $sales > 0 || $bgt > 0) {
+                $kwCampaigns[] = [
+                    'campaign_name' => $r->campaign_name ?? 'N/A',
+                    'bgt' => $bgt,
+                    'sbgt' => $sbgt,
+                    'acos' => $acos,
+                    'clicks' => $clicks,
+                    'ad_spend' => $spend,
+                    'ad_sales' => $sales,
+                    'ad_sold' => $sold,
+                    'ad_cvr' => $adCvr,
+                    '7ub' => $ub7,
+                    '1ub' => $ub1,
+                    'l7cpc' => $l7Cpc,
+                    'l1cpc' => $l1Cpc,
+                    'l_bid' => $lastSbid,
+                    'sbid' => $sbid,
+                ];
+            }
+        }
+
+        $ptCampaigns = [];
+        if ($itemId) {
+            // Match ebay-3/pmt/ads: fetch all COST_PER_SALE listings and map by listing_id (same as Ebay3PmtAdsController)
+            $campaignListing = null;
+            try {
+                // Convert itemId to string for comparison (listing_id might be stored as string in DB)
+                $itemIdStr = (string) $itemId;
+                
+                // Fetch all COST_PER_SALE listings and create a map (same approach as Ebay3PmtAdsController)
+                $campaignListings = DB::connection('apicentral')
+                    ->table('ebay3_campaign_ads_listings')
+                    ->select('listing_id', 'bid_percentage', 'suggested_bid')
+                    ->where('funding_strategy', 'COST_PER_SALE')
+                    ->get()
+                    ->keyBy(function($item) {
+                        return (string) $item->listing_id;
+                    });
+                
+                // Check if we have a match for this itemId
+                if ($campaignListings->has($itemIdStr)) {
+                    $campaignListing = $campaignListings->get($itemIdStr);
+                } else {
+                    // Fallback: try to get any row for this listing_id (not just COST_PER_SALE)
+                    $campaignListing = DB::connection('apicentral')
+                        ->table('ebay3_campaign_ads_listings')
+                        ->where('listing_id', $itemId)
+                        ->orWhere('listing_id', $itemIdStr)
+                        ->select('listing_id', 'bid_percentage', 'suggested_bid')
+                        ->orderByDesc('id')
+                        ->first();
+                }
+            } catch (\Exception $e) {
+                // apicentral may be unavailable
+            }
+            // Handle CBID and ES BID - preserve 0 values, only null if truly null or empty string
+            // Same logic as Ebay3PmtAdsController: use ?? null
+            $cbid = $campaignListing ? ($campaignListing->bid_percentage ?? null) : null;
+            $esBid = $campaignListing ? ($campaignListing->suggested_bid ?? null) : null;
+            $views = $ebay3Metric ? (float) ($ebay3Metric->views ?? 0) : 0;
+            $l7Views = $ebay3Metric ? (float) ($ebay3Metric->l7_views ?? 0) : 0;
+            $ebayL30 = $ebay3Metric ? (float) ($ebay3Metric->ebay_l30 ?? 0) : 0;
+            $scvr = $views > 0 ? round(($ebayL30 / $views) * 100, 2) : null;
+            
+            // Calculate SBID for PMT based on L7_VIEWS (same logic as ebay/pmp/ads page)
+            $sBid = null;
+            if ($l7Views >= 0 && $l7Views < 50) {
+                // 0-50: use ESBID
+                $sBid = $esBid !== null ? (float) $esBid : null;
+            } elseif ($l7Views >= 50 && $l7Views < 100) {
+                $sBid = 9.0;
+            } elseif ($l7Views >= 100 && $l7Views < 150) {
+                $sBid = 8.0;
+            } elseif ($l7Views >= 150 && $l7Views < 200) {
+                $sBid = 7.0;
+            } elseif ($l7Views >= 200 && $l7Views < 250) {
+                $sBid = 6.0;
+            } elseif ($l7Views >= 250 && $l7Views < 300) {
+                $sBid = 5.0;
+            } elseif ($l7Views >= 300 && $l7Views < 350) {
+                $sBid = 4.0;
+            } elseif ($l7Views >= 350 && $l7Views < 400) {
+                $sBid = 3.0;
+            } elseif ($l7Views >= 400) {
+                $sBid = 2.0;
+            } else {
+                // Fallback: use ESBID
+                $sBid = $esBid !== null ? (float) $esBid : null;
+            }
+            // Cap sbidValue to maximum of 15
+            if ($sBid !== null && $sBid > 15) {
+                $sBid = 15.0;
+            }
+
+            $ptReports = Ebay3GeneralReport::where('report_range', 'L30')
+                ->where('listing_id', $itemId)
+                ->get();
+            
+            if ($ptReports->isEmpty()) {
+                // If no reports but have views/bids, still show PMT data
+                if ($views > 0 || ($cbid !== null && $cbid > 0) || ($esBid !== null && $esBid > 0)) {
+                    $ptCampaigns[] = [
+                        'campaign_name' => 'PMT - ' . ($itemId ?? 'N/A'),
+                        'cbid' => $cbid,
+                        'es_bid' => $esBid,
+                        's_bid' => $sBid,
+                        't_views' => $views > 0 ? $views : null,
+                        'l7_views' => $l7Views,
+                        'scvr' => $scvr,
+                    ];
+                }
+            } else {
+                // If reports exist, show all of them (like ebay1)
+                    foreach ($ptReports as $r) {
+                        $ptCampaigns[] = [
+                            'campaign_name' => 'PMT - ' . ($r->listing_id ?? 'N/A'),
+                            'cbid' => $cbid,
+                            'es_bid' => $esBid,
+                            's_bid' => $sBid,
+                            't_views' => $views > 0 ? $views : null,
+                            'l7_views' => $l7Views,
+                            'scvr' => $scvr,
+                        ];
+                    }
+            }
+        }
+
+        return response()->json([
+            'kw_campaigns' => $kwCampaigns,
+            'pt_campaigns' => $ptCampaigns,
+        ]);
+    }
+
+    /**
+     * SBID calculation – same logic as ebay/utilized (all mode, per-campaign).
+     * No SBID when UB7/UB1 colors don't match (utilized formatter).
+     * Under-utilized: !over && budget>0 && ub7<66 && ub1<66 && inv>0 (match EbayOverUtilizedBgtController).
+     */
+    private function calculateSbidUtilized(
+        float $ub7,
+        float $ub1,
+        float $inv,
+        float $bgt,
+        float $l1Cpc,
+        float $l7Cpc,
+        ?float $lastSbid,
+        float $price
+    ): ?float {
+        $getUbColor = function (float $ub): string {
+            if ($ub >= 66 && $ub <= 99) {
+                return 'green';
+            }
+            if ($ub > 99) {
+                return 'pink';
+            }
+            return 'red';
+        };
+
+        if ($getUbColor($ub7) !== $getUbColor($ub1)) {
+            return null;
+        }
+
+        $sbid = 0.0;
+        $over = $ub7 > 99 && $ub1 > 99;
+        $under = !$over && $bgt > 0 && $ub7 < 66 && $ub1 < 66 && $inv > 0;
+
+        if ($over) {
+            // Rule: If both UB7 and UB1 are above 99%, set SBID as L1_CPC * 0.90 (matching utilized page logic)
+            // Note: Always use 0.90 multiplier, not 0.80 even if L1_CPC > 1.25
+            if ($l1Cpc > 0) {
+                $sbid = floor($l1Cpc * 0.90 * 100) / 100;
+            } elseif ($l7Cpc > 0) {
+                $sbid = floor($l7Cpc * 0.90 * 100) / 100;
+            } else {
+                $sbid = 0.0;
+            }
+            // Price cap removed for PARENT SKUs (matching ebay3-utilized.blade.php)
+        } elseif ($under) {
+            // New UB1-based bid increase rules (matching utilized page logic exactly)
+            // Get base bid from last_sbid, fallback to L1_CPC or L7_CPC if last_sbid is 0
+            $baseBid = 0;
+            
+            // Parse last_sbid, treat empty/0/null as 0 (matching utilized page logic exactly)
+            // Utilized page: if (!lastSbidRaw || lastSbidRaw === '' || lastSbidRaw === '0' || lastSbidRaw === 0)
+            if ($lastSbid === null || $lastSbid === '' || $lastSbid === '0' || $lastSbid === 0 || $lastSbid <= 0) {
+                $baseBid = 0;
+            } else {
+                $baseBid = (float) $lastSbid;
+                if (is_nan($baseBid) || $baseBid <= 0) {
+                    $baseBid = 0;
+                }
+            }
+            
+            // If last_sbid is 0, use L1_CPC or L7_CPC as fallback (matching utilized page logic)
+            // Utilized page: if (baseBid === 0) { baseBid = (l1Cpc && !isNaN(l1Cpc) && l1Cpc > 0) ? l1Cpc : ((l7Cpc && !isNaN(l7Cpc) && l7Cpc > 0) ? l7Cpc : 0); }
+            if ($baseBid === 0 || $baseBid <= 0) {
+                $baseBid = ($l1Cpc > 0) ? $l1Cpc : (($l7Cpc > 0) ? $l7Cpc : 0);
+            }
+            
+            if ($baseBid > 0) {
+                // If UB1 < 33%: increase bid by 0.10
+                if ($ub1 < 33) {
+                    $sbid = floor(($baseBid + 0.10) * 100) / 100;
+                }
+                // If UB1 is 33% to 66%: increase bid by 10%
+                elseif ($ub1 >= 33 && $ub1 < 66) {
+                    $sbid = floor($baseBid * 1.10 * 100) / 100;
+                } else {
+                    // For UB1 >= 66%, use base bid (no increase)
+                    $sbid = floor($baseBid * 100) / 100;
+                }
+            } else {
+                $sbid = 0.0;
+            }
+        } else {
+            if ($l1Cpc > 0) {
+                $sbid = floor($l1Cpc * 0.90 * 100) / 100;
+            } elseif ($l7Cpc > 0) {
+                $sbid = floor($l7Cpc * 0.90 * 100) / 100;
+            } else {
+                $sbid = 0.0;
+            }
+        }
+
+        return $sbid > 0 ? $sbid : null;
+    }
 }

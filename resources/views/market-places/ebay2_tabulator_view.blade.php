@@ -108,6 +108,52 @@
         .link-tooltip a:hover {
             text-decoration: underline;
         }
+
+        .acos-info-icon {
+            transition: color 0.2s;
+        }
+
+        .acos-info-icon:hover {
+            color: #007bff !important;
+        }
+
+        #campaignModal .table {
+            font-size: 0.875rem;
+        }
+
+        #campaignModal .table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            white-space: nowrap;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            transform: rotate(180deg);
+            height: 60px;
+            width: 40px;
+            min-width: 40px;
+            font-size: 11px;
+            vertical-align: middle;
+            text-align: center;
+            padding: 5px;
+        }
+
+        #campaignModal .table td {
+            white-space: nowrap;
+            vertical-align: middle;
+            text-align: center;
+        }
+
+        .green-bg {
+            color: #05bd30 !important;
+        }
+
+        .pink-bg {
+            color: #ff01d0 !important;
+        }
+
+        .red-bg {
+            color: #ff2727 !important;
+        }
     </style>
 @endsection
 
@@ -406,6 +452,24 @@
                         </button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Campaign Details Modal (ACOS info icon) -->
+    <div class="modal fade" id="campaignModal" tabindex="-1" aria-labelledby="campaignModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="campaignModalLabel">Campaign Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="campaignModalBody">
+                    <!-- Content loaded via JS -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
             </div>
         </div>
     </div>
@@ -2168,15 +2232,17 @@
                             const rowData = cell.getRow().getData();
                             const kwSpend = parseFloat(rowData['kw_spend_L30'] || 0);
                             const adPercent = parseFloat(value || 0);
+                            const sku = rowData["(Child) sku"] || rowData.SKU || rowData.sku || '';
+                            const iconHtml = sku ? ` <i class="fas fa-info-circle acos-info-icon" style="cursor: pointer; color: #6c757d; margin-left: 5px;" data-sku="${sku}" title="View Campaign Details"></i>` : '';
                             
                             // If KW ads spend > 0 but AD% is 0, show red alert
                             if (kwSpend > 0 && adPercent === 0) {
-                                return `<span style="color: #dc3545; font-weight: 600;">100%</span>`;
+                                return `<span style="color: #dc3545; font-weight: 600;">100%</span>${iconHtml}`;
                             }
                             
-                            return `${parseFloat(value).toFixed(0)}%`;
+                            return `${parseFloat(value).toFixed(0)}%${iconHtml}`;
                         },
-                        width: 55
+                        width: 70
                     },
 
                      {
@@ -3646,5 +3712,130 @@
                 tooltip.style.visibility = 'hidden';
             }
         }
+
+        // ACOS Info Icon Click Handler – show KW/PMT campaign modal
+        $(document).on('click', '.acos-info-icon', function(e) {
+            e.stopPropagation();
+            const sku = $(this).data('sku');
+            if (!sku) {
+                showToast('error', 'SKU not found');
+                return;
+            }
+            $('#campaignModalLabel').text('Campaign Details - ' + sku);
+            $('#campaignModalBody').html('<div class="text-center"><i class="fa fa-spinner fa-spin"></i> Loading...</div>');
+            $('#campaignModal').modal('show');
+
+            $.ajax({
+                url: '/ebay2-campaign-data-by-sku',
+                type: 'GET',
+                data: { sku: sku },
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                success: function(response) {
+                    function getAcosColorClass(acos) {
+                        if (acos === 0) return '';
+                        if (acos < 7) return 'pink-bg';
+                        if (acos >= 7 && acos <= 14) return 'green-bg';
+                        if (acos > 14) return 'red-bg';
+                        return '';
+                    }
+                    function fmt(val, decimals) {
+                        if (val == null || val === '' || (typeof val === 'number' && isNaN(val))) return '-';
+                        return Number(val).toFixed(decimals || 0);
+                    }
+                    function fmtPct(val) {
+                        if (val == null || val === '' || (typeof val === 'number' && isNaN(val))) return '-';
+                        return Number(val).toFixed(0) + '%';
+                    }
+                    function fmtBid(val) {
+                        if (val == null || val === '' || val === '0') return '-';
+                        const n = parseFloat(val);
+                        return (n > 0) ? n.toFixed(2) : '-';
+                    }
+                    function getUbColorClass(ub) {
+                        if (ub == null || ub === '' || (typeof ub === 'number' && isNaN(ub))) return '';
+                        const n = parseFloat(ub);
+                        if (n >= 66 && n <= 99) return 'green-bg';
+                        if (n > 99) return 'pink-bg';
+                        return 'red-bg';
+                    }
+
+                    let html = '';
+
+                    if (response.kw_campaigns && response.kw_campaigns.length > 0) {
+                        response.kw_campaigns.forEach(function(c) {
+                            const acos = parseFloat(c.acos || 0);
+                            html += '<h5 class="mb-3">KW Campaign - ' + (c.campaign_name || 'N/A') + '</h5>';
+                            html += '<div class="table-responsive mb-4"><table class="table table-bordered table-sm">';
+                            html += '<thead><tr><th>BGT</th><th>SBGT</th><th>ACOS</th><th>Clicks</th><th>Ad Spend</th><th>Ad Sales</th><th>Ad Sold</th>';
+                            html += '<th>AD CVR</th><th>7UB%</th><th>1UB%</th><th>L7CPC</th><th>L1CPC</th><th>L BID</th><th>SBID</th></tr></thead><tbody><tr>';
+                            html += '<td>' + fmt(c.bgt, 0) + '</td><td>' + fmt(c.sbgt, 0) + '</td>';
+                            html += '<td class="' + getAcosColorClass(acos) + '">' + fmtPct(acos) + '</td>';
+                            html += '<td>' + fmt(c.clicks) + '</td><td>' + fmt(c.ad_spend, 2) + '</td><td>' + fmt(c.ad_sales, 2) + '</td><td>' + fmt(c.ad_sold) + '</td>';
+                            html += '<td>' + fmtPct(c.ad_cvr) + '</td>';
+                            html += '<td class="' + getUbColorClass(c['7ub']) + '">' + (c['7ub'] != null ? fmtPct(c['7ub']) : '-') + '</td>';
+                            html += '<td class="' + getUbColorClass(c['1ub']) + '">' + (c['1ub'] != null ? fmtPct(c['1ub']) : '-') + '</td>';
+                            html += '<td>' + (c.l7cpc != null && !isNaN(c.l7cpc) ? fmt(c.l7cpc, 2) : '-') + '</td><td>' + (c.l1cpc != null && !isNaN(c.l1cpc) ? fmt(c.l1cpc, 2) : '-') + '</td>';
+                            html += '<td>' + fmtBid(c.l_bid) + '</td><td>' + (c.sbid != null && c.sbid > 0 ? fmt(c.sbid, 2) : '-') + '</td>';
+                            html += '</tr></tbody></table></div>';
+                        });
+                    } else {
+                        html += '<h5 class="mb-3">KW Campaigns</h5><p class="text-muted">No KW campaigns found</p>';
+                    }
+
+                    function calcSbid(l7Views, esBid) {
+                        const l7 = Number(l7Views || 0) || 0;
+                        const es = parseFloat(esBid) || 0;
+                        let v;
+                        if (l7 >= 0 && l7 < 50) v = es;
+                        else if (l7 >= 50 && l7 < 100) v = 9;
+                        else if (l7 >= 100 && l7 < 150) v = 8;
+                        else if (l7 >= 150 && l7 < 200) v = 7;
+                        else if (l7 >= 200 && l7 < 250) v = 6;
+                        else if (l7 >= 250 && l7 < 300) v = 5;
+                        else if (l7 >= 300 && l7 < 350) v = 4;
+                        else if (l7 >= 350 && l7 < 400) v = 3;
+                        else if (l7 >= 400) v = 2;
+                        else v = es;
+                        return Math.min(v, 15);
+                    }
+                    // SCVR coloring – same rule as ebay/pmp/ads getCvrColor
+                    function getScvrColor(scvr) {
+                        if (scvr == null || scvr === '' || (typeof scvr === 'number' && isNaN(scvr))) return '#6c757d';
+                        const percent = parseFloat(scvr);
+                        if (percent <= 4) return 'red';
+                        if (percent > 4 && percent <= 7) return 'yellow';
+                        if (percent > 7 && percent <= 10) return 'green';
+                        return '#E83E8C';
+                    }
+                    if (response.pt_campaigns && response.pt_campaigns.length > 0) {
+                        response.pt_campaigns.forEach(function(c) {
+                            // Use backend calculated s_bid if available, otherwise calculate in frontend
+                            const sBid = (c.s_bid !== null && c.s_bid !== undefined) ? c.s_bid : calcSbid(c.l7_views, c.es_bid);
+                            const scvrVal = c.scvr != null ? parseFloat(c.scvr) : null;
+                            const scvrHtml = scvrVal != null && !isNaN(scvrVal)
+                                ? '<span style="color:' + getScvrColor(scvrVal) + '; font-weight: 600;">' + fmt(scvrVal, 1) + '%</span>'
+                                : '-';
+                            html += '<h5 class="mb-3">PMT Campaign - ' + (c.campaign_name || 'N/A') + '</h5>';
+                            html += '<div class="table-responsive mb-4"><table class="table table-bordered table-sm">';
+                            html += '<thead><tr><th>CBID</th><th>ES BID</th><th>S BID</th><th>T VIEWS</th><th>L7 VIEWS</th><th>SCVR</th></tr></thead><tbody><tr>';
+                            html += '<td>' + fmt(c.cbid, 2) + '</td><td>' + fmt(c.es_bid, 2) + '</td><td>' + fmt(sBid, 2) + '</td>';
+                            html += '<td>' + fmt(c.t_views, 0) + '</td><td>' + fmt(c.l7_views, 0) + '</td><td>' + scvrHtml + '</td>';
+                            html += '</tr></tbody></table></div>';
+                        });
+                    } else {
+                        html += '<h5 class="mb-3">PMT Campaigns</h5><p class="text-muted">No PMT campaigns found</p>';
+                    }
+
+                    if (!(response.kw_campaigns && response.kw_campaigns.length > 0) && !(response.pt_campaigns && response.pt_campaigns.length > 0)) {
+                        html = '<p class="text-muted">No campaigns found for this SKU</p>';
+                    }
+                    $('#campaignModalBody').html(html);
+                },
+                error: function(xhr) {
+                    const err = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Failed to load campaign data';
+                    $('#campaignModalBody').html('<div class="alert alert-danger">' + err + '</div>');
+                }
+            });
+        });
     </script>
 @endsection
