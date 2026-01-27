@@ -418,11 +418,21 @@ class WalmartSheetUploadController extends Controller
                 ->get()
                 ->keyBy('sku');
             
-            // Fetch spend data from WalmartCampaignReport (L30) - campaign name matches SKU
+            // Fetch spend data from WalmartCampaignReport (L30, L7, L1) - campaign name matches SKU
             $normalizeSku = fn($sku) => strtoupper(trim(preg_replace('/\s+/', ' ', str_replace("\xc2\xa0", ' ', $sku))));
             $normalizedSkus = collect($skus)->map($normalizeSku)->values()->all();
             
             $walmartCampaignReportsL30 = WalmartCampaignReport::where('report_range', 'L30')
+                ->whereIn('campaignName', $normalizedSkus)
+                ->get()
+                ->keyBy(fn($item) => $normalizeSku($item->campaignName));
+            
+            $walmartCampaignReportsL7 = WalmartCampaignReport::where('report_range', 'L7')
+                ->whereIn('campaignName', $normalizedSkus)
+                ->get()
+                ->keyBy(fn($item) => $normalizeSku($item->campaignName));
+            
+            $walmartCampaignReportsL1 = WalmartCampaignReport::where('report_range', 'L1')
                 ->whereIn('campaignName', $normalizedSkus)
                 ->get()
                 ->keyBy(fn($item) => $normalizeSku($item->campaignName));
@@ -450,9 +460,21 @@ class WalmartSheetUploadController extends Controller
                     $rlNrl = $statusValue['rl_nrl'] ?? null;
                 }
                 
+                // Get NRA from WalmartDataView
+                $nra = null;
+                if ($dataView) {
+                    $dataValue = is_array($dataView->value) ? $dataView->value : (json_decode($dataView->value, true) ?? []);
+                    $nra = $dataValue['ra_nra'] ?? null;
+                }
+                
                 // Get campaign data
                 $normalizedSku = $normalizeSku($sku);
                 $campaignL30 = $walmartCampaignReportsL30->get($normalizedSku);
+                $campaignL7 = $walmartCampaignReportsL7->get($normalizedSku);
+                $campaignL1 = $walmartCampaignReportsL1->get($normalizedSku);
+                
+                // Check if campaign exists (hasCampaign)
+                $hasCampaign = $campaignL30 && !empty($campaignL30->campaignName);
                 
                 // Get LP and Ship from ProductMaster - use same logic as BestBuyPricingController
                 $lp = 0;
@@ -564,6 +586,65 @@ class WalmartSheetUploadController extends Controller
                 
                 // Ad metrics (from WalmartCampaignReport L30)
                 $spend = $adSpendL30;
+                $adClicks = $campaignL30 ? intval($campaignL30->clicks ?? 0) : 0;
+                $adSales = $campaignL30 ? floatval($campaignL30->sales ?? 0) : 0;
+                $adSold = $campaignL30 ? intval($campaignL30->sold ?? 0) : 0;
+                $adImpressions = $campaignL30 ? intval($campaignL30->impression ?? 0) : 0;
+                $adCpc = $campaignL30 ? floatval($campaignL30->cpc ?? 0) : 0;
+                $campaignBudget = $campaignL30 ? floatval($campaignL30->budget ?? 0) : 0;
+                $campaignStatus = $campaignL30 ? ($campaignL30->status ?? '') : '';
+                $campaignName = $campaignL30 ? ($campaignL30->campaignName ?? '') : '';
+                
+                // L7 and L1 metrics
+                $l7Spend = $campaignL7 ? floatval($campaignL7->spend ?? 0) : 0;
+                $l1Spend = $campaignL1 ? floatval($campaignL1->spend ?? 0) : 0;
+                $l7Cpc = $campaignL7 ? floatval($campaignL7->cpc ?? 0) : 0;
+                $l1Cpc = $campaignL1 ? floatval($campaignL1->cpc ?? 0) : 0;
+                
+                // Calculate ACOS and CVR
+                $adAcos = 0;
+                if ($adSales > 0) {
+                    $adAcos = ($spend / $adSales) * 100;
+                } elseif ($spend > 0) {
+                    $adAcos = 100; // Spend but no sales
+                }
+                
+                $adCvr = 0;
+                if ($adClicks > 0) {
+                    $adCvr = ($adSold / $adClicks) * 100;
+                }
+                
+                // Calculate ALD BGT from ACOS
+                $aldBgt = 0;
+                if ($adAcos > 25) {
+                    $aldBgt = 1;
+                } elseif ($adAcos >= 20 && $adAcos <= 25) {
+                    $aldBgt = 2;
+                } elseif ($adAcos >= 15 && $adAcos < 20) {
+                    $aldBgt = 4;
+                } elseif ($adAcos >= 10 && $adAcos < 15) {
+                    $aldBgt = 6;
+                } elseif ($adAcos >= 5 && $adAcos < 10) {
+                    $aldBgt = 8;
+                } elseif ($adAcos >= 0.01 && $adAcos < 5) {
+                    $aldBgt = 10;
+                }
+                
+                // Calculate 7UB and 1UB using ALD BGT
+                $ub7 = ($aldBgt > 0 && ($aldBgt * 7) > 0) ? (($l7Spend / ($aldBgt * 7)) * 100) : 0;
+                $ub1 = ($aldBgt > 0) ? (($l1Spend / $aldBgt) * 100) : 0;
+                
+                // Calculate SBID
+                $sbid = 0;
+                if ($l1Cpc === 0 && $l7Cpc === 0) {
+                    $sbid = 0.50;
+                } elseif ($ub7 > 99) {
+                    $sbid = round($l1Cpc * 0.90, 2);
+                } elseif ($ub7 < 66) {
+                    $sbid = round($l7Cpc * 1.1, 2);
+                } else {
+                    $sbid = round($l7Cpc * 1.0, 2);
+                }
                 
                 // Get inventory
                 $inv = $shopify ? intval($shopify->inv) : 0;
@@ -598,6 +679,7 @@ class WalmartSheetUploadController extends Controller
                     'missing' => $isMissing ? 'M' : '', // M if missing in Walmart AND has inventory
                     'map_status' => $mapStatus, // Map/Nmap status
                     'rl_nrl' => $rlNrl ?? '', // RL/NRL from listing status
+                    'nra' => $nra ?? '', // NRA from data view
                     'INV' => $inv,
                     'L30' => $shopify ? intval($shopify->quantity) : 0,
                     'inventory_walmart' => $wInv,
@@ -637,9 +719,28 @@ class WalmartSheetUploadController extends Controller
                     'profit_percent' => $profitPercent, // PFT% (net profit % after ads)
                     'roi_percent' => $roiPercent, // ROI% (net roi % after ads)
                     
-                    // Ad metrics (placeholder - can add ad data table later)
+                    // Ad metrics
                     'ads_percent' => $adsPercent,
                     'spend' => $spend,
+                    'ad_clicks' => $adClicks,
+                    'ad_sales' => $adSales,
+                    'ad_sold' => $adSold,
+                    'ad_acos' => $adAcos,
+                    'ad_cvr' => $adCvr,
+                    'ad_impressions' => $adImpressions,
+                    'ad_cpc' => $adCpc,
+                    'campaign_budget' => $campaignBudget,
+                    'campaign_status' => $campaignStatus,
+                    'campaign_name' => $campaignName,
+                    'l7_spend' => $l7Spend,
+                    'l1_spend' => $l1Spend,
+                    'l7_cpc' => $l7Cpc,
+                    'l1_cpc' => $l1Cpc,
+                    'ald_bgt' => $aldBgt,
+                    'ub7' => $ub7,
+                    'ub1' => $ub1,
+                    'sbid' => $sbid,
+                    'hasCampaign' => $hasCampaign,
                     
                     // Image from ProductMaster Values (same as BestBuy)
                     'image_path' => $shopify->image_src ?? ($values["image_path"] ?? ($pm->image_path ?? null)),
@@ -1195,5 +1296,150 @@ class WalmartSheetUploadController extends Controller
             Log::error('Error updating cell data: ' . $e->getMessage());
             return response()->json(['error' => 'Error saving data'], 500);
         }
+    }
+
+    /**
+     * Get campaign data by SKU for KW campaigns (similar to eBay implementation)
+     * Used by the info icon modal in walmart_sheet_upload_view
+     */
+    public function getCampaignDataBySku(Request $request)
+    {
+        $sku = $request->input('sku');
+        if (!$sku) {
+            return response()->json(['error' => 'SKU is required'], 400);
+        }
+
+        // Normalize SKU function (matching WalmartUtilisationController)
+        $normalizeSku = function ($sku) {
+            if (empty($sku)) return '';
+            $sku = strtoupper(trim($sku));
+            $sku = preg_replace('/\s+/u', ' ', $sku);
+            $sku = preg_replace('/[^\S\r\n]+/u', ' ', $sku);
+            return trim($sku);
+        };
+
+        $cleanSku = $normalizeSku($sku);
+
+        // Get KW campaigns - campaignName matches SKU (Walmart uses campaignName, not campaign_name)
+        $kwL30 = WalmartCampaignReport::where('report_range', 'L30')
+            ->where(function($q) use ($cleanSku, $normalizeSku) {
+                // Match by normalized campaignName
+                $q->whereRaw('UPPER(TRIM(campaignName)) = ?', [$cleanSku]);
+            })
+            ->get();
+
+        $kwL7 = WalmartCampaignReport::where('report_range', 'L7')
+            ->where(function($q) use ($cleanSku) {
+                $q->whereRaw('UPPER(TRIM(campaignName)) = ?', [$cleanSku]);
+            })
+            ->get()
+            ->keyBy('campaign_id');
+
+        $kwL1 = WalmartCampaignReport::where('report_range', 'L1')
+            ->where(function($q) use ($cleanSku) {
+                $q->whereRaw('UPPER(TRIM(campaignName)) = ?', [$cleanSku]);
+            })
+            ->get()
+            ->keyBy('campaign_id');
+
+        $kwCampaigns = [];
+        foreach ($kwL30 as $r) {
+            $campaignId = $r->campaign_id ?? null;
+            $cid = $campaignId !== null ? (string) $campaignId : null;
+            
+            // Skip if no valid campaign_id
+            if (empty($cid) || $cid === '' || $cid === '0') {
+                continue;
+            }
+            
+            $rL7 = $cid ? $kwL7->get($cid) : null;
+            $rL1 = $cid ? $kwL1->get($cid) : null;
+            if (!$rL7 && $cid) {
+                $rL7 = $kwL7->first(fn ($x) => (string) ($x->campaign_id ?? '') === $cid);
+            }
+            if (!$rL1 && $cid) {
+                $rL1 = $kwL1->first(fn ($x) => (string) ($x->campaign_id ?? '') === $cid);
+            }
+
+            $spend = (float) ($r->spend ?? 0);
+            $sales = (float) ($r->sales ?? 0);
+            $clicks = (int) ($r->clicks ?? 0);
+            $sold = (int) ($r->sold ?? 0);
+            $acos = ($sales > 0) ? (($spend / $sales) * 100) : (($spend > 0) ? 100 : 0);
+            $adCvr = $clicks > 0 ? (($sold / $clicks) * 100) : 0;
+            $bgt = (float) ($r->budget ?? 0);
+
+            $l7Spend = $rL7 ? (float) ($rL7->spend ?? 0) : 0;
+            $l1Spend = $rL1 ? (float) ($rL1->spend ?? 0) : 0;
+            $l7Cpc = $rL7 ? (float) ($rL7->cpc ?? 0) : 0;
+            $l1Cpc = $rL1 ? (float) ($rL1->cpc ?? 0) : 0;
+
+            // Calculate ALD BGT from ACOS (Walmart-specific logic)
+            $aldBgt = 0;
+            if ($acos > 25) {
+                $aldBgt = 1;
+            } elseif ($acos >= 20 && $acos <= 25) {
+                $aldBgt = 2;
+            } elseif ($acos >= 15 && $acos < 20) {
+                $aldBgt = 4;
+            } elseif ($acos >= 10 && $acos < 15) {
+                $aldBgt = 6;
+            } elseif ($acos >= 5 && $acos < 10) {
+                $aldBgt = 8;
+            } elseif ($acos >= 0.01 && $acos < 5) {
+                $aldBgt = 10;
+            }
+
+            // Calculate 7UB and UB1 using ALD BGT (not actual budget)
+            // 7UB = (L7 spend / (ALD BGT * 7)) * 100
+            $ub7 = ($aldBgt > 0 && ($aldBgt * 7) > 0) ? (($l7Spend / ($aldBgt * 7)) * 100) : 0;
+            // UB1 = (L1 spend / ALD BGT) * 100
+            $ub1 = ($aldBgt > 0) ? (($l1Spend / $aldBgt) * 100) : 0;
+
+            // Calculate SBID (Walmart-specific logic)
+            // Match JavaScript toFixed(2) behavior - use round() instead of floor()
+            $sbid = 0;
+            // If both l1_cpc and l7_cpc are 0, then sbid = 0.50
+            if ($l1Cpc === 0 && $l7Cpc === 0) {
+                $sbid = 0.50;
+            }
+            // If ub7 > 99 then sbid = l1_cpc * 0.90
+            elseif ($ub7 > 99) {
+                $sbid = round($l1Cpc * 0.90, 2);
+            }
+            // If ub7 < 66 then sbid = l7_cpc * 1.1
+            elseif ($ub7 < 66) {
+                $sbid = round($l7Cpc * 1.1, 2);
+            }
+            // For ub7 between 66-99, use default (l7_cpc * 1.0)
+            else {
+                $sbid = round($l7Cpc * 1.0, 2);
+            }
+
+            // Only include campaigns that have activity
+            if ($spend > 0 || $clicks > 0 || $sales > 0 || $bgt > 0) {
+                $kwCampaigns[] = [
+                    'campaign_name' => $r->campaignName ?? 'N/A',
+                    'bgt' => $bgt,
+                    'ald_bgt' => $aldBgt,
+                    'acos' => $acos,
+                    'clicks' => $clicks,
+                    'ad_spend' => $spend,
+                    'ad_sales' => $sales,
+                    'ad_sold' => $sold,
+                    'ad_cvr' => $adCvr,
+                    '7ub' => $ub7,
+                    '1ub' => $ub1,
+                    'l7cpc' => $l7Cpc,
+                    'l1cpc' => $l1Cpc,
+                    'sbid' => $sbid,
+                ];
+            }
+        }
+
+        return response()->json([
+            'kw_campaigns' => $kwCampaigns,
+            'pt_campaigns' => [], // Walmart doesn't have PT campaigns like eBay
+        ]);
     }
 }
