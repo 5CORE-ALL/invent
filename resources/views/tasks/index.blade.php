@@ -1,0 +1,1794 @@
+@extends('layouts.vertical', ['title' => 'Task Manager', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+
+@section('css')
+    <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
+    <style>
+        /* Statistics Cards */
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+            display: flex;
+            align-items: center;
+            transition: all 0.3s ease;
+            border-left: 4px solid;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+        }
+
+        .stat-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 16px;
+            font-size: 28px;
+            color: white;
+        }
+
+        .stat-content {
+            flex: 1;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #6c757d;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: #2c3e50;
+            line-height: 1;
+        }
+
+        .stat-unit {
+            font-size: 10px;
+            color: #6c757d;
+            margin-top: 2px;
+        }
+
+        /* Blue - Total */
+        .stat-card-blue {
+            border-left-color: #3b7ddd;
+        }
+        .stat-card-blue .stat-icon {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        /* Cyan - Pending */
+        .stat-card-cyan {
+            border-left-color: #0dcaf0;
+        }
+        .stat-card-cyan .stat-icon {
+            background: linear-gradient(135deg, #0dcaf0 0%, #0891b2 100%);
+        }
+
+        /* Red - Overdue */
+        .stat-card-red {
+            border-left-color: #dc3545;
+        }
+        .stat-card-red .stat-icon {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        /* Green - Done */
+        .stat-card-green {
+            border-left-color: #28a745;
+        }
+        .stat-card-green .stat-icon {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        }
+
+        /* Yellow - ETC */
+        .stat-card-yellow {
+            border-left-color: #ffc107;
+        }
+        .stat-card-yellow .stat-icon {
+            background: linear-gradient(135deg, #f7b733 0%, #fc4a1a 100%);
+        }
+
+        /* Teal - ATC */
+        .stat-card-teal {
+            border-left-color: #20c997;
+        }
+        .stat-card-teal .stat-icon {
+            background: linear-gradient(135deg, #0ba360 0%, #3cba92 100%);
+        }
+
+        /* Orange - Done ETC */
+        .stat-card-orange {
+            border-left-color: #fd7e14;
+        }
+        .stat-card-orange .stat-icon {
+            background: linear-gradient(135deg, #fa8305 0%, #ff6b6b 100%);
+        }
+
+        /* Purple - Done ATC */
+        .stat-card-purple {
+            border-left-color: #6610f2;
+        }
+        .stat-card-purple .stat-icon {
+            background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .stat-card {
+                margin-bottom: 15px;
+            }
+            
+            .stat-value {
+                font-size: 24px;
+            }
+            
+            .stat-icon {
+                width: 50px;
+                height: 50px;
+                font-size: 24px;
+            }
+        }
+        
+        /* Clean Table Styling */
+        #tasks-table {
+            background: white;
+            border-radius: 8px;
+            overflow-x: auto;
+            overflow-y: hidden;
+        }
+        
+        .table-wrapper {
+            overflow-x: auto;
+            overflow-y: visible;
+        }
+
+        .tabulator {
+            border: 1px solid #e9ecef !important;
+            border-radius: 8px !important;
+            font-size: 14px;
+        }
+
+        .tabulator .tabulator-header {
+            background-color: #f8f9fa !important;
+            border-bottom: 2px solid #e9ecef !important;
+        }
+
+        .tabulator .tabulator-header .tabulator-col {
+            background-color: #f8f9fa !important;
+            border-right: 1px solid #e9ecef !important;
+            padding: 12px 8px !important;
+        }
+
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content {
+            padding: 0 !important;
+        }
+
+        .tabulator .tabulator-header .tabulator-col .tabulator-col-content .tabulator-col-title {
+            font-weight: 600 !important;
+            color: #495057 !important;
+            font-size: 13px !important;
+            text-transform: uppercase;
+        }
+
+        .tabulator-row {
+            border-bottom: 1px solid #e9ecef !important;
+            background: white !important;
+        }
+
+        .tabulator-row:hover {
+            background-color: #f8f9fa !important;
+        }
+
+        .tabulator-row.tabulator-selected {
+            background-color: #e7f3ff !important;
+        }
+
+        .tabulator-row.tabulator-selected:hover {
+            background-color: #d0e8ff !important;
+        }
+
+        .tabulator-row .tabulator-cell {
+            border-right: 1px solid #e9ecef !important;
+            padding: 12px 8px !important;
+            color: #495057;
+        }
+
+        /* Status Badges */
+        .status-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-pending {
+            background-color: #cff4fc;
+            color: #055160;
+            border: 1px solid #9eeaf9;
+        }
+
+        .status-in_progress {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffe69c;
+        }
+
+        .status-archived {
+            background-color: #e2e3e5;
+            color: #41464b;
+            border: 1px solid #d3d6d8;
+        }
+
+        .status-completed {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status-need_help {
+            background-color: #ffe5d0;
+            color: #984c0c;
+            border: 1px solid #ffc9a0;
+        }
+
+        .status-need_approval {
+            background-color: #e0cffc;
+            color: #432874;
+            border: 1px solid #d8bbff;
+        }
+
+        .status-dependent {
+            background-color: #f7d6e6;
+            color: #ab296a;
+            border: 1px solid #f1b0d0;
+        }
+
+        .status-approved {
+            background-color: #d1f4e0;
+            color: #146c43;
+            border: 1px solid #9dd9c3;
+        }
+
+        .status-hold {
+            background-color: #dee2e6;
+            color: #212529;
+            border: 1px solid #ced4da;
+        }
+
+        .status-cancelled {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        /* Priority Badges */
+        .priority-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .priority-low {
+            background-color: #e2e3e5;
+            color: #383d41;
+            border: 1px solid #d6d8db;
+        }
+
+        .priority-normal {
+            background-color: #cfe2ff;
+            color: #084298;
+            border: 1px solid #b6d4fe;
+        }
+
+        .priority-high {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        /* Action Icon Buttons */
+        .action-btn-icon {
+            padding: 8px 10px;
+            font-size: 16px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 0 3px;
+            display: inline-block;
+            text-align: center;
+            width: 36px;
+            height: 36px;
+            line-height: 20px;
+        }
+
+        .action-btn-icon:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        .action-btn-view {
+            background-color: #0dcaf0;
+            color: white;
+        }
+
+        .action-btn-view:hover {
+            background-color: #0bb5d7;
+        }
+
+        .action-btn-edit {
+            background-color: #ffc107;
+            color: #000;
+        }
+
+        .action-btn-edit:hover {
+            background-color: #e0a800;
+        }
+
+        .action-btn-delete {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        .action-btn-delete:hover {
+            background-color: #bb2d3b;
+        }
+
+        /* Pagination */
+        .tabulator-footer {
+            background: #f8f9fa !important;
+            border-top: 2px solid #e9ecef !important;
+            padding: 15px !important;
+        }
+
+        .tabulator-page {
+            border: 1px solid #dee2e6 !important;
+            background: white !important;
+            color: #495057 !important;
+            border-radius: 4px !important;
+            margin: 0 2px !important;
+        }
+
+        .tabulator-page:hover {
+            background: #e9ecef !important;
+        }
+
+        .tabulator-page.active {
+            background: #0d6efd !important;
+            color: white !important;
+            border-color: #0d6efd !important;
+        }
+
+        /* Create Button */
+        .btn-create-task {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            padding: 10px 20px;
+            font-weight: 600;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s ease;
+        }
+
+        .btn-create-task:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        /* Card Styling */
+        .task-card {
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+        }
+
+        .task-card .card-body {
+            padding: 25px;
+        }
+
+        /* Page Title */
+        .page-title {
+            font-weight: 700;
+            color: #2c3e50;
+            font-size: 24px;
+        }
+
+        /* ID Column */
+        .id-cell {
+            font-weight: 600;
+            color: #6c757d;
+        }
+
+        /* Empty state */
+        .tabulator-placeholder {
+            padding: 50px !important;
+            color: #6c757d !important;
+            font-size: 16px !important;
+        }
+
+        /* Horizontal Scrollbar Styling */
+        .tabulator {
+            overflow-x: auto !important;
+        }
+
+        .tabulator::-webkit-scrollbar {
+            height: 8px;
+        }
+
+        .tabulator::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        .tabulator::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+
+        .tabulator::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        /* Status Dropdown Styling */
+        .status-select {
+            cursor: pointer;
+            border-radius: 20px !important;
+            padding: 5px 10px !important;
+            font-weight: 600 !important;
+            border-width: 2px !important;
+        }
+
+        .status-select:focus {
+            box-shadow: none !important;
+        }
+
+        .status-select option {
+            padding: 10px;
+        }
+    </style>
+@endsection
+
+@section('content')
+    <!-- Start Content-->
+    <div class="container-fluid">
+        
+        <!-- start page title -->
+        <div class="row">
+            <div class="col-12">
+                <div class="page-title-box">
+                    <div class="page-title-right">
+                        <ol class="breadcrumb m-0">
+                            <li class="breadcrumb-item"><a href="{{ url('/') }}">Home</a></li>
+                            <li class="breadcrumb-item active">Task Manager</li>
+                        </ol>
+                    </div>
+                    <h4 class="page-title">Task Manager</h4>
+                </div>
+            </div>
+        </div>     
+        <!-- end page title --> 
+
+        <!-- Statistics Cards -->
+        <div class="row mb-4">
+            <!-- Total Tasks -->
+            <div class="col-xl-3 col-md-6">
+                <div class="stat-card stat-card-blue">
+                    <div class="stat-icon">
+                        <i class="mdi mdi-format-list-bulleted"></i>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-label">TOTAL</div>
+                        <div class="stat-value">{{ $stats['total'] }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pending Tasks -->
+            <div class="col-xl-3 col-md-6">
+                <div class="stat-card stat-card-cyan">
+                    <div class="stat-icon">
+                        <i class="mdi mdi-clock-outline"></i>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-label">PENDING</div>
+                        <div class="stat-value">{{ $stats['pending'] }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Overdue Tasks -->
+            <div class="col-xl-3 col-md-6">
+                <div class="stat-card stat-card-red">
+                    <div class="stat-icon">
+                        <i class="mdi mdi-alert-circle"></i>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-label">OVERDUE</div>
+                        <div class="stat-value">{{ $stats['overdue'] }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Done Tasks -->
+            <div class="col-xl-3 col-md-6">
+                <div class="stat-card stat-card-green">
+                    <div class="stat-icon">
+                        <i class="mdi mdi-check-circle"></i>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-label">DONE</div>
+                        <div class="stat-value">{{ $stats['done'] }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Time Statistics Cards -->
+        <div class="row mb-4">
+            <!-- Total ETC -->
+            <div class="col-xl-3 col-md-6">
+                <div class="stat-card stat-card-yellow">
+                    <div class="stat-icon">
+                        <i class="mdi mdi-briefcase-clock"></i>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-label">ETC</div>
+                        <div class="stat-value">{{ $stats['etc_total'] }}</div>
+                        <div class="stat-unit">minutes</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Total ATC -->
+            <div class="col-xl-3 col-md-6">
+                <div class="stat-card stat-card-teal">
+                    <div class="stat-icon">
+                        <i class="mdi mdi-timer"></i>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-label">ATC</div>
+                        <div class="stat-value">{{ $stats['atc_total'] }}</div>
+                        <div class="stat-unit">minutes</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Done ETC -->
+            <div class="col-xl-3 col-md-6">
+                <div class="stat-card stat-card-orange">
+                    <div class="stat-icon">
+                        <i class="mdi mdi-clipboard-check"></i>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-label">DONE ETC</div>
+                        <div class="stat-value">{{ $stats['done_etc'] }}</div>
+                        <div class="stat-unit">minutes</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Done ATC -->
+            <div class="col-xl-3 col-md-6">
+                <div class="stat-card stat-card-purple">
+                    <div class="stat-icon">
+                        <i class="mdi mdi-check-all"></i>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-label">DONE ATC</div>
+                        <div class="stat-value">{{ $stats['done_atc'] }}</div>
+                        <div class="stat-unit">minutes</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-12">
+                <div class="card task-card">
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-sm-12 d-flex justify-content-between align-items-center">
+                                <div>
+                                    <a href="{{ route('tasks.create') }}" class="btn btn-danger btn-create-task">
+                                        <i class="mdi mdi-plus-circle me-2"></i> Create Task
+                                    </a>
+                                    
+                                    @if($isAdmin)
+                                    <button type="button" class="btn btn-info ms-2" id="bulk-actions-btn">
+                                        <i class="mdi mdi-format-list-checks me-2"></i> Bulk Actions
+                                    </button>
+                                    @endif
+                                </div>
+                                
+                                <div>
+                                    <span id="selected-count" class="text-muted" style="display: none;">
+                                        <strong id="count-number">0</strong> task(s) selected
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        @if(session('success'))
+                            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                                <i class="mdi mdi-check-circle me-2"></i>{{ session('success') }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        @endif
+
+                        <!-- Search/Filter Bar -->
+                        <div class="row mb-3 p-3" style="background: #f8f9fa; border-radius: 8px;">
+                            <div class="col-md-2 mb-2">
+                                <label class="form-label fw-bold">Search</label>
+                                <input type="text" id="filter-search" class="form-control form-control-sm" placeholder="Search all">
+                            </div>
+                            <div class="col-md-2 mb-2">
+                                <label class="form-label fw-bold">Group</label>
+                                <input type="text" id="filter-group" class="form-control form-control-sm" placeholder="Enter Group">
+                            </div>
+                            <div class="col-md-2 mb-2">
+                                <label class="form-label fw-bold">Task</label>
+                                <input type="text" id="filter-task" class="form-control form-control-sm" placeholder="Enter Task">
+                            </div>
+                            <div class="col-md-2 mb-2">
+                                <label class="form-label fw-bold">Assignor</label>
+                                <select id="filter-assignor" class="form-select form-select-sm">
+                                    <option value="">Select assignor</option>
+                                    @foreach($users ?? [] as $user)
+                                        <option value="{{ $user->name }}">{{ $user->name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="col-md-2 mb-2">
+                                <label class="form-label fw-bold">Assignee</label>
+                                <select id="filter-assignee" class="form-select form-select-sm">
+                                    <option value="">Select Assignee</option>
+                                    @foreach($users ?? [] as $user)
+                                        <option value="{{ $user->name }}">{{ $user->name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+                            <div class="col-md-1 mb-2">
+                                <label class="form-label fw-bold">Status</label>
+                                <select id="filter-status" class="form-select form-select-sm">
+                                    <option value="">All</option>
+                                    <option value="pending">Todo</option>
+                                    <option value="in_progress">Working</option>
+                                    <option value="archived">Archived</option>
+                                    <option value="completed">Done</option>
+                                    <option value="need_help">Need Help</option>
+                                    <option value="need_approval">Need Approval</option>
+                                    <option value="dependent">Dependent</option>
+                                    <option value="approved">Approved</option>
+                                    <option value="hold">Hold</option>
+                                    <option value="cancelled">Cancelled</option>
+                                </select>
+                            </div>
+                            <div class="col-md-1 mb-2">
+                                <label class="form-label fw-bold">Priority</label>
+                                <select id="filter-priority" class="form-select form-select-sm">
+                                    <option value="">All</option>
+                                    <option value="low">Low</option>
+                                    <option value="normal">Normal</option>
+                                    <option value="high">High</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="table-wrapper">
+                            <div id="tasks-table"></div>
+                        </div>
+
+                    </div> <!-- end card-body-->
+                </div> <!-- end card-->
+            </div> <!-- end col -->
+        </div>
+        <!-- end row -->
+
+    </div> <!-- container -->
+@endsection
+
+@section('modal')
+<!-- View Task Modal -->
+<div class="modal fade" id="viewTaskModal" tabindex="-1" aria-labelledby="viewTaskModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                <h5 class="modal-title" id="viewTaskModalLabel">
+                    <i class="mdi mdi-file-document-outline me-2"></i>Task Details
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="task-details">
+                <!-- Task details will be loaded here -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Mark as Done Modal -->
+<div class="modal fade" id="doneModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white;">
+                <h5 class="modal-title">
+                    <i class="mdi mdi-check-circle me-2"></i>Mark Task as Done
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3"><strong>How much time did you actually spend on this task?</strong></p>
+                <div class="mb-3">
+                    <label for="atc-input" class="form-label">Actual Time to Complete (ATC) in minutes:</label>
+                    <input type="number" class="form-control" id="atc-input" min="1" placeholder="e.g., 45" required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="confirm-done-btn">
+                    <i class="mdi mdi-check me-1"></i>Mark as Done
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Status Change Modal (for all other statuses) -->
+<div class="modal fade" id="statusChangeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                <h5 class="modal-title">
+                    <i class="mdi mdi-swap-horizontal me-2"></i>Change Task Status
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3"><strong>Please provide a reason for this status change:</strong></p>
+                <div class="mb-3">
+                    <label for="status-change-reason" class="form-label">Reason:</label>
+                    <textarea class="form-control" id="status-change-reason" rows="4" placeholder="Why are you changing the status?" required></textarea>
+                </div>
+                <div class="alert alert-info">
+                    <i class="mdi mdi-information me-2"></i>
+                    Changing to: <strong id="new-status-label"></strong>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirm-status-change-btn">
+                    <i class="mdi mdi-check me-1"></i>Confirm Change
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Links Modal -->
+<div class="modal fade" id="linksModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white;">
+                <h5 class="modal-title">
+                    <i class="mdi mdi-link-variant me-2"></i>Task Links
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="links-content">
+                <!-- Links will be loaded here -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk Actions Modal -->
+<div class="modal fade" id="bulkActionsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white;">
+                <h5 class="modal-title">
+                    <i class="mdi mdi-format-list-checks me-2"></i>Bulk Actions
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3">
+                    <i class="mdi mdi-information-outline me-2"></i>
+                    <strong><span id="bulk-selected-count">0</span> task(s) selected</strong>
+                </p>
+
+                <div class="list-group">
+                    <a href="#" class="list-group-item list-group-item-action" id="bulk-delete-btn">
+                        <i class="mdi mdi-delete text-danger me-2"></i>
+                        <strong>Delete Selected Tasks</strong>
+                    </a>
+                    <a href="#" class="list-group-item list-group-item-action" id="bulk-priority-btn">
+                        <i class="mdi mdi-flag text-warning me-2"></i>
+                        <strong>Change Priority</strong>
+                    </a>
+                    <a href="#" class="list-group-item list-group-item-action" id="bulk-tid-btn">
+                        <i class="mdi mdi-calendar text-info me-2"></i>
+                        <strong>Change TID Date</strong>
+                    </a>
+                    <a href="#" class="list-group-item list-group-item-action" id="bulk-assignee-btn">
+                        <i class="mdi mdi-account-arrow-right text-success me-2"></i>
+                        <strong>Change Assignee</strong>
+                    </a>
+                    <a href="#" class="list-group-item list-group-item-action" id="bulk-etc-btn">
+                        <i class="mdi mdi-clock-outline text-primary me-2"></i>
+                        <strong>Update ETC</strong>
+                    </a>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk Update Form Modal -->
+<div class="modal fade" id="bulkUpdateModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="bulkUpdateModalTitle">Bulk Update</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="bulkUpdateModalBody">
+                <!-- Dynamic content will be loaded here -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirm-bulk-update-btn">
+                    <i class="mdi mdi-check me-1"></i>Update
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+@endsection
+
+@section('script')
+    <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
+    
+    <script>
+        $(document).ready(function() {
+            var selectedTasks = [];
+            var bulkActionType = '';
+            var isAdmin = {{ $isAdmin ? 'true' : 'false' }};
+            var currentUserId = {{ Auth::id() }};
+
+            // Initialize Tabulator
+            var table = new Tabulator("#tasks-table", {
+                selectable: isAdmin,
+                ajaxURL: "{{ route('tasks.data') }}",
+                ajaxParams: {},
+                layout: "fitData",
+                pagination: true,
+                paginationSize: 25,
+                paginationSizeSelector: [10, 25, 50, 100],
+                responsiveLayout: false,
+                placeholder: "No Tasks Found",
+                height: "600px",
+                layoutColumnsOnNewData: true,
+                horizontalScroll: true,
+                autoResize: true,
+                columns: (function() {
+                    var cols = [];
+                    
+                    // Add checkbox column only for admin
+                    if (isAdmin) {
+                        cols.push({
+                            formatter: "rowSelection", 
+                            titleFormatter: "rowSelection", 
+                            hozAlign: "center", 
+                            headerSort: false, 
+                            width: 60,
+                            cellClick: function(e, cell) {
+                                cell.getRow().toggleSelect();
+                            }
+                        });
+                    }
+                    
+                    // Column Order: GROUP, TASK, ASSIGNOR, ASSIGNEE, TID, ETC, ATC, C DAY, STATUS, PRIORITY, IMAGE, LINKS, ACTION
+                    
+                    // GROUP
+                    cols.push({
+                        title: "GROUP", 
+                        field: "group", 
+                        minWidth: 120, 
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            return value ? '<span style="color: #6c757d;">' + value + '</span>' : '<span style="color: #adb5bd;">-</span>';
+                        }
+                    });
+                    
+                    // TASK (Title with overdue indicator)
+                    cols.push({
+                        title: "TASK", 
+                        field: "title", 
+                        minWidth: 200,
+                        formatter: function(cell) {
+                            var rowData = cell.getRow().getData();
+                            var title = cell.getValue();
+                            var isOverdue = false;
+                            
+                            // Check if overdue (TID + 10 days < now AND not completed/cancelled)
+                            if (rowData.tid && !['completed', 'cancelled'].includes(rowData.status)) {
+                                var tidDate = new Date(rowData.tid);
+                                var overdueDate = new Date(tidDate);
+                                overdueDate.setDate(overdueDate.getDate() + 10);
+                                var now = new Date();
+                                isOverdue = overdueDate < now;
+                            }
+                            
+                            var overdueIcon = isOverdue ? '<i class="mdi mdi-alert-circle text-danger me-1" title="Overdue"></i>' : '';
+                            return overdueIcon + '<strong>' + title + '</strong>';
+                        }
+                    });
+                    
+                    // ASSIGNOR
+                    cols.push({
+                        title: "ASSIGNOR", 
+                        field: "assignor.name", 
+                        minWidth: 140, 
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            return value ? value : '<span style="color: #adb5bd;">-</span>';
+                        }
+                    });
+                    
+                    // ASSIGNEE
+                    cols.push({
+                        title: "ASSIGNEE", 
+                        field: "assignee.name", 
+                        minWidth: 140, 
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            return value ? value : '<span style="color: #adb5bd;">-</span>';
+                        }
+                    });
+                    
+                    // TID (Task Initiation Date)
+                    cols.push({
+                        title: "TID", 
+                        field: "tid", 
+                        width: 120,
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            if (value) {
+                                var date = new Date(value);
+                                var day = String(date.getDate()).padStart(2, '0');
+                                var month = date.toLocaleString('default', { month: 'short' });
+                                return '<span style="color: #dc3545; font-weight: 600;">' + day + '-' + month + '</span>';
+                            }
+                            return '<span style="color: #adb5bd;">-</span>';
+                        }
+                    });
+                    
+                    // ETC
+                    cols.push({
+                        title: "ETC", 
+                        field: "etc_minutes", 
+                        width: 90,
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            return value ? value : '<span style="color: #adb5bd;">-</span>';
+                        }
+                    });
+                    
+                    // ATC
+                    cols.push({
+                        title: "ATC", 
+                        field: "atc", 
+                        width: 90,
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            return value ? '<strong style="color: #28a745;">' + value + '</strong>' : '<span style="color: #adb5bd;">0</span>';
+                        }
+                    });
+                    
+                    // C DAY (Days since completion)
+                    cols.push({
+                        title: "C DAY", 
+                        field: "completed_at", 
+                        width: 90,
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            if (value) {
+                                var completedDate = new Date(value);
+                                var now = new Date();
+                                var diffTime = Math.abs(now - completedDate);
+                                var diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                                return '<strong style="color: #6610f2;">' + diffDays + '</strong>';
+                            }
+                            return '<span style="color: #adb5bd;">-</span>';
+                        }
+                    });
+                    
+                    // STATUS
+                    cols.push({
+                        title: "STATUS", 
+                        field: "status", 
+                        width: 180,
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var rowData = cell.getRow().getData();
+                            var value = cell.getValue();
+                            var taskId = rowData.id;
+                            var assignorId = rowData.assignor_id;
+                            var assigneeId = rowData.assignee_id;
+                            
+                            // Check if user can update status
+                            var canUpdateStatus = isAdmin || assignorId === currentUserId || assigneeId === currentUserId;
+                            
+                            var statuses = {
+                                'pending': {label: 'Todo', color: '#0dcaf0'},
+                                'in_progress': {label: 'Working', color: '#ffc107'},
+                                'archived': {label: 'Archived', color: '#6c757d'},
+                                'completed': {label: 'Done', color: '#28a745'},
+                                'need_help': {label: 'Need Help', color: '#fd7e14'},
+                                'need_approval': {label: 'Need Approval', color: '#6610f2'},
+                                'dependent': {label: 'Dependent', color: '#d63384'},
+                                'approved': {label: 'Approved', color: '#20c997'},
+                                'hold': {label: 'Hold', color: '#495057'},
+                                'cancelled': {label: 'Cancelled', color: '#dc3545'}
+                            };
+                            var currentStatus = statuses[value] || {label: value, color: '#6c757d'};
+                            
+                            if (!canUpdateStatus) {
+                                // Show as badge only (no dropdown)
+                                return '<span class="status-badge status-' + value + '">' + currentStatus.label + '</span>';
+                            }
+                            
+                            return `
+                                <select class="form-select form-select-sm status-select" 
+                                        data-task-id="${taskId}" 
+                                        data-current-status="${value}"
+                                        style="border-color: ${currentStatus.color}; color: ${currentStatus.color}; font-weight: 600; font-size: 11px;">
+                                    <option value="pending" ${value === 'pending' ? 'selected' : ''}>Todo</option>
+                                    <option value="in_progress" ${value === 'in_progress' ? 'selected' : ''}>Working</option>
+                                    <option value="archived" ${value === 'archived' ? 'selected' : ''}>Archived</option>
+                                    <option value="completed" ${value === 'completed' ? 'selected' : ''}>Done</option>
+                                    <option value="need_help" ${value === 'need_help' ? 'selected' : ''}>Need Help</option>
+                                    <option value="need_approval" ${value === 'need_approval' ? 'selected' : ''}>Need Approval</option>
+                                    <option value="dependent" ${value === 'dependent' ? 'selected' : ''}>Dependent</option>
+                                    <option value="approved" ${value === 'approved' ? 'selected' : ''}>Approved</option>
+                                    <option value="hold" ${value === 'hold' ? 'selected' : ''}>Hold</option>
+                                    <option value="rework">Rework</option>
+                                    <option value="cancelled" ${value === 'cancelled' ? 'selected' : ''}>Cancelled</option>
+                                </select>
+                            `;
+                        }
+                    });
+                    
+                    // PRIORITY
+                    cols.push({
+                        title: "PRIORITY", 
+                        field: "priority", 
+                        width: 110, 
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            return '<span class="priority-badge priority-' + value + '">' + value.toUpperCase() + '</span>';
+                        }
+                    });
+                    
+                    // IMAGE
+                    cols.push({
+                        title: "IMAGE", 
+                        field: "image", 
+                        width: 90,
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            if (value) {
+                                return `<a href="/uploads/tasks/${value}" target="_blank" title="View Image">
+                                    <i class="mdi mdi-image text-info" style="font-size: 20px; cursor: pointer;"></i>
+                                </a>`;
+                            }
+                            return '<span style="color: #adb5bd;">-</span>';
+                        }
+                    });
+                    
+                    // LINKS
+                    cols.push({
+                        title: "LINKS", 
+                        field: "id", 
+                        width: 90,
+                        hozAlign: "center",
+                        headerSort: false,
+                        formatter: function(cell) {
+                            var rowData = cell.getRow().getData();
+                            var hasLinks = rowData.training_link || rowData.video_link || rowData.form_link || 
+                                          rowData.form_report_link || rowData.checklist_link || rowData.pl || rowData.process;
+                            
+                            if (hasLinks) {
+                                return `<button class="btn btn-sm btn-link view-links" data-id="${cell.getValue()}" title="View Links">
+                                    <i class="mdi mdi-link-variant text-primary" style="font-size: 20px; cursor: pointer;"></i>
+                                </button>`;
+                            }
+                            return '<span style="color: #adb5bd;">-</span>';
+                        }
+                    });
+                    
+                    // ACTION
+                    cols.push({
+                        title: "ACTION", 
+                        field: "id", 
+                        width: 140,
+                        hozAlign: "center",
+                        headerSort: false,
+                        formatter: function(cell) {
+                            var rowData = cell.getRow().getData();
+                            var id = rowData.id;
+                            var assignorId = rowData.assignor_id;
+                            var assigneeId = rowData.assignee_id;
+                            
+                            // Determine permissions
+                            var canEdit = isAdmin || assignorId === currentUserId;
+                            var canDelete = isAdmin || assignorId === currentUserId;
+                            var canView = isAdmin || assignorId === currentUserId || assigneeId === currentUserId;
+                            
+                            var buttons = '';
+                            
+                            if (canView) {
+                                buttons += `
+                                    <button class="action-btn-icon action-btn-view view-task" data-id="${id}" title="View">
+                                        <i class="mdi mdi-eye"></i>
+                                    </button>
+                                `;
+                            }
+                            
+                            if (canEdit) {
+                                buttons += `
+                                    <button class="action-btn-icon action-btn-edit edit-task" data-id="${id}" title="Edit">
+                                        <i class="mdi mdi-pencil"></i>
+                                    </button>
+                                `;
+                            }
+                            
+                            if (canDelete) {
+                                buttons += `
+                                    <button class="action-btn-icon action-btn-delete delete-task" data-id="${id}" title="Delete">
+                                        <i class="mdi mdi-delete"></i>
+                                    </button>
+                                `;
+                            }
+                            
+                            return '<div style="white-space: nowrap;">' + buttons + '</div>';
+                        }
+                    });
+                    
+                    return cols;
+                })(),
+            });
+
+            // Filter functionality
+            $('#filter-search').on('keyup', function() {
+                var value = $(this).val();
+                table.setFilter([
+                    {field:"title", type:"like", value:value},
+                    {field:"group", type:"like", value:value},
+                    {field:"assignor.name", type:"like", value:value},
+                    {field:"assignee.name", type:"like", value:value}
+                ], "or");
+            });
+
+            $('#filter-group').on('keyup', function() {
+                var value = $(this).val();
+                if (value) {
+                    table.setFilter("group", "like", value);
+                } else {
+                    table.clearFilter("group");
+                }
+            });
+
+            $('#filter-task').on('keyup', function() {
+                var value = $(this).val();
+                if (value) {
+                    table.setFilter("title", "like", value);
+                } else {
+                    table.clearFilter("title");
+                }
+            });
+
+            $('#filter-assignor').on('change', function() {
+                var value = $(this).val();
+                if (value) {
+                    table.setFilter("assignor.name", "=", value);
+                } else {
+                    table.clearFilter("assignor.name");
+                }
+            });
+
+            $('#filter-assignee').on('change', function() {
+                var value = $(this).val();
+                if (value) {
+                    table.setFilter("assignee.name", "=", value);
+                } else {
+                    table.clearFilter("assignee.name");
+                }
+            });
+
+            $('#filter-status').on('change', function() {
+                var value = $(this).val();
+                if (value) {
+                    table.setFilter("status", "=", value);
+                } else {
+                    table.clearFilter("status");
+                }
+            });
+
+            $('#filter-priority').on('change', function() {
+                var value = $(this).val();
+                if (value) {
+                    table.setFilter("priority", "=", value);
+                } else {
+                    table.clearFilter("priority");
+                }
+            });
+
+            // Handle Row Selection
+            table.on("rowSelectionChanged", function(data, rows) {
+                selectedTasks = data.map(task => task.id);
+                var count = selectedTasks.length;
+                
+                if (count > 0) {
+                    $('#selected-count').show();
+                    $('#count-number').text(count);
+                    $('#bulk-actions-btn').removeClass('btn-info').addClass('btn-success');
+                } else {
+                    $('#selected-count').hide();
+                    $('#bulk-actions-btn').removeClass('btn-success').addClass('btn-info');
+                }
+            });
+
+            // Show Bulk Actions Modal
+            $('#bulk-actions-btn').on('click', function() {
+                if (selectedTasks.length === 0) {
+                    // Show error notification
+                    var alertHtml = `
+                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                            <i class="mdi mdi-alert-circle me-2"></i><strong>Error!</strong> Please select at least one task to perform bulk actions.
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    `;
+                    $('.task-card .card-body').prepend(alertHtml);
+                    
+                    // Auto dismiss after 4 seconds
+                    setTimeout(function() {
+                        $('.alert-danger').fadeOut();
+                    }, 4000);
+                    
+                    return;
+                }
+                
+                $('#bulk-selected-count').text(selectedTasks.length);
+                $('#bulkActionsModal').modal('show');
+            });
+
+            // Bulk Delete
+            $('#bulk-delete-btn').on('click', function(e) {
+                e.preventDefault();
+                if (confirm('Are you sure you want to delete ' + selectedTasks.length + ' task(s)?')) {
+                    bulkUpdate('delete', {});
+                }
+            });
+
+            // Bulk Change Priority
+            $('#bulk-priority-btn').on('click', function(e) {
+                e.preventDefault();
+                bulkActionType = 'priority';
+                var html = `
+                    <p class="mb-3"><strong>Select new priority for ${selectedTasks.length} task(s):</strong></p>
+                    <div class="mb-3">
+                        <label for="bulk-priority-select" class="form-label">Priority:</label>
+                        <select class="form-select" id="bulk-priority-select">
+                            <option value="low">Low</option>
+                            <option value="normal" selected>Normal</option>
+                            <option value="high">High</option>
+                        </select>
+                    </div>
+                `;
+                showBulkUpdateForm('Change Priority', html);
+            });
+
+            // Bulk Change TID
+            $('#bulk-tid-btn').on('click', function(e) {
+                e.preventDefault();
+                bulkActionType = 'tid';
+                var html = `
+                    <p class="mb-3"><strong>Set new TID date for ${selectedTasks.length} task(s):</strong></p>
+                    <div class="mb-3">
+                        <label for="bulk-tid-input" class="form-label">TID (Task Initiation Date):</label>
+                        <input type="datetime-local" class="form-control" id="bulk-tid-input" required>
+                    </div>
+                `;
+                showBulkUpdateForm('Change TID Date', html);
+            });
+
+            // Bulk Change Assignee
+            $('#bulk-assignee-btn').on('click', function(e) {
+                e.preventDefault();
+                bulkActionType = 'assignee';
+                
+                // Fetch users via AJAX
+                $.ajax({
+                    url: '/tasks/create',
+                    type: 'GET',
+                    success: function(response) {
+                        var usersSelect = '<option value="">Please Select</option>';
+                        // This is a workaround - we'll need to create an API endpoint
+                        // For now, let's create a simple input
+                        var html = `
+                            <p class="mb-3"><strong>Change assignee for ${selectedTasks.length} task(s):</strong></p>
+                            <div class="mb-3">
+                                <label for="bulk-assignee-select" class="form-label">Assignee:</label>
+                                <select class="form-select" id="bulk-assignee-select">
+                                    <option value="">Loading users...</option>
+                                </select>
+                            </div>
+                        `;
+                        showBulkUpdateForm('Change Assignee', html);
+                        loadUsersForBulk();
+                    }
+                });
+            });
+
+            // Bulk Update ETC
+            $('#bulk-etc-btn').on('click', function(e) {
+                e.preventDefault();
+                bulkActionType = 'etc';
+                var html = `
+                    <p class="mb-3"><strong>Update ETC for ${selectedTasks.length} task(s):</strong></p>
+                    <div class="mb-3">
+                        <label for="bulk-etc-input" class="form-label">ETC (Minutes):</label>
+                        <input type="number" class="form-control" id="bulk-etc-input" min="1" placeholder="e.g., 30" required>
+                    </div>
+                `;
+                showBulkUpdateForm('Update ETC', html);
+            });
+
+            // Show Bulk Update Form
+            function showBulkUpdateForm(title, content) {
+                $('#bulkActionsModal').modal('hide');
+                $('#bulkUpdateModalTitle').text(title);
+                $('#bulkUpdateModalBody').html(content);
+                $('#bulkUpdateModal').modal('show');
+            }
+
+            // Confirm Bulk Update
+            $('#confirm-bulk-update-btn').on('click', function() {
+                var data = {};
+                
+                switch(bulkActionType) {
+                    case 'priority':
+                        data.priority = $('#bulk-priority-select').val();
+                        break;
+                    case 'tid':
+                        data.tid = $('#bulk-tid-input').val();
+                        if (!data.tid) {
+                            alert('Please select a date and time');
+                            return;
+                        }
+                        break;
+                    case 'assignee':
+                        data.assignee_id = $('#bulk-assignee-select').val();
+                        if (!data.assignee_id) {
+                            alert('Please select an assignee');
+                            return;
+                        }
+                        break;
+                    case 'etc':
+                        data.etc_minutes = $('#bulk-etc-input').val();
+                        if (!data.etc_minutes || data.etc_minutes <= 0) {
+                            alert('Please enter a valid ETC value');
+                            return;
+                        }
+                        break;
+                }
+                
+                bulkUpdate(bulkActionType, data);
+            });
+
+            // Bulk Update Function
+            function bulkUpdate(action, data) {
+                $.ajax({
+                    url: '/tasks/bulk-update',
+                    type: 'POST',
+                    data: {
+                        _token: '{{ csrf_token() }}',
+                        action: action,
+                        task_ids: selectedTasks,
+                        ...data
+                    },
+                    success: function(response) {
+                        $('#bulkUpdateModal').modal('hide');
+                        $('#bulkActionsModal').modal('hide');
+                        table.deselectRow();
+                        table.replaceData();
+                        
+                        var alertHtml = `
+                            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                                <i class="mdi mdi-check-circle me-2"></i>${response.message}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        `;
+                        $('.task-card .card-body').prepend(alertHtml);
+                        
+                        setTimeout(function() {
+                            $('.alert').fadeOut();
+                            location.reload(); // Reload to update statistics
+                        }, 2000);
+                    },
+                    error: function(xhr) {
+                        alert('Error: ' + (xhr.responseJSON?.message || 'Something went wrong'));
+                    }
+                });
+            }
+
+            // Load Users for Bulk Assignee Change
+            function loadUsersForBulk() {
+                $.ajax({
+                    url: '/tasks/users-list',
+                    type: 'GET',
+                    success: function(users) {
+                        var options = '<option value="">Please Select</option>';
+                        users.forEach(function(user) {
+                            options += `<option value="${user.id}">${user.name}</option>`;
+                        });
+                        $('#bulk-assignee-select').html(options);
+                    }
+                });
+            }
+
+            // View Links
+            $(document).on('click', '.view-links', function(e) {
+                e.preventDefault();
+                var taskId = $(this).data('id');
+                $.ajax({
+                    url: '/tasks/' + taskId,
+                    type: 'GET',
+                    success: function(response) {
+                        var html = '<div class="list-group">';
+                        
+                        if (response.training_link) {
+                            html += `
+                                <a href="${response.training_link}" target="_blank" class="list-group-item list-group-item-action">
+                                    <i class="mdi mdi-school text-primary me-2"></i>
+                                    <strong>Training Link:</strong> ${response.training_link}
+                                </a>`;
+                        }
+                        if (response.video_link) {
+                            html += `
+                                <a href="${response.video_link}" target="_blank" class="list-group-item list-group-item-action">
+                                    <i class="mdi mdi-video text-danger me-2"></i>
+                                    <strong>Video Link:</strong> ${response.video_link}
+                                </a>`;
+                        }
+                        if (response.form_link) {
+                            html += `
+                                <a href="${response.form_link}" target="_blank" class="list-group-item list-group-item-action">
+                                    <i class="mdi mdi-file-document text-success me-2"></i>
+                                    <strong>Form Link:</strong> ${response.form_link}
+                                </a>`;
+                        }
+                        if (response.form_report_link) {
+                            html += `
+                                <a href="${response.form_report_link}" target="_blank" class="list-group-item list-group-item-action">
+                                    <i class="mdi mdi-file-chart text-info me-2"></i>
+                                    <strong>Form Report Link:</strong> ${response.form_report_link}
+                                </a>`;
+                        }
+                        if (response.checklist_link) {
+                            html += `
+                                <a href="${response.checklist_link}" target="_blank" class="list-group-item list-group-item-action">
+                                    <i class="mdi mdi-checkbox-marked-outline text-warning me-2"></i>
+                                    <strong>Checklist Link:</strong> ${response.checklist_link}
+                                </a>`;
+                        }
+                        if (response.pl) {
+                            html += `
+                                <div class="list-group-item">
+                                    <i class="mdi mdi-folder text-secondary me-2"></i>
+                                    <strong>PL:</strong> ${response.pl}
+                                </div>`;
+                        }
+                        if (response.process) {
+                            html += `
+                                <div class="list-group-item">
+                                    <i class="mdi mdi-cog text-dark me-2"></i>
+                                    <strong>Process:</strong> ${response.process}
+                                </div>`;
+                        }
+                        
+                        html += '</div>';
+                        
+                        if (html === '<div class="list-group"></div>') {
+                            html = '<p class="text-muted">No links available for this task.</p>';
+                        }
+                        
+                        $('#links-content').html(html);
+                        $('#linksModal').modal('show');
+                    }
+                });
+            });
+
+            // View Task
+            $(document).on('click', '.view-task', function() {
+                var taskId = $(this).data('id');
+                $.ajax({
+                    url: '/tasks/' + taskId,
+                    type: 'GET',
+                    success: function(response) {
+                        var html = `
+                            <div style="padding: 10px;">
+                                <table class="table table-borderless">
+                                    <tr>
+                                        <th width="200" style="color: #6c757d; font-weight: 600;">Title:</th>
+                                        <td><strong>${response.title}</strong></td>
+                                    </tr>
+                                    <tr>
+                                        <th style="color: #6c757d; font-weight: 600;">Description:</th>
+                                        <td>${response.description || '<span style="color: #adb5bd;">-</span>'}</td>
+                                    </tr>
+                                    <tr>
+                                        <th style="color: #6c757d; font-weight: 600;">Group:</th>
+                                        <td>${response.group || '<span style="color: #adb5bd;">-</span>'}</td>
+                                    </tr>
+                                    <tr>
+                                        <th style="color: #6c757d; font-weight: 600;">Priority:</th>
+                                        <td><span class="priority-badge priority-${response.priority}">${response.priority}</span></td>
+                                    </tr>
+                                    <tr>
+                                        <th style="color: #6c757d; font-weight: 600;">Assignor:</th>
+                                        <td>${response.assignor ? response.assignor.name : '<span style="color: #adb5bd;">-</span>'}</td>
+                                    </tr>
+                                    <tr>
+                                        <th style="color: #6c757d; font-weight: 600;">Assignee:</th>
+                                        <td>${response.assignee ? response.assignee.name : '<span style="color: #adb5bd;">-</span>'}</td>
+                                    </tr>
+                                    <tr>
+                                        <th style="color: #6c757d; font-weight: 600;">Split Tasks:</th>
+                                        <td>${response.split_tasks ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-secondary">No</span>'}</td>
+                                    </tr>
+                                    <tr>
+                                        <th style="color: #6c757d; font-weight: 600;">Flag Raise:</th>
+                                        <td>${response.flag_raise ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-secondary">No</span>'}</td>
+                                    </tr>
+                                    <tr>
+                                        <th style="color: #6c757d; font-weight: 600;">Status:</th>
+                                        <td><span class="status-badge status-${response.status}">${response.status}</span></td>
+                                    </tr>
+                                    <tr>
+                                        <th style="color: #6c757d; font-weight: 600;">ETC (Minutes):</th>
+                                        <td>${response.etc_minutes ? response.etc_minutes + ' min' : '<span style="color: #adb5bd;">-</span>'}</td>
+                                    </tr>
+                                    <tr>
+                                        <th style="color: #6c757d; font-weight: 600;">TID:</th>
+                                        <td>${response.tid || '<span style="color: #adb5bd;">-</span>'}</td>
+                                    </tr>
+                                    <tr>
+                                        <th style="color: #6c757d; font-weight: 600;">L1:</th>
+                                        <td>${response.l1 || '<span style="color: #adb5bd;">-</span>'}</td>
+                                    </tr>
+                                    <tr>
+                                        <th style="color: #6c757d; font-weight: 600;">L2:</th>
+                                        <td>${response.l2 || '<span style="color: #adb5bd;">-</span>'}</td>
+                                    </tr>
+                                    <tr>
+                                        <th style="color: #6c757d; font-weight: 600;">Training Link:</th>
+                                        <td>${response.training_link ? '<a href="' + response.training_link + '" target="_blank" style="color: #0d6efd;">' + response.training_link + '</a>' : '<span style="color: #adb5bd;">-</span>'}</td>
+                                    </tr>
+                                    <tr>
+                                        <th style="color: #6c757d; font-weight: 600;">Video Link:</th>
+                                        <td>${response.video_link ? '<a href="' + response.video_link + '" target="_blank" style="color: #0d6efd;">' + response.video_link + '</a>' : '<span style="color: #adb5bd;">-</span>'}</td>
+                                    </tr>
+                                    <tr>
+                                        <th style="color: #6c757d; font-weight: 600;">Form Link:</th>
+                                        <td>${response.form_link ? '<a href="' + response.form_link + '" target="_blank" style="color: #0d6efd;">' + response.form_link + '</a>' : '<span style="color: #adb5bd;">-</span>'}</td>
+                                    </tr>
+                                    <tr>
+                                        <th style="color: #6c757d; font-weight: 600;">Form Report Link:</th>
+                                        <td>${response.form_report_link ? '<a href="' + response.form_report_link + '" target="_blank" style="color: #0d6efd;">' + response.form_report_link + '</a>' : '<span style="color: #adb5bd;">-</span>'}</td>
+                                    </tr>
+                                    <tr>
+                                        <th style="color: #6c757d; font-weight: 600;">Checklist Link:</th>
+                                        <td>${response.checklist_link ? '<a href="' + response.checklist_link + '" target="_blank" style="color: #0d6efd;">' + response.checklist_link + '</a>' : '<span style="color: #adb5bd;">-</span>'}</td>
+                                    </tr>
+                                    <tr>
+                                        <th style="color: #6c757d; font-weight: 600;">PL:</th>
+                                        <td>${response.pl || '<span style="color: #adb5bd;">-</span>'}</td>
+                                    </tr>
+                                    <tr>
+                                        <th style="color: #6c757d; font-weight: 600;">Process:</th>
+                                        <td>${response.process || '<span style="color: #adb5bd;">-</span>'}</td>
+                                    </tr>
+                                    ${response.image ? '<tr><th style="color: #6c757d; font-weight: 600;">Image:</th><td><img src="/uploads/tasks/' + response.image + '" class="img-thumbnail" style="max-width: 300px; border-radius: 8px;"></td></tr>' : ''}
+                                    <tr>
+                                        <th style="color: #6c757d; font-weight: 600;">Created At:</th>
+                                        <td>${response.created_at}</td>
+                                    </tr>
+                                </table>
+                            </div>
+                        `;
+                        $('#task-details').html(html);
+                        $('#viewTaskModal').modal('show');
+                    }
+                });
+            });
+
+            // Edit Task
+            $(document).on('click', '.edit-task', function() {
+                var taskId = $(this).data('id');
+                window.location.href = '/tasks/' + taskId + '/edit';
+            });
+
+            // Delete Task
+            $(document).on('click', '.delete-task', function() {
+                if(confirm('Are you sure you want to delete this task?')) {
+                    var taskId = $(this).data('id');
+                    $.ajax({
+                        url: '/tasks/' + taskId,
+                        type: 'DELETE',
+                        data: {
+                            _token: '{{ csrf_token() }}'
+                        },
+                        success: function(response) {
+                            table.replaceData();
+                            // Show success message
+                            var alertHtml = `
+                                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                                    <i class="mdi mdi-check-circle me-2"></i>${response.message}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                </div>
+                            `;
+                            $('.task-card .card-body').prepend(alertHtml);
+                            
+                            // Auto dismiss after 3 seconds
+                            setTimeout(function() {
+                                $('.alert').fadeOut();
+                            }, 3000);
+                        }
+                    });
+                }
+            });
+
+            // Handle Status Change
+            var currentTaskId = null;
+            var previousStatus = null;
+            var newStatusValue = null;
+            
+            var statusLabels = {
+                'pending': 'Todo',
+                'in_progress': 'Working',
+                'archived': 'Archived',
+                'completed': 'Done',
+                'need_help': 'Need Help',
+                'need_approval': 'Need Approval',
+                'dependent': 'Dependent',
+                'approved': 'Approved',
+                'hold': 'Hold',
+                'rework': 'Rework',
+                'cancelled': 'Cancelled'
+            };
+            
+            $(document).on('change', '.status-select', function() {
+                var select = $(this);
+                newStatusValue = select.val();
+                currentTaskId = select.data('task-id');
+                previousStatus = select.data('current-status');
+                
+                if (newStatusValue === 'completed') {
+                    // Show Done Modal (ask for ATC)
+                    $('#doneModal').modal('show');
+                    select.val(previousStatus);
+                } else {
+                    // Show Status Change Modal (ask for reason)
+                    var statusLabel = statusLabels[newStatusValue] || newStatusValue;
+                    $('#new-status-label').text(statusLabel);
+                    $('#statusChangeModal').modal('show');
+                    select.val(previousStatus);
+                }
+            });
+
+            // Confirm Done
+            $('#confirm-done-btn').on('click', function() {
+                var atc = $('#atc-input').val();
+                if (!atc || atc <= 0) {
+                    alert('Please enter the actual time spent on this task.');
+                    return;
+                }
+                
+                updateTaskStatus(currentTaskId, 'completed', atc, null);
+                $('#doneModal').modal('hide');
+                $('#atc-input').val('');
+            });
+
+            // Confirm Status Change
+            $('#confirm-status-change-btn').on('click', function() {
+                var reason = $('#status-change-reason').val().trim();
+                if (!reason) {
+                    alert('Please provide a reason for this status change.');
+                    return;
+                }
+                
+                // If rework, set status to in_progress
+                var finalStatus = newStatusValue === 'rework' ? 'in_progress' : newStatusValue;
+                updateTaskStatus(currentTaskId, finalStatus, null, reason);
+                $('#statusChangeModal').modal('hide');
+                $('#status-change-reason').val('');
+            });
+
+            // Update Task Status Function
+            function updateTaskStatus(taskId, status, atc = null, reworkReason = null) {
+                var data = {
+                    _token: '{{ csrf_token() }}',
+                    status: status
+                };
+                
+                if (atc) {
+                    data.atc = atc;
+                }
+                
+                if (reworkReason) {
+                    data.rework_reason = reworkReason;
+                }
+                
+                $.ajax({
+                    url: '/tasks/' + taskId + '/update-status',
+                    type: 'POST',
+                    data: data,
+                    success: function(response) {
+                        table.replaceData();
+                        
+                        // Show success message
+                        var message = reworkReason ? 'Task marked for rework' : 'Status updated successfully!';
+                        var alertHtml = `
+                            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                                <i class="mdi mdi-check-circle me-2"></i>${message}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        `;
+                        $('.task-card .card-body').prepend(alertHtml);
+                        
+                        // Auto dismiss after 3 seconds
+                        setTimeout(function() {
+                            $('.alert').fadeOut();
+                        }, 3000);
+                    },
+                    error: function(xhr) {
+                        alert('Error updating status. Please try again.');
+                        table.replaceData();
+                    }
+                });
+            }
+        });
+    </script>
+@endsection
