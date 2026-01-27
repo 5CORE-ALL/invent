@@ -1195,6 +1195,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay-tabulator-view', [EbayController::class, 'ebayTabulatorView'])->name('ebay.tabulator.view');
     Route::get('/ebay-pricing-data', [EbayController::class, 'ebayViewData'])->name('ebay.pricing.data');
     Route::get('/ebay-data-json', [EbayController::class, 'ebayDataJson'])->name('ebay.data.json');
+    Route::get('/ebay-campaign-data-by-sku', [EbayController::class, 'getCampaignDataBySku'])->name('ebay.campaign.data.by.sku');
     Route::get('/ebay-metrics-history', [EbayController::class, 'getMetricsHistory'])->name('ebay.metrics.history');
     Route::get('/ebay-ads-spend', [EbayController::class, 'getEbayAdsSpend'])->name('ebay.ads.spend');
     Route::get('/ebay-kw-pmt-spend-totals', [EbayController::class, 'getKwPmtSpendTotals'])->name('ebay.kw.pmt.spend.totals');
