@@ -992,8 +992,8 @@ class FbaDataController extends Controller
             // TCOS calculation (total_spend_sum / price_l30 * 100)
             'TCOS_Percentage' => $tcosPercentage,
 
-            // TPFT calculation (GPFT% - TCOS%) - Same as Amazon PFT% formula
-            'TPFT' => round($gpftPercentage - $tcosPercentage, 2),
+            // TPFT calculation (GPFT% - TCOS%) - Same as Amazon PFT% formula (no rounding for exact value)
+            'TPFT' => $gpftPercentage - $tcosPercentage,
             'SPFT' => round($spftPercentage - $tcosPercentage, 2),
             // ROI% = ((price × (margin - TACOS%/100)) - ship - lp) / lp × 100 - Same as Amazon ROI% formula
             'ROI' => (function() use ($PRICE, $marginAfterCommission, $tcosPercentage, $LP_FOR_PFT, $FBA_SHIP_FOR_PFT) {

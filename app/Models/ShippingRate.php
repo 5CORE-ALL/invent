@@ -11,6 +11,7 @@ class ShippingRate extends Model
     protected $fillable = [
         'channel_id',
         'carrier_name',
+        'status',
         'lbs_values',
     ];
 

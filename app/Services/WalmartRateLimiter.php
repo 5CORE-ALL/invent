@@ -139,6 +139,7 @@ class WalmartRateLimiter
     {
         $attempt = 0;
         $lastException = null;
+        $consecutiveRateLimits = 0;
 
         while ($attempt < $maxRetries) {
             try {
@@ -172,11 +173,22 @@ class WalmartRateLimiter
                 if (strpos($errorMessage, 'REQUEST_THRESHOLD_VIOLATED') !== false || 
                     strpos($errorMessage, '429') !== false) {
                     
-                    Log::warning("Rate limit hit for {$apiGroup} on attempt {$attempt}. Retrying...");
+                    $consecutiveRateLimits++;
+                    
+                    Log::warning("Rate limit hit for {$apiGroup} on attempt {$attempt}. Retrying... (consecutive: {$consecutiveRateLimits})");
+                    
+                    // If hitting limit too many times, suggest waiting longer
+                    if ($consecutiveRateLimits >= 2) {
+                        Log::error("Walmart API for {$apiGroup} is persistently rate-limited. Consider waiting 1-2 hours before running again.");
+                        throw new \Exception("Walmart {$apiGroup} API is heavily rate-limited. Please wait 1-2 hours and try again. (Consecutive failures: {$consecutiveRateLimits})");
+                    }
+                    
                     $attempt++;
                     
-                    // Wait longer for rate limit errors
-                    sleep(60 + ($attempt * 30));
+                    // Wait longer for rate limit errors (2-3 minutes)
+                    $waitTime = 120 + ($attempt * 60);
+                    Log::info("Waiting {$waitTime} seconds for Walmart rate limit to reset...");
+                    sleep($waitTime);
                     continue;
                 }
 

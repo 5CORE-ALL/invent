@@ -6,6 +6,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use App\Models\ProductStockMapping;
 use App\Services\WalmartRateLimiter;
 
@@ -60,10 +61,17 @@ class FetchWalmartInventory extends Command
     }
 
     /**
-     * Get access token from Walmart
+     * Get access token from Walmart (with caching to reduce API calls)
      */
     protected function getAccessToken(): ?string
     {
+        // Check cache first (token valid for ~15 minutes)
+        $cachedToken = Cache::get('walmart_api_token');
+        if ($cachedToken) {
+            $this->comment('Using cached token (saves 1 API call)');
+            return $cachedToken;
+        }
+        
         $clientId = env('WALMART_CLIENT_ID');
         $clientSecret = env('WALMART_CLIENT_SECRET');
 
@@ -74,6 +82,7 @@ class FetchWalmartInventory extends Command
 
         $authorization = base64_encode("{$clientId}:{$clientSecret}");
 
+        $this->comment('Requesting new token from Walmart...');
         $response = Http::withoutVerifying()->asForm()->withHeaders([
             'Authorization' => "Basic {$authorization}",
             'WM_QOS.CORRELATION_ID' => uniqid(),
@@ -84,7 +93,15 @@ class FetchWalmartInventory extends Command
         ]);
 
         if ($response->successful()) {
-            return $response->json()['access_token'] ?? null;
+            $token = $response->json()['access_token'] ?? null;
+            
+            if ($token) {
+                // Cache token for 14 minutes (tokens expire after ~15 minutes)
+                Cache::put('walmart_api_token', $token, 840); // 840 seconds = 14 minutes
+                $this->info('New token cached for 14 minutes');
+            }
+            
+            return $token;
         }
 
         Log::error('Failed to get Walmart access token: ' . $response->body());
