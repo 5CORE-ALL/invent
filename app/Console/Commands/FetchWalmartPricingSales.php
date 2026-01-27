@@ -10,6 +10,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 
 class FetchWalmartPricingSales extends Command
 {
@@ -107,10 +108,17 @@ class FetchWalmartPricingSales extends Command
     }
 
     /**
-     * Get access token from Walmart
+     * Get access token from Walmart (with caching to reduce API calls)
      */
     protected function getAccessToken(): ?string
     {
+        // Check cache first (token valid for ~15 minutes)
+        $cachedToken = Cache::get('walmart_api_token');
+        if ($cachedToken) {
+            $this->comment('Using cached token (saves 1 API call)');
+            return $cachedToken;
+        }
+        
         $clientId = env('WALMART_CLIENT_ID');
         $clientSecret = env('WALMART_CLIENT_SECRET');
 
@@ -121,6 +129,7 @@ class FetchWalmartPricingSales extends Command
 
         $authorization = base64_encode("{$clientId}:{$clientSecret}");
 
+        $this->comment('Requesting new token from Walmart...');
         $response = Http::withoutVerifying()->asForm()->withHeaders([
             'Authorization' => "Basic {$authorization}",
             'WM_QOS.CORRELATION_ID' => uniqid(),
@@ -131,7 +140,15 @@ class FetchWalmartPricingSales extends Command
         ]);
 
         if ($response->successful()) {
-            return $response->json()['access_token'] ?? null;
+            $token = $response->json()['access_token'] ?? null;
+            
+            if ($token) {
+                // Cache token for 14 minutes (tokens expire after ~15 minutes)
+                Cache::put('walmart_api_token', $token, 840); // 840 seconds = 14 minutes
+                $this->info('New token cached for 14 minutes');
+            }
+            
+            return $token;
         }
 
         Log::error('Failed to get Walmart access token: ' . $response->body());
@@ -298,6 +315,15 @@ class FetchWalmartPricingSales extends Command
                             ?? $item['stats']['pageViews'] 
                             ?? $item['last30DaysPageViews']
                             ?? null;
+                        
+                        // Debug logging for specific SKU
+                        if (strpos($sku, 'G PICK EXH') !== false) {
+                            Log::info("Found SKU: {$sku}", [
+                                'page_views' => $pageViews,
+                                'stats' => $item['stats'] ?? 'No stats',
+                                'full_item' => $item
+                            ]);
+                        }
                         
                         $allQualityData[$sku] = [
                             'quality_score' => $item['qualityScore'] ?? null,
@@ -556,6 +582,13 @@ class FetchWalmartPricingSales extends Command
 
         // Save remaining data
         if (!empty($allQualityData)) {
+            // Debug: Check if target SKU is in final batch
+            if (isset($allQualityData['G PICK EXH PR 12PK'])) {
+                Log::info("G PICK EXH PR 12PK in final batch", [
+                    'data' => $allQualityData['G PICK EXH PR 12PK']
+                ]);
+            }
+            
             $saved = $this->updateListingQualityBatch($allQualityData);
             $totalSaved += $saved;
             $this->comment("  → Updated final batch: {$saved} SKUs (Total updated: {$totalSaved})");
@@ -635,22 +668,67 @@ class FetchWalmartPricingSales extends Command
     }
 
     /**
-     * Update listing quality data for existing SKUs
+     * Update or create listing quality data for SKUs
      */
     protected function updateListingQualityBatch(array $listingQualityData): int
     {
         $updated = 0;
+        $bulkData = [];
         
         foreach ($listingQualityData as $sku => $quality) {
-            try {
-                WalmartPricingSales::where('sku', $sku)->update([
-                    'page_views' => $quality['page_views'] ?? null,
-                    'updated_at' => now()->toDateTimeString(),
+            $pageViewsValue = $quality['page_views'] ?? null;
+            
+            // Debug logging for specific SKU
+            if (strpos($sku, 'G PICK EXH') !== false) {
+                Log::info("Saving page_views for SKU: {$sku}", [
+                    'page_views' => $pageViewsValue,
+                    'quality_data' => $quality
                 ]);
-                $updated++;
+            }
+            
+            $bulkData[] = [
+                'sku' => $sku,
+                'page_views' => $pageViewsValue,
+                'updated_at' => now()->toDateTimeString(),
+            ];
+            
+            // Batch upsert every 50 records
+            if (count($bulkData) >= 50) {
+                try {
+                    WalmartPricingSales::upsert(
+                        $bulkData,
+                        ['sku'],  // Unique key
+                        ['page_views', 'updated_at']  // Fields to update
+                    );
+                    $updated += count($bulkData);
+                    
+                    // Debug log successful upsert
+                    $skusInBatch = array_column($bulkData, 'sku');
+                    if (in_array('G PICK EXH PR 12PK', $skusInBatch)) {
+                        Log::info("Upserted batch containing G PICK EXH PR 12PK", [
+                            'batch_size' => count($bulkData),
+                            'total_updated' => $updated
+                        ]);
+                    }
+                    
+                    $bulkData = [];
+                } catch (\Exception $e) {
+                    Log::error('Failed to upsert listing quality batch: ' . $e->getMessage());
+                }
+            }
+        }
+        
+        // Insert remaining data
+        if (!empty($bulkData)) {
+            try {
+                WalmartPricingSales::upsert(
+                    $bulkData,
+                    ['sku'],
+                    ['page_views', 'updated_at']
+                );
+                $updated += count($bulkData);
             } catch (\Exception $e) {
-                // Skip if SKU doesn't exist yet
-                continue;
+                Log::error('Failed to upsert final listing quality batch: ' . $e->getMessage());
             }
         }
 

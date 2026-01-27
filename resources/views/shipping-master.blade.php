@@ -152,6 +152,32 @@
             word-wrap: break-word;
             white-space: normal;
         }
+        
+        .card-header[data-bs-toggle="collapse"] {
+            transition: all 0.3s ease;
+        }
+        
+        .card-header[data-bs-toggle="collapse"]:hover {
+            background: linear-gradient(135deg, #1a56b7 0%, #0a3d8f 100%) !important;
+        }
+        
+        .card-header .fa-chevron-down {
+            transition: transform 0.3s ease;
+        }
+        
+        .card-header[aria-expanded="false"] .fa-chevron-down {
+            transform: rotate(-90deg);
+        }
+        
+        #filterResultCount {
+            color: #2c6ed5;
+            font-size: 1.1em;
+        }
+        
+        .form-select:focus, .form-control:focus {
+            border-color: #2c6ed5;
+            box-shadow: 0 0 0 0.2rem rgba(44, 110, 213, 0.25);
+        }
     </style>
 @endsection
 
@@ -186,6 +212,63 @@
                             <button type="button" class="btn btn-success ms-2" id="downloadExcel">
                                 <i class="fas fa-file-excel me-1"></i> Download Excel
                             </button>
+                        </div>
+                    </div>
+
+                    <!-- Advanced Filters Row -->
+                    <div class="row mb-3">
+                        <div class="col-12">
+                            <div class="card border-primary">
+                                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center" style="cursor: pointer;" data-bs-toggle="collapse" data-bs-target="#advancedFilters">
+                                    <h6 class="mb-0">
+                                        <i class="fas fa-filter me-2"></i>Advanced Filters
+                                    </h6>
+                                    <i class="fas fa-chevron-down"></i>
+                                </div>
+                                <div class="collapse show" id="advancedFilters">
+                                    <div class="card-body">
+                                        <div class="row g-3">
+                                            <div class="col-md-3">
+                                                <label class="form-label fw-bold">Status</label>
+                                                <select id="filterStatus" class="form-select">
+                                                    <option value="all">All Status</option>
+                                                    <!-- Status options will be loaded dynamically -->
+                                                </select>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label fw-bold">Inventory (INV)</label>
+                                                <select id="filterInv" class="form-select">
+                                                    <option value="all">All Inventory</option>
+                                                    <option value="with">With Inventory (> 0)</option>
+                                                    <option value="zero">Zero Inventory (= 0)</option>
+                                                    <option value="without">No Data</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label fw-bold">Data Completeness</label>
+                                                <select id="filterCompleteness" class="form-select">
+                                                    <option value="all">All Records</option>
+                                                    <option value="complete">Complete Data</option>
+                                                    <option value="incomplete">Incomplete Data</option>
+                                                    <option value="no_shipping">No Shipping Data</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-3 d-flex align-items-end">
+                                                <button type="button" class="btn btn-warning w-100" id="clearAllFilters">
+                                                    <i class="fas fa-times-circle me-1"></i>Clear All Filters
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="row mt-2">
+                                            <div class="col-12">
+                                                <small class="text-muted">
+                                                    <span id="filterResultCount" class="fw-bold">0</span> records shown
+                                                </small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -461,6 +544,51 @@
                 return num.toFixed(decimals);
             }
 
+            // Load status values from server
+            function loadStatusValues() {
+                makeRequest('/shipping-master/statuses', 'GET')
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        return response.json();
+                    })
+                    .then(response => {
+                        console.log('Status API Response:', response);
+                        if (response && response.success && Array.isArray(response.data)) {
+                            const filterStatus = document.getElementById('filterStatus');
+                            console.log('Loading status values:', response.data);
+                            
+                            // Keep the "All Status" option and add the fetched statuses
+                            response.data.forEach(status => {
+                                if (status) { // Only add non-empty statuses
+                                    const option = document.createElement('option');
+                                    option.value = status;
+                                    option.textContent = status;
+                                    filterStatus.appendChild(option);
+                                }
+                            });
+                            
+                            console.log('Total status options loaded:', response.data.length);
+                        } else {
+                            console.warn('No status values received from server');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Failed to load status values:', error);
+                        // Fallback to default statuses if API fails
+                        const filterStatus = document.getElementById('filterStatus');
+                        const defaultStatuses = ['active', 'DC', 'upcoming'];
+                        console.log('Using fallback statuses:', defaultStatuses);
+                        defaultStatuses.forEach(status => {
+                            const option = document.createElement('option');
+                            option.value = status;
+                            option.textContent = status;
+                            filterStatus.appendChild(option);
+                        });
+                    });
+            }
+
             // Load shipping data from server
             function loadData() {
                 const cacheParam = '?ts=' + new Date().getTime();
@@ -700,6 +828,12 @@
                 document.getElementById('temuShipMissingCount').textContent = `(${temuShipMissingCount})`;
                 document.getElementById('ebay2ShipMissingCount').textContent = `(${ebay2ShipMissingCount})`;
                 document.getElementById('labelQtyMissingCount').textContent = `(${labelQtyMissingCount})`;
+                
+                // Update filter result count
+                const filterResultElement = document.getElementById('filterResultCount');
+                if (filterResultElement) {
+                    filterResultElement.textContent = filteredData.length || tableData.length;
+                }
             }
 
             // Apply all filters
@@ -709,6 +843,10 @@
                 const filterTemuShip = document.getElementById('filterTemuShip').value;
                 const filterEbay2Ship = document.getElementById('filterEbay2Ship').value;
                 const filterLabelQty = document.getElementById('filterLabelQty').value;
+                const filterStatus = document.getElementById('filterStatus').value;
+                const filterInv = document.getElementById('filterInv').value;
+                const filterCompleteness = document.getElementById('filterCompleteness').value;
+                
                 const hasMissingDataFilter = filterShip === 'missing' || filterTemuShip === 'missing' || 
                                             filterEbay2Ship === 'missing' || filterLabelQty === 'missing';
 
@@ -744,6 +882,52 @@
                         }
                     }
 
+                    // Status filter
+                    if (filterStatus !== 'all' && item.status !== filterStatus) {
+                        return false;
+                    }
+
+                    // Inventory filter
+                    if (filterInv !== 'all') {
+                        const inv = item.shopify_inv;
+                        if (filterInv === 'with' && (inv === null || inv === undefined || inv === '' || parseFloat(inv) <= 0)) {
+                            return false;
+                        }
+                        if (filterInv === 'zero' && (inv !== 0 && inv !== '0')) {
+                            return false;
+                        }
+                        if (filterInv === 'without' && (inv !== null && inv !== undefined && inv !== '')) {
+                            return false;
+                        }
+                    }
+
+                    // Data Completeness filter
+                    if (filterCompleteness !== 'all') {
+                        const hasShip = !isMissing(item.ship);
+                        const hasTemuShip = !isMissing(item.temu_ship);
+                        const hasEbay2Ship = !isMissing(item.ebay2_ship);
+                        const hasLabelQty = !isMissing(item.label_qty);
+                        
+                        if (filterCompleteness === 'complete') {
+                            // All four fields must have data
+                            if (!hasShip || !hasTemuShip || !hasEbay2Ship || !hasLabelQty) {
+                                return false;
+                            }
+                        }
+                        if (filterCompleteness === 'incomplete') {
+                            // At least one field is missing
+                            if (hasShip && hasTemuShip && hasEbay2Ship && hasLabelQty) {
+                                return false;
+                            }
+                        }
+                        if (filterCompleteness === 'no_shipping') {
+                            // All four shipping fields are missing
+                            if (hasShip || hasTemuShip || hasEbay2Ship || hasLabelQty) {
+                                return false;
+                            }
+                        }
+                    }
+
                     // SHIP filter
                     if (filterShip === 'missing' && !isMissing(item.ship)) {
                         return false;
@@ -766,6 +950,10 @@
 
                     return true;
                 });
+                
+                // Update filter result count
+                document.getElementById('filterResultCount').textContent = filteredData.length;
+                
                 renderTable(filteredData);
             }
 
@@ -799,7 +987,26 @@
                     document.getElementById('filterTemuShip').value = 'all';
                     document.getElementById('filterEbay2Ship').value = 'all';
                     document.getElementById('filterLabelQty').value = 'all';
+                    document.getElementById('filterStatus').value = 'all';
+                    document.getElementById('filterInv').value = 'all';
+                    document.getElementById('filterCompleteness').value = 'all';
                     applyFilters();
+                });
+
+                // Clear All Filters button
+                document.getElementById('clearAllFilters').addEventListener('click', function() {
+                    customSearch.value = '';
+                    parentSearch.value = '';
+                    skuSearch.value = '';
+                    document.getElementById('filterShip').value = 'all';
+                    document.getElementById('filterTemuShip').value = 'all';
+                    document.getElementById('filterEbay2Ship').value = 'all';
+                    document.getElementById('filterLabelQty').value = 'all';
+                    document.getElementById('filterStatus').value = 'all';
+                    document.getElementById('filterInv').value = 'all';
+                    document.getElementById('filterCompleteness').value = 'all';
+                    applyFilters();
+                    showToast('info', 'All filters cleared');
                 });
 
                 // Column filters
@@ -816,6 +1023,19 @@
                 });
 
                 document.getElementById('filterLabelQty').addEventListener('change', function() {
+                    applyFilters();
+                });
+
+                // New filters
+                document.getElementById('filterStatus').addEventListener('change', function() {
+                    applyFilters();
+                });
+
+                document.getElementById('filterInv').addEventListener('change', function() {
+                    applyFilters();
+                });
+
+                document.getElementById('filterCompleteness').addEventListener('change', function() {
                     applyFilters();
                 });
             }
@@ -1357,7 +1577,20 @@
                 }
             }
 
+            // Handle filter panel collapse animation
+            const advancedFiltersToggle = document.querySelector('[data-bs-toggle="collapse"][data-bs-target="#advancedFilters"]');
+            if (advancedFiltersToggle) {
+                const advancedFiltersPanel = document.getElementById('advancedFilters');
+                advancedFiltersPanel.addEventListener('show.bs.collapse', function() {
+                    advancedFiltersToggle.setAttribute('aria-expanded', 'true');
+                });
+                advancedFiltersPanel.addEventListener('hide.bs.collapse', function() {
+                    advancedFiltersToggle.setAttribute('aria-expanded', 'false');
+                });
+            }
+
             // Initialize
+            loadStatusValues(); // Load status values first
             loadData();
             setupExcelExport();
             setupImport();

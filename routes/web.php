@@ -1482,6 +1482,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/dim-wt-master/push-data', [CategoryController::class, 'pushDimWtDataToPlatforms'])->name('dim.wt.master.push');
     Route::get('/shipping-master', [CategoryController::class, 'shippingMaster'])->name('shipping.master');
     Route::get('/shipping-master-data-view', [CategoryController::class, 'getShippingMasterData'])->name('shipping.master.data');
+    Route::get('/shipping-master/statuses', [CategoryController::class, 'getShippingMasterStatuses'])->name('shipping.master.statuses');
     Route::get('/shipping-master/skus', [CategoryController::class, 'getSkusForShippingMaster'])->name('shipping.master.skus');
     Route::post('/shipping-master/store', [CategoryController::class, 'storeShippingMaster'])->name('shipping.master.store');
     Route::post('/shipping-master/update', [CategoryController::class, 'updateShippingMaster'])->name('shipping.master.update');

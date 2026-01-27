@@ -1890,7 +1890,7 @@
                                 } else if (value > 40) {
                                     style = 'color: purple;';
                                 }
-                                return `<span style="${style}">${value.toFixed(0)}%</span>`;
+                                return `<span style="${style}">${value.toFixed(1)}%</span>`;
                             },
                         },
 
@@ -2533,8 +2533,8 @@
                                     }
                                     let TPFT = GPFT - parseFloat(d.TCOS_Percentage || 0);
 
-                                    updateData['GPFT%'] = `${(GPFT*100).toFixed(2)} %`;
-                                    updateData['TPFT'] = TPFT.toFixed(0);
+                                    updateData['GPFT%'] = `${(GPFT*100).toFixed(1)} %`;
+                                    updateData['TPFT'] = TPFT;
 
                                     console.log('Commission edited - Updated GPFT:', GPFT, 'TPFT:',
                                         TPFT);
@@ -2542,7 +2542,7 @@
                                 } else if (field === 'TCOS_Percentage') {
                                     // Only TPFT depends on TCOS percentage
                                     let TPFT = GPFT - parseFloat(d.TCOS_Percentage || 0);
-                                    updateData['TPFT'] = TPFT.toFixed(0);
+                                    updateData['TPFT'] = TPFT;
 
                                     console.log('TCOS edited - Updated TPFT:', TPFT);
 
@@ -2567,10 +2567,10 @@
 
                                     let TPFT = GPFT - parseFloat(d.TCOS_Percentage || 0);
 
-                                    updateData['Gpft'] = `${(PFT*100).toFixed(2)} %`;
-                                    updateData['ROI%'] = (ROI * 100).toFixed(2);
-                                    updateData['GPFT%'] = `${(GPFT*100).toFixed(2)} %`;
-                                    updateData['TPFT'] = TPFT.toFixed(2);
+                                    updateData['Gpft'] = `${(PFT*100).toFixed(1)} %`;
+                                    updateData['ROI%'] = (ROI * 100).toFixed(1);
+                                    updateData['GPFT%'] = `${(GPFT*100).toFixed(1)} %`;
+                                    updateData['TPFT'] = TPFT;
 
                                     console.log('Other field edited - Updated all calculations');
                                 }
@@ -2597,7 +2597,7 @@
                     // PFT calculation
                     let PFT = 0;
                     if (PRICE > 0) {
-                        PFT = (((PRICE * 0.66) - LP - FBA_SHIP) / PRICE).toFixed(2);
+                        PFT = (((PRICE * 0.66) - LP - FBA_SHIP) / PRICE).toFixed(1);
                     }
 
                     return {

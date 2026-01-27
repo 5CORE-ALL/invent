@@ -781,6 +781,39 @@ class CategoryController extends Controller
         ]);
     }
 
+    public function getShippingMasterStatuses()
+    {
+        try {
+            // Get all products and extract status from Values field
+            $products = ProductMaster::all();
+            $statuses = [];
+
+            foreach ($products as $product) {
+                // Get Values from product
+                $values = is_array($product->Values) ? $product->Values : json_decode($product->Values, true);
+                
+                if (is_array($values) && isset($values['status']) && !empty($values['status'])) {
+                    $statuses[] = $values['status'];
+                }
+            }
+
+            // Get distinct status values and sort them
+            $uniqueStatuses = array_values(array_unique($statuses));
+            sort($uniqueStatuses);
+
+            return response()->json([
+                'success' => true,
+                'data' => $uniqueStatuses
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch statuses',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function updateShippingMaster(Request $request)
     {
         $request->headers->set('Accept', 'application/json');
