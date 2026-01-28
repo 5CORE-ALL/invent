@@ -331,6 +331,7 @@ class TiktokAdsController extends Controller
                     'campaign_name' => $campaignName,
                     'INV' => $inv,
                     'L30' => $ovL30,
+                    't_l30' => $tiktokL30,
                     'NR' => $nra,
                     'spend' => round($spend, 2),
                     'ad_sold' => $adSold,

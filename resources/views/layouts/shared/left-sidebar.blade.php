@@ -2876,11 +2876,11 @@
 
                                     <li><a href="{{ route('listing.tiktokshop') }}">Listing Tiktok Shop</a>
                                     </li>
-                                    <li><a href="{{ route('tiktokshop.ads') }}">Tiktok Shop Ads</a>
-                                    </li>
+                                    {{-- <li><a href="{{ route('tiktokshop.ads') }}">Tiktok Shop Ads</a>
+                                    </li> --}}
                                     <li><a href="{{ route('tiktok.pricing') }}">TikTok Pricing</a>
                                     </li>
-                                    <li><a href="{{ route('tiktok.utilized') }}">TikTok Utilized</a>
+                                    <li><a href="{{ route('tiktok.utilized') }}">TikTok Shop Ads</a>
                                     </li>
                                 </ul>
                             </div>

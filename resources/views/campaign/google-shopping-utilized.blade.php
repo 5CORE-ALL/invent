@@ -464,8 +464,8 @@
                                     </label>
                                     <select id="utilization-type-select" class="form-select form-select-md">
                                         <option value="all" selected>All</option>
-                                        <option value="over">Over Utilized</option>
-                                        <option value="under">Under Utilized</option>
+                                        <option value="over">PINK+PINK (decrease)</option>
+                                        <option value="under">RED+RED (increase)</option>
                                     </select>
                                 </div>
                                 <div class="col-md-2">
@@ -933,8 +933,8 @@
                 const utilizationSelect = document.getElementById('utilization-type-select');
                 if (utilizationSelect) {
                     utilizationSelect.options[0].text = `All (${validSkuCount})`;
-                    utilizationSelect.options[1].text = `Over Utilized (${overCount})`;
-                    utilizationSelect.options[2].text = `Under Utilized (${underCount})`;
+                    utilizationSelect.options[1].text = `PINK+PINK (${overCount})`;
+                    utilizationSelect.options[2].text = `RED+RED (${underCount})`;
                 }
 
                 document.getElementById('7ub-count').textContent = count7ub;
@@ -1591,19 +1591,22 @@
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var spend_L7 = parseFloat(row.spend_L7) || 0;
+                            var spend_L1 = parseFloat(row.spend_L1) || 0;
                             var budget = parseFloat(row.campaignBudgetAmount) || 0;
                             var ub7 = budget > 0 ? (spend_L7 / (budget * 7)) * 100 : 0;
+                            var ub1 = budget > 0 ? (spend_L1 / budget) * 100 : 0;
 
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            if (ub7 >= 66 && ub7 <= 99) {
-                                td.classList.add('green-bg');
-                            } else if (ub7 > 99) {
+                            if (ub7 > 99 && ub1 > 99) {
                                 td.classList.add('pink-bg');
-                            } else if (ub7 < 66) {
-                                td.classList.add('red-bg');
+                                return ub7.toFixed(0) + "%";
                             }
-
+                            if (ub7 < 66 && ub1 < 66) {
+                                td.classList.add('red-bg');
+                                return ub7.toFixed(0) + "%";
+                            }
+                            td.classList.add('green-bg');
                             return ub7.toFixed(0) + "%";
                         },
                         sorter: function(a, b, aRow, bRow, column, dir) {
@@ -1624,20 +1627,23 @@
                         hozAlign: "right",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
+                            var spend_L7 = parseFloat(row.spend_L7) || 0;
                             var spend_L1 = parseFloat(row.spend_L1) || 0;
                             var budget = parseFloat(row.campaignBudgetAmount) || 0;
+                            var ub7 = budget > 0 ? (spend_L7 / (budget * 7)) * 100 : 0;
                             var ub1 = budget > 0 ? (spend_L1 / budget) * 100 : 0;
 
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            if (ub1 >= 66 && ub1 <= 99) {
-                                td.classList.add('green-bg');
-                            } else if (ub1 > 99) {
+                            if (ub7 > 99 && ub1 > 99) {
                                 td.classList.add('pink-bg');
-                            } else if (ub1 < 66) {
-                                td.classList.add('red-bg');
+                                return ub1.toFixed(0) + "%";
                             }
-
+                            if (ub7 < 66 && ub1 < 66) {
+                                td.classList.add('red-bg');
+                                return ub1.toFixed(0) + "%";
+                            }
+                            td.classList.add('green-bg');
                             return ub1.toFixed(0) + "%";
                         },
                         sorter: function(a, b, aRow, bRow, column, dir) {
@@ -1682,64 +1688,63 @@
                         hozAlign: "center",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            
-                            // Check if campaign exists
                             const hasCampaign = row.hasCampaign !== undefined ?
                                 row.hasCampaign :
                                 (row.campaign_id && row.campaignName);
-                            
-                            // If campaign doesn't exist, return "-"
-                            if (!hasCampaign) {
-                                return "-";
-                            }
-                            
+                            if (!hasCampaign) return "-";
+
+                            var spend_L7 = parseFloat(row.spend_L7) || 0;
+                            var spend_L1 = parseFloat(row.spend_L1) || 0;
+                            var budget = parseFloat(row.campaignBudgetAmount) || 0;
                             var cpc_L1 = parseFloat(row.cpc_L1) || 0;
                             var cpc_L7 = parseFloat(row.cpc_L7) || 0;
+                            var ub7 = budget > 0 ? (spend_L7 / (budget * 7)) * 100 : 0;
+                            var ub1 = budget > 0 ? (spend_L1 / budget) * 100 : 0;
+
+                            var td = cell.getElement();
+                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
+
                             var sbid;
-
-                            if (cpc_L1 === 0 && cpc_L7 === 0) {
-                                sbid = 0.75;
+                            if (ub7 > 99 && ub1 > 99) {
+                                sbid = Math.floor(cpc_L1 * 0.90 * 100) / 100;
+                                td.classList.add('pink-bg');
+                            } else if (ub7 < 66 && ub1 < 66) {
+                                if (cpc_L1 === 0 && cpc_L7 === 0) sbid = 0.75;
+                                else if (cpc_L1 > 0) sbid = Math.floor(cpc_L1 * 1.10 * 100) / 100;
+                                else sbid = Math.floor(cpc_L7 * 1.10 * 100) / 100;
+                                td.classList.add('red-bg');
                             } else {
-                                sbid = Math.floor(cpc_L7 * 1.10 * 100) / 100;
+                                td.classList.add('green-bg');
+                                return "—";
                             }
-
                             return sbid.toFixed(2);
                         },
                         sorter: function(a, b, aRow, bRow, column, dir) {
                             var dataA = aRow.getData();
                             var dataB = bRow.getData();
-                            
-                            // Check if campaigns exist
                             const hasCampaignA = dataA.hasCampaign !== undefined ?
-                                dataA.hasCampaign :
-                                (dataA.campaign_id && dataA.campaignName);
+                                dataA.hasCampaign : (dataA.campaign_id && dataA.campaignName);
                             const hasCampaignB = dataB.hasCampaign !== undefined ?
-                                dataB.hasCampaign :
-                                (dataB.campaign_id && dataB.campaignName);
-                            
-                            // If either campaign doesn't exist, handle sorting
+                                dataB.hasCampaign : (dataB.campaign_id && dataB.campaignName);
                             if (!hasCampaignA && !hasCampaignB) return 0;
-                            if (!hasCampaignA) return 1; // Put missing campaigns at end
-                            if (!hasCampaignB) return -1; // Put missing campaigns at end
-                            
-                            var sbidA = 0;
-                            var sbidB = 0;
+                            if (!hasCampaignA) return 1;
+                            if (!hasCampaignB) return -1;
 
-                            if (dataA.cpc_L1 === 0 && dataA.cpc_L7 === 0) {
-                                sbidA = 0.75;
-                            } else {
-                                sbidA = Math.floor(parseFloat(dataA.cpc_L7 || 0) * 1.10 * 100) /
-                                100;
+                            function computedSbid(d) {
+                                var spend_L7 = parseFloat(d.spend_L7) || 0, spend_L1 = parseFloat(d.spend_L1) || 0;
+                                var budget = parseFloat(d.campaignBudgetAmount) || 0;
+                                var cpc_L1 = parseFloat(d.cpc_L1) || 0, cpc_L7 = parseFloat(d.cpc_L7) || 0;
+                                var ub7 = budget > 0 ? (spend_L7 / (budget * 7)) * 100 : 0;
+                                var ub1 = budget > 0 ? (spend_L1 / budget) * 100 : 0;
+                                if (ub7 > 99 && ub1 > 99)
+                                    return Math.floor(cpc_L1 * 0.90 * 100) / 100;
+                                if (ub7 < 66 && ub1 < 66) {
+                                    if (cpc_L1 === 0 && cpc_L7 === 0) return 0.75;
+                                    return cpc_L1 > 0 ? Math.floor(cpc_L1 * 1.10 * 100) / 100 : Math.floor(cpc_L7 * 1.10 * 100) / 100;
+                                }
+                                return -1;
                             }
-
-                            if (dataB.cpc_L1 === 0 && dataB.cpc_L7 === 0) {
-                                sbidB = 0.75;
-                            } else {
-                                sbidB = Math.floor(parseFloat(dataB.cpc_L7 || 0) * 1.10 * 100) /
-                                100;
-                            }
-
-                            return sbidA - sbidB;
+                            return computedSbid(dataA) - computedSbid(dataB);
                         }
                     }
                 ],
@@ -2085,13 +2090,22 @@
                     if (ub7Max && ub7 > parseFloat(ub7Max)) return false;
                 }
 
-                // SBID range filter
+                // SBID range filter (same double-rule as cron)
                 let sbidMin = $("#sbid-min").val();
                 let sbidMax = $("#sbid-max").val();
                 if (sbidMin || sbidMax) {
-                    let sbid = parseFloat(data.sbid || 0);
-                    if (isNaN(sbid)) sbid = 0;
-
+                    let budget = parseFloat(data.campaignBudgetAmount) || 0;
+                    let spend_L7 = parseFloat(data.spend_L7) || 0, spend_L1 = parseFloat(data.spend_L1) || 0;
+                    let cpc_L1 = parseFloat(data.cpc_L1) || 0, cpc_L7 = parseFloat(data.cpc_L7) || 0;
+                    let ub7 = budget > 0 ? (spend_L7 / (budget * 7)) * 100 : 0;
+                    let ub1 = budget > 0 ? (spend_L1 / budget) * 100 : 0;
+                    let sbid = -1;
+                    if (ub7 > 99 && ub1 > 99) sbid = Math.floor(cpc_L1 * 0.90 * 100) / 100;
+                    else if (ub7 < 66 && ub1 < 66) {
+                        if (cpc_L1 === 0 && cpc_L7 === 0) sbid = 0.75;
+                        else if (cpc_L1 > 0) sbid = Math.floor(cpc_L1 * 1.10 * 100) / 100;
+                        else sbid = Math.floor(cpc_L7 * 1.10 * 100) / 100;
+                    }
                     if (sbidMin && sbid < parseFloat(sbidMin)) return false;
                     if (sbidMax && sbid > parseFloat(sbidMax)) return false;
                 }
@@ -2911,22 +2925,31 @@
                     filteredData.forEach(function(row) {
                         var rowEl = row.getElement();
                         if (rowEl && rowEl.offsetParent !== null) {
-
                             var rowData = row.getData();
-                            var cpc_L1 = parseFloat(rowData.cpc_L1) || 0;
-                            var cpc_L7 = parseFloat(rowData.cpc_L7) || 0;
-
+                            if (!rowData.campaign_id && !rowData.campaignName) return;
+                            var spend_L7 = parseFloat(rowData.spend_L7) || 0, spend_L1 = parseFloat(rowData.spend_L1) || 0;
+                            var budget = parseFloat(rowData.campaignBudgetAmount) || 0;
+                            var cpc_L1 = parseFloat(rowData.cpc_L1) || 0, cpc_L7 = parseFloat(rowData.cpc_L7) || 0;
+                            var ub7 = budget > 0 ? (spend_L7 / (budget * 7)) * 100 : 0;
+                            var ub1 = budget > 0 ? (spend_L1 / budget) * 100 : 0;
                             var sbid = 0;
-                            if (cpc_L1 === 0 && cpc_L7 === 0) {
-                                sbid = 0.75;
-                            } else {
-                                sbid = Math.floor(cpc_L7 * 1.10 * 100) / 100;
-                            }
-
+                            if (ub7 > 99 && ub1 > 99) {
+                                sbid = Math.floor(cpc_L1 * 0.90 * 100) / 100;
+                            } else if (ub7 < 66 && ub1 < 66) {
+                                if (cpc_L1 === 0 && cpc_L7 === 0) sbid = 0.75;
+                                else if (cpc_L1 > 0) sbid = Math.floor(cpc_L1 * 1.10 * 100) / 100;
+                                else sbid = Math.floor(cpc_L7 * 1.10 * 100) / 100;
+                            } else return;
+                            if (sbid <= 0) return;
                             campaignIds.push(rowData.campaign_id);
                             bids.push(sbid);
                         }
                     });
+                    if (campaignIds.length === 0) {
+                        overlay.style.display = "none";
+                        alert("No PINK+PINK or RED+RED rows in selection. Only those trigger SBID updates.");
+                        return;
+                    }
                     console.log("Campaign IDs:", campaignIds);
                     console.log("Bids:", bids);
                     fetch('/update-google-ads-bid-price', {
@@ -3003,22 +3026,21 @@
                     let allData = table.getData("all");
 
                     let exportData = allData.map(row => {
-                        let cpc_L1 = parseFloat(row.cpc_L1 || 0);
-                        let cpc_L7 = parseFloat(row.cpc_L7 || 0);
-                        let sbid;
-
-                        if (cpc_L1 === 0 && cpc_L7 === 0) {
-                            sbid = 0.75;
-                        } else {
-                            sbid = Math.floor(cpc_L7 * 1.10 * 100) / 100;
-                        }
-
-                        // Calculate UB7 and UB1
                         let budget = parseFloat(row.campaignBudgetAmount || 0);
                         let spend_L7 = parseFloat(row.spend_L7 || 0);
                         let spend_L1 = parseFloat(row.spend_L1 || 0);
+                        let cpc_L1 = parseFloat(row.cpc_L1 || 0);
+                        let cpc_L7 = parseFloat(row.cpc_L7 || 0);
                         let ub7 = budget > 0 ? (spend_L7 / (budget * 7)) * 100 : 0;
                         let ub1 = budget > 0 ? (spend_L1 / budget) * 100 : 0;
+                        let sbidVal;
+                        if (ub7 > 99 && ub1 > 99) {
+                            sbidVal = (Math.floor(cpc_L1 * 0.90 * 100) / 100).toFixed(2);
+                        } else if (ub7 < 66 && ub1 < 66) {
+                            if (cpc_L1 === 0 && cpc_L7 === 0) sbidVal = "0.75";
+                            else if (cpc_L1 > 0) sbidVal = (Math.floor(cpc_L1 * 1.10 * 100) / 100).toFixed(2);
+                            else sbidVal = (Math.floor(cpc_L7 * 1.10 * 100) / 100).toFixed(2);
+                        } else sbidVal = "—";
 
                         return {
                             Parent: row.parent || "",
@@ -3032,7 +3054,7 @@
                             "1 UB%": ub1.toFixed(0) + "%",
                             "L7 CPC": parseFloat(row.cpc_L7 || 0).toFixed(2),
                             "L1 CPC": parseFloat(row.cpc_L1 || 0).toFixed(2),
-                            SBID: sbid.toFixed(2),
+                            SBID: sbidVal,
                             INV: parseFloat(row.INV || 0),
                             "OV L30": parseFloat(row.L30 || 0),
                             NRL: row.NRL || "",

@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'TikTok Utilized', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
+@extends('layouts.vertical', ['title' => 'TikTok Shop Ads', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
 <meta name="csrf-token" content="{{ csrf_token() }}">
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -193,8 +193,8 @@
 @endsection
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'TikTok Utilized',
-        'sub_title' => 'TikTok Utilized',
+        'page_title' => 'TikTok Shop Ads',
+        'sub_title' => 'TikTok Shop Ads',
     ])
     <div class="row">
         <div class="col-12">
@@ -273,6 +273,12 @@
                                                 <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">Avg ACOS</span>
                                                 <span class="fw-bold" id="avg-acos"
                                                     style="font-size: 1.1rem;">0%</span>
+                                            </div>
+                                            <div class="badge-count-item"
+                                                style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 8px 16px; border-radius: 8px; color: white; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                                <span style="font-size: 0.75rem; display: block; margin-bottom: 2px;">ROAS</span>
+                                                <span class="fw-bold" id="roas"
+                                                    style="font-size: 1.1rem;">0.00</span>
                                             </div>
                                         </div>
                                     </div>
@@ -557,6 +563,16 @@
                     }
                     avgAcosEl.textContent = Math.round(avgAcos) + '%';
                 }
+
+                // Update ROAS: Total Ad Sales / Total Spend
+                const roasEl = document.getElementById('roas');
+                if (roasEl) {
+                    let roas = 0;
+                    if (totalSpend > 0) {
+                        roas = totalSales / totalSpend;
+                    }
+                    roasEl.textContent = roas.toFixed(2);
+                }
             }
 
             // Combined filter function
@@ -581,12 +597,20 @@
                 if (showMissingOnly && (hasCampaign || nra === 'NRA')) return false;
                 if (showNraMissingOnly && nra !== 'NRA') return false;
 
-                // INV filter
-                const invFilter = document.getElementById('inv-filter').value;
+                // INV filter - must be checked before card filters to work correctly
+                const invFilter = document.getElementById('inv-filter')?.value || '';
                 if (invFilter === 'INV_0') {
-                    if (inv > 0) return false;
-                } else if (invFilter === '' || invFilter === null || invFilter === undefined) {
-                    if (inv <= 0 && !showZeroInvOnly) return false;
+                    // Show only items with 0 inventory
+                    if (inv !== 0) return false;
+                } else if (invFilter === 'ALL') {
+                    // Show all items regardless of inventory
+                    // No filtering needed
+                } else {
+                    // Default: INV > 0 (empty string)
+                    // Filter out items with 0 or negative inventory, unless showZeroInvOnly is true
+                    if (inv <= 0 && !showZeroInvOnly) {
+                        return false;
+                    }
                 }
 
                 // NRA filter
@@ -639,6 +663,7 @@
                         return [];
                     },
                     dataLoaded: function() {
+                        // Apply filter immediately after data loads
                         table.setFilter(combinedFilter);
                         updateButtonCounts();
                     },
@@ -702,6 +727,17 @@
                             visible: true,
                             width: 80,
                             hozAlign: "right"
+                        },
+                        {
+                            title: "T L30",
+                            field: "t_l30",
+                            visible: true,
+                            width: 80,
+                            hozAlign: "right",
+                            formatter: function(cell) {
+                                const value = parseInt(cell.getValue() || 0);
+                                return value.toLocaleString();
+                            }
                         },
                         {
                             title: "DIL %",
@@ -866,7 +902,7 @@
                     }]
                 });
 
-                // Update counts when data is loaded/processed
+                // Update counts when data is loaded/processed (don't set filter here to avoid infinite loop)
                 table.on("dataProcessed", function() {
                     updateButtonCounts();
                 });
