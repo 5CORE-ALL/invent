@@ -95,6 +95,26 @@
         .status-circle.pink {
             background-color: #e83e8c;
         }
+
+        .status-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: 1px solid #ddd;
+        }
+
+        .status-dot.green {
+            background-color: #28a745;
+        }
+
+        .status-dot.red {
+            background-color: #dc3545;
+        }
+
+        .status-dot.yellow {
+            background-color: #ffc107;
+        }
     </style>
 @endsection
 
@@ -258,6 +278,9 @@
                     </button>
                     <button type="button" class="btn btn-sm btn-info" data-bs-toggle="modal" data-bs-target="#uploadPricingModal">
                         <i class="fa fa-dollar-sign"></i> Upload Pricing
+                    </button>
+                    <button type="button" id="toggle-ads-columns-btn" class="btn btn-sm btn-secondary">
+                        <i class="fa fa-filter"></i> Show Ads Columns
                     </button>
                 </div>
 
@@ -2190,18 +2213,37 @@
                     width: 80,
                     visible: true,
                     formatter: function(cell) {
-                        const value = cell.getValue();
                         const rowData = cell.getRow().getData();
+                        const value = cell.getValue();
+                        const goodsId = rowData.goods_id || '';
+                        // Check if campaign exists: has goods_id AND (has spend/clicks OR has campaign status)
+                        const hasCampaign = goodsId && (
+                            rowData.spend > 0 || 
+                            rowData.ad_clicks > 0 || 
+                            (rowData.campaign_status && rowData.campaign_status !== 'Not Created')
+                        );
+                        const nraValue = rowData.nr_req ? rowData.nr_req.trim() : "";
                         
-                        // Debug: log first 5 rows
-                        if (cell.getRow().getPosition() <= 5) {
-                            console.log('Row ' + cell.getRow().getPosition() + ' - SKU:', rowData.sku, 'Missing:', value, 'Goods ID:', rowData.goods_id, 'Temu Stock:', rowData.temu_stock, 'INV:', rowData.inventory);
-                        }
-                        
+                        // If missing (M), show M
                         if (value === 'M') {
                             return '<span style="color: #dc3545; font-weight: bold;" title="Not found in temu_pricing table">M</span>';
                         }
-                        return '';
+                        
+                        // Otherwise show hasCampaign status with colored dot (like temu/ads page)
+                        let dotColor, title;
+                        if (nraValue === 'NRA' || nraValue === 'NRL') {
+                            dotColor = 'yellow';
+                            title = 'NRA - Not Required';
+                        } else {
+                            dotColor = hasCampaign ? 'green' : 'red';
+                            title = hasCampaign ? 'Campaign Exists' : 'Campaign Missing';
+                        }
+                        
+                        return `
+                            <div style="display: flex; align-items: center; justify-content: center;">
+                                <span class="status-dot ${dotColor}" title="${title}"></span>
+                            </div>
+                        `;
                     }
                 },
                 {
@@ -2603,42 +2645,200 @@
                  {
                     title: "Spend",
                     field: "spend",
-                    hozAlign: "center",
+                    hozAlign: "right",
                     sorter: "number",
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue()) || 0;
-                        return '$' + value.toFixed(2);
-                    }
+                        return `<div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
+                            <span>${value.toFixed(2)}</span>
+                            <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="Spend"></i>
+                        </div>`;
+                    },
+                    visible: true,
+                    width: 100
                 },
                 {
-                    title: "Net ROAS",
-                    field: "net_roas",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const value = parseFloat(cell.getValue()) || 0;
-                        return value.toFixed(2);
-                    }
-                },
-                {
-                    title: "ACOS AD",
+                    title: "ACOS%",
                     field: "acos_ad",
-                    hozAlign: "center",
+                    hozAlign: "right",
                     sorter: "number",
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue()) || 0;
-                        return value.toFixed(2) + '%';
-                    }
+                        return `<div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
+                            <span>${Math.round(value)}%</span>
+                            <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="ACOS%"></i>
+                        </div>`;
+                    },
+                    visible: true,
+                    width: 100
                 },
                 {
-                    title: "Clicks",
+                    title: "Ad Clicks",
                     field: "ad_clicks",
-                    hozAlign: "center",
+                    hozAlign: "right",
                     sorter: "number",
                     formatter: function(cell) {
                         const value = parseInt(cell.getValue()) || 0;
-                        return value.toLocaleString();
-                    }
+                        return `<div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
+                            <span>${value.toLocaleString()}</span>
+                            <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="Ad Clicks"></i>
+                        </div>`;
+                    },
+                    visible: true,
+                    width: 110
+                },
+                {
+                    title: "OUT ROAS",
+                    field: "out_roas_l30",
+                    hozAlign: "right",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        // Use net_roas as OUT ROAS if out_roas_l30 is not available
+                        const value = parseFloat(cell.getValue() || rowData.net_roas || 0);
+                        return `<div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
+                            <span>${value.toFixed(2)}</span>
+                            <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="OUT ROAS"></i>
+                        </div>`;
+                    },
+                    visible: true,
+                    width: 100
+                },
+                {
+                    title: "IN ROAS",
+                    field: "in_roas_l30",
+                    hozAlign: "right",
+                    editor: "number",
+                    editorParams: {
+                        min: 0,
+                        step: 0.01
+                    },
+                    editable: function(cell) {
+                        return !window.iconClicked;
+                    },
+                    formatter: function(cell) {
+                        // Default to 0 if field doesn't exist
+                        const cellValue = cell.getValue();
+                        const value = (cellValue !== null && cellValue !== undefined) ? parseFloat(cellValue) : 0;
+                        const cellElement = cell.getElement();
+                        
+                        if (cellElement) {
+                            setTimeout(function() {
+                                const icon = cellElement.querySelector('.toggle-in-roas-info');
+                                if (icon) {
+                                    $(icon).off('mousedown click');
+                                    $(icon).on('mousedown', function(e) {
+                                        window.iconClicked = true;
+                                        e.stopPropagation();
+                                        e.preventDefault();
+                                        setTimeout(function() {
+                                            window.iconClicked = false;
+                                        }, 100);
+                                        return false;
+                                    });
+                                }
+                            }, 0);
+                        }
+                        
+                        return `<div style="display: flex; align-items: center; justify-content: flex-end; gap: 5px;">
+                            <span>${value.toFixed(2)}</span>
+                            <i class="fa-solid fa-info-circle toggle-in-roas-info" style="cursor: pointer; font-size: 12px; color: #3b82f6; pointer-events: auto; z-index: 10; position: relative;" title="IN ROAS"></i>
+                        </div>`;
+                    },
+                    cellClick: function(e, cell) {
+                        if (e.target.classList.contains('toggle-in-roas-info') || 
+                            e.target.classList.contains('fa-info-circle') ||
+                            e.target.closest('.toggle-in-roas-info')) {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            return false;
+                        }
+                    },
+                    cellEdited: function(cell) {
+                        const row = cell.getRow();
+                        const rowData = row.getData();
+                        const sku = rowData.sku;
+                        const value = parseFloat(cell.getValue() || 0);
+                        
+                        if (!sku) {
+                            console.error('SKU not found');
+                            showToast('Error: SKU not found', 'error');
+                            return;
+                        }
+                        
+                        $.ajax({
+                            url: '/temu/ads/update',
+                            method: 'POST',
+                            headers: {
+                                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                                'Accept': 'application/json'
+                            },
+                            data: {
+                                sku: sku,
+                                field: 'in_roas_l30',
+                                value: value
+                            },
+                            success: function(response) {
+                                if (response.success) {
+                                    cell.setValue(value);
+                                    showToast('IN ROAS updated successfully', 'success');
+                                } else {
+                                    const oldValue = parseFloat(rowData.in_roas_l30 || 0);
+                                    cell.setValue(oldValue);
+                                    showToast('Failed to update IN ROAS: ' + (response.message || 'Unknown error'), 'error');
+                                }
+                            },
+                            error: function(xhr) {
+                                const oldValue = parseFloat(rowData.in_roas_l30 || 0);
+                                cell.setValue(oldValue);
+                                const errorMsg = xhr.responseJSON?.message || xhr.statusText || 'Unknown error';
+                                console.error('Error updating IN ROAS:', xhr);
+                                showToast('Error updating IN ROAS: ' + errorMsg, 'error');
+                            }
+                        });
+                    },
+                    visible: true,
+                    width: 100
+                },
+                {
+                    title: "Status",
+                    field: "campaign_status",
+                    hozAlign: "center",
+                    formatter: function(cell) {
+                        const row = cell.getRow();
+                        const sku = row.getData().sku;
+                        const rowData = row.getData();
+                        const goodsId = rowData.goods_id || '';
+                        const hasCampaign = goodsId && (rowData.spend > 0 || rowData.ad_clicks > 0);
+                        
+                        // Default to "Not Created" if no campaign exists, otherwise "Active"
+                        let defaultValue = hasCampaign ? "Active" : "Not Created";
+                        // Try to get value from cell, if not available use default
+                        let cellValue = cell.getValue();
+                        const value = (cellValue && cellValue.trim()) ? cellValue.trim() : defaultValue;
+                        
+                        const statusColors = {
+                            "Active": "#10b981",
+                            "Inactive": "#ef4444",
+                            "Not Created": "#eab308"
+                        };
+                        const selectedColor = statusColors[value] || "#6b7280";
+                        
+                        return `
+                            <select class="form-select form-select-sm editable-select campaign-status-select" 
+                                    data-sku="${sku}" 
+                                    data-field="status"
+                                    style="width: 120px; border: 1px solid #d1d5db; padding: 4px 8px; font-size: 0.875rem; color: ${selectedColor}; font-weight: 500;">
+                                <option value="Active" ${value === 'Active' ? 'selected' : ''} style="color: #10b981; font-weight: 500;">Active</option>
+                                <option value="Inactive" ${value === 'Inactive' ? 'selected' : ''} style="color: #ef4444; font-weight: 500;">Inactive</option>
+                                <option value="Not Created" ${value === 'Not Created' ? 'selected' : ''} style="color: #eab308; font-weight: 500;">Not Created</option>
+                            </select>
+                        `;
+                    },
+                    cellClick: function(e, cell) {
+                        e.stopPropagation();
+                    },
+                    visible: true,
+                    width: 130
                 },
                 {
                     title: "Target",
@@ -2722,6 +2922,65 @@
                 },
                 
             ]
+        });
+
+        // Toggle Ads Columns button - Show only columns that match temu/ads page
+        let adsColumnsVisible = false;
+        let originalColumnVisibility = {}; // Store original visibility state
+        
+        // Columns to show when ads view is active (matching temu/ads page)
+        const adsColumnFields = ['sku', 'missing', 'inventory', 'ovl30', 'temu_l30', 'dil_percent', 'nr_req', 'spend', 'ad_clicks', 'acos_ad', 'out_roas_l30', 'in_roas_l30', 'campaign_status'];
+        
+        $('#toggle-ads-columns-btn').on('click', function() {
+            adsColumnsVisible = !adsColumnsVisible;
+            
+            if (adsColumnsVisible) {
+                // Store original visibility state for all columns
+                table.getColumns().forEach(function(column) {
+                    const field = column.getField();
+                    if (field) {
+                        originalColumnVisibility[field] = column.isVisible();
+                    }
+                });
+                
+                // Hide all columns first
+                table.getColumns().forEach(function(column) {
+                    const field = column.getField();
+                    if (field && !adsColumnFields.includes(field)) {
+                        column.hide();
+                    }
+                });
+                
+                // Show only ads columns
+                adsColumnFields.forEach(function(field) {
+                    try {
+                        const column = table.getColumn(field);
+                        if (column) {
+                            column.show();
+                        }
+                    } catch(e) {
+                        console.log('Column not found: ' + field);
+                    }
+                });
+                
+                $(this).html('<i class="fa fa-filter"></i> Show All Columns');
+                $(this).removeClass('btn-secondary').addClass('btn-primary');
+            } else {
+                // Restore original visibility state
+                table.getColumns().forEach(function(column) {
+                    const field = column.getField();
+                    if (field && originalColumnVisibility.hasOwnProperty(field)) {
+                        if (originalColumnVisibility[field]) {
+                            column.show();
+                        } else {
+                            column.hide();
+                        }
+                    }
+                });
+                
+                $(this).html('<i class="fa fa-filter"></i> Show Ads Columns');
+                $(this).removeClass('btn-primary').addClass('btn-secondary');
+            }
         });
 
         $('#sku-search').on('keyup', function() {
@@ -3111,6 +3370,57 @@
                 }
             });
         });
+
+        // Status dropdown change handler
+        $(document).on('change', '.campaign-status-select', function() {
+            const $select = $(this);
+            const value = $select.val();
+            const sku = $select.data('sku');
+
+            if (!sku) {
+                console.error('SKU not found in status select');
+                showToast('Error: SKU not found', 'error');
+                return;
+            }
+
+            // Update the select color based on value
+            const statusColors = {
+                "Active": "#10b981",
+                "Inactive": "#ef4444",
+                "Not Created": "#eab308"
+            };
+            $select.css('color', statusColors[value] || "#6b7280");
+
+            // Save to database via temu/ads/update endpoint
+            $.ajax({
+                url: '/temu/ads/update',
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                    'Accept': 'application/json'
+                },
+                data: {
+                    sku: sku,
+                    field: 'status',
+                    value: value
+                },
+                success: function(response) {
+                    if (response.success) {
+                        showToast('Status updated successfully', 'success');
+                    } else {
+                        showToast('Failed to update status: ' + (response.message || 'Unknown error'), 'error');
+                    }
+                },
+                error: function(xhr) {
+                    const errorMsg = xhr.responseJSON?.message || xhr.statusText || 'Unknown error';
+                    console.error('Error updating status:', xhr);
+                    showToast('Failed to update status: ' + errorMsg, 'error');
+                }
+            });
+        });
+
+        // Initialize iconClicked flag for IN ROAS
+        window.iconClicked = false;
 
         function buildColumnDropdown() {
             const menu = document.getElementById("column-dropdown-menu");
