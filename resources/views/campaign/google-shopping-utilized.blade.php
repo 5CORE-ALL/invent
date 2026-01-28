@@ -561,20 +561,6 @@
                                             style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-chart-line me-1" style="color: #64748b;"></i>Statistics
                                         </label>
-                                        <div class="d-flex align-items-center gap-2 flex-wrap">
-                                            <button type="button" id="apr-all-sbid-btn" class="btn btn-sm btn-info d-none" title="Apply SBID (PINK+PINK / RED+RED) to selected">
-                                                <i class="fa-solid fa-check-double me-1"></i> Apply SBID
-                                            </button>
-                                            <button type="button" id="bulk-enable-campaigns-btn" class="btn btn-sm btn-success d-none" title="Enable selected campaigns">
-                                                <i class="fa fa-play-circle me-1"></i> Enable
-                                            </button>
-                                            <button type="button" id="bulk-pause-campaigns-btn" class="btn btn-sm btn-warning d-none" title="Pause selected campaigns">
-                                                <i class="fa fa-pause-circle me-1"></i> Pause
-                                            </button>
-                                            <a href="javascript:void(0)" id="export-btn" class="btn btn-sm btn-success d-flex align-items-center">
-                                                <i class="fas fa-file-export me-1"></i> Export Excel/CSV
-                                            </a>
-                                        </div>
                                     </div>
                                     <div class="d-flex gap-2 flex-wrap align-items-center">
                                         <div class="badge-count-item" id="total-sku-card"
@@ -724,6 +710,15 @@
                                         <button type="button" id="push-mbid-to-google-btn" class="btn btn-sm btn-success" title="Push mbid of selected campaigns to Google Ads">
                                             <i class="fa fa-cloud-upload me-1"></i> Push mbid to Google
                                         </button>
+                                        <button type="button" id="bulk-enable-campaigns-btn" class="btn btn-sm btn-success d-none" title="Enable selected campaigns">
+                                            <i class="fa fa-play-circle me-1"></i> Enable
+                                        </button>
+                                        <button type="button" id="bulk-pause-campaigns-btn" class="btn btn-sm btn-warning d-none" title="Pause selected campaigns">
+                                            <i class="fa fa-pause-circle me-1"></i> Pause
+                                        </button>
+                                        <a href="javascript:void(0)" id="export-btn" class="btn btn-sm btn-success d-flex align-items-center">
+                                            <i class="fas fa-file-export me-1"></i> Export Excel/CSV
+                                        </a>
                                     </div>
                                 </div>
                             </div>
@@ -1896,13 +1891,9 @@
 
             table.on("rowSelectionChanged", function(data, rows) {
                 if (data.length > 0) {
-                    const apr = document.getElementById("apr-all-sbid-btn");
-                    if (apr) apr.classList.remove("d-none");
                     document.getElementById("bulk-enable-campaigns-btn").classList.remove("d-none");
                     document.getElementById("bulk-pause-campaigns-btn").classList.remove("d-none");
                 } else {
-                    const apr = document.getElementById("apr-all-sbid-btn");
-                    if (apr) apr.classList.add("d-none");
                     document.getElementById("bulk-enable-campaigns-btn").classList.add("d-none");
                     document.getElementById("bulk-pause-campaigns-btn").classList.add("d-none");
                 }
@@ -3160,75 +3151,6 @@
                 }
             }, true); // Use capture phase to catch event earlier
 
-            const aprAllSbidBtn = document.getElementById("apr-all-sbid-btn");
-            if (aprAllSbidBtn) {
-                aprAllSbidBtn.addEventListener("click", function() {
-                    const overlay = document.getElementById("progress-overlay");
-                    overlay.style.display = "flex";
-
-                    var filteredData = table.getSelectedRows();
-
-                    var campaignIds = [];
-                    var bids = [];
-
-                    filteredData.forEach(function(row) {
-                        var rowEl = row.getElement();
-                        if (rowEl && rowEl.offsetParent !== null) {
-                            var rowData = row.getData();
-                            if (!rowData.campaign_id && !rowData.campaignName) return;
-                            var spend_L7 = parseFloat(rowData.spend_L7) || 0, spend_L1 = parseFloat(rowData.spend_L1) || 0;
-                            var budget = parseFloat(rowData.campaignBudgetAmount) || 0;
-                            var cpc_L1 = parseFloat(rowData.cpc_L1) || 0, cpc_L7 = parseFloat(rowData.cpc_L7) || 0;
-                            var ub7 = budget > 0 ? (spend_L7 / (budget * 7)) * 100 : 0;
-                            var ub1 = budget > 0 ? (spend_L1 / budget) * 100 : 0;
-                            var sbid = 0;
-                            if (ub7 > 99 && ub1 > 99) {
-                                sbid = Math.floor(cpc_L1 * 0.90 * 100) / 100;
-                            } else if (ub7 < 66 && ub1 < 66) {
-                                if (cpc_L1 === 0 && cpc_L7 === 0) sbid = 0.75;
-                                else if (cpc_L1 > 0) sbid = Math.floor(cpc_L1 * 1.10 * 100) / 100;
-                                else sbid = Math.floor(cpc_L7 * 1.10 * 100) / 100;
-                            } else return;
-                            if (sbid <= 0) return;
-                            campaignIds.push(rowData.campaign_id);
-                            bids.push(sbid);
-                        }
-                    });
-                    if (campaignIds.length === 0) {
-                        overlay.style.display = "none";
-                        alert("No PINK+PINK or RED+RED rows in selection. Only those trigger SBID updates.");
-                        return;
-                    }
-                    console.log("Campaign IDs:", campaignIds);
-                    console.log("Bids:", bids);
-                    fetch('/update-google-ads-bid-price', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')
-                                    .getAttribute('content')
-                            },
-                            body: JSON.stringify({
-                                campaign_ids: campaignIds,
-                                bids: bids
-                            })
-                        })
-                        .then(res => res.json())
-                        .then(data => {
-                            console.log("Backend response:", data);
-                            if (data.status === 200) {
-                                alert("Keywords updated successfully!");
-                            } else {
-                                alert("Something went wrong: " + data.message);
-                            }
-                        })
-                        .catch(err => console.error(err))
-                        .finally(() => {
-                            overlay.style.display = "none";
-                        });
-                });
-            }
-
             function updateBid(aprBid, campaignId) {
                 const overlay = document.getElementById("progress-overlay");
                 overlay.style.display = "flex";
@@ -3259,7 +3181,9 @@
 
             const applyIncDecSbidBtn = document.getElementById("apply-inc-dec-sbid-btn");
             if (applyIncDecSbidBtn) {
-                applyIncDecSbidBtn.addEventListener("click", function() {
+                applyIncDecSbidBtn.addEventListener("click", function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
                     const overlay = document.getElementById("progress-overlay");
                     const rows = table.getSelectedRows();
                     if (!rows || rows.length === 0) {
@@ -3308,7 +3232,7 @@
                     .then(function(r) { return r.json(); })
                     .then(function(data) {
                         if (data.status === 200 || data.status === 207) {
-                            alert(data.message || "INC/DEC applied to selected campaigns. mbid saved (no Google push).");
+                            showSuccessToast(data.message || "INC/DEC applied. mbid saved (no Google push).");
                             updateButtonCounts();
                             if (typeof table !== "undefined" && table) table.setData("/google/shopping/data");
                         } else {
@@ -3323,9 +3247,20 @@
                 });
             }
 
+            function showSuccessToast(msg) {
+                var el = document.createElement("div");
+                el.className = "alert alert-success position-fixed shadow";
+                el.style.cssText = "top: 1rem; left: 50%; transform: translateX(-50%); z-index: 9999; min-width: 280px;";
+                el.textContent = msg;
+                document.body.appendChild(el);
+                setTimeout(function() { el.remove(); }, 3000);
+            }
+
             const pushMbidToGoogleBtn = document.getElementById("push-mbid-to-google-btn");
             if (pushMbidToGoogleBtn) {
-                pushMbidToGoogleBtn.addEventListener("click", function() {
+                pushMbidToGoogleBtn.addEventListener("click", function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
                     const overlay = document.getElementById("progress-overlay");
                     const rows = table.getSelectedRows();
                     if (!rows || rows.length === 0) {
@@ -3361,9 +3296,7 @@
                     .then(function(r) { return r.json(); })
                     .then(function(data) {
                         if (data.status === 200 || data.status === 207) {
-                            alert(data.message || "mbid pushed to Google Ads for selected campaigns.");
-                            updateButtonCounts();
-                            if (typeof table !== "undefined" && table) table.setData("/google/shopping/data");
+                            showSuccessToast(data.message || "mbid pushed to Google Ads for selected campaigns.");
                         } else {
                             alert("Error: " + (data.message || "Request failed."));
                         }
