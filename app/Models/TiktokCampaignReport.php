@@ -25,6 +25,7 @@ class TiktokCampaignReport extends Model
         'custom_status',
         'authorization_type',
         'cost',
+        'budget',
         'sku_orders',
         'cost_per_order',
         'gross_revenue',
@@ -46,6 +47,7 @@ class TiktokCampaignReport extends Model
     protected $casts = [
         'time_posted' => 'datetime',
         'cost' => 'decimal:2',
+        'budget' => 'decimal:2',
         'sku_orders' => 'integer',
         'cost_per_order' => 'decimal:2',
         'gross_revenue' => 'decimal:2',

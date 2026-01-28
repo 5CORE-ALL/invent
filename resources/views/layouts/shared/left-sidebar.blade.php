@@ -2866,9 +2866,9 @@
                             </a>
                             <div class="collapse" id="sidebarTiktokShop">
                                 <ul class="side-nav-third-level">
-                                    <li>
+                                    {{-- <li>
                                         <a href="{{ url('tiktokAnalysis') }}">Tiktok Shop Analytics</a>
-                                    </li>
+                                    </li> --}}
 
                                     <li>
                                         <a href="{{ route('zero.tiktokshop') }}">Tiktok Shop 0 view</a>
@@ -2878,7 +2878,7 @@
                                     </li>
                                     {{-- <li><a href="{{ route('tiktokshop.ads') }}">Tiktok Shop Ads</a>
                                     </li> --}}
-                                    <li><a href="{{ route('tiktok.pricing') }}">TikTok Pricing</a>
+                                    <li><a href="{{ route('tiktok.pricing') }}">TikTok Shop Analytics</a>
                                     </li>
                                     <li><a href="{{ route('tiktok.utilized') }}">TikTok Shop Ads</a>
                                     </li>

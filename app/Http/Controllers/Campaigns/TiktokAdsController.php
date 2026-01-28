@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\MarketplacePercentage;
 use App\Models\TiktokCampaignReport;
 use App\Models\ProductMaster;
+use App\Models\ReverbViewData;
 use App\Models\ShopifySku;
 use App\Models\TikTokDailyData;
 use App\Models\TikTokProduct;
@@ -160,6 +161,7 @@ class TiktokAdsController extends Controller
                     
                     // For Custom Status, take the first non-null value (prioritize L30) - return null if not set
                     $customStatus = $firstRecord && $firstRecord->custom_status ? $firstRecord->custom_status : null;
+                    $budget = $firstRecord && $firstRecord->budget !== null ? (float)$firstRecord->budget : null;
                     
                     return (object)[
                         'sku_upper' => strtoupper(trim($group->first()->campaign_name)),
@@ -170,6 +172,7 @@ class TiktokAdsController extends Controller
                         'avg_roi' => $roi,
                         'avg_in_roas' => $inRoas,
                         'custom_status' => $customStatus,
+                        'budget' => $budget,
                     ];
                 });
             
@@ -193,6 +196,7 @@ class TiktokAdsController extends Controller
                     
                     // For Custom Status, take the first non-null value (use L7 if L30 doesn't exist) - return null if not set
                     $customStatus = $firstRecord && $firstRecord->custom_status ? $firstRecord->custom_status : null;
+                    $budget = $firstRecord && $firstRecord->budget !== null ? (float)$firstRecord->budget : null;
                     
                     return (object)[
                         'sku_upper' => strtoupper(trim($group->first()->campaign_name)),
@@ -203,6 +207,7 @@ class TiktokAdsController extends Controller
                         'avg_roi' => $roi,
                         'avg_in_roas' => $inRoas,
                         'custom_status' => $customStatus,
+                        'budget' => $budget,
                     ];
                 });
             
@@ -214,9 +219,10 @@ class TiktokAdsController extends Controller
                     'clicks' => (int)($metrics->total_clicks ?? 0),
                     'revenue' => (float)($metrics->total_revenue ?? 0),
                     'sku_orders' => (int)($metrics->total_sku_orders ?? 0),
-                    'roi' => (float)($metrics->avg_roi ?? 0), // Out ROAS from L30 report (roi column)
-                    'in_roas' => (float)($metrics->avg_in_roas ?? 0), // In ROAS from L30 report (in_roas column)
-                    'custom_status' => $metrics->custom_status ?? null, // Custom Status from L30 report
+                    'roi' => (float)($metrics->avg_roi ?? 0),
+                    'in_roas' => (float)($metrics->avg_in_roas ?? 0),
+                    'custom_status' => $metrics->custom_status ?? null,
+                    'budget' => $metrics->budget !== null ? (float)$metrics->budget : null,
                 ];
             }
             
@@ -226,17 +232,17 @@ class TiktokAdsController extends Controller
                     $campaignMetricsBySku[$skuUpper]['clicks'] += (int)($metrics->total_clicks ?? 0);
                     $campaignMetricsBySku[$skuUpper]['revenue'] += (float)($metrics->total_revenue ?? 0);
                     $campaignMetricsBySku[$skuUpper]['sku_orders'] += (int)($metrics->total_sku_orders ?? 0);
-                    // Keep L30 ROI, only use L7 ROI if L30 ROI is 0 or null
                     if ($campaignMetricsBySku[$skuUpper]['roi'] == 0) {
-                        $campaignMetricsBySku[$skuUpper]['roi'] = (float)($metrics->avg_roi ?? 0); // Out ROAS from L7 report (roi column)
+                        $campaignMetricsBySku[$skuUpper]['roi'] = (float)($metrics->avg_roi ?? 0);
                     }
-                    // Keep L30 In ROAS, only use L7 In ROAS if L30 In ROAS is 0 or null
                     if ($campaignMetricsBySku[$skuUpper]['in_roas'] == 0) {
-                        $campaignMetricsBySku[$skuUpper]['in_roas'] = (float)($metrics->avg_in_roas ?? 0); // In ROAS from L7 report (in_roas column)
+                        $campaignMetricsBySku[$skuUpper]['in_roas'] = (float)($metrics->avg_in_roas ?? 0);
                     }
-                    // Keep L30 Custom Status, only use L7 Custom Status if L30 Custom Status is null
                     if (empty($campaignMetricsBySku[$skuUpper]['custom_status'])) {
-                        $campaignMetricsBySku[$skuUpper]['custom_status'] = $metrics->custom_status ?? null; // Custom Status from L7 report
+                        $campaignMetricsBySku[$skuUpper]['custom_status'] = $metrics->custom_status ?? null;
+                    }
+                    if ($campaignMetricsBySku[$skuUpper]['budget'] === null && $metrics->budget !== null) {
+                        $campaignMetricsBySku[$skuUpper]['budget'] = (float)$metrics->budget;
                     }
                 } else {
                     $campaignMetricsBySku[$skuUpper] = [
@@ -244,9 +250,10 @@ class TiktokAdsController extends Controller
                         'clicks' => (int)($metrics->total_clicks ?? 0),
                         'revenue' => (float)($metrics->total_revenue ?? 0),
                         'sku_orders' => (int)($metrics->total_sku_orders ?? 0),
-                        'roi' => (float)($metrics->avg_roi ?? 0), // Out ROAS from L7 report (roi column)
-                        'in_roas' => (float)($metrics->avg_in_roas ?? 0), // In ROAS from L7 report (in_roas column)
-                        'custom_status' => $metrics->custom_status ?? null, // Custom Status from L7 report
+                        'roi' => (float)($metrics->avg_roi ?? 0),
+                        'in_roas' => (float)($metrics->avg_in_roas ?? 0),
+                        'custom_status' => $metrics->custom_status ?? null,
+                        'budget' => $metrics->budget !== null ? (float)$metrics->budget : null,
                     ];
                 }
             }
@@ -262,6 +269,9 @@ class TiktokAdsController extends Controller
                     }
                 }
             }
+
+            // Fetch NRA (NR) values from reverb_view_data (same store as TikTok pricing page)
+            $reverbViewData = ReverbViewData::whereIn('sku', $skus)->get()->keyBy('sku');
 
             $data = [];
 
@@ -299,6 +309,7 @@ class TiktokAdsController extends Controller
                     'roi' => 0,
                     'in_roas' => 0,
                     'custom_status' => null,
+                    'budget' => null,
                 ];
                 
                 $spend = $metrics['cost'];
@@ -322,17 +333,22 @@ class TiktokAdsController extends Controller
                     $acos = 100 / $outRoas;
                 }
                 
-                // NRA - default to RA (you may need to add a TikTok data view similar to TemuDataView)
-                $nra = "RA"; // Default value
+                // NRA - from reverb_view_data (saved by tiktok/utilized/update or TikTok pricing page)
+                $nra = "RA";
+                if (isset($reverbViewData[$sku]) && is_array($reverbViewData[$sku]->values ?? null) && array_key_exists('NR', $reverbViewData[$sku]->values)) {
+                    $nra = $reverbViewData[$sku]->values['NR'];
+                }
 
+                $budget = isset($metrics['budget']) && $metrics['budget'] !== null ? round((float)$metrics['budget'], 2) : null;
                 $data[] = [
                     'sku' => $sku,
-                    'hasCampaign' => (bool)$hasCampaign, // Ensure boolean type
+                    'hasCampaign' => (bool)$hasCampaign,
                     'campaign_name' => $campaignName,
                     'INV' => $inv,
                     'L30' => $ovL30,
                     't_l30' => $tiktokL30,
                     'NR' => $nra,
+                    'budget' => $budget,
                     'spend' => round($spend, 2),
                     'ad_sold' => $adSold,
                     'ad_clicks' => $adClicks,
@@ -544,6 +560,14 @@ class TiktokAdsController extends Controller
 
     public function updateUtilized(Request $request)
     {
+        // Ensure JSON body is merged for requests from tiktok tabulator view
+        if ($request->header('Content-Type') && str_contains($request->header('Content-Type'), 'application/json')) {
+            $body = json_decode($request->getContent(), true);
+            if (is_array($body)) {
+                $request->merge($body);
+            }
+        }
+
         $request->validate([
             'sku' => 'required|string',
             'field' => 'required|string',
@@ -564,10 +588,13 @@ class TiktokAdsController extends Controller
                 ], 400);
             }
 
-            // TODO: Store NRA value in TikTok data view or similar structure
-            // For now, just return success - you can implement the storage logic later
-            // Similar to how Temu stores it in TemuDataView
-            
+            // Store NRA in reverb_view_data (same table used by TikTok pricing for SPRICE), so it shows on both tiktok/utilized and TikTok pricing page
+            $view = ReverbViewData::firstOrNew(['sku' => $sku]);
+            $values = is_array($view->values) ? $view->values : [];
+            $values['NR'] = $value;
+            $view->values = $values;
+            $view->save();
+
             return response()->json([
                 'success' => true,
                 'message' => 'NRA updated successfully'
@@ -615,11 +642,12 @@ class TiktokAdsController extends Controller
             
             if ($campaigns->isEmpty()) {
                 return response()->json([
-                    'success' => false,
-                    'message' => 'No campaigns found for this SKU'
-                ], 400);
+                    'success' => true,
+                    'message' => 'No campaigns found for this SKU; value not saved to report',
+                    'updated_count' => 0
+                ]);
             }
-            
+
             // Update in_roas column directly in database for all matching campaigns
             $updated = TiktokCampaignReport::where('creative_type', 'Product card')
                 ->whereRaw('UPPER(TRIM(campaign_name)) = ?', [$skuUpper])
@@ -630,6 +658,24 @@ class TiktokAdsController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'In ROAS updated successfully',
+                'updated_count' => $updated
+            ]);
+        }
+
+        // Handle Budget update - save to tiktok_campaign_reports for all rows matching this SKU
+        if ($field === 'budget') {
+            $skuUpper = strtoupper(trim($sku));
+            $budgetValue = $value === '' || $value === null ? null : (float) $value;
+
+            $updated = TiktokCampaignReport::where('creative_type', 'Product card')
+                ->whereRaw('UPPER(TRIM(campaign_name)) = ?', [$skuUpper])
+                ->whereNotNull('product_id')
+                ->where('product_id', '!=', '')
+                ->update(['budget' => $budgetValue]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Budget updated successfully',
                 'updated_count' => $updated
             ]);
         }

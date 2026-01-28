@@ -92,6 +92,8 @@
             transform: none !important;
         }
 
+        .select-all-header-cb { cursor: pointer; }
+
         /* Ensure all header cells have consistent height */
         .tabulator .tabulator-header .tabulator-col {
             vertical-align: bottom;
@@ -331,6 +333,14 @@
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
         }
 
+        .badge-count-item.badge-count-item-not-clickable {
+            cursor: default;
+        }
+        .badge-count-item.badge-count-item-not-clickable:hover {
+            transform: none;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
         #campaignChart {
             height: 500px !important;
         }
@@ -464,8 +474,15 @@
                                     </label>
                                     <select id="utilization-type-select" class="form-select form-select-md">
                                         <option value="all" selected>All</option>
-                                        <option value="over">PINK+PINK (decrease)</option>
-                                        <option value="under">RED+RED (increase)</option>
+                                        <option value="gg">Green+Green</option>
+                                        <option value="gp">Green+Pink</option>
+                                        <option value="gr">Green+Red</option>
+                                        <option value="pg">Pink+Green</option>
+                                        <option value="pp">Pink+Pink</option>
+                                        <option value="pr">Pink+Red</option>
+                                        <option value="rg">Red+Green</option>
+                                        <option value="rp">Red+Pink</option>
+                                        <option value="rr">Red+Red</option>
                                     </select>
                                 </div>
                                 <div class="col-md-2">
@@ -544,7 +561,10 @@
                                             style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-chart-line me-1" style="color: #64748b;"></i>Statistics
                                         </label>
-                                        <div class="d-flex align-items-center gap-2">
+                                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                                            <button type="button" id="apr-all-sbid-btn" class="btn btn-sm btn-info d-none" title="Apply SBID (PINK+PINK / RED+RED) to selected">
+                                                <i class="fa-solid fa-check-double me-1"></i> Apply SBID
+                                            </button>
                                             <button type="button" id="bulk-enable-campaigns-btn" class="btn btn-sm btn-success d-none" title="Enable selected campaigns">
                                                 <i class="fa fa-play-circle me-1"></i> Enable
                                             </button>
@@ -557,11 +577,16 @@
                                         </div>
                                     </div>
                                     <div class="d-flex gap-2 flex-wrap align-items-center">
-                                        <div class="badge-count-item"
-                                            style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 6px 12px; border-radius: 6px; color: black; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); white-space: nowrap;">
+                                        <div class="badge-count-item" id="total-sku-card"
+                                            style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 6px 12px; border-radius: 6px; color: black; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap;">
                                             <span style="font-size: 0.85rem;">Total SKU: </span>
                                             <span class="fw-bold" id="total-sku-count"
                                                 style="font-size: 0.9rem;">0</span>
+                                        </div>
+                                        <div class="badge-count-item all-sku-card" id="all-sku-card"
+                                            style="background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); padding: 6px 12px; border-radius: 6px; color: black; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap;">
+                                            <span style="font-size: 0.85rem;">ALL SKU: </span>
+                                            <span class="fw-bold" id="all-sku-count" style="font-size: 0.9rem;">0</span>
                                         </div>
                                         <div class="badge-count-item total-campaign-card" id="total-campaign-card"
                                             style="background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); padding: 6px 12px; border-radius: 6px; color: black; font-weight: 600; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap;">
@@ -678,6 +703,30 @@
                                     </button>
                                 </div>
                             </div>
+
+                            <!-- INC/DEC SBID (mbid) by Value / % -->
+                            <div class="row align-items-end g-2 mt-2 pt-2 border-top">
+                                <div class="col-auto">
+                                    <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.75rem;">INC/DEC SBID (mbid)</label>
+                                    <div class="d-flex gap-2 align-items-center flex-wrap">
+                                        <select id="inc-dec-sbid-action" class="form-select form-select-sm" style="width: auto; font-size: 0.8rem;">
+                                            <option value="inc">INC</option>
+                                            <option value="dec">DEC</option>
+                                        </select>
+                                        <select id="inc-dec-sbid-mode" class="form-select form-select-sm" style="width: auto; font-size: 0.8rem;">
+                                            <option value="value">By Value ($)</option>
+                                            <option value="percent">By %</option>
+                                        </select>
+                                        <input type="number" id="inc-dec-sbid-amount" class="form-control form-control-sm" placeholder="Amount" step="0.01" min="0" style="width: 100px; font-size: 0.8rem;">
+                                        <button type="button" id="apply-inc-dec-sbid-btn" class="btn btn-sm btn-primary" title="Apply to selected rows only, save mbid (no Google push)">
+                                            <i class="fa fa-arrow-up-down me-1"></i> Apply INC/DEC
+                                        </button>
+                                        <button type="button" id="push-mbid-to-google-btn" class="btn btn-sm btn-success" title="Push mbid of selected campaigns to Google Ads">
+                                            <i class="fa fa-cloud-upload me-1"></i> Push mbid to Google
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>  
                 </div>
@@ -779,12 +828,13 @@
             document.body.style.zoom = "90%"; // Removed to make UI elements larger
 
             let currentUtilizationType = 'all'; // Default to all
-            let showMissingOnly = false; // Filter for missing campaigns only
-            let showNraMissingOnly = false; // Filter for NRA missing (yellow dots) only
-            let showZeroInvOnly = false; // Filter for zero/negative inventory only
-            let showCampaignOnly = false; // Filter for campaigns only
-            let showNraOnly = false; // Filter for NRA only
-            let showRaOnly = false; // Filter for RA only
+            let showMissingOnly = false;
+            let showNraMissingOnly = false;
+            let showZeroInvOnly = false;
+            let showCampaignOnly = false;
+            let showNraOnly = false;
+            let showRaOnly = false;
+            let showAllSkuOnly = false; // Filter: show all SKUs (no campaign/missing filter)
             let totalSkuCountFromBackend = 0; // Store total SKU count from backend
 
             const invFilter = document.querySelector("#inv-filter");
@@ -798,15 +848,61 @@
                 return 'pink';
             };
 
-            // Function to update button counts from table data (calculated directly from frontend)
-            function updateButtonCounts() {
-                if (typeof table === 'undefined' || !table) {
-                    return;
-                }
+            // UB zone for 7UB/1UB color combos: green 66-99, pink >99, red <66 (same as formatters)
+            function ubZone(ub) {
+                if (ub >= 66 && ub <= 99) return 'g';
+                if (ub > 99) return 'p';
+                return 'r';
+            }
 
-                // Use 'active' to get filtered data (data that passes combinedFilter)
-                // This ensures counts match what's actually displayed in the table
-                // Get rows instead of data to ensure we get all filtered rows
+            let updateButtonCountsTimeout = null;
+            let lastCounts = {};
+            function updateButtonCounts() {
+                if (updateButtonCountsTimeout) clearTimeout(updateButtonCountsTimeout);
+                updateButtonCountsTimeout = setTimeout(updateButtonCountsNow, 280);
+            }
+            function updateButtonCountsNow() {
+                updateButtonCountsTimeout = null;
+                if (typeof table === 'undefined' || !table) return;
+
+                const fullData = table.getData('all') || [];
+                const comboCounts = { gg: 0, gp: 0, gr: 0, pg: 0, pp: 0, pr: 0, rg: 0, rp: 0, rr: 0 };
+                const statusCounts = { all: 0, ENABLED: 0, PAUSED: 0, ARCHIVED: 0 };
+                let allSkuCount = 0;
+                let allCampaignCount = 0;
+                let enabledCampaignCountAll = 0;
+                const processedAll = new Set();
+                const processedCampaign = new Set();
+                const processedEnabled = new Set();
+                const invFilterValAllSku = $("#inv-filter").val();
+                fullData.forEach(function(row) {
+                    const sku = row.sku || '';
+                    if (!sku || sku.toUpperCase().includes('PARENT')) return;
+                    let inv = parseFloat(row.INV || 0);
+                    let invPass = true;
+                    if (invFilterValAllSku === "INV_GT_0") invPass = inv > 0;
+                    else if (invFilterValAllSku === "INV_0") invPass = inv === 0;
+                    if (invPass && !processedAll.has(sku)) { processedAll.add(sku); allSkuCount++; }
+                    const hasCampaign = !!(row.campaign_id && row.campaignName);
+                    const st = (row.campaignStatus || '').toUpperCase();
+                    if (hasCampaign && (st === 'ENABLED' || st === 'PAUSED' || st === 'ARCHIVED') && statusCounts[st] !== undefined)
+                        statusCounts[st]++;
+                    if (hasCampaign) {
+                        if (!processedCampaign.has(sku)) { processedCampaign.add(sku); allCampaignCount++; }
+                    }
+                    const isEnabled = hasCampaign && st === 'ENABLED';
+                    if (isEnabled) {
+                        if (!processedEnabled.has(sku)) { processedEnabled.add(sku); enabledCampaignCountAll++; }
+                        let budget = parseFloat(row.campaignBudgetAmount) || 0;
+                        let spend_L7 = parseFloat(row.spend_L7 || 0);
+                        let spend_L1 = parseFloat(row.spend_L1 || 0);
+                        let ub7 = budget > 0 ? (spend_L7 / (budget * 7)) * 100 : 0;
+                        let ub1 = budget > 0 ? (spend_L1 / budget) * 100 : 0;
+                        let combo = ubZone(ub7) + ubZone(ub1);
+                        if (comboCounts[combo] !== undefined) comboCounts[combo]++;
+                    }
+                });
+
                 const activeRows = table.getRows('active');
                 const allData = activeRows.map(row => row.getData());
                 let overCount = 0;
@@ -828,7 +924,6 @@
                 const processedSkusForZeroInv = new Set();
                 const processedSkusForValidCount = new Set();
 
-                // Data is already filtered by combinedFilter, so we just count what's visible
                 allData.forEach(function(row) {
                     const sku = row.sku || '';
                     const isValidSku = sku && !sku.toUpperCase().includes('PARENT');
@@ -837,50 +932,39 @@
 
                     let inv = parseFloat(row.INV || 0);
 
-                    // Count INV 0 (data is already filtered, so all items here match the filters)
                     if (inv <= 0 && !processedSkusForZeroInv.has(sku)) {
                         processedSkusForZeroInv.add(sku);
                         zeroInvCount++;
                     }
 
-                    // Count NRA/RA
                     if (!processedSkusForNra.has(sku)) {
                         processedSkusForNra.add(sku);
                         let rowNra = row.NRA ? row.NRA.trim() : "";
-                        if (rowNra === 'NRA') {
-                            nraCount++;
-                        } else {
-                            raCount++;
-                        }
+                        if (rowNra === 'NRA') nraCount++;
+                        else raCount++;
                     }
 
-                    // Count campaigns
                     const hasCampaign = row.campaign_id && row.campaignName;
                     let invFilterVal = $("#inv-filter").val();
-                    
                     if (invFilterVal === "INV_0") {
-                        // When INV 0 filter is active, count all INV 0 items (same as INV 0 count)
                         if (inv <= 0 && !processedSkusForCampaign.has(sku)) {
                             processedSkusForCampaign.add(sku);
                             totalCampaignCount++;
                         }
                     } else if (hasCampaign) {
-                        // For other filters, only count items with actual campaigns
                         if (!processedSkusForCampaign.has(sku)) {
                             processedSkusForCampaign.add(sku);
                             totalCampaignCount++;
                         }
                     }
 
-                    // Count missing campaigns
                     if (!hasCampaign) {
                         if (!processedSkusForMissing.has(sku)) {
                             processedSkusForMissing.add(sku);
                             let rowNrlForMissing = row.NRL ? row.NRL.trim() : "";
                             let rowNraForMissing = row.NRA ? row.NRA.trim() : "";
-                            if (rowNrlForMissing !== 'NRL' && rowNraForMissing !== 'NRA') {
-                                missingCount++;
-                            } else {
+                            if (rowNrlForMissing !== 'NRL' && rowNraForMissing !== 'NRA') missingCount++;
+                            else {
                                 if (!processedSkusForNraMissing.has(sku)) {
                                     processedSkusForNraMissing.add(sku);
                                     nraMissingCount++;
@@ -889,7 +973,6 @@
                         }
                     }
 
-                    // Count valid SKUs
                     if (!processedSkusForValidCount.has(sku)) {
                         processedSkusForValidCount.add(sku);
                         validSkuCount++;
@@ -898,47 +981,65 @@
                     let budget = parseFloat(row.campaignBudgetAmount) || 0;
                     let spend_L7 = parseFloat(row.spend_L7 || 0);
                     let spend_L1 = parseFloat(row.spend_L1 || 0);
-
                     let ub7 = budget > 0 ? (spend_L7 / (budget * 7)) * 100 : 0;
                     let ub1 = budget > 0 ? (spend_L1 / budget) * 100 : 0;
-
-                    // Count utilization types (matching backend logic from getFilteredCampaignIds)
-                    // Over: UB7 > 99% AND UB1 > 99%
-                    // Under: UB7 < 66% AND UB1 < 66%
-                    if (ub7 > 99 && ub1 > 99) {
-                        overCount++;
-                    } else if (ub7 < 66 && ub1 < 66) {
-                        underCount++;
-                    }
-
-                    // Count 7UB (based on 7UB only)
-                    if (ub7 > 99 || ub7 < 66) {
-                        count7ub++;
-                    }
-
-                    // Count 7UB + 1UB (based on both 7UB and 1UB)
-                    if ((ub7 > 99 && ub1 > 99) || (ub7 < 66 && ub1 < 66)) {
-                        count7ub1ub++;
-                    }
+                    if (ub7 > 99 && ub1 > 99) overCount++;
+                    else if (ub7 < 66 && ub1 < 66) underCount++;
+                    if (ub7 > 99 || ub7 < 66) count7ub++;
+                    if ((ub7 > 99 && ub1 > 99) || (ub7 < 66 && ub1 < 66)) count7ub1ub++;
                 });
 
-                document.getElementById('missing-campaign-count').textContent = missingCount;
-                document.getElementById('nra-missing-count').textContent = nraMissingCount;
-                document.getElementById('total-campaign-count').textContent = totalCampaignCount;
-                document.getElementById('nra-count').textContent = nraCount;
-                document.getElementById('ra-count').textContent = raCount;
-                document.getElementById('zero-inv-count').textContent = zeroInvCount;
-                // Total SKU count is set in ajaxResponse from backend, don't override here
-
-                const utilizationSelect = document.getElementById('utilization-type-select');
-                if (utilizationSelect) {
-                    utilizationSelect.options[0].text = `All (${validSkuCount})`;
-                    utilizationSelect.options[1].text = `PINK+PINK (${overCount})`;
-                    utilizationSelect.options[2].text = `RED+RED (${underCount})`;
+                function setIfChanged(id, val) {
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    const key = 'id_' + id;
+                    if (lastCounts[key] === val) return;
+                    lastCounts[key] = val;
+                    el.textContent = val;
                 }
 
-                document.getElementById('7ub-count').textContent = count7ub;
-                document.getElementById('7ub-1ub-count').textContent = count7ub1ub;
+                setIfChanged('all-sku-count', allSkuCount);
+                setIfChanged('missing-campaign-count', missingCount);
+                setIfChanged('nra-missing-count', nraMissingCount);
+                setIfChanged('total-campaign-count', totalCampaignCount);
+                setIfChanged('nra-count', nraCount);
+                setIfChanged('ra-count', raCount);
+                setIfChanged('zero-inv-count', zeroInvCount);
+                setIfChanged('7ub-count', count7ub);
+                setIfChanged('7ub-1ub-count', count7ub1ub);
+
+                const utilizationSelect = document.getElementById('utilization-type-select');
+                const comboLabels = { gg: 'Green+Green', gp: 'Green+Pink', gr: 'Green+Red', pg: 'Pink+Green', pp: 'Pink+Pink', pr: 'Pink+Red', rg: 'Red+Green', rp: 'Red+Pink', rr: 'Red+Red' };
+                if (utilizationSelect) {
+                    const allText = `All (${enabledCampaignCountAll})`;
+                    if (lastCounts.UtilizationOption0 !== allText) {
+                        lastCounts.UtilizationOption0 = allText;
+                        utilizationSelect.options[0].text = allText;
+                    }
+                    for (let i = 1; i <= 9; i++) {
+                        let v = utilizationSelect.options[i].value;
+                        const txt = `${comboLabels[v] || v} (${comboCounts[v] || 0})`;
+                        const k = 'UtilizationOption' + i;
+                        if (lastCounts[k] === txt) continue;
+                        lastCounts[k] = txt;
+                        utilizationSelect.options[i].text = txt;
+                    }
+                }
+
+                const statusSelect = document.getElementById('status-filter');
+                const statusLabels = { '': 'All Status', 'ENABLED': 'Enabled', 'PAUSED': 'Paused', 'ARCHIVED': 'Archived' };
+                const allStatusCount = (statusCounts.ENABLED || 0) + (statusCounts.PAUSED || 0) + (statusCounts.ARCHIVED || 0);
+                if (statusSelect) {
+                    for (let i = 0; i < statusSelect.options.length; i++) {
+                        const v = statusSelect.options[i].value;
+                        const n = v === '' ? allStatusCount : (statusCounts[v] || 0);
+                        const txt = `${statusLabels[v] || v} (${n})`;
+                        const k = 'StatusOption' + i;
+                        if (lastCounts[k] === txt) continue;
+                        lastCounts[k] = txt;
+                        statusSelect.options[i].text = txt;
+                    }
+                }
             }
 
             // Function to update pagination count display
@@ -990,8 +1091,7 @@
                 pagination: "local",
                 paginationSize: 100,
                 paginationSizeSelector: [25, 50, 100, 200, 500],
-                selectable: true,
-                selectableRangeMode: "click",
+                selectableRows: true,
                 rowFormatter: function(row) {
                     const data = row.getData();
                     const sku = data["sku"] || '';
@@ -1002,10 +1102,26 @@
                 },
                 columns: [{
                         formatter: "rowSelection",
-                        titleFormatter: "rowSelection",
+                        titleFormatter: function() {
+                            return '<input type="checkbox" class="select-all-header-cb" title="Select all" aria-label="Select all">';
+                        },
                         hozAlign: "center",
                         headerSort: false,
-                        width: 50
+                        width: 50,
+                        headerClick: function(e, column) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            var active = table.getRows('active');
+                            if (!active || !active.length) return;
+                            var selected = table.getSelectedRows();
+                            var selSet = new Set(selected);
+                            var allSelected = active.length > 0 && active.every(function(r) { return selSet.has(r); });
+                            if (allSelected) {
+                                table.deselectRow();
+                            } else {
+                                try { active.forEach(function(r) { r.select(); }); } catch (err) { console.warn('selectAll header:', err); }
+                            }
+                        }
                     },
                     {
                         title: "Parent",
@@ -1591,22 +1707,17 @@
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var spend_L7 = parseFloat(row.spend_L7) || 0;
-                            var spend_L1 = parseFloat(row.spend_L1) || 0;
                             var budget = parseFloat(row.campaignBudgetAmount) || 0;
                             var ub7 = budget > 0 ? (spend_L7 / (budget * 7)) * 100 : 0;
-                            var ub1 = budget > 0 ? (spend_L1 / budget) * 100 : 0;
-
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            if (ub7 > 99 && ub1 > 99) {
+                            if (ub7 >= 66 && ub7 <= 99) {
+                                td.classList.add('green-bg');
+                            } else if (ub7 > 99) {
                                 td.classList.add('pink-bg');
-                                return ub7.toFixed(0) + "%";
-                            }
-                            if (ub7 < 66 && ub1 < 66) {
+                            } else if (ub7 < 66) {
                                 td.classList.add('red-bg');
-                                return ub7.toFixed(0) + "%";
                             }
-                            td.classList.add('green-bg');
                             return ub7.toFixed(0) + "%";
                         },
                         sorter: function(a, b, aRow, bRow, column, dir) {
@@ -1627,23 +1738,18 @@
                         hozAlign: "right",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var spend_L7 = parseFloat(row.spend_L7) || 0;
                             var spend_L1 = parseFloat(row.spend_L1) || 0;
                             var budget = parseFloat(row.campaignBudgetAmount) || 0;
-                            var ub7 = budget > 0 ? (spend_L7 / (budget * 7)) * 100 : 0;
                             var ub1 = budget > 0 ? (spend_L1 / budget) * 100 : 0;
-
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-                            if (ub7 > 99 && ub1 > 99) {
+                            if (ub1 >= 66 && ub1 <= 99) {
+                                td.classList.add('green-bg');
+                            } else if (ub1 > 99) {
                                 td.classList.add('pink-bg');
-                                return ub1.toFixed(0) + "%";
-                            }
-                            if (ub7 < 66 && ub1 < 66) {
+                            } else if (ub1 < 66) {
                                 td.classList.add('red-bg');
-                                return ub1.toFixed(0) + "%";
                             }
-                            td.classList.add('green-bg');
                             return ub1.toFixed(0) + "%";
                         },
                         sorter: function(a, b, aRow, bRow, column, dir) {
@@ -1701,20 +1807,14 @@
                             var ub7 = budget > 0 ? (spend_L7 / (budget * 7)) * 100 : 0;
                             var ub1 = budget > 0 ? (spend_L1 / budget) * 100 : 0;
 
-                            var td = cell.getElement();
-                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
-
                             var sbid;
                             if (ub7 > 99 && ub1 > 99) {
                                 sbid = Math.floor(cpc_L1 * 0.90 * 100) / 100;
-                                td.classList.add('pink-bg');
                             } else if (ub7 < 66 && ub1 < 66) {
                                 if (cpc_L1 === 0 && cpc_L7 === 0) sbid = 0.75;
                                 else if (cpc_L1 > 0) sbid = Math.floor(cpc_L1 * 1.10 * 100) / 100;
                                 else sbid = Math.floor(cpc_L7 * 1.10 * 100) / 100;
-                                td.classList.add('red-bg');
                             } else {
-                                td.classList.add('green-bg');
                                 return "—";
                             }
                             return sbid.toFixed(2);
@@ -1746,6 +1846,38 @@
                             }
                             return computedSbid(dataA) - computedSbid(dataB);
                         }
+                    },
+                    {
+                        title: "MBID",
+                        field: "mbid",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 80,
+                        editor: "number",
+                        editorParams: { min: 0.01, step: 0.01 },
+                        editable: function(cell) {
+                            var d = cell.getRow().getData();
+                            return !!(d.campaign_id && d.campaignName);
+                        },
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            const hasCampaign = row.hasCampaign !== undefined ?
+                                row.hasCampaign : (row.campaign_id && row.campaignName);
+                            if (!hasCampaign) return "—";
+                            var m = row.mbid;
+                            if (m == null || m === "" || (typeof m === "number" && isNaN(m))) return "—";
+                            return (parseFloat(m)).toFixed(2);
+                        }
+                    },
+                    {
+                        title: "Campaign",
+                        field: "campaignName",
+                        hozAlign: "left",
+                        sorter: "string",
+                        formatter: function(cell) {
+                            var v = cell.getValue();
+                            return v != null && v !== "" ? v : "—";
+                        }
                     }
                 ],
                 initialSort: [{
@@ -1776,7 +1908,65 @@
                 }
             });
 
-            // Total campaign card click handler
+            const totalSkuCard = document.getElementById('total-sku-card');
+            if (totalSkuCard) {
+                totalSkuCard.addEventListener('click', function() {
+                    showAllSkuOnly = true;
+                    document.getElementById('utilization-type-select').value = 'all';
+                    currentUtilizationType = 'all';
+                    showCampaignOnly = false;
+                    document.getElementById('total-campaign-card').style.boxShadow = '';
+                    showMissingOnly = false;
+                    document.getElementById('missing-campaign-card').style.boxShadow = '';
+                    showNraMissingOnly = false;
+                    document.getElementById('nra-missing-card').style.boxShadow = '';
+                    showZeroInvOnly = false;
+                    document.getElementById('zero-inv-card').style.boxShadow = '';
+                    showNraOnly = false;
+                    document.getElementById('nra-card').style.boxShadow = '';
+                    showRaOnly = false;
+                    document.getElementById('ra-card').style.boxShadow = '';
+                    const allCard = document.getElementById('all-sku-card');
+                    if (allCard) allCard.style.boxShadow = '0 4px 12px rgba(14, 165, 233, 0.5)';
+                    if (typeof table !== 'undefined' && table) {
+                        table.setFilter(combinedFilter);
+                        table.redraw(true);
+                        updateButtonCounts();
+                    }
+                });
+            }
+
+            const allSkuCard = document.getElementById('all-sku-card');
+            if (allSkuCard) {
+                allSkuCard.addEventListener('click', function() {
+                    showAllSkuOnly = !showAllSkuOnly;
+                    if (showAllSkuOnly) {
+                        document.getElementById('utilization-type-select').value = 'all';
+                        currentUtilizationType = 'all';
+                        showCampaignOnly = false;
+                        document.getElementById('total-campaign-card').style.boxShadow = '';
+                        showMissingOnly = false;
+                        document.getElementById('missing-campaign-card').style.boxShadow = '';
+                        showNraMissingOnly = false;
+                        document.getElementById('nra-missing-card').style.boxShadow = '';
+                        showZeroInvOnly = false;
+                        document.getElementById('zero-inv-card').style.boxShadow = '';
+                        showNraOnly = false;
+                        document.getElementById('nra-card').style.boxShadow = '';
+                        showRaOnly = false;
+                        document.getElementById('ra-card').style.boxShadow = '';
+                        this.style.boxShadow = '0 4px 12px rgba(14, 165, 233, 0.5)';
+                    } else {
+                        this.style.boxShadow = '';
+                    }
+                    if (typeof table !== 'undefined' && table) {
+                        table.setFilter(combinedFilter);
+                        table.redraw(true);
+                        updateButtonCounts();
+                    }
+                });
+            }
+
             const totalCampaignCard = document.getElementById('total-campaign-card');
             if (totalCampaignCard) {
                 totalCampaignCard.addEventListener('click', function() {
@@ -1784,6 +1974,9 @@
                 if (showCampaignOnly) {
                     document.getElementById('utilization-type-select').value = 'all';
                     currentUtilizationType = 'all';
+                    showAllSkuOnly = false;
+                    const asc = document.getElementById('all-sku-card');
+                    if (asc) asc.style.boxShadow = '';
                     showMissingOnly = false;
                     document.getElementById('missing-campaign-card').style.boxShadow = '';
                     showNraMissingOnly = false;
@@ -1816,6 +2009,9 @@
                     currentUtilizationType = 'all';
                     showCampaignOnly = false;
                     document.getElementById('total-campaign-card').style.boxShadow = '';
+                    showAllSkuOnly = false;
+                    const asc = document.getElementById('all-sku-card');
+                    if (asc) asc.style.boxShadow = '';
                     showZeroInvOnly = false;
                     document.getElementById('zero-inv-card').style.boxShadow = '';
                     showNraMissingOnly = false;
@@ -1848,6 +2044,9 @@
                     document.getElementById('total-campaign-card').style.boxShadow = '';
                     showMissingOnly = false;
                     document.getElementById('missing-campaign-card').style.boxShadow = '';
+                    showAllSkuOnly = false;
+                    const asc = document.getElementById('all-sku-card');
+                    if (asc) asc.style.boxShadow = '';
                     showZeroInvOnly = false;
                     document.getElementById('zero-inv-card').style.boxShadow = '';
                     showNraOnly = false;
@@ -1880,6 +2079,9 @@
                     document.getElementById('nra-missing-card').style.boxShadow = '';
                     showCampaignOnly = false;
                     document.getElementById('total-campaign-card').style.boxShadow = '';
+                    showAllSkuOnly = false;
+                    const asc0 = document.getElementById('all-sku-card');
+                    if (asc0) asc0.style.boxShadow = '';
                     showNraOnly = false;
                     document.getElementById('nra-card').style.boxShadow = '';
                     showRaOnly = false;
@@ -1912,6 +2114,9 @@
                     document.getElementById('total-campaign-card').style.boxShadow = '';
                     showZeroInvOnly = false;
                     document.getElementById('zero-inv-card').style.boxShadow = '';
+                    showAllSkuOnly = false;
+                    const asc1 = document.getElementById('all-sku-card');
+                    if (asc1) asc1.style.boxShadow = '';
                     showRaOnly = false;
                     document.getElementById('ra-card').style.boxShadow = '';
                     this.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.5)';
@@ -1942,6 +2147,9 @@
                     document.getElementById('total-campaign-card').style.boxShadow = '';
                     showZeroInvOnly = false;
                     document.getElementById('zero-inv-card').style.boxShadow = '';
+                    showAllSkuOnly = false;
+                    const asc2 = document.getElementById('all-sku-card');
+                    if (asc2) asc2.style.boxShadow = '';
                     showNraOnly = false;
                     document.getElementById('nra-card').style.boxShadow = '';
                     this.style.boxShadow = '0 4px 12px rgba(34, 197, 94, 0.5)';
@@ -1967,6 +2175,9 @@
                 document.getElementById('nra-missing-card').style.boxShadow = '';
                 showCampaignOnly = false;
                 document.getElementById('total-campaign-card').style.boxShadow = '';
+                showAllSkuOnly = false;
+                const ascd = document.getElementById('all-sku-card');
+                if (ascd) ascd.style.boxShadow = '';
                 showZeroInvOnly = false;
                 document.getElementById('zero-inv-card').style.boxShadow = '';
                 showNraOnly = false;
@@ -1975,13 +2186,8 @@
                 document.getElementById('ra-card').style.boxShadow = '';
 
                 if (typeof table !== 'undefined' && table) {
-                    setTimeout(function() {
-                        table.redraw(true);
-                    }, 60);
+                    setTimeout(function() { table.redraw(true); }, 60);
                     table.setFilter(combinedFilter);
-                    setTimeout(function() {
-                        updateButtonCounts();
-                    }, 200);
                 }
             });
             }
@@ -2024,8 +2230,9 @@
                 // Check if campaign is missing
                 const hasCampaign = data.campaign_id && data.campaignName;
 
-                // Apply campaign filters
-                if (showCampaignOnly) {
+                if (showAllSkuOnly) {
+                    // Show all SKUs; no campaign/missing filter
+                } else if (showCampaignOnly) {
                     if (!hasCampaign) return false;
                 } else if (showMissingOnly) {
                     if (hasCampaign) return false;
@@ -2038,17 +2245,20 @@
                     if (nraValueForNraMissing !== 'NRA') return false;
                 }
 
-                // Filter by utilization type (matching backend logic from getFilteredCampaignIds)
-                // Over: UB7 > 99% AND UB1 > 99%
-                // Under: UB7 < 66% AND UB1 < 66%
-                if (currentUtilizationType === 'all') {
-                    // Show all data (no filter on utilization)
-                } else if (currentUtilizationType === 'over') {
-                    // Over-utilized: ub7 > 99 AND ub1 > 99
-                    if (!(ub7 > 99 && ub1 > 99)) return false;
-                } else if (currentUtilizationType === 'under') {
-                    // Under-utilized: ub7 < 66 AND ub1 < 66
-                    if (!(ub7 < 66 && ub1 < 66)) return false;
+                // Utilization type: counts and table show only enabled campaigns (skip when ALL SKU / Missing / NRA Missing)
+                // When Status = Paused or Archived, skip enabled-only so those campaigns are shown
+                let statusVal = $("#status-filter").val();
+                if (!showAllSkuOnly && !showMissingOnly && !showNraMissingOnly) {
+                    if (!hasCampaign) return false;
+                    if (!statusVal || statusVal === 'ENABLED') {
+                        if ((data.campaignStatus || '').toUpperCase() !== 'ENABLED') return false;
+                    }
+                }
+
+                // Filter by utilization type (7UB×1UB color combos: g=66-99, p>99, r<66)
+                if (currentUtilizationType !== 'all') {
+                    let z7 = ubZone(ub7), z1 = ubZone(ub1);
+                    if ((z7 + z1) !== currentUtilizationType) return false;
                 }
 
                 let searchVal = $("#global-search").val()?.toLowerCase() || "";
@@ -2057,7 +2267,6 @@
                     return false;
                 }
 
-                let statusVal = $("#status-filter").val();
                 if (statusVal) {
                     // For status filter, only apply to items with campaigns
                     const hasCampaign = data.campaign_id && data.campaignName;
@@ -2133,60 +2342,44 @@
                     if (priceMax && price > parseFloat(priceMax)) return false;
                 }
 
-                // Apply zero INV filter first (if enabled)
                 let inv = parseFloat(data.INV || 0);
-                if (showZeroInvOnly) {
+                let rowNra = data.NRA ? data.NRA.trim() : "";
+                if (showZeroInvOnly && !showAllSkuOnly) {
                     if (inv > 0) return false;
                 } else {
                     let invFilterVal = $("#inv-filter").val();
-                    if (!invFilterVal || invFilterVal === '') {
-                        // All Inventory - show all (no filtering)
-                    } else if (invFilterVal === "INV_GT_0") {
-                        if (inv <= 0) return false;
-                    } else if (invFilterVal === "INV_0") {
-                        if (inv !== 0) return false;
-                    }
+                    if (invFilterVal === "INV_GT_0") { if (inv <= 0) return false; }
+                    else if (invFilterVal === "INV_0") { if (inv !== 0) return false; }
                 }
-
-                // Apply NRA/RA filters
-                let rowNra = data.NRA ? data.NRA.trim() : "";
-                if (showNraOnly) {
-                    if (rowNra !== 'NRA') return false;
-                } else if (showRaOnly) {
-                    if (rowNra === 'NRA') return false;
-                } else {
-                    let nrlFilterVal = $("#nrl-filter").val();
-                    if (nrlFilterVal) {
-                        let rowNrl = data.NRL ? data.NRL.trim() : "";
-                        if (rowNrl !== nrlFilterVal) return false;
-                    }
-                    let nraFilterVal = $("#nra-filter").val();
-                    if (nraFilterVal) {
-                        if (nraFilterVal === 'NRA' && rowNra !== 'NRA') return false;
-                        if (nraFilterVal === 'RA' && rowNra === 'NRA') return false;
+                if (!showAllSkuOnly) {
+                    if (showNraOnly) {
+                        if (rowNra !== 'NRA') return false;
+                    } else if (showRaOnly) {
+                        if (rowNra === 'NRA') return false;
+                    } else {
+                        let nrlFilterVal = $("#nrl-filter").val();
+                        if (nrlFilterVal) {
+                            let rowNrl = data.NRL ? data.NRL.trim() : "";
+                            if (rowNrl !== nrlFilterVal) return false;
+                        }
+                        let nraFilterVal = $("#nra-filter").val();
+                        if (nraFilterVal) {
+                            if (nraFilterVal === 'NRA' && rowNra !== 'NRA') return false;
+                            if (nraFilterVal === 'RA' && rowNra === 'NRA') return false;
+                        }
                     }
                 }
 
                 return true;
             }
 
-            // Load utilization counts for chart cards
+            // Load utilization counts for chart cards (chart data only; badge counts from updateButtonCounts)
             function loadUtilizationCounts() {
                 fetch('/google/shopping/get-utilization-counts')
                     .then(res => res.json())
                     .then(data => {
                         if (data.status === 200) {
-                            // 7UB count: sum of over and under (no correctly for Google Shopping)
-                            const count7ub = (data.over_utilized_7ub || 0) + (data.under_utilized_7ub || 0);
-                            // 7UB + 1UB count: sum of over and under
-                            const count7ub1ub = (data.over_utilized_7ub_1ub || 0) + (data
-                                .under_utilized_7ub_1ub || 0);
-
-                            const count7ubEl = document.getElementById('7ub-count');
-                            const count7ub1ubEl = document.getElementById('7ub-1ub-count');
-
-                            if (count7ubEl) count7ubEl.textContent = count7ub || 0;
-                            if (count7ub1ubEl) count7ub1ubEl.textContent = count7ub1ub || 0;
+                            // Optional: use for chart context only; 7ub/7ub-1ub badges updated by updateButtonCounts
                         }
                     })
                     .catch(err => console.error('Error loading counts:', err));
@@ -2325,7 +2518,8 @@
                     filterTimeout = setTimeout(function() {
                         updateButtonCounts();
                         updatePaginationCount();
-                    }, 200);
+                        if (typeof updateSelectAllHeaderCheckbox === 'function') updateSelectAllHeaderCheckbox();
+                    }, 50);
                 });
 
                 table.on("dataProcessed", function() {
@@ -2351,20 +2545,14 @@
 
                 $("#status-filter, #inv-filter, #nrl-filter, #nra-filter").on("change", function() {
                     table.setFilter(combinedFilter);
-                    setTimeout(function() {
-                        updateButtonCounts();
-                        updatePaginationCount();
-                    }, 300);
+                    setTimeout(updatePaginationCount, 100);
                 });
 
                 // Range filter event listeners
                 $("#1ub-min, #1ub-max, #7ub-min, #7ub-max, #sbid-min, #sbid-max, #acos-min, #acos-max, #price-min, #price-max")
                     .on("input", function() {
                         table.setFilter(combinedFilter);
-                        setTimeout(function() {
-                            updateButtonCounts();
-                            updatePaginationCount();
-                        }, 300);
+                        setTimeout(updatePaginationCount, 100);
                     });
 
                 // Clear range filters button
@@ -2376,27 +2564,19 @@
                     $("#acos-min, #acos-max").val('');
                     $("#price-min, #price-max").val('');
                     
-                    // Apply filter to refresh table
                     table.setFilter(combinedFilter);
-                    setTimeout(function() {
-                        updateButtonCounts();
-                        updatePaginationCount();
-                    }, 300);
+                    setTimeout(updatePaginationCount, 100);
                 });
 
-                setTimeout(function() {
-                    updateButtonCounts();
-                    updatePaginationCount();
-                }, 1000);
+                setTimeout(updatePaginationCount, 150);
+                setTimeout(updateButtonCounts, 400);
+                setTimeout(function() { if (typeof updateSelectAllHeaderCheckbox === 'function') updateSelectAllHeaderCheckbox(); }, 500);
                 loadUtilizationCounts();
             });
 
             table.on("dataLoaded", function() {
                 setTimeout(updatePaginationCount, 100);
                 table.setFilter(combinedFilter);
-                setTimeout(function() {
-                    updateButtonCounts();
-                }, 500);
                 loadUtilizationCounts();
             });
 
@@ -2627,9 +2807,11 @@
                     const selectedRows = table.getSelectedRows();
 
                     if (selectAllMode) {
-                        // Select all visible rows
-                        const allRows = table.getRows('visible');
-                        allRows.forEach(row => row.select());
+                        // Select all active (filtered) rows across pages
+                        const allRows = table.getRows('active');
+                        if (allRows && allRows.length) {
+                            try { allRows.forEach(row => row.select()); } catch (e) { console.warn('selectAll:', e); }
+                        }
                         this.innerHTML = '<i class="fa fa-times"></i> Deselect All';
                         this.classList.remove('btn-outline-primary');
                         this.classList.add('btn-primary');
@@ -2804,9 +2986,76 @@
                 });
             }
 
+            function updateSelectAllHeaderCheckbox() {
+                var cb = document.querySelector('#budget-under-table .tabulator-header .tabulator-col:first-child .select-all-header-cb');
+                if (!cb) return;
+                var active = table.getRows('active');
+                var selected = table.getSelectedRows();
+                if (!active || !active.length) {
+                    cb.checked = false;
+                    cb.indeterminate = false;
+                    return;
+                }
+                var selSet = new Set(selected);
+                var n = 0;
+                active.forEach(function(r) { if (selSet.has(r)) n++; });
+                if (n === 0) {
+                    cb.checked = false;
+                    cb.indeterminate = false;
+                } else if (n === active.length) {
+                    cb.checked = true;
+                    cb.indeterminate = false;
+                } else {
+                    cb.checked = false;
+                    cb.indeterminate = true;
+                }
+            }
+
             // Update bulk action buttons when selection changes
             table.on("rowSelectionChanged", function(data, rows) {
                 updateBulkActionButtons();
+                updateSelectAllHeaderCheckbox();
+            });
+
+            // Persist mbid edit to backend (save only, no Google push)
+            table.on("cellEdited", function(cell) {
+                if (cell.getField() !== "mbid") return;
+                var row = cell.getRow().getData();
+                if (!row.campaign_id || !row.campaignName) return;
+                var val = cell.getValue();
+                if (val == null || val === "" || isNaN(parseFloat(val))) return;
+                var bid = Math.max(0.01, Math.floor(parseFloat(val) * 100) / 100);
+                var overlay = document.getElementById("progress-overlay");
+                if (overlay) overlay.style.display = "flex";
+                fetch("/update-google-ads-bid-price", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').getAttribute("content")
+                    },
+                    body: JSON.stringify({
+                        campaign_ids: [row.campaign_id],
+                        bids: [bid],
+                        save_mbid_only: true
+                    })
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.status === 200 || data.status === 207) {
+                        if (typeof updateButtonCounts === "function") updateButtonCounts();
+                    } else {
+                        alert("Error saving mbid: " + (data.message || "Request failed."));
+                        if (typeof table !== "undefined" && table) table.setData("/google/shopping/data");
+                    }
+                })
+                .catch(function(err) {
+                    console.error(err);
+                    alert("Request failed: " + (err.message || "Unknown error"));
+                    if (typeof table !== "undefined" && table) table.setData("/google/shopping/data");
+                })
+                .finally(function() {
+                    if (overlay) overlay.style.display = "none";
+                });
             });
 
             // Handle info icon toggle for INV column
@@ -2995,7 +3244,7 @@
                         },
                         body: JSON.stringify({
                             campaign_ids: [campaignId],
-                            bids: [aprBid]
+                            bids: [parseFloat(aprBid)]
                         })
                     })
                     .then(res => res.json())
@@ -3006,6 +3255,125 @@
                     .finally(() => {
                         overlay.style.display = "none";
                     });
+            }
+
+            const applyIncDecSbidBtn = document.getElementById("apply-inc-dec-sbid-btn");
+            if (applyIncDecSbidBtn) {
+                applyIncDecSbidBtn.addEventListener("click", function() {
+                    const overlay = document.getElementById("progress-overlay");
+                    const rows = table.getSelectedRows();
+                    if (!rows || rows.length === 0) {
+                        alert("Select at least one row (campaign) to apply INC/DEC.");
+                        return;
+                    }
+                    const action = document.getElementById("inc-dec-sbid-action").value;
+                    const mode = document.getElementById("inc-dec-sbid-mode").value;
+                    const amount = parseFloat(document.getElementById("inc-dec-sbid-amount").value) || 0;
+                    if (amount <= 0) {
+                        alert("Enter a valid amount (Value $ or %).");
+                        return;
+                    }
+                    const seen = {};
+                    const campaignIds = [];
+                    const bids = [];
+                    rows.forEach(function(row) {
+                        const d = row.getData();
+                        if (!d.campaign_id || !d.campaignName || seen[d.campaign_id]) return;
+                        let base = (d.mbid != null && d.mbid > 0) ? parseFloat(d.mbid) : (parseFloat(d.cpc_L1) || 0);
+                        if (base <= 0) return;
+                        let newBid;
+                        if (mode === "value") {
+                            newBid = action === "inc" ? base + amount : base - amount;
+                        } else {
+                            newBid = action === "inc" ? base * (1 + amount / 100) : base * (1 - amount / 100);
+                        }
+                        newBid = Math.max(0.01, Math.floor(newBid * 100) / 100);
+                        seen[d.campaign_id] = true;
+                        campaignIds.push(d.campaign_id);
+                        bids.push(newBid);
+                    });
+                    if (campaignIds.length === 0) {
+                        alert("Selected rows must have a campaign and valid base bid (mbid or L1 CPC).");
+                        return;
+                    }
+                    overlay.style.display = "flex";
+                    fetch("/update-google-ads-bid-price", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').getAttribute("content")
+                        },
+                        body: JSON.stringify({ campaign_ids: campaignIds, bids: bids, save_mbid_only: true })
+                    })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.status === 200 || data.status === 207) {
+                            alert(data.message || "INC/DEC applied to selected campaigns. mbid saved (no Google push).");
+                            updateButtonCounts();
+                            if (typeof table !== "undefined" && table) table.setData("/google/shopping/data");
+                        } else {
+                            alert("Error: " + (data.message || "Request failed."));
+                        }
+                    })
+                    .catch(function(err) {
+                        console.error(err);
+                        alert("Request failed: " + (err.message || "Unknown error"));
+                    })
+                    .finally(function() { overlay.style.display = "none"; });
+                });
+            }
+
+            const pushMbidToGoogleBtn = document.getElementById("push-mbid-to-google-btn");
+            if (pushMbidToGoogleBtn) {
+                pushMbidToGoogleBtn.addEventListener("click", function() {
+                    const overlay = document.getElementById("progress-overlay");
+                    const rows = table.getSelectedRows();
+                    if (!rows || rows.length === 0) {
+                        alert("Select at least one row (campaign) to push mbid to Google.");
+                        return;
+                    }
+                    const seen = {};
+                    const campaignIds = [];
+                    const bids = [];
+                    rows.forEach(function(row) {
+                        const d = row.getData();
+                        if (!d.campaign_id || !d.campaignName || seen[d.campaign_id]) return;
+                        let bid = (d.mbid != null && d.mbid > 0) ? parseFloat(d.mbid) : (parseFloat(d.cpc_L1) || 0);
+                        if (bid <= 0) return;
+                        bid = Math.max(0.01, Math.floor(bid * 100) / 100);
+                        seen[d.campaign_id] = true;
+                        campaignIds.push(d.campaign_id);
+                        bids.push(bid);
+                    });
+                    if (campaignIds.length === 0) {
+                        alert("Selected rows must have a campaign and valid bid (mbid or L1 CPC).");
+                        return;
+                    }
+                    overlay.style.display = "flex";
+                    fetch("/update-google-ads-bid-price", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').getAttribute("content")
+                        },
+                        body: JSON.stringify({ campaign_ids: campaignIds, bids: bids })
+                    })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.status === 200 || data.status === 207) {
+                            alert(data.message || "mbid pushed to Google Ads for selected campaigns.");
+                            updateButtonCounts();
+                            if (typeof table !== "undefined" && table) table.setData("/google/shopping/data");
+                        } else {
+                            alert("Error: " + (data.message || "Request failed."));
+                        }
+                    })
+                    .catch(function(err) {
+                        console.error(err);
+                        alert("Request failed: " + (err.message || "Unknown error"));
+                    })
+                    .finally(function() { overlay.style.display = "none"; });
+                });
             }
 
             // Safe selector function
@@ -3042,6 +3410,8 @@
                             else sbidVal = (Math.floor(cpc_L7 * 1.10 * 100) / 100).toFixed(2);
                         } else sbidVal = "—";
 
+                        let mbidVal = row.mbid != null && row.mbid !== "" && !isNaN(parseFloat(row.mbid))
+                            ? (parseFloat(row.mbid)).toFixed(2) : "—";
                         return {
                             Parent: row.parent || "",
                             SKU: row.sku || "",
@@ -3055,6 +3425,7 @@
                             "L7 CPC": parseFloat(row.cpc_L7 || 0).toFixed(2),
                             "L1 CPC": parseFloat(row.cpc_L1 || 0).toFixed(2),
                             SBID: sbidVal,
+                            mbid: mbidVal,
                             INV: parseFloat(row.INV || 0),
                             "OV L30": parseFloat(row.L30 || 0),
                             NRL: row.NRL || "",

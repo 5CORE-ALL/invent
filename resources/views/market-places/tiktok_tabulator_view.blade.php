@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'TikTok Pricing', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'TikTok Shop Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -125,14 +125,14 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'TikTok Pricing',
-        'sub_title' => 'TikTok Pricing',
+        'page_title' => 'TikTok Shop Analytics',
+        'sub_title' => 'TikTok Shop Analytics',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>TikTok Data</h4>
+                {{-- <h4>TikTok Analytics</h4> --}}
                 
                 <!-- Upload Section -->
                 <div class="mb-3 p-3 bg-light rounded">
@@ -237,6 +237,43 @@
                     <button id="increase-btn" class="btn btn-sm btn-success">
                         <i class="fas fa-arrow-up"></i> Increase Mode
                     </button>
+
+                    <button type="button" id="toggle-utilized-columns-btn" class="btn btn-sm btn-secondary">
+                        <i class="fa fa-filter"></i> Show Ads Columns
+                    </button>
+                </div>
+
+                <!-- Ads/Utilized Count Section (shown when Show Ads Columns is on) -->
+                <div id="utilized-count-section" class="mt-2 p-3 bg-light rounded border d-none">
+                    <h6 class="mb-2"><i class="fa-solid fa-chart-line me-1"></i>Ads / Utilized Stats</h6>
+                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                        <span class="badge fs-6 p-2 ads-section-badge" id="total-sku-count" data-ads-filter="all" style="color: black; font-weight: bold; background-color: #adb5bd; cursor: pointer;" title="Click to show all">Total SKU: 0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="total-campaign-count" data-ads-filter="campaign" style="color: black; font-weight: bold; background-color: #9ec5fe; cursor: pointer;" title="Click to filter: has campaign">Campaign: 0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="ad-sku-count" data-ads-filter="ad-sku" style="color: black; font-weight: bold; background-color: #b8d4a8; cursor: pointer;" title="Click to filter: SKU active in ads with &gt;0 inventory">Ad SKU: 0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="missing-campaign-count" data-ads-filter="missing" style="color: black; font-weight: bold; background-color: #f1aeb5; cursor: pointer;" title="Click to filter: missing campaign (no campaign, INV&gt;0, not NRA)">Missing: 0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="nra-missing-count" data-ads-filter="nra-missing" style="color: black; font-weight: bold; background-color: #ffe69c; cursor: pointer;" title="Click to filter: NRA missing">NRA MISSING: 0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="zero-inv-count" data-ads-filter="zero-inv" style="color: black; font-weight: bold; background-color: #ffda6a; cursor: pointer;" title="Click to filter: zero inventory">Zero INV: 0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="nra-count" data-ads-filter="nra" style="color: black; font-weight: bold; background-color: #f1aeb5; cursor: pointer;" title="Click to filter: NRA">NRA: 0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="ra-count" data-ads-filter="ra" style="color: black; font-weight: bold; background-color: #a3cfbb; cursor: pointer;" title="Click to filter: RA">RA: 0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="total-spend-badge" data-ads-filter="total-spend" style="color: black; font-weight: bold; background-color: #9ec5fe; cursor: pointer;" title="Click to filter: has spend">Total Spend: $0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="total-budget-badge" data-ads-filter="budget" style="color: black; font-weight: bold; background-color: #ced4da; cursor: pointer;" title="Click to filter: has budget">Budget: $0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="total-ad-sales-badge" data-ads-filter="ad-sales" style="color: black; font-weight: bold; background-color: #9eeaf9; cursor: pointer;" title="Click to filter: has ad sales">Ad Sales: $0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="total-ad-clicks-badge" data-ads-filter="ad-clicks" style="color: black; font-weight: bold; background-color: #a5d6e8; cursor: pointer;" title="Click to filter: has ad clicks">Ad Clicks: 0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="avg-acos-badge" data-ads-filter="avg-acos" style="color: black; font-weight: bold; background-color: #ffe69c; cursor: pointer;" title="Click to filter: has spend/sales">Avg ACOS: 0%</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="roas-badge" data-ads-filter="roas" style="color: black; font-weight: bold; background-color: #a3cfbb; cursor: pointer;" title="Click to filter: has spend/sales">ROAS: 0.00</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-2 mt-2 pt-2 border-top">
+                        <label class="form-label mb-0 me-1 text-nowrap" style="font-size: 0.8rem;"><i class="fa-solid fa-upload me-1"></i>Campaign:</label>
+                        <input type="file" id="l7-upload-file" accept=".xlsx,.xls,.csv" class="form-control form-control-sm d-none" style="width: 0;">
+                        <button type="button" id="l7-upload-btn" class="btn btn-sm btn-primary" title="Upload L7 Report" style="font-size: 0.75rem;">
+                            <i class="fa-solid fa-upload me-1"></i>L7
+                        </button>
+                        <input type="file" id="l30-upload-file" accept=".xlsx,.xls,.csv" class="form-control form-control-sm d-none" style="width: 0;">
+                        <button type="button" id="l30-upload-btn" class="btn btn-sm btn-primary" title="Upload L30 Report" style="font-size: 0.75rem;">
+                            <i class="fa-solid fa-upload me-1"></i>L30
+                        </button>
+                        <span id="upload-status-container" class="ms-2" style="font-size: 0.7rem;"></span>
+                    </div>
                 </div>
 
                 <!-- Summary Stats -->
@@ -294,6 +331,7 @@
 <script>
     const COLUMN_VIS_KEY = "tiktok_tabulator_column_visibility";
     let table = null;
+    let totalDistinctCampaigns = 0; // from API: COUNT(DISTINCT campaign_name) in tiktok_campaign_reports
     let decreaseModeActive = false;
     let increaseModeActive = false;
     let selectedSkus = new Set();
@@ -364,6 +402,60 @@
                 selectColumn.hide();
                 selectedSkus.clear();
                 updateSelectedCount();
+            }
+        });
+
+        // Toggle Utilized Columns - Show only columns that match tiktok/utilized page (like temu-decrease Show Ads Columns)
+        let utilizedColumnsVisible = false;
+        let originalColumnVisibilityUtilized = {};
+        const utilizedColumnFields = ['(Child) sku', 'hasCampaign', 'INV', 'L30', 'TT Dil%', 'TT L30', 'NR', 'ads_price', 'budget', 'spend', 'ad_sold', 'ad_clicks', 'acos', 'out_roas', 'in_roas', 'status', 'campaign_name'];
+
+        $('#toggle-utilized-columns-btn').on('click', function() {
+            utilizedColumnsVisible = !utilizedColumnsVisible;
+
+            if (utilizedColumnsVisible) {
+                table.getColumns().forEach(function(column) {
+                    const field = column.getField();
+                    if (field) {
+                        originalColumnVisibilityUtilized[field] = column.isVisible();
+                    }
+                });
+                table.getColumns().forEach(function(column) {
+                    const field = column.getField();
+                    if (field && !utilizedColumnFields.includes(field)) {
+                        column.hide();
+                    } else if (field && utilizedColumnFields.includes(field)) {
+                        column.show(); // show by iterating so hidden columns (e.g. ads_price) are found
+                    }
+                });
+                $(this).html('<i class="fa fa-filter"></i> Show All Columns');
+                $(this).removeClass('btn-secondary btn-primary').addClass('btn-danger');
+                $('#utilized-count-section').removeClass('d-none');
+                $('#summary-stats').addClass('d-none');
+                updateUtilizedCounts();
+            } else {
+                // Restore by iterating stored keys (getColumns() may only return visible columns when some are hidden)
+                Object.keys(originalColumnVisibilityUtilized).forEach(function(field) {
+                    try {
+                        const column = table.getColumn(field);
+                        if (column) {
+                            if (originalColumnVisibilityUtilized[field]) {
+                                column.show();
+                            } else {
+                                column.hide();
+                            }
+                        }
+                    } catch (e) {
+                        console.log('Restore column not found: ' + field);
+                    }
+                });
+                $(this).html('<i class="fa fa-filter"></i> Show Ads Columns');
+                $(this).removeClass('btn-danger btn-primary').addClass('btn-secondary');
+                $('#utilized-count-section').addClass('d-none');
+                $('#summary-stats').removeClass('d-none');
+                adsBadgeFilter = null;
+                $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
+                applyFilters();
             }
         });
 
@@ -458,6 +550,19 @@
             missingFilterActive = false;
             mapFilterActive = false;
             applyFilters();
+        });
+
+        // Ads section badge filter (like tiktok utilized page) - toggle on click
+        let adsBadgeFilter = null;
+        $(document).on('click', '.ads-section-badge', function() {
+            const filter = $(this).data('ads-filter');
+            adsBadgeFilter = (adsBadgeFilter === filter) ? null : filter;
+            $('#utilized-count-section .ads-section-badge').removeClass('border border-3 border-dark');
+            if (adsBadgeFilter) {
+                $('#utilized-count-section .ads-section-badge[data-ads-filter="' + adsBadgeFilter + '"]').addClass('border border-3 border-dark');
+            }
+            applyFilters();
+            if (typeof updateUtilizedCounts === 'function') updateUtilizedCounts();
         });
 
         // ========== MANUAL DROPDOWN FUNCTIONALITY ==========
@@ -721,7 +826,8 @@
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (value) {
-                            return `<img src="${value}" alt="Product" style="width: 50px; height: 50px; object-fit: cover;">`;
+                            const esc = (v) => String(v).replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                            return `<img src="${esc(value)}" alt="Product" style="width: 50px; height: 50px; object-fit: cover;" onerror="this.onerror=null; this.style.display='none'; this.nextElementSibling && (this.nextElementSibling.style.display='inline');"><span style="display:none; font-size:10px; color:#999;">No image</span>`;
                         }
                         return '';
                     },
@@ -819,6 +925,174 @@
                             return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
                         }
                         return '';
+                    }
+                },
+                {
+                    title: "Missing",
+                    field: "hasCampaign",
+                    hozAlign: "center",
+                    width: 80,
+                    visible: false,
+                    formatter: function(cell) {
+                        const row = cell.getRow().getData();
+                        const hasCampaign = row.hasCampaign === true || row.hasCampaign === 'true' || row.hasCampaign === 1;
+                        const nraValue = (row.NR || '').trim();
+                        let dotColor, title;
+                        if (nraValue === 'NRA') {
+                            dotColor = 'yellow';
+                            title = 'NRA - Not Required';
+                        } else {
+                            dotColor = hasCampaign ? 'green' : 'red';
+                            title = hasCampaign ? 'Campaign Exists' : 'Campaign Missing';
+                        }
+                        return `<div style="display: flex; align-items: center; justify-content: center;"><span class="status-circle ${dotColor}" title="${title}"></span></div>`;
+                    }
+                },
+                {
+                    title: "NRA",
+                    field: "NR",
+                    hozAlign: "center",
+                    width: 70,
+                    visible: false,
+                    formatter: function(cell) {
+                        const row = cell.getRow();
+                        const sku = row.getData()['(Child) sku'];
+                        const value = (cell.getValue()?.trim()) || 'RA';
+                        return `
+                            <select class="form-select form-select-sm editable-select" data-sku="${sku}" data-field="NR"
+                                style="width: 50px; border: 1px solid gray; padding: 2px; font-size: 20px; text-align: center;">
+                                <option value="RA" ${value === 'RA' ? 'selected' : ''}>🟢</option>
+                                <option value="NRA" ${value === 'NRA' ? 'selected' : ''}>🔴</option>
+                                <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>🟡</option>
+                            </select>
+                        `;
+                    }
+                },
+                {
+                    title: "Price",
+                    field: "ads_price",
+                    hozAlign: "right",
+                    width: 80,
+                    visible: false,
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        return value > 0 ? '$' + value.toFixed(2) : (value === 0 ? '<span style="color:#999;">0</span>' : '-');
+                    }
+                },
+                {
+                    title: "Budget",
+                    field: "budget",
+                    hozAlign: "right",
+                    width: 100,
+                    visible: false,
+                    editor: "number",
+                    editorParams: { min: 0, step: 0.01 },
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value === null || value === undefined || value === '') return '<span style="color:#999;">-</span>';
+                        return '$' + parseFloat(value).toFixed(2);
+                    }
+                },
+                {
+                    title: "Spend",
+                    field: "spend",
+                    hozAlign: "right",
+                    width: 100,
+                    visible: false,
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        return value.toFixed(2);
+                    }
+                },
+                {
+                    title: "Ad Sold",
+                    field: "ad_sold",
+                    hozAlign: "right",
+                    width: 100,
+                    visible: false,
+                    formatter: function(cell) {
+                        const value = parseInt(cell.getValue() || 0);
+                        return value.toLocaleString();
+                    }
+                },
+                {
+                    title: "Ad Clicks",
+                    field: "ad_clicks",
+                    hozAlign: "right",
+                    width: 100,
+                    visible: false,
+                    formatter: function(cell) {
+                        const value = parseInt(cell.getValue() || 0);
+                        return value.toLocaleString();
+                    }
+                },
+                {
+                    title: "ACOS",
+                    field: "acos",
+                    hozAlign: "right",
+                    width: 100,
+                    visible: false,
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        return Math.round(value) + '%';
+                    }
+                },
+                {
+                    title: "Out ROAS",
+                    field: "out_roas",
+                    hozAlign: "right",
+                    width: 100,
+                    visible: false,
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        return value.toFixed(2);
+                    }
+                },
+                {
+                    title: "In ROAS",
+                    field: "in_roas",
+                    hozAlign: "right",
+                    width: 100,
+                    visible: false,
+                    editor: "number",
+                    editorParams: { min: 0, step: 0.01 },
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue() || 0);
+                        return value.toFixed(2);
+                    }
+                },
+                {
+                    title: "Status",
+                    field: "status",
+                    hozAlign: "center",
+                    width: 130,
+                    visible: false,
+                    formatter: function(cell) {
+                        const row = cell.getRow();
+                        const sku = row.getData()['(Child) sku'];
+                        const value = cell.getValue() || 'Not Created';
+                        const colors = { "Active": "#10b981", "Inactive": "#ef4444", "Not Created": "#eab308" };
+                        const selectedColor = colors[value] || "#6b7280";
+                        return `
+                            <select class="form-select form-select-sm editable-select" data-sku="${sku}" data-field="status"
+                                style="width: 120px; border: 1px solid #d1d5db; padding: 4px 8px; font-size: 0.875rem; color: ${selectedColor}; font-weight: 500;">
+                                <option value="Active" ${value === 'Active' ? 'selected' : ''} style="color: #10b981;">Active</option>
+                                <option value="Inactive" ${value === 'Inactive' ? 'selected' : ''} style="color: #ef4444;">Inactive</option>
+                                <option value="Not Created" ${value === 'Not Created' ? 'selected' : ''} style="color: #eab308;">Not Created</option>
+                            </select>
+                        `;
+                    }
+                },
+                {
+                    title: "Campaign",
+                    field: "campaign_name",
+                    headerSort: false,
+                    width: 200,
+                    visible: false,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (!value || value === '') return '<span style="color: #999;">-</span>';
+                        return value;
                     }
                 },
                 {
@@ -1081,7 +1355,8 @@
 
         // SPRICE cell edited - save to database
         table.on('cellEdited', function(cell) {
-            if (cell.getField() === 'SPRICE') {
+            const field = cell.getField();
+            if (field === 'SPRICE') {
                 const row = cell.getRow();
                 const rowData = row.getData();
                 const sku = rowData['(Child) sku'];
@@ -1103,7 +1378,147 @@
                 });
                 
                 saveSpriceUpdates([{sku: sku, sprice: newSprice}]);
+            } else if (field === 'in_roas') {
+                const row = cell.getRow();
+                const rowData = row.getData();
+                const sku = rowData['(Child) sku'];
+                const value = parseFloat(cell.getValue() || 0);
+                const oldValue = parseFloat(rowData.in_roas || 0);
+                $.ajax({
+                    url: '{{ route("tiktok.utilized.update") }}',
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    data: JSON.stringify({ sku: sku, field: 'in_roas', value: value }),
+                    success: function(response) {
+                        if (response && response.success) {
+                            showToast('In ROAS updated', 'success');
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        cell.setValue(oldValue);
+                        const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : ('Failed to update In ROAS: ' + (xhr.statusText || error));
+                        showToast(msg, 'error');
+                    }
+                });
+            } else if (field === 'budget') {
+                const row = cell.getRow();
+                const rowData = row.getData();
+                const sku = rowData['(Child) sku'];
+                const rawVal = cell.getValue();
+                const value = rawVal === '' || rawVal === null || rawVal === undefined ? null : parseFloat(rawVal);
+                const oldValue = rowData.budget;
+                $.ajax({
+                    url: '{{ route("tiktok.utilized.update") }}',
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                    },
+                    data: JSON.stringify({ sku: sku, field: 'budget', value: value }),
+                    success: function(response) {
+                        if (response && response.success) {
+                            showToast('Budget updated', 'success');
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        cell.setValue(oldValue);
+                        const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : ('Failed to update Budget: ' + (xhr.statusText || error));
+                        showToast(msg, 'error');
+                    }
+                });
             }
+        });
+
+        // NRA and Status editable selects (utilized columns) - save to tiktok.utilized.update
+        $(document).on('change', '.editable-select', function() {
+            const sku = $(this).data('sku');
+            const field = $(this).data('field');
+            const value = $(this).val();
+            if (!sku || !field) return;
+            const rows = table.searchRows("(Child) sku", "=", sku);
+            const row = rows && rows.length ? rows[0] : null;
+            let oldValue = null;
+            if (row) {
+                const rowData = row.getData();
+                oldValue = rowData[field];
+                rowData[field] = value;
+                row.update(rowData);
+            }
+            const $select = $(this);
+            $.ajax({
+                url: '{{ route("tiktok.utilized.update") }}',
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                data: JSON.stringify({ sku: sku, field: field, value: value }),
+                success: function(response) {
+                    if (response && response.success) {
+                        showToast(field === 'NR' ? 'NRA updated' : 'Status updated', 'success');
+                    }
+                },
+                error: function(xhr, status, error) {
+                    if (row && oldValue !== null) {
+                        const rowData = row.getData();
+                        rowData[field] = oldValue;
+                        row.update(rowData);
+                        $select.val(oldValue);
+                    }
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : ('Failed to update: ' + (xhr.statusText || error));
+                    showToast(msg, 'error');
+                }
+            });
+        });
+
+        // L7 / L30 Upload: button triggers file input, then upload on file select
+        function doUploadReport(fileInput, reportRange, statusContainerId) {
+            const file = fileInput.files[0];
+            if (!file) return;
+            const $status = $('#' + statusContainerId);
+            $status.removeClass('d-none').html('<span class="text-primary">Uploading...</span>');
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('report_range', reportRange);
+            $.ajax({
+                url: '{{ route("tiktok.utilized.upload") }}',
+                method: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                success: function(response) {
+                    if (response && response.success) {
+                        showToast(response.message || 'Upload successful', 'success');
+                        if (table) table.replaceData();
+                        $status.html('<span class="text-success">' + (response.message || 'Done') + '</span>');
+                    } else {
+                        showToast(response.message || 'Upload failed', 'error');
+                        $status.html('<span class="text-danger">' + (response.message || 'Failed') + '</span>');
+                    }
+                    setTimeout(function() { $status.addClass('d-none').html(''); }, 4000);
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Upload failed';
+                    showToast(msg, 'error');
+                    $status.html('<span class="text-danger">' + msg + '</span>');
+                    setTimeout(function() { $status.addClass('d-none').html(''); }, 4000);
+                }
+            });
+            fileInput.value = '';
+        }
+        $('#l7-upload-btn').on('click', function() {
+            $('#l7-upload-file').off('change').on('change', function() {
+                doUploadReport(this, 'L7', 'upload-status-container');
+            }).trigger('click');
+        });
+        $('#l30-upload-btn').on('click', function() {
+            $('#l30-upload-file').off('change').on('change', function() {
+                doUploadReport(this, 'L30', 'upload-status-container');
+            }).trigger('click');
         });
 
         // Copy SKU button handler
@@ -1192,6 +1607,78 @@
                     const mapValue = data['MAP'];
                     return mapValue && mapValue.startsWith('Diff|');
                 });
+            }
+
+            // Ads section badge filter (only when Show Ads Columns is on)
+            if (typeof utilizedColumnsVisible !== 'undefined' && utilizedColumnsVisible && adsBadgeFilter) {
+                switch (adsBadgeFilter) {
+                    case 'all':
+                        break;
+                    case 'campaign':
+                        table.addFilter(function(data) {
+                            const hasCampaign = data.hasCampaign === true || data.hasCampaign === 'true' || data.hasCampaign === 1;
+                            return hasCampaign;
+                        });
+                        break;
+                    case 'ad-sku':
+                        table.addFilter(function(data) {
+                            const hasCampaign = data.hasCampaign === true || data.hasCampaign === 'true' || data.hasCampaign === 1;
+                            const inv = parseFloat(data.INV) || 0;
+                            return hasCampaign && inv > 0;
+                        });
+                        break;
+                    case 'missing':
+                        table.addFilter(function(data) {
+                            const hasCampaign = data.hasCampaign === true || data.hasCampaign === 'true' || data.hasCampaign === 1;
+                            const nr = (data.NR || '').trim();
+                            const inv = parseFloat(data.INV) || 0;
+                            return !hasCampaign && inv > 0 && nr !== 'NRA';
+                        });
+                        break;
+                    case 'nra-missing':
+                        table.addFilter(function(data) {
+                            const hasCampaign = data.hasCampaign === true || data.hasCampaign === 'true' || data.hasCampaign === 1;
+                            const nr = (data.NR || '').trim();
+                            return !hasCampaign && nr === 'NRA';
+                        });
+                        break;
+                    case 'zero-inv':
+                        table.addFilter("INV", "<=", 0);
+                        break;
+                    case 'nra':
+                        table.addFilter(function(data) { return (data.NR || '').trim() === 'NRA'; });
+                        break;
+                    case 'ra':
+                        table.addFilter(function(data) { return (data.NR || '').trim() === 'RA'; });
+                        break;
+                    case 'total-spend':
+                        table.addFilter(function(data) {
+                            const spend = parseFloat(data.spend) || 0;
+                            return spend > 0;
+                        });
+                        break;
+                    case 'budget':
+                        table.addFilter(function(data) {
+                            const b = data.budget;
+                            return b !== null && b !== undefined && b !== '' && (parseFloat(b) || 0) > 0;
+                        });
+                        break;
+                    case 'ad-clicks':
+                        table.addFilter(function(data) {
+                            const clicks = parseInt(data.ad_clicks, 10) || 0;
+                            return clicks > 0;
+                        });
+                        break;
+                    case 'ad-sales':
+                    case 'avg-acos':
+                    case 'roas':
+                        table.addFilter(function(data) {
+                            const spend = parseFloat(data.spend) || 0;
+                            const outRoas = parseFloat(data.out_roas) || 0;
+                            return spend > 0 && outRoas > 0;
+                        });
+                        break;
+                }
             }
 
             updateSummary();
@@ -1283,6 +1770,75 @@
             $('#inv-tt-stock-badge').text(`INV > TT Stock: ${invTTStockCount}`);
         }
 
+        // Update Ads/Utilized count section (from table data: campaign, NR, spend, etc.)
+        function updateUtilizedCounts() {
+            if (!table) return;
+            const data = table.getData('all').filter(row => {
+                const sku = row['(Child) sku'] || '';
+                return sku && !String(row.Parent || '').startsWith('PARENT');
+            });
+            const processedSkus = new Set();
+            const zeroInvSkus = new Set();
+            const adSkuSet = new Set(); // SKU active in ads (hasCampaign) with >0 inventory
+            let validSkuCount = 0, missingCount = 0, nraMissingCount = 0, nraCount = 0;
+            let totalSpend = 0, totalAdSales = 0, totalBudget = 0, totalAdClicks = 0;
+
+            data.forEach(row => {
+                const sku = row['(Child) sku'] || '';
+                if (!sku) return;
+                const hasCampaign = row.hasCampaign === true || row.hasCampaign === 'true' || row.hasCampaign === 1;
+                const nr = (row.NR || '').trim();
+                const inv = parseFloat(row.INV) || 0;
+
+                if (!processedSkus.has(sku)) {
+                    processedSkus.add(sku);
+                    validSkuCount++;
+                    if (nr === 'NRA') nraCount++;
+                }
+                if (hasCampaign && inv > 0) adSkuSet.add(sku);
+                if (inv <= 0) zeroInvSkus.add(sku);
+                if (!hasCampaign) {
+                    if (nr === 'NRA') {
+                        if (!processedSkus.has('nm_' + sku)) {
+                            processedSkus.add('nm_' + sku);
+                            nraMissingCount++;
+                        }
+                    } else if (inv > 0) {
+                        if (!processedSkus.has('m_' + sku)) {
+                            processedSkus.add('m_' + sku);
+                            missingCount++;
+                        }
+                    }
+                }
+                totalSpend += parseFloat(row.spend) || 0;
+                totalBudget += parseFloat(row.budget) || 0;
+                totalAdClicks += parseInt(row.ad_clicks, 10) || 0;
+                const outRoas = parseFloat(row.out_roas) || 0;
+                const spend = parseFloat(row.spend) || 0;
+                if (outRoas > 0 && spend > 0) totalAdSales += spend * outRoas;
+            });
+            const zeroInvCount = zeroInvSkus.size;
+
+            const raCount = Math.max(0, validSkuCount - nraCount);
+            const avgAcos = totalAdSales > 0 ? (totalSpend / totalAdSales) * 100 : 0;
+            const roas = totalSpend > 0 ? totalAdSales / totalSpend : 0;
+
+            $('#total-sku-count').text('Total SKU: ' + validSkuCount);
+            $('#total-campaign-count').text('Campaign: ' + totalDistinctCampaigns);
+            $('#ad-sku-count').text('Ad SKU: ' + adSkuSet.size);
+            $('#missing-campaign-count').text('Missing: ' + missingCount);
+            $('#nra-missing-count').text('NRA MISSING: ' + nraMissingCount);
+            $('#zero-inv-count').text('Zero INV: ' + zeroInvCount);
+            $('#nra-count').text('NRA: ' + nraCount);
+            $('#ra-count').text('RA: ' + raCount);
+            $('#total-spend-badge').text('Total Spend: $' + Math.round(totalSpend).toLocaleString());
+            $('#total-budget-badge').text('Budget: $' + totalBudget.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+            $('#total-ad-sales-badge').text('Ad Sales: $' + Math.round(totalAdSales).toLocaleString());
+            $('#total-ad-clicks-badge').text('Ad Clicks: ' + totalAdClicks.toLocaleString());
+            $('#avg-acos-badge').text('Avg ACOS: ' + Math.round(avgAcos) + '%');
+            $('#roas-badge').text('ROAS: ' + roas.toFixed(2));
+        }
+
         // Build Column Visibility Dropdown
         function buildColumnDropdown() {
             const columns = table.getColumns();
@@ -1353,15 +1909,28 @@
         });
 
         table.on('dataLoaded', function() {
-            setTimeout(function() {
-                applyFilters();
-                updateSummary();
-            }, 100);
+            function afterLoad() {
+                setTimeout(function() {
+                    applyFilters();
+                    updateSummary();
+                    updateUtilizedCounts();
+                }, 100);
+            }
+            fetch('/tiktok-distinct-campaign-count')
+                .then(function(r) { return r.json(); })
+                .then(function(res) {
+                    if (res && typeof res.totalDistinctCampaigns !== 'undefined') {
+                        totalDistinctCampaigns = parseInt(res.totalDistinctCampaigns, 10) || 0;
+                    }
+                    afterLoad();
+                })
+                .catch(function() { afterLoad(); });
         });
 
         table.on('renderComplete', function() {
             setTimeout(function() {
                 updateSummary();
+                updateUtilizedCounts();
             }, 100);
         });
 

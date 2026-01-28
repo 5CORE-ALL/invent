@@ -653,6 +653,7 @@ class GoogleAdsController extends Controller
                 'campaign_status',
                 'budget_amount_micros',
                 'date',
+                'mbid',
                 'metrics_cost_micros',
                 'metrics_clicks',
                 'metrics_impressions',
@@ -762,12 +763,18 @@ class GoogleAdsController extends Controller
             // Use SKU as key (since we're looping by SKUs, not campaigns)
             $mapKey = 'SKU_' . $pm->sku;
 
-            // BGT from latest-by-date row only (never $matchedCampaign; first() can be an older row)
+            // BGT and mbid (manual bid) from latest-by-date row only
             $initialBudget = 0;
+            $mbid = null;
             if ($campaignId) {
                 $latestForBgt = $googleCampaigns->where('campaign_id', $campaignId)->sortByDesc('date')->first();
-                if ($latestForBgt && $latestForBgt->budget_amount_micros) {
-                    $initialBudget = $latestForBgt->budget_amount_micros / 1000000;
+                if ($latestForBgt) {
+                    if ($latestForBgt->budget_amount_micros) {
+                        $initialBudget = $latestForBgt->budget_amount_micros / 1000000;
+                    }
+                    if (isset($latestForBgt->mbid) && $latestForBgt->mbid !== null) {
+                        $mbid = (float) $latestForBgt->mbid;
+                    }
                 }
             }
 
@@ -778,6 +785,7 @@ class GoogleAdsController extends Controller
                     'campaign_id' => $campaignId,
                     'campaignName' => $campaignName,
                     'campaignBudgetAmount' => $initialBudget,
+                    'mbid' => $mbid,
                     'status' => $matchedCampaign ? $matchedCampaign->campaign_status : null,
                     'campaignStatus' => $matchedCampaign ? $matchedCampaign->campaign_status : null,
                     'price' => ($shopify && isset($shopify->price)) ? (float)$shopify->price : 0,
@@ -1081,14 +1089,22 @@ class GoogleAdsController extends Controller
                     continue;
                 }
                 
+                $saveMbidOnly = $request->boolean('save_mbid_only');
+
                 try {
-                    $this->sbidService->updateCampaignSbids($customerId, $campaignId, $newBid);
+                    if (!$saveMbidOnly) {
+                        $this->sbidService->updateCampaignSbids($customerId, $campaignId, $newBid);
+                    }
+
+                    DB::table('google_ads_campaigns')
+                        ->where('campaign_id', $campaignId)
+                        ->update(['mbid' => (float) $newBid]);
                     
                     $results[] = [
                         'campaign_id' => $campaignId,
                         'new_bid' => $newBid,
                         'status' => 'success',
-                        'message' => 'SBID updated successfully'
+                        'message' => $saveMbidOnly ? 'mbid saved (no Google push)' : 'SBID updated successfully'
                     ];
                     $successCount++;
 
@@ -1108,7 +1124,10 @@ class GoogleAdsController extends Controller
             }
 
             $statusCode = $hasError ? ($successCount > 0 ? 207 : 400) : 200;
-            $message = "SBID update completed. Success: {$successCount}, Errors: {$errorCount}";
+            $saveMbidOnly = $request->boolean('save_mbid_only');
+            $message = $saveMbidOnly
+                ? "mbid saved (no Google push). Success: {$successCount}, Errors: {$errorCount}"
+                : "SBID update completed. Success: {$successCount}, Errors: {$errorCount}";
 
             return response()->json([
                 "status" => $statusCode,
