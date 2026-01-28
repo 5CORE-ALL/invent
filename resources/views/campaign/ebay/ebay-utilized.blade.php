@@ -668,6 +668,28 @@
             // INC/DEC SBID variables
             let incDecType = 'value'; // 'value' or 'percentage'
 
+            // Function to store statistics in database
+            function storeStatistics() {
+                fetch('/ebay/store-statistics', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 200) {
+                        console.log('✅ Statistics stored successfully:', data.statistics);
+                    } else {
+                        console.error('❌ Error storing statistics:', data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('❌ Error storing statistics:', error);
+                });
+            }
+
             const getDilColor = (value) => {
                 const percent = parseFloat(value) * 100;
                 if (percent < 16.66) return 'red';
@@ -2725,6 +2747,9 @@
 
                     // Note: Paused campaigns count is now calculated from filtered table data in updateButtonCounts()
                     // to match pagination count and respect all filters
+                    
+                    // Automatically store statistics in database
+                    storeStatistics();
                     
                     return response.data;
                 }

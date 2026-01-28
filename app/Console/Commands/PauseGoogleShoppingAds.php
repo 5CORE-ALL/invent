@@ -77,8 +77,6 @@ class PauseGoogleShoppingAds extends Command
             if (!empty($skus)) {
                 $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
             }
-            
-            DB::connection()->disconnect();
 
             $this->info("Found " . $productMasters->count() . " product masters");
 
@@ -102,6 +100,7 @@ class PauseGoogleShoppingAds extends Command
                 'paused' => 0,
                 'already_paused' => 0,
                 'no_matching_campaign' => 0,
+                'removed' => 0,
                 'errors' => 0,
             ];
 
@@ -192,16 +191,70 @@ class PauseGoogleShoppingAds extends Command
                         ];
                         $stats['paused']++;
                     } catch (\Exception $e) {
-                        $stats['errors']++;
-                        $this->error("❌ Failed to pause campaign {$campaignId} ({$campaignName}): " . $e->getMessage());
-                        Log::error("Failed to pause Google Shopping campaign", [
-                            'campaign_id' => $campaignId,
-                            'campaign_name' => $campaignName,
-                            'sku' => $pm->sku,
-                            'inv' => $inv,
-                            'error' => $e->getMessage(),
-                            'trace' => $e->getTraceAsString()
-                        ]);
+                        $errorMessage = $e->getMessage();
+                        $isRemovedResource = false;
+                        
+                        // Try to parse JSON error response if present
+                        $errorJson = null;
+                        if (preg_match('/\{.*\}/s', $errorMessage, $matches)) {
+                            $errorJson = json_decode($matches[0], true);
+                        }
+                        
+                        // Check error code in JSON response
+                        if ($errorJson && isset($errorJson['details'])) {
+                            foreach ($errorJson['details'] as $detail) {
+                                if (isset($detail['errors'])) {
+                                    foreach ($detail['errors'] as $error) {
+                                        if (isset($error['errorCode']['contextError']) && 
+                                            $error['errorCode']['contextError'] === 'OPERATION_NOT_PERMITTED_FOR_REMOVED_RESOURCE') {
+                                            $isRemovedResource = true;
+                                            break 2;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Also check error message text (fallback)
+                        if (!$isRemovedResource && (
+                            stripos($errorMessage, 'OPERATION_NOT_PERMITTED_FOR_REMOVED_RESOURCE') !== false ||
+                            stripos($errorMessage, 'removed resources') !== false ||
+                            stripos($errorMessage, 'removed resource') !== false ||
+                            stripos($errorMessage, 'operation is not allowed for removed') !== false
+                        )) {
+                            $isRemovedResource = true;
+                        }
+                        
+                        if ($isRemovedResource) {
+                            $stats['removed']++;
+                            
+                            // Update database to mark campaign as removed
+                            try {
+                                GoogleAdsCampaign::where('campaign_id', $campaignId)
+                                    ->update(['campaign_status' => 'REMOVED']);
+                            } catch (\Exception $dbError) {
+                                // Ignore database update errors for removed campaigns
+                            }
+                            
+                            $this->warn("⚠️  Campaign already removed: {$campaignName} (ID: {$campaignId}) - SKU: {$pm->sku} (INV: {$inv})");
+                            Log::info("Campaign already removed in Google Ads", [
+                                'campaign_id' => $campaignId,
+                                'campaign_name' => $campaignName,
+                                'sku' => $pm->sku,
+                                'inv' => $inv,
+                            ]);
+                        } else {
+                            $stats['errors']++;
+                            $this->error("❌ Failed to pause campaign {$campaignId} ({$campaignName}): " . $errorMessage);
+                            Log::error("Failed to pause Google Shopping campaign", [
+                                'campaign_id' => $campaignId,
+                                'campaign_name' => $campaignName,
+                                'sku' => $pm->sku,
+                                'inv' => $inv,
+                                'error' => $errorMessage,
+                                'trace' => $e->getTraceAsString()
+                            ]);
+                        }
                     }
                 }
             }
@@ -214,6 +267,7 @@ class PauseGoogleShoppingAds extends Command
             $this->info("  - Campaigns " . ($dryRun ? "would be paused" : "paused") . ": {$stats['paused']}");
             $this->info("  - Already paused: {$stats['already_paused']}");
             $this->info("  - No matching campaign: {$stats['no_matching_campaign']}");
+            $this->info("  - Already removed: {$stats['removed']}");
             $this->info("  - Errors: {$stats['errors']}");
             $this->info(str_repeat('=', 60));
 

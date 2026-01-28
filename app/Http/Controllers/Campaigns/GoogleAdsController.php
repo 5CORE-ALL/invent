@@ -657,7 +657,9 @@ class GoogleAdsController extends Controller
                 'metrics_clicks',
                 'metrics_impressions',
                 'ga4_sold_units',
-                'ga4_ad_sales'
+                'ga4_ad_sales',
+                'ga4_actual_sold_units',
+                'ga4_actual_revenue'
             )
             ->where('advertising_channel_type', 'SHOPPING')
             ->where('campaign_status', '!=', 'ARCHIVED')
@@ -683,15 +685,16 @@ class GoogleAdsController extends Controller
                 $campaign = strtoupper(trim($c->campaign_name));
                 $campaignCleaned = rtrim(trim($campaign), '.');
                 $skuTrimmed = strtoupper(trim($sku));
+                $skuCleaned = rtrim(trim($skuTrimmed), '.'); // Remove period from SKU too
                 
                 $parts = array_map('trim', explode(',', $campaignCleaned));
                 $parts = array_map(function($part) {
                     return rtrim(trim($part), '.');
                 }, $parts);
-                $exactMatch = in_array($skuTrimmed, $parts);
+                $exactMatch = in_array($skuCleaned, $parts);
                 
                 if (!$exactMatch) {
-                    $exactMatch = $campaignCleaned === $skuTrimmed;
+                    $exactMatch = $campaignCleaned === $skuCleaned;
                 }
                 
                 return $exactMatch;
@@ -1232,9 +1235,11 @@ class GoogleAdsController extends Controller
             ->selectRaw('
                 date,
                 SUM(metrics_clicks) as clicks, 
-                SUM(metrics_cost_micros) / 1000000 as spend, 
-                SUM(ga4_sold_units) as orders, 
-                SUM(ga4_ad_sales) as sales
+                SUM(metrics_cost_micros) / 1000000 as spend,
+                SUM(ga4_actual_sold_units) as ga4_actual_orders,
+                SUM(ga4_actual_revenue) as ga4_actual_sales,
+                SUM(ga4_sold_units) as ga4_orders, 
+                SUM(ga4_ad_sales) as ga4_sales
             ')
             ->whereDate('date', '>=', $startDate)
             ->whereDate('date', '<=', $endDate);
@@ -1247,6 +1252,22 @@ class GoogleAdsController extends Controller
             ->orderBy('date', 'asc')
             ->get()
             ->keyBy('date');
+
+        // Check if GA4 actual data exists for any day in the range
+        $totalGA4ActualSales = $data->sum('ga4_actual_sales');
+        $totalGA4ActualOrders = $data->sum('ga4_actual_orders');
+        $useGA4Actual = ($totalGA4ActualSales > 0 || $totalGA4ActualOrders > 0);
+
+        // Process data: Use GA4 actual data if available for ANY day, otherwise fallback to Google Ads data
+        $data = $data->map(function($item) use ($useGA4Actual) {
+            return (object) [
+                'date' => $item->date,
+                'clicks' => $item->clicks,
+                'spend' => $item->spend,
+                'orders' => $useGA4Actual ? $item->ga4_actual_orders : $item->ga4_orders,
+                'sales' => $useGA4Actual ? $item->ga4_actual_sales : $item->ga4_sales,
+            ];
+        })->keyBy('date');
 
         $dates = [];
         $clicks = [];
@@ -1310,37 +1331,59 @@ class GoogleAdsController extends Controller
             'end_date' => $endDate
         ]);
 
-        // Extract SKU from campaign name (matching main table logic)
-        $parts = explode(' ', $campaignName);
-        $skuTrimmed = '';
-        foreach ($parts as $part) {
-            if (strlen($part) >= 2) {
-                $skuTrimmed = $part;
-                break;
-            }
-        }
+        // Use exact campaign name matching (same as main table logic)
+        $campaignNameUpper = strtoupper(trim($campaignName));
+        $campaignNameCleaned = rtrim(trim($campaignNameUpper), '.');
 
-        Log::info('SKU Extracted for aggregation', [
+        Log::info('Campaign Chart Request - Matching', [
             'original_campaign' => $campaignName,
-            'extracted_sku' => $skuTrimmed
+            'campaign_upper' => $campaignNameUpper,
+            'campaign_cleaned' => $campaignNameCleaned
         ]);
 
-        // Use LIKE matching based on SKU (same as main table aggregation logic)
+        // Fetch data with GA4 actual data preference (same as aggregateMetricsByRange)
         $data = DB::table('google_ads_campaigns')
             ->selectRaw('
                 date,
                 SUM(metrics_clicks) as clicks,
                 SUM(metrics_cost_micros) / 1000000 as spend,
-                SUM(ga4_sold_units) as orders,
-                SUM(ga4_ad_sales) as sales,
-                SUM(metrics_impressions) as impressions
+                SUM(metrics_impressions) as impressions,
+                SUM(ga4_actual_sold_units) as ga4_actual_orders,
+                SUM(ga4_actual_revenue) as ga4_actual_sales,
+                SUM(ga4_sold_units) as ga4_orders,
+                SUM(ga4_ad_sales) as ga4_sales
             ')
             ->whereNotNull('date')
+            ->where('advertising_channel_type', 'SHOPPING')
             ->whereBetween('date', [$startDate, $endDate])
-            ->where('campaign_name', 'LIKE', '%' . $skuTrimmed . '%')  // LIKE matching like main table
+            ->where(function($query) use ($campaignNameUpper, $campaignNameCleaned, $campaignName) {
+                // Exact match (case-insensitive, trimmed)
+                $query->whereRaw('UPPER(TRIM(campaign_name)) = ?', [$campaignNameUpper])
+                      // Or match without period (if campaign name has period)
+                      ->orWhereRaw('UPPER(TRIM(campaign_name)) = ?', [$campaignNameCleaned])
+                      // Or partial match
+                      ->orWhere('campaign_name', 'LIKE', '%' . trim($campaignName) . '%');
+            })
             ->groupBy('date')
             ->orderBy('date', 'asc')
             ->get();
+
+        // Check if GA4 actual data exists for any day in the range
+        $totalGA4ActualSales = $data->sum('ga4_actual_sales');
+        $totalGA4ActualOrders = $data->sum('ga4_actual_orders');
+        $useGA4Actual = ($totalGA4ActualSales > 0 || $totalGA4ActualOrders > 0);
+
+        // Process data: Use GA4 actual data if available for ANY day, otherwise fallback to Google Ads data
+        $processedData = $data->map(function($item) use ($useGA4Actual) {
+            return (object) [
+                'date' => $item->date,
+                'clicks' => $item->clicks,
+                'spend' => $item->spend,
+                'impressions' => $item->impressions,
+                'orders' => $useGA4Actual ? $item->ga4_actual_orders : $item->ga4_orders,
+                'sales' => $useGA4Actual ? $item->ga4_actual_sales : $item->ga4_sales,
+            ];
+        });
 
         // Fill in missing dates with zeros
         $allDates = [];
@@ -1356,7 +1399,7 @@ class GoogleAdsController extends Controller
             $dateStr = $date->format('Y-m-d');
             $allDates[] = $date->format('M d');
             
-            $dayData = $data->firstWhere('date', $dateStr);
+            $dayData = $processedData->firstWhere('date', $dateStr);
             
             if ($dayData) {
                 $allClicks[] = (int) $dayData->clicks;
@@ -1371,11 +1414,12 @@ class GoogleAdsController extends Controller
             }
         }
 
-        $totalClicks = $data->sum('clicks');
-        $totalSpend = $data->sum('spend');
-        $totalOrders = $data->sum('orders');
-        $totalSales = $data->sum('sales');
-        $totalImpressions = $data->sum('impressions');
+        // Calculate totals from processed data (after GA4 actual data preference)
+        $totalClicks = array_sum($allClicks);
+        $totalSpend = array_sum($allSpend);
+        $totalOrders = array_sum($allOrders);
+        $totalSales = array_sum($allSales);
+        $totalImpressions = $processedData->sum('impressions');
         
         $ctr = $totalImpressions > 0 ? round(($totalClicks / $totalImpressions) * 100, 2) : 0;
 
@@ -1450,9 +1494,11 @@ class GoogleAdsController extends Controller
             ->selectRaw('
                 date,
                 SUM(metrics_clicks) as clicks, 
-                SUM(metrics_cost_micros) / 1000000 as spend, 
-                SUM(ga4_sold_units) as orders, 
-                SUM(ga4_ad_sales) as sales
+                SUM(metrics_cost_micros) / 1000000 as spend,
+                SUM(ga4_actual_sold_units) as ga4_actual_orders,
+                SUM(ga4_actual_revenue) as ga4_actual_sales,
+                SUM(ga4_sold_units) as ga4_orders, 
+                SUM(ga4_ad_sales) as ga4_sales
             ')
             ->whereDate('date', '>=', $startDate)
             ->whereDate('date', '<=', $endDate)
@@ -1461,6 +1507,22 @@ class GoogleAdsController extends Controller
             ->orderBy('date', 'asc')
             ->get()
             ->keyBy('date');
+
+        // Check if GA4 actual data exists for any day in the range
+        $totalGA4ActualSales = $data->sum('ga4_actual_sales');
+        $totalGA4ActualOrders = $data->sum('ga4_actual_orders');
+        $useGA4Actual = ($totalGA4ActualSales > 0 || $totalGA4ActualOrders > 0);
+
+        // Process data: Use GA4 actual data if available for ANY day, otherwise fallback to Google Ads data
+        $data = $data->map(function($item) use ($useGA4Actual) {
+            return (object) [
+                'date' => $item->date,
+                'clicks' => $item->clicks,
+                'spend' => $item->spend,
+                'orders' => $useGA4Actual ? $item->ga4_actual_orders : $item->ga4_orders,
+                'sales' => $useGA4Actual ? $item->ga4_actual_sales : $item->ga4_sales,
+            ];
+        })->keyBy('date');
 
         $dates = [];
         $clicks = [];

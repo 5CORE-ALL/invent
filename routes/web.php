@@ -2782,6 +2782,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay/utilized/ads/data', 'getEbayUtilizedAdsData');
         Route::get('/ebay/get-utilization-counts', 'getEbayUtilizationCounts');
         Route::get('/ebay/get-utilization-chart-data', 'getEbayUtilizationChartData');
+        Route::post('/ebay/store-statistics', 'storeEbayStatistics');
         Route::post('/update-ebay-nr-data', 'updateNrData');
         Route::put('/update-ebay-keywords-bid-price', 'updateKeywordsBidDynamic');
         Route::post('/save-ebay-sbid-m', 'saveEbaySbidM');
@@ -2909,6 +2910,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay-3/get-utilization-counts', 'getEbay3UtilizationCounts');
         Route::get('/ebay-3/get-utilization-chart-data', 'getEbay3UtilizationChartData');
         Route::get('/ebay-3/utilized/ads/data', 'getEbay3UtilizedAdsData');
+        Route::post('/ebay-3/store-statistics', 'storeEbay3Statistics');
         Route::get('/ebay-3/over-utilized/filter', 'filterOverUtilizedAds')->name('ebay3.over.utilized.filter');
         Route::get('/ebay-3/over-utilized/campaign-chart', 'getCampaignChartData')->name('ebay3.over.utilized.campaign-chart');
         Route::put('/update-ebay3-keywords-bid-price', 'updateKeywordsBidDynamic');
@@ -2924,6 +2926,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/ebay-2/get-utilization-counts', 'getEbay2UtilizationCounts');
         Route::get('/ebay-2/get-utilization-chart-data', 'getEbay2UtilizationChartData');
         Route::get('/ebay-2/utilized/ads/data', 'getEbay2UtilizedAdsData');
+        Route::post('/ebay-2/store-statistics', 'storeEbay2Statistics');
         Route::get('/ebay-2/over-utilized/filter', 'filterOverUtilizedAds')->name('ebay2.over.utilized.filter');
         Route::get('/ebay-2/over-utilized/campaign-chart', 'getCampaignChartData')->name('ebay2.over.utilized.campaign-chart');
         Route::put('/update-ebay2-keywords-bid-price', 'updateKeywordsBidDynamic');

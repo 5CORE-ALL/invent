@@ -678,6 +678,28 @@
             // INC/DEC SBID variables
             let incDecType = 'value'; // 'value' or 'percentage'
 
+            // Function to store statistics in database
+            function storeStatistics() {
+                fetch('/ebay-2/store-statistics', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 200) {
+                        console.log('✅ Statistics stored successfully:', data.statistics);
+                    } else {
+                        console.error('❌ Error storing statistics:', data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('❌ Error storing statistics:', error);
+                });
+            }
+
             const getDilColor = (value) => {
                 const percent = parseFloat(value) * 100;
                 if (percent < 16.66) return 'red';
@@ -2713,6 +2735,9 @@
                     if (ebaySkuCountEl) {
                         ebaySkuCountEl.textContent = ebaySkuCountFromBackend;
                     }
+                    
+                    // Automatically store statistics in database
+                    storeStatistics();
                     
                     return response.data;
                 }

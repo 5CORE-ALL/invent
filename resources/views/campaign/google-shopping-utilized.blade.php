@@ -1086,12 +1086,14 @@
                         formatter: function(cell) {
                             const value = cell.getValue();
                             return `<div class="text-center">${value || 0}<i class="fa-solid fa-circle-info ms-1 info-icon-inv-toggle" style="cursor: pointer; color: #6366f1;" title="Click to show/hide details"></i></div>`;
-                        }
+                        },
+                        sorter: "number"
                     },
                     {
                         title: "OV L30",
                         field: "L30",
-                        visible: false
+                        visible: false,
+                        sorter: "number"
                     },
                     {
                         title: "DIL %",
@@ -1108,7 +1110,20 @@
                             }
                             return `<div class="text-center"><span class="dil-percent-value red">0%</span></div>`;
                         },
-                        visible: false
+                        visible: false,
+                        sorter: function(a, b, aRow, bRow, column, dir) {
+                            const dataA = aRow.getData();
+                            const dataB = bRow.getData();
+                            const l30A = parseFloat(dataA.L30 || 0);
+                            const invA = parseFloat(dataA.INV || 0);
+                            const l30B = parseFloat(dataB.L30 || 0);
+                            const invB = parseFloat(dataB.INV || 0);
+                            
+                            const dilA = (!isNaN(l30A) && !isNaN(invA) && invA !== 0) ? (l30A / invA) * 100 : 0;
+                            const dilB = (!isNaN(l30B) && !isNaN(invB) && invB !== 0) ? (l30B / invB) * 100 : 0;
+                            
+                            return dilA - dilB;
+                        }
                     },
                     {
                         title: "NRL",
@@ -1167,7 +1182,13 @@
                             return value.toFixed(2) +
                                 " <i class='fa fa-info-circle text-primary toggle-price-cols-btn' style='cursor:pointer; margin-left:5px; pointer-events:auto;' title='Click to show/hide GPFT, PFT, ROI, SPRICE, SPFT columns'></i>";
                         },
-                        sorter: "number",
+                        sorter: function(a, b, aRow, bRow, column, dir) {
+                            const dataA = aRow.getData();
+                            const dataB = bRow.getData();
+                            const priceA = parseFloat(dataA.price || 0);
+                            const priceB = parseFloat(dataB.price || 0);
+                            return priceA - priceB;
+                        },
                         width: 120
                     },
                     {
@@ -1190,7 +1211,13 @@
 
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
-                        sorter: "number",
+                        sorter: function(a, b, aRow, bRow, column, dir) {
+                            const dataA = aRow.getData();
+                            const dataB = bRow.getData();
+                            const gpftA = parseFloat(dataA.GPFT || 0);
+                            const gpftB = parseFloat(dataB.GPFT || 0);
+                            return gpftA - gpftB;
+                        },
                         width: 80
                     },
                     {
@@ -1213,7 +1240,13 @@
 
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
-                        sorter: "number",
+                        sorter: function(a, b, aRow, bRow, column, dir) {
+                            const dataA = aRow.getData();
+                            const dataB = bRow.getData();
+                            const pftA = parseFloat(dataA.PFT || 0);
+                            const pftB = parseFloat(dataB.PFT || 0);
+                            return pftA - pftB;
+                        },
                         width: 80
                     },
                     {
@@ -1235,7 +1268,13 @@
 
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
-                        sorter: "number",
+                        sorter: function(a, b, aRow, bRow, column, dir) {
+                            const dataA = aRow.getData();
+                            const dataB = bRow.getData();
+                            const roiA = parseFloat(dataA.roi || 0);
+                            const roiB = parseFloat(dataB.roi || 0);
+                            return roiA - roiB;
+                        },
                         width: 80
                     },
                     {
@@ -1259,7 +1298,13 @@
 
                             return `$${parseFloat(value).toFixed(2)}`;
                         },
-                        sorter: "number",
+                        sorter: function(a, b, aRow, bRow, column, dir) {
+                            const dataA = aRow.getData();
+                            const dataB = bRow.getData();
+                            const spriceA = parseFloat(dataA.SPRICE || 0);
+                            const spriceB = parseFloat(dataB.SPRICE || 0);
+                            return spriceA - spriceB;
+                        },
                         width: 100
                     },
                     {
@@ -1282,13 +1327,20 @@
 
                             return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                         },
-                        sorter: "number",
+                        sorter: function(a, b, aRow, bRow, column, dir) {
+                            const dataA = aRow.getData();
+                            const dataB = bRow.getData();
+                            const spftA = parseFloat(dataA.SPFT || 0);
+                            const spftB = parseFloat(dataB.SPFT || 0);
+                            return spftA - spftB;
+                        },
                         width: 80
                     },
                     {
                         title: "BGT",
                         field: "campaignBudgetAmount",
                         hozAlign: "right",
+                        sorter: "number"
                     },
                     {
                         title: "SBGT",
@@ -1296,6 +1348,17 @@
                         hozAlign: "right",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
+                            
+                            // Check if campaign exists
+                            const hasCampaign = row.hasCampaign !== undefined ?
+                                row.hasCampaign :
+                                (row.campaign_id && row.campaignName);
+                            
+                            // If campaign doesn't exist, return "-"
+                            if (!hasCampaign) {
+                                return "-";
+                            }
+                            
                             // Use same rounded values as Spend L30 / Sales L30 display so ACOS matches (83/1=8300%, not 82.94/1=8294%)
                             var spend_L30 = Math.round(parseFloat(row.spend_L30 || 0));
                             var sales_L30 = Math.round(parseFloat(row.ad_sales_L30 || 0));
@@ -1328,6 +1391,19 @@
                         sorter: function(a, b, aRow, bRow, column, dir) {
                             var dataA = aRow.getData();
                             var dataB = bRow.getData();
+                            
+                            // Check if campaigns exist
+                            const hasCampaignA = dataA.hasCampaign !== undefined ?
+                                dataA.hasCampaign :
+                                (dataA.campaign_id && dataA.campaignName);
+                            const hasCampaignB = dataB.hasCampaign !== undefined ?
+                                dataB.hasCampaign :
+                                (dataB.campaign_id && dataB.campaignName);
+                            
+                            // If either campaign doesn't exist, handle sorting
+                            if (!hasCampaignA && !hasCampaignB) return 0;
+                            if (!hasCampaignA) return 1; // Put missing campaigns at end
+                            if (!hasCampaignB) return -1; // Put missing campaigns at end
 
                             var spendA = Math.round(parseFloat(dataA.spend_L30 || 0));
                             var salesA = Math.round(parseFloat(dataA.ad_sales_L30 || 0));
@@ -1424,7 +1500,8 @@
                             var row = cell.getRow().getData();
                             var clicks_L30 = parseFloat(row.clicks_L30) || 0;
                             return clicks_L30;
-                        }
+                        },
+                        sorter: "number"
                     },
                     {
                         title: "Spend L30",
@@ -1435,7 +1512,8 @@
                             var row = cell.getRow().getData();
                             var spend_L30 = parseFloat(row.spend_L30) || 0;
                             return Math.round(spend_L30);
-                        }
+                        },
+                        sorter: "number"
                     },
                     {
                         title: "Sales L30",
@@ -1561,29 +1639,42 @@
                             }
 
                             return ub1.toFixed(0) + "%";
+                        },
+                        sorter: function(a, b, aRow, bRow, column, dir) {
+                            var dataA = aRow.getData();
+                            var dataB = bRow.getData();
+
+                            var ubA = dataA.campaignBudgetAmount > 0 ? (parseFloat(dataA.spend_L1 || 0) /
+                                parseFloat(dataA.campaignBudgetAmount)) * 100 : 0;
+                            var ubB = dataB.campaignBudgetAmount > 0 ? (parseFloat(dataB.spend_L1 || 0) /
+                                parseFloat(dataB.campaignBudgetAmount)) * 100 : 0;
+
+                            return ubA - ubB;
                         }
                     },
                     {
                         title: "L7 CPC",
                         field: "cpc_L7",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var cpc_L7 = parseFloat(row.cpc_L7) || 0;
                             return cpc_L7.toFixed(2);
-                        }
+                        },
+                        sorter: "number"
                     },
                     {
                         title: "L1 CPC",
                         field: "cpc_L1",
                         hozAlign: "center",
-                        visible: false,
+                        visible: true,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var cpc_L1 = parseFloat(row.cpc_L1) || 0;
                             return cpc_L1.toFixed(2);
-                        }
+                        },
+                        sorter: "number"
                     },
                     {
                         title: "SBID",
@@ -1591,6 +1682,17 @@
                         hozAlign: "center",
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
+                            
+                            // Check if campaign exists
+                            const hasCampaign = row.hasCampaign !== undefined ?
+                                row.hasCampaign :
+                                (row.campaign_id && row.campaignName);
+                            
+                            // If campaign doesn't exist, return "-"
+                            if (!hasCampaign) {
+                                return "-";
+                            }
+                            
                             var cpc_L1 = parseFloat(row.cpc_L1) || 0;
                             var cpc_L7 = parseFloat(row.cpc_L7) || 0;
                             var sbid;
@@ -1606,6 +1708,20 @@
                         sorter: function(a, b, aRow, bRow, column, dir) {
                             var dataA = aRow.getData();
                             var dataB = bRow.getData();
+                            
+                            // Check if campaigns exist
+                            const hasCampaignA = dataA.hasCampaign !== undefined ?
+                                dataA.hasCampaign :
+                                (dataA.campaign_id && dataA.campaignName);
+                            const hasCampaignB = dataB.hasCampaign !== undefined ?
+                                dataB.hasCampaign :
+                                (dataB.campaign_id && dataB.campaignName);
+                            
+                            // If either campaign doesn't exist, handle sorting
+                            if (!hasCampaignA && !hasCampaignB) return 0;
+                            if (!hasCampaignA) return 1; // Put missing campaigns at end
+                            if (!hasCampaignB) return -1; // Put missing campaigns at end
+                            
                             var sbidA = 0;
                             var sbidB = 0;
 
