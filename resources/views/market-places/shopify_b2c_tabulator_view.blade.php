@@ -968,7 +968,7 @@
                     width: 50
                 },
                 {
-                    title: "B2B L30",
+                    title: "B2C L30",
                     field: "B2B L30",
                     hozAlign: "center",
                     width: 70,

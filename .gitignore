@@ -9,6 +9,8 @@
 # Ignore compiled files
 /public/storage
 /public/images/products
+/public/uploads/tasks/*
+!/public/uploads/tasks/.gitkeep
 /storage/*.log
 /storage/oauth-private.key
 /storage/oauth-public.key

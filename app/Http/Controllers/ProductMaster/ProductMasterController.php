@@ -146,6 +146,13 @@ class ProductMasterController extends Controller
                 'image10' => $product->image10,
                 'image11' => $product->image11,
                 'image12' => $product->image12,
+                'video_product_overview' => $product->video_product_overview,
+                'video_unboxing' => $product->video_unboxing,
+                'video_how_to' => $product->video_how_to,
+                'video_setup' => $product->video_setup,
+                'video_troubleshooting' => $product->video_troubleshooting,
+                'video_brand_story' => $product->video_brand_story,
+                'video_product_benefits' => $product->video_product_benefits,
             ];
 
             // Merge the Values array (if not null)

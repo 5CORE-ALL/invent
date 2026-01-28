@@ -70,6 +70,14 @@
 
             </li>
 
+            {{-- Task Manager --}}
+            <li class="side-nav-item">
+                <a href="{{ url('tasks') }}" class="side-nav-link">
+                    <i class="ri-task-line"></i>
+                    <span>Task Manager</span>
+                </a>
+            </li>
+
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#sidebarPages22" aria-expanded="false" aria-controls="sidebarPages22"
                     class="side-nav-link">

@@ -3130,6 +3130,20 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Unified route for all eBay accounts (eBay1, eBay2, eBay3)
     Route::get('/ebay/generate-token', [\App\Http\Controllers\EbayTokenController::class, 'generate'])->name('ebay.token.generate');
     Route::match(['get', 'post'], '/ebay/token-callback', [\App\Http\Controllers\EbayTokenController::class, 'callback'])->name('ebay.token.callback');
+    // Task Manager Routes
+    Route::get('/tasks', [\App\Http\Controllers\TaskController::class, 'index'])->name('tasks.index');
+    Route::get('/tasks/data', [\App\Http\Controllers\TaskController::class, 'getData'])->name('tasks.data');
+    Route::get('/tasks/users-list', [\App\Http\Controllers\TaskController::class, 'getUsersList'])->name('tasks.usersList');
+    Route::get('/tasks/download-template', [\App\Http\Controllers\TaskController::class, 'downloadTemplate'])->name('tasks.downloadTemplate');
+    Route::post('/tasks/import-csv', [\App\Http\Controllers\TaskController::class, 'importCsv'])->name('tasks.importCsv');
+    Route::get('/tasks/create', [\App\Http\Controllers\TaskController::class, 'create'])->name('tasks.create');
+    Route::post('/tasks', [\App\Http\Controllers\TaskController::class, 'store'])->name('tasks.store');
+    Route::post('/tasks/bulk-update', [\App\Http\Controllers\TaskController::class, 'bulkUpdate'])->name('tasks.bulkUpdate');
+    Route::get('/tasks/{id}', [\App\Http\Controllers\TaskController::class, 'show'])->name('tasks.show');
+    Route::get('/tasks/{id}/edit', [\App\Http\Controllers\TaskController::class, 'edit'])->name('tasks.edit');
+    Route::put('/tasks/{id}', [\App\Http\Controllers\TaskController::class, 'update'])->name('tasks.update');
+    Route::delete('/tasks/{id}', [\App\Http\Controllers\TaskController::class, 'destroy'])->name('tasks.destroy');
+    Route::post('/tasks/{id}/update-status', [\App\Http\Controllers\TaskController::class, 'updateStatus'])->name('tasks.updateStatus');
 
     Route::get('', [RoutingController::class, 'index'])->name('root');
     Route::get('{firstShop}/{secondShop}', [ShopifyController::class, 'shopifyView'])->name('shopify');

@@ -123,6 +123,23 @@
         .video-link:hover {
             text-decoration: underline;
         }
+
+        .video-link-icon {
+            color: #2c6ed5;
+            font-size: 20px;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            display: inline-block;
+        }
+
+        .video-link-icon:hover {
+            color: #1a56b7;
+            transform: scale(1.2);
+        }
+
+        .video-link-icon i {
+            vertical-align: middle;
+        }
     </style>
 @endsection
 
@@ -264,37 +281,37 @@
 
                         <div class="mb-3">
                             <label for="video_product_overview" class="form-label">Product Overview</label>
-                            <input type="url" class="form-control" id="video_product_overview" name="video_product_overview" placeholder="https://youtube.com/...">
+                            <input type="url" class="form-control" id="video_product_overview" name="video_product_overview" placeholder="https://">
                         </div>
 
                         <div class="mb-3">
                             <label for="video_unboxing" class="form-label">Unboxing</label>
-                            <input type="url" class="form-control" id="video_unboxing" name="video_unboxing" placeholder="https://youtube.com/...">
+                            <input type="url" class="form-control" id="video_unboxing" name="video_unboxing" placeholder="https://">
                         </div>
 
                         <div class="mb-3">
                             <label for="video_how_to" class="form-label">How To</label>
-                            <input type="url" class="form-control" id="video_how_to" name="video_how_to" placeholder="https://youtube.com/...">
+                            <input type="url" class="form-control" id="video_how_to" name="video_how_to" placeholder="https://">
                         </div>
 
                         <div class="mb-3">
                             <label for="video_setup" class="form-label">Setup</label>
-                            <input type="url" class="form-control" id="video_setup" name="video_setup" placeholder="https://youtube.com/...">
+                            <input type="url" class="form-control" id="video_setup" name="video_setup" placeholder="https://">
                         </div>
 
                         <div class="mb-3">
                             <label for="video_troubleshooting" class="form-label">Troubleshooting</label>
-                            <input type="url" class="form-control" id="video_troubleshooting" name="video_troubleshooting" placeholder="https://youtube.com/...">
+                            <input type="url" class="form-control" id="video_troubleshooting" name="video_troubleshooting" placeholder="https://">
                         </div>
 
                         <div class="mb-3">
                             <label for="video_brand_story" class="form-label">Brand Story</label>
-                            <input type="url" class="form-control" id="video_brand_story" name="video_brand_story" placeholder="https://youtube.com/...">
+                            <input type="url" class="form-control" id="video_brand_story" name="video_brand_story" placeholder="https://">
                         </div>
 
                         <div class="mb-3">
                             <label for="video_product_benefits" class="form-label">Product Benefits</label>
-                            <input type="url" class="form-control" id="video_product_benefits" name="video_product_benefits" placeholder="https://youtube.com/...">
+                            <input type="url" class="form-control" id="video_product_benefits" name="video_product_benefits" placeholder="https://">
                         </div>
                     </form>
                 </div>
@@ -437,12 +454,13 @@
 
                 videoFields.forEach(field => {
                     const cell = document.createElement('td');
+                    cell.style.textAlign = 'center';
                     if (item[field]) {
                         const link = document.createElement('a');
                         link.href = item[field];
                         link.target = '_blank';
-                        link.className = 'video-link';
-                        link.textContent = item[field];
+                        link.className = 'video-link-icon';
+                        link.innerHTML = '<i class="fas fa-play-circle"></i>';
                         link.title = item[field];
                         cell.appendChild(link);
                     } else {
