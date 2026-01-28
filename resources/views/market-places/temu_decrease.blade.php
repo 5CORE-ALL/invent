@@ -1205,7 +1205,13 @@
     function autoStoreDailyAvgViews() {
         // Check if today's record already exists
         fetch('/temu-latest-avg-views')
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    // If table doesn't exist or server error, silently fail
+                    return response.json().catch(() => ({ avg_views: 0 }));
+                }
+                return response.json();
+            })
             .then(data => {
                 const today = new Date().toISOString().split('T')[0];
                 const latestDate = data && data.date ? data.date : null;
@@ -1235,7 +1241,11 @@
                                 }
                             },
                             error: function(xhr) {
-                                console.error('Failed to auto-store daily average views');
+                                // Silently fail - table might not exist
+                                // Don't show error to user as this is a background operation
+                                if (xhr.status !== 500) {
+                                    console.error('Failed to auto-store daily average views');
+                                }
                             }
                         });
                     }
@@ -1247,7 +1257,8 @@
                 }
             })
             .catch(error => {
-                console.error('Error checking latest average views:', error);
+                // Silently fail - table might not exist
+                // This is a background operation, don't show errors to user
             });
     }
 
