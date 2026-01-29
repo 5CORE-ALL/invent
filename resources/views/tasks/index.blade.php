@@ -196,6 +196,15 @@
         .tabulator-row.tabulator-selected:hover {
             background-color: #d0e8ff !important;
         }
+        
+        /* Automated task rows - yellow background */
+        .tabulator-row.automated-task {
+            background-color: #fffbea !important;
+        }
+        
+        .tabulator-row.automated-task:hover {
+            background-color: #fef3c7 !important;
+        }
 
         .tabulator-row .tabulator-cell {
             border-right: 1px solid #e9ecef !important;
@@ -981,8 +990,14 @@
                 },
                 rowFormatter: function(row) {
                     var data = row.getData();
-                    if (data.is_automate_task == 1 || data.is_automate_task === true) {
+                    
+                    // Check if automated task
+                    if (data.is_automate_task) {
+                        // Add class and set background
+                        row.getElement().classList.add('automated-task');
                         row.getElement().style.backgroundColor = "#fffbea";
+                    } else {
+                        row.getElement().classList.remove('automated-task');
                     }
                 },
                 layout: "fitData",
@@ -1077,18 +1092,33 @@
                         }
                     });
                     
-                    // TID (Task Initiation Date) - BLUE COLOR
+                    // TID (Task Initiation Date) - Yellow background for automated tasks
                     cols.push({
                         title: "TID", 
                         field: "start_date", 
                         width: 120,
                         formatter: function(cell) {
+                            var rowData = cell.getRow().getData();
                             var value = cell.getValue();
+                            
                             if (value) {
                                 var date = new Date(value);
                                 var day = String(date.getDate()).padStart(2, '0');
                                 var month = date.toLocaleString('default', { month: 'short' });
-                                return '<span style="color: #0d6efd; font-weight: 600;">' + day + '-' + month + '</span>';
+                                
+                                // Check if automated task - check multiple ways to be sure
+                                var isAutomate = (rowData.is_automate_task == 1) || 
+                                               (rowData.is_automate_task == '1') || 
+                                               (rowData.is_automate_task === true) ||
+                                               (rowData.task_type === 'automate_task');
+                                
+                                if (isAutomate) {
+                                    // Yellow background badge for automated tasks
+                                    return '<div style="background: #fef3c7; padding: 6px 10px; border-radius: 8px; display: inline-block;"><span style="color: #0d6efd; font-weight: 600;">' + day + '-' + month + '</span></div>';
+                                } else {
+                                    // Plain blue text for manual tasks
+                                    return '<span style="color: #0d6efd; font-weight: 600;">' + day + '-' + month + '</span>';
+                                }
                             }
                             return '<span style="color: #adb5bd;">-</span>';
                         }
@@ -1332,70 +1362,69 @@
                 })(),
             });
 
+            // Combined filter function (AND logic)
+            function applyFilters() {
+                var filters = [];
+                
+                // Search filter (OR logic within search)
+                var searchValue = $('#filter-search').val();
+                if (searchValue) {
+                    filters.push([
+                        {field:"title", type:"like", value:searchValue},
+                        {field:"group", type:"like", value:searchValue},
+                        {field:"assignor_name", type:"like", value:searchValue},
+                        {field:"assignee_name", type:"like", value:searchValue}
+                    ]);
+                }
+                
+                // Group filter
+                var groupValue = $('#filter-group').val();
+                if (groupValue) {
+                    filters.push({field:"group", type:"like", value:groupValue});
+                }
+                
+                // Task filter
+                var taskValue = $('#filter-task').val();
+                if (taskValue) {
+                    filters.push({field:"title", type:"like", value:taskValue});
+                }
+                
+                // Assignor filter
+                var assignorValue = $('#filter-assignor').val();
+                if (assignorValue) {
+                    filters.push({field:"assignor_name", type:"=", value:assignorValue});
+                }
+                
+                // Assignee filter
+                var assigneeValue = $('#filter-assignee').val();
+                if (assigneeValue) {
+                    filters.push({field:"assignee_name", type:"=", value:assigneeValue});
+                }
+                
+                // Status filter
+                var statusValue = $('#filter-status').val();
+                if (statusValue) {
+                    filters.push({field:"status", type:"=", value:statusValue});
+                }
+                
+                // Priority filter
+                var priorityValue = $('#filter-priority').val();
+                if (priorityValue) {
+                    filters.push({field:"priority", type:"=", value:priorityValue});
+                }
+                
+                // Apply all filters (AND logic)
+                table.setFilter(filters);
+            }
+
             // Filter functionality
-            $('#filter-search').on('keyup', function() {
-                var value = $(this).val();
-                table.setFilter([
-                    {field:"title", type:"like", value:value},
-                    {field:"group", type:"like", value:value},
-                    {field:"assignor.name", type:"like", value:value},
-                    {field:"assignee.name", type:"like", value:value}
-                ], "or");
-            });
-
-            $('#filter-group').on('keyup', function() {
-                var value = $(this).val();
-                if (value) {
-                    table.setFilter("group", "like", value);
-                } else {
-                    table.clearFilter("group");
-                }
-            });
-
-            $('#filter-task').on('keyup', function() {
-                var value = $(this).val();
-                if (value) {
-                    table.setFilter("title", "like", value);
-                } else {
-                    table.clearFilter("title");
-                }
-            });
-
-            $('#filter-assignor').on('change', function() {
-                var value = $(this).val();
-                if (value) {
-                    table.setFilter("assignor.name", "=", value);
-                } else {
-                    table.clearFilter("assignor.name");
-                }
-            });
-
-            $('#filter-assignee').on('change', function() {
-                var value = $(this).val();
-                if (value) {
-                    table.setFilter("assignee.name", "=", value);
-                } else {
-                    table.clearFilter("assignee.name");
-                }
-            });
-
-            $('#filter-status').on('change', function() {
-                var value = $(this).val();
-                if (value) {
-                    table.setFilter("status", "=", value);
-                } else {
-                    table.clearFilter("status");
-                }
-            });
-
-            $('#filter-priority').on('change', function() {
-                var value = $(this).val();
-                if (value) {
-                    table.setFilter("priority", "=", value);
-                } else {
-                    table.clearFilter("priority");
-                }
-            });
+            $('#filter-search').on('keyup', applyFilters);
+            $('#filter-group').on('keyup', applyFilters);
+            $('#filter-task').on('keyup', applyFilters);
+            $('#filter-assignor').on('change', applyFilters);
+            $('#filter-assignee').on('change', applyFilters);
+            $('#filter-status').on('change', applyFilters);
+            $('#filter-priority').on('change', applyFilters);
 
             // Handle Row Selection
             table.on("rowSelectionChanged", function(data, rows) {
