@@ -13,6 +13,7 @@ use App\Models\Ebay2Metric;
 use App\Models\Ebay3Metric;
 use App\Models\MacyProduct;
 use App\Models\TiktokSheet;
+use App\Models\MarketplacePercentage;
 use Jasara\AmznSPA\AmznSPA;
 use App\Models\DobaDataView;
 use App\Models\EbayDataView;
@@ -172,12 +173,21 @@ class PricingMasterViewsController extends Controller
         $demo = $request->query('demo');
 
         try {
+            // Fetch marketplace percentages/margins for use in JavaScript calculations
+            $marketplacePercentages = MarketplacePercentage::all()->keyBy('marketplace');
+            $ebay1Margin = isset($marketplacePercentages['Ebay']) ? ($marketplacePercentages['Ebay']->percentage / 100) : 0.85;
+            $ebay2Margin = isset($marketplacePercentages['EbayTwo']) ? ($marketplacePercentages['EbayTwo']->percentage / 100) : 0.85;
+            $ebay3Margin = isset($marketplacePercentages['EbayThree']) ? ($marketplacePercentages['EbayThree']->percentage / 100) : 0.85;
+
             // Don't load data here - let AJAX handle it via getViewPricingAnalysisData
             // This prevents memory exhaustion on initial page load
             return view('pricing-master.pricing_masters_view', [
                 'mode' => $mode,
                 'demo' => $demo,
                 'records' => [], // Empty - data loaded via AJAX
+                'ebay1Margin' => $ebay1Margin,
+                'ebay2Margin' => $ebay2Margin,
+                'ebay3Margin' => $ebay3Margin,
             ]);
         } finally {
             // Clean up database connections to prevent pool exhaustion
@@ -401,19 +411,22 @@ class PricingMasterViewsController extends Controller
 
         $ebayListingData = EbayListingStatus::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         // $dobaData    = DobaMetric::whereIn('sku', $skus)->get()->keyBy('sku');
-        $ebayData = DB::connection('apicentral')
-            ->table('ebay_one_metrics')
+        $ebayData = EbayMetric::whereIn('sku', $nonParentSkus)
             ->select(
                 'sku',
                 'ebay_l30',
                 'ebay_l60',
                 'ebay_price',
-                'views',
-
+                'views'
             )
-            ->whereIn('sku', $nonParentSkus)
             ->get()
             ->keyBy('sku');
+
+        // Fetch marketplace percentages/margins
+        $marketplacePercentages = MarketplacePercentage::all()->keyBy('marketplace');
+        $ebay1Margin = isset($marketplacePercentages['Ebay']) ? ($marketplacePercentages['Ebay']->percentage / 100) : 0.85;
+        $ebay2Margin = isset($marketplacePercentages['EbayTwo']) ? ($marketplacePercentages['EbayTwo']->percentage / 100) : 0.00;
+        $ebay3Margin = isset($marketplacePercentages['EbayThree']) ? ($marketplacePercentages['EbayThree']->percentage / 100) : 0.85;
 
         $temuListingData = TemuListingStatus::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
         $ebayTwoListingData = EbayTwoListingStatus::whereIn('sku', $nonParentSkus)->get()->keyBy('sku');
@@ -836,7 +849,7 @@ class PricingMasterViewsController extends Controller
 
 
 
-            $avgCvr = $views_sum
+            $avgCvr = $total_views
                 ? number_format(($total_l30_count / $total_views) * 100, 1) . ' %'
                 : '0.0 %';
 
@@ -1064,9 +1077,9 @@ class PricingMasterViewsController extends Controller
                 'ebay_views' => $ebay ? ($ebay->views ?? 0) : 0,
                 'ebay_price_lmpa' => $lmp ? ($lmp->lowest_price ?? 0) : ($ebay ? ($ebay->price_lmpa ?? 0) : 0),
                 'ebay_cvr' => $ebay ? $this->calculateCVR($ebay->ebay_l30 ?? 0, $ebay->views ?? 0) : null,
-                'ebay_sgpft' => $ebay && ($ebay->ebay_price ?? 0) > 0 ? (($ebay->ebay_price * 0.86 - $lp - $ship) / $ebay->ebay_price) * 100 : 0,
-                'ebay_pft' => $ebay && ($ebay->ebay_price ?? 0) > 0 ? (($ebay->ebay_price * 0.86 - $lp - $ship) / $ebay->ebay_price) - (($ebay_advt_percent ?? 0) / 100) : 0,
-                'ebay_roi' => $ebay && $lp > 0 && ($ebay->ebay_price ?? 0) > 0 ? (($ebay->ebay_price * 0.86 - $lp - $ship) / $lp) : 0,
+                'ebay_sgpft' => $ebay && ($ebay->ebay_price ?? 0) > 0 ? (($ebay->ebay_price * $ebay1Margin - $lp - $ship) / $ebay->ebay_price) * 100 : 0,
+                'ebay_pft' => $ebay && ($ebay->ebay_price ?? 0) > 0 ? (($ebay->ebay_price * $ebay1Margin - $lp - $ship) / $ebay->ebay_price) - (($ebay_advt_percent ?? 0) / 100) : 0,
+                'ebay_roi' => $ebay && $lp > 0 && ($ebay->ebay_price ?? 0) > 0 ? (($ebay->ebay_price * $ebay1Margin - $lp - $ship) / $lp) : 0,
                 'ebay_req_view' => $ebay && $ebay->views > 0 && $ebay->ebay_l30 > 0
                     ? (($inv / 90) * 30) / (($ebay->ebay_l30 / $ebay->views))
                     : 0,
@@ -1134,9 +1147,9 @@ class PricingMasterViewsController extends Controller
                 'ebay2_l60' => $ebay2 ? ($ebay2->ebay_l60 ?? 0) : 0,
                 'ebay2_views' => $ebay2 ? ($ebay2->views ?? 0) : 0,
                 'ebay2_dil' => $ebay2 ? (float) ($ebay2->dil ?? 0) : 0,
-                'ebay2_sgpft' => $ebay2 && ($ebay2->ebay_price ?? 0) > 0 ? (($ebay2->ebay_price * 0.86 - $lp - $ebay2ship) / $ebay2->ebay_price) * 100 : 0,
-                'ebay2_pft' => $ebay2 && ($ebay2->ebay_price ?? 0) > 0 ? (($ebay2->ebay_price * 0.86 - $lp - $ebay2ship) / $ebay2->ebay_price) - (($ebay2_advt_percent ?? 0) / 100) : 0,
-                'ebay2_roi' => $ebay2 && $lp > 0 && ($ebay2->ebay_price ?? 0) > 0 ? (($ebay2->ebay_price * 0.86 - $lp - $ebay2ship) / $lp) : 0,
+                'ebay2_sgpft' => $ebay2 && ($ebay2->ebay_price ?? 0) > 0 ? (($ebay2->ebay_price * $ebay2Margin - $lp - $ebay2ship) / $ebay2->ebay_price) * 100 : 0,
+                'ebay2_pft' => $ebay2 && ($ebay2->ebay_price ?? 0) > 0 ? (($ebay2->ebay_price * $ebay2Margin - $lp - $ebay2ship) / $ebay2->ebay_price) - (($ebay2_advt_percent ?? 0) / 100) : 0,
+                'ebay2_roi' => $ebay2 && $lp > 0 && ($ebay2->ebay_price ?? 0) > 0 ? (($ebay2->ebay_price * $ebay2Margin - $lp - $ebay2ship) / $lp) : 0,
                 'ebay2_req_view' => $ebay2 && $ebay2->views > 0 && $ebay2->ebay_l30 ? (($inv / 90) * 30) / (($ebay2->ebay_l30 / $ebay2->views)) : 0,
                 'ebay2_advt_percent' => $ebay2_advt_percent,
                 'ebay2_buyer_link' => isset($ebayTwoListingData[$sku]) ? ($ebayTwoListingData[$sku]->value['buyer_link'] ?? null) : null,
@@ -1148,9 +1161,9 @@ class PricingMasterViewsController extends Controller
                 'ebay3_views' => $ebay3 ? ($ebay3->views ?? 0) : 0,
                 'ebay3_dil' => $ebay3 ? (float) ($ebay3->dil ?? 0) : 0,
                 'ebay3_cvr' => $ebay3 ? $this->calculateCVR($ebay3->ebay_l30 ?? 0, $ebay3->views ?? 0) : null,
-                'ebay3_sgpft' => $ebay3 && ($ebay3->ebay_price ?? 0) > 0 ? (($ebay3->ebay_price * 0.86 - $lp - $ship) / $ebay3->ebay_price) * 100 : 0,
-                'ebay3_pft' => $ebay3 && ($ebay3->ebay_price ?? 0) > 0 ? (($ebay3->ebay_price * 0.86 - $lp - $ship) / $ebay3->ebay_price) - (($ebay3_advt_percent ?? 0) / 100) : 0,
-                'ebay3_roi' => $ebay3 && $lp > 0 && ($ebay3->ebay_price ?? 0) > 0 ? (($ebay3->ebay_price * 0.86 - $lp - $ship) / $lp) : 0,
+                'ebay3_sgpft' => $ebay3 && ($ebay3->ebay_price ?? 0) > 0 ? (($ebay3->ebay_price * $ebay3Margin - $lp - $ship) / $ebay3->ebay_price) * 100 : 0,
+                'ebay3_pft' => $ebay3 && ($ebay3->ebay_price ?? 0) > 0 ? (($ebay3->ebay_price * $ebay3Margin - $lp - $ship) / $ebay3->ebay_price) - (($ebay3_advt_percent ?? 0) / 100) : 0,
+                'ebay3_roi' => $ebay3 && $lp > 0 && ($ebay3->ebay_price ?? 0) > 0 ? (($ebay3->ebay_price * $ebay3Margin - $lp - $ship) / $lp) : 0,
                 'ebay3_req_view' => $ebay3 && $ebay3->views && $ebay3->ebay_l30 ? (($inv / 90) * 30) / (($ebay3->ebay_l30 / $ebay3->views)) : 0,
                 'ebay3_advt_percent' => $ebay3_advt_percent,
                 'ebay3_buyer_link' => isset($ebayThreeListingData[$sku]) ? ($ebayThreeListingData[$sku]->value['buyer_link'] ?? null) : null,

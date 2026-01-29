@@ -85,6 +85,9 @@ class ExecuteAutomatedTasks extends Command
                         break;
                 }
                 
+                // For automated tasks: completion_date = same as TID (start_date)
+                $completionDate = $now;
+                
                 // Create a new task instance in tasks table
                 DB::table('tasks')->insert([
                     'title' => $task->title . ' [Auto: ' . $now->format('d-M-y') . ']',
@@ -96,6 +99,7 @@ class ExecuteAutomatedTasks extends Command
                     'eta_time' => $task->eta_time,
                     'start_date' => $now,
                     'due_date' => $nextExecutionDate,
+                    'completion_date' => $completionDate,
                     'status' => 'Todo',
                     'is_automate_task' => 1,
                     'automate_task_id' => $task->id,

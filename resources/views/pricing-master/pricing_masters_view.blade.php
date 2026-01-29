@@ -561,6 +561,11 @@
 </div>
 
 <script>
+// Marketplace margins from database
+const EBAY1_MARGIN = {{ $ebay1Margin ?? 0.85 }};
+const EBAY2_MARGIN = {{ $ebay2Margin ?? 0.00 }};
+const EBAY3_MARGIN = {{ $ebay3Margin ?? 0.85 }};
+
 $(document).on('click', '.cvrTD', function() {
     const id = $(this).data('id');
     const prefix = $(this).data('prefix');
@@ -2445,6 +2450,7 @@ $.ajax({
                     <th class="fw-bold" data-sort="number">CVR <i class="bi bi-arrow-down-up"></i></th>
                     <th class="fw-bold" data-sort="number">LMP <i class="bi bi-arrow-down-up"></i></th>
                     <th class="fw-bold">S Price</th>
+                    <th class="fw-bold" data-sort="number">AD% <i class="bi bi-arrow-down-up"></i></th>
                     <th class="fw-bold" data-sort="number">SGPFT% <i class="bi bi-arrow-down-up"></i></th>
                     <th class="fw-bold" data-sort="number">S PFT <i class="bi bi-arrow-down-up"></i></th>
                     <th class="fw-bold" data-sort="number">S ROI <i class="bi bi-arrow-down-up"></i></th>
@@ -2478,8 +2484,11 @@ $.ajax({
 
                 // Calculate SGPFT% = ((price * multiplier - ship - lp) / price) * 100
                 // Get multiplier based on channel
-                let multiplier = 0.86; // Default for eBay channels
+                let multiplier = EBAY1_MARGIN; // Default for eBay channels
                 if (r.prefix === 'amz') multiplier = 0.80;
+                else if (r.prefix === 'ebay') multiplier = EBAY1_MARGIN;
+                else if (r.prefix === 'ebay2') multiplier = EBAY2_MARGIN;
+                else if (r.prefix === 'ebay3') multiplier = EBAY3_MARGIN;
                 else if (['reverb', 'temu', 'wayfair'].includes(r.prefix)) multiplier = 0.80;
                 else if (['macy'].includes(r.prefix)) multiplier = 0.76;
                 else if (['shopifyb2c', 'shein'].includes(r.prefix)) multiplier = 0.94;
@@ -2770,6 +2779,12 @@ $.ajax({
                 </td>
 
                 <td>
+                    <div class="value-indicator" style="color: ${getColor(advtPercent)};">
+                        ${advtPercent ? Number(advtPercent).toFixed(2) : '0.00'}%
+                    </div>
+                </td>
+
+                <td>
                         <div class="value-indicator" style="color: ${getColor(sgpft)};">
                             ${Math.round(sgpft)}%
                         </div>
@@ -2972,13 +2987,13 @@ $.ajax({
             // Define all marketplaces with their data (matching tabulator view multipliers)
             const marketplaces = [
                 { price: data.amz_price, l30: data.amz_l30, ship: ship, multiplier: 0.80 }, // Amazon: 0.80 (amazon-tabulator-view)
-                { price: data.ebay_price, l30: data.ebay_l30, ship: ship, multiplier: 0.86 }, // eBay: 0.86 (ebay-tabulator-view)
+                { price: data.ebay_price, l30: data.ebay_l30, ship: ship, multiplier: EBAY1_MARGIN }, // eBay: from marketplace_percentages table
                 { price: data.macy_price, l30: data.macy_l30, ship: ship, multiplier: 0.76 },
                 { price: data.reverb_price, l30: data.reverb_l30, ship: ship, multiplier: 0.80 },
                 { price: data.doba_price, l30: data.doba_l30, ship: ship, multiplier: 0.95 },
                 { price: data.temu_price, l30: data.temu_l30, ship: temuship, multiplier: 0.87 },
-                { price: data.ebay3_price, l30: data.ebay3_l30, ship: ship, multiplier: 0.86 }, // eBay3: 0.86 (ebay-tabulator-view)
-                { price: data.ebay2_price, l30: data.ebay2_l30, ship: ebay2ship, multiplier: 0.86 }, // eBay2: 0.86 (ebay-tabulator-view)
+                { price: data.ebay3_price, l30: data.ebay3_l30, ship: ship, multiplier: EBAY3_MARGIN }, // eBay3: from marketplace_percentages table
+                { price: data.ebay2_price, l30: data.ebay2_l30, ship: ebay2ship, multiplier: EBAY2_MARGIN }, // eBay2: from marketplace_percentages table
                 { price: data.walmart_price, l30: data.walmart_l30, ship: ship, multiplier: 0.80 },
                 { price: data.shopifyb2c_price, l30: data.shopifyb2c_l30_data, ship: ship, multiplier: 0.75 },
                 { price: data.shein_price, l30: data.shein_l30, ship: ship, multiplier: 0.89 },
