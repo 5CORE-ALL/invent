@@ -141,6 +141,10 @@ class TaskController extends Controller
             $assigneeEmail = $assigneeUser ? $assigneeUser->email : null;
         }
         
+        // Calculate completion_date = TID + 5 days for manual tasks
+        $startDate = $validated['tid'] ?? now();
+        $completionDate = \Carbon\Carbon::parse($startDate)->addDays(5);
+        
         // Map new fields to old table columns
         $taskData = [
             'title' => $validated['title'],
@@ -152,17 +156,31 @@ class TaskController extends Controller
             'split_tasks' => $request->has('split_tasks') ? 1 : 0,
             'status' => 'Todo', // Default status
             'eta_time' => $validated['etc_minutes'] ?? 10,
-            'start_date' => $validated['tid'] ?? now(),
-            'link1' => $validated['l1'] ?? null,
-            'link2' => $validated['l2'] ?? null,
-            'link3' => $validated['training_link'] ?? null,
-            'link4' => $validated['video_link'] ?? null,
-            'link5' => $validated['form_link'] ?? null,
-            'link6' => $validated['form_report_link'] ?? null,
-            'link7' => $validated['checklist_link'] ?? null,
-            'link8' => $validated['pl'] ?? null,
-            'link9' => $validated['process'] ?? null,
+            'start_date' => $startDate,
+            'completion_date' => $completionDate, // TID + 5 days
+            'due_date' => $completionDate, // Same as completion_date
+            'completion_day' => 0,
+            'etc_done' => 0,
+            'is_missed' => 0,
+            'is_missed_track' => 0,
+            'workspace' => 0,
+            'order' => 0,
+            'task_id' => '',
+            'link1' => $validated['l1'] ?? '',
+            'link2' => $validated['l2'] ?? '',
+            'link3' => $validated['training_link'] ?? '',
+            'link4' => $validated['video_link'] ?? '',
+            'link5' => $validated['form_link'] ?? '',
+            'link6' => $validated['form_report_link'] ?? '',
+            'link7' => $validated['checklist_link'] ?? '',
+            'link8' => $validated['pl'] ?? '',
+            'link9' => $validated['process'] ?? '',
             'is_data_from' => 0, // Manual entry
+            'is_automate_task' => 0, // Manual task
+            'task_type' => 'manual',
+            'rework_reason' => '',
+            'delete_rating' => 0,
+            'delete_feedback' => '',
         ];
 
         Task::create($taskData);
