@@ -300,6 +300,8 @@
                         <span class="badge fs-6 p-2 temu-ads-badge" id="temu-total-budget-badge" data-ads-filter="budget" style="color: black; font-weight: bold; background-color: #ced4da; cursor: pointer;" title="Click to filter: has target/budget">Budget: $0</span>
                         <span class="badge fs-6 p-2 temu-ads-badge" id="temu-total-ad-sales-badge" data-ads-filter="ad-sales" style="color: black; font-weight: bold; background-color: #9eeaf9; cursor: pointer;" title="Click to filter: has ad sales">Ad Sales: $0</span>
                         <span class="badge fs-6 p-2 temu-ads-badge" id="temu-total-ad-clicks-badge" data-ads-filter="ad-clicks" style="color: black; font-weight: bold; background-color: #a5d6e8; cursor: pointer;" title="Click to filter: has ad clicks">Ad Clicks: 0</span>
+                        <span class="badge fs-6 p-2" id="temu-total-clicks-badge" style="color: black; font-weight: bold; background-color: #a5d6e8;" title="Sum of clicks - Temu">Total Clicks: 0</span>
+                        <span class="badge fs-6 p-2" id="temu-avg-clicks-badge" style="color: black; font-weight: bold; background-color: #a5d6e8;" title="Total clicks / Total Ad SKU - Temu">Avg Clicks: 0</span>
                         <span class="badge fs-6 p-2 temu-ads-badge" id="temu-avg-acos-badge" data-ads-filter="avg-acos" style="color: black; font-weight: bold; background-color: #ffe69c; cursor: pointer;" title="Click to filter: has spend/sales">Avg ACOS: 0%</span>
                         <span class="badge fs-6 p-2 temu-ads-badge" id="temu-roas-badge" data-ads-filter="roas" style="color: black; font-weight: bold; background-color: #a3cfbb; cursor: pointer;" title="Click to filter: has spend/sales">ROAS: 0.00</span>
                     </div>
@@ -312,6 +314,10 @@
                         <input type="file" id="temu-l30-upload-file" accept=".xlsx,.xls,.csv" class="form-control form-control-sm d-none" style="width: 0;">
                         <button type="button" id="temu-l30-upload-btn" class="btn btn-sm btn-primary" title="Upload L30 Report" style="font-size: 0.75rem;">
                             <i class="fa-solid fa-upload me-1"></i>L30
+                        </button>
+                        <input type="file" id="temu-l60-upload-file" accept=".xlsx,.xls,.csv" class="form-control form-control-sm d-none" style="width: 0;">
+                        <button type="button" id="temu-l60-upload-btn" class="btn btn-sm btn-primary" title="Upload L60 Report" style="font-size: 0.75rem;">
+                            <i class="fa-solid fa-upload me-1"></i>L60
                         </button>
                         <span id="temu-upload-status-container" class="ms-2" style="font-size: 0.7rem;"></span>
                     </div>
@@ -2218,9 +2224,12 @@
             });
             const avgAcos = totalAdSales > 0 ? (totalSpend / totalAdSales) * 100 : 0;
             const roas = totalSpend > 0 ? totalAdSales / totalSpend : 0;
+            const avgClicks = adSkuSet.size > 0 ? totalAdClicks / adSkuSet.size : 0;
+
+            const campaignCount = totalCampaignCountFromBackend > 0 ? totalCampaignCountFromBackend : uniqueCampaignSkus.size;
 
             $('#temu-total-sku-count').text('Total SKU: ' + validSkuCount);
-            $('#temu-campaign-count').text('Campaign: ' + uniqueCampaignSkus.size);
+            $('#temu-campaign-count').text('Campaign: ' + campaignCount);
             $('#temu-ad-sku-count').text('Ad SKU: ' + adSkuSet.size);
             $('#temu-missing-campaign-count').text('Missing: ' + missingCount);
             $('#temu-nra-missing-count').text('NRA MISSING: ' + nraMissingCount);
@@ -2231,6 +2240,8 @@
             $('#temu-total-budget-badge').text('Budget: $' + totalBudget.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
             $('#temu-total-ad-sales-badge').text('Ad Sales: $' + Math.round(totalAdSales).toLocaleString());
             $('#temu-total-ad-clicks-badge').text('Ad Clicks: ' + totalAdClicks.toLocaleString());
+            $('#temu-total-clicks-badge').text('Total Clicks: ' + totalAdClicks.toLocaleString());
+            $('#temu-avg-clicks-badge').text('Avg Clicks: ' + (avgClicks % 1 === 0 ? Math.round(avgClicks).toLocaleString() : avgClicks.toFixed(1)));
             $('#temu-avg-acos-badge').text('Avg ACOS: ' + Math.round(avgAcos) + '%');
             $('#temu-roas-badge').text('ROAS: ' + roas.toFixed(2));
         }
@@ -2253,6 +2264,8 @@
             return 'pink';
         };
 
+        let totalCampaignCountFromBackend = 0;
+
         table = new Tabulator("#temu-table", {
             ajaxURL: "/temu-decrease-data",
             ajaxSorting: false,
@@ -2264,6 +2277,14 @@
             initialSort: [
                 {column: "cvr_percent", dir: "asc"}
             ],
+            ajaxResponse: function(url, params, response) {
+                if (response && Array.isArray(response.data)) {
+                    totalCampaignCountFromBackend = parseInt(response.total_campaign_count || 0, 10);
+                    return response.data;
+                }
+                if (Array.isArray(response)) return response;
+                return [];
+            },
             columns: [
                 {
                     title: "Image",
@@ -2327,6 +2348,12 @@
                     }
                 },
                 {
+                    title: "Temu L30",
+                    field: "temu_l30",
+                    hozAlign: "center",
+                    sorter: "number"
+                },
+                {
                     title: "Missing",
                     field: "missing",
                     hozAlign: "center",
@@ -2334,23 +2361,28 @@
                     width: 80,
                     visible: true,
                     formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
                         const value = cell.getValue();
-                        const goodsId = rowData.goods_id || '';
-                        // Check if campaign exists: has goods_id AND (has spend/clicks OR has campaign status)
-                        const hasCampaign = goodsId && (
-                            rowData.spend > 0 || 
-                            rowData.ad_clicks > 0 || 
-                            (rowData.campaign_status && rowData.campaign_status !== 'Not Created')
-                        );
-                        const nraValue = rowData.nr_req ? rowData.nr_req.trim() : "";
-                        
-                        // If missing (M), show M
                         if (value === 'M') {
                             return '<span style="color: #dc3545; font-weight: bold;" title="Not found in temu_pricing table">M</span>';
                         }
-                        
-                        // Otherwise show hasCampaign status with colored dot (like temu/ads page)
+                        return '';
+                    }
+                },
+                {
+                    title: "Campaign",
+                    field: "has_campaign",
+                    hozAlign: "center",
+                    width: 80,
+                    visible: false,
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const goodsId = rowData.goods_id || '';
+                        const hasCampaign = goodsId && (
+                            rowData.spend > 0 ||
+                            rowData.ad_clicks > 0 ||
+                            (rowData.campaign_status && rowData.campaign_status !== 'Not Created')
+                        );
+                        const nraValue = (rowData.nr_req || '').trim().toUpperCase();
                         let dotColor, title;
                         if (nraValue === 'NRA' || nraValue === 'NRL') {
                             dotColor = 'yellow';
@@ -2359,7 +2391,6 @@
                             dotColor = hasCampaign ? 'green' : 'red';
                             title = hasCampaign ? 'Campaign Exists' : 'Campaign Missing';
                         }
-                        
                         return `
                             <div style="display: flex; align-items: center; justify-content: center;">
                                 <span class="status-dot ${dotColor}" title="${title}"></span>
@@ -2437,14 +2468,6 @@
                     },
                     width: 60
                 },
-
-                {
-                    title: "Temu L30",
-                    field: "temu_l30",
-                    hozAlign: "center",
-                    sorter: "number"
-                },
-            
                 {
                     title: "CVR %",
                     field: "cvr_percent",
@@ -2763,7 +2786,7 @@
                         return `<span class="dil-percent-value ${colorClass}">${Math.round(spft)}%</span>`;
                     }
                 },
-                 {
+                {
                     title: "Spend",
                     field: "spend",
                     hozAlign: "right",
@@ -2775,8 +2798,58 @@
                             <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="Spend"></i>
                         </div>`;
                     },
-                    visible: true,
+                    visible: false,
                     width: 100
+                },
+                {
+                    title: "L60 Spend",
+                    field: "spend_l60",
+                    hozAlign: "center",
+                    sorter: "number",
+                    visible: false,
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        const disp = value > 0 ? '$' + value.toFixed(2) : '<span style="color: #999;">-</span>';
+                        return `<div class="d-flex align-items-center justify-content-center gap-1"><span>${disp}</span><i class="fa-solid fa-info-circle l60-spend-info-icon" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="Click to show/hide L60 columns"></i></div>`;
+                    }
+                },
+                {
+                    title: "Ad Sold",
+                    field: "ad_sold_l60",
+                    hozAlign: "center",
+                    sorter: "number",
+                    visible: false,
+                    formatter: function(cell) {
+                        const value = parseInt(cell.getValue(), 10) || 0;
+                        return value > 0 ? value.toLocaleString() : '<span style="color: #999;">-</span>';
+                    }
+                },
+                {
+                    title: "Ad Sales",
+                    field: "ad_sales_l60",
+                    hozAlign: "center",
+                    sorter: "number",
+                    visible: false,
+                    formatter: function(cell) {
+                        const value = parseFloat(cell.getValue()) || 0;
+                        return value > 0 ? '$' + value.toFixed(2) : '<span style="color: #999;">-</span>';
+                    }
+                },
+                {
+                    title: "L60 vs L30",
+                    field: "l60_vs_l30",
+                    hozAlign: "center",
+                    sorter: "number",
+                    visible: false,
+                    formatter: function(cell) {
+                        const val = cell.getValue();
+                        if (val === null || val === undefined || Number.isNaN(parseFloat(val))) return '<span style="color: #999;">-</span>';
+                        const v = parseFloat(val);
+                        const pct = (v % 1 === 0) ? Math.round(v) : v.toFixed(1);
+                        const direction = v > 0 ? 'L60&lt;' : (v < 0 ? 'L60&gt;' : '');
+                        const color = v > 0 ? '#28a745' : (v < 0 ? '#dc3545' : '#6c757d');
+                        return `<span style="color: ${color}; font-weight: 600;">${pct}%</span>${direction ? ` <span style="font-size: 0.75em; color: #6c757d;" title="${v > 0 ? 'L60 ACOS < L30 ACOS' : 'L60 ACOS > L30 ACOS'}">${direction}</span>` : ''}`;
+                    }
                 },
                 {
                     title: "ACOS%",
@@ -2790,7 +2863,7 @@
                             <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="ACOS%"></i>
                         </div>`;
                     },
-                    visible: true,
+                    visible: false,
                     width: 100
                 },
                 {
@@ -2805,7 +2878,7 @@
                             <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="Ad Clicks"></i>
                         </div>`;
                     },
-                    visible: true,
+                    visible: false,
                     width: 110
                 },
                 {
@@ -2821,7 +2894,7 @@
                             <i class="fa-solid fa-info-circle" style="cursor: pointer; font-size: 12px; color: #3b82f6;" title="OUT ROAS"></i>
                         </div>`;
                     },
-                    visible: true,
+                    visible: false,
                     width: 100
                 },
                 {
@@ -2917,7 +2990,7 @@
                             }
                         });
                     },
-                    visible: true,
+                    visible: false,
                     width: 100
                 },
                 {
@@ -2958,7 +3031,7 @@
                     cellClick: function(e, cell) {
                         e.stopPropagation();
                     },
-                    visible: true,
+                    visible: false,
                     width: 130
                 },
                 {
@@ -2966,6 +3039,7 @@
                     field: "target",
                     hozAlign: "center",
                     sorter: "number",
+                    visible: false,
                     formatter: function(cell) {
                         const value = parseFloat(cell.getValue()) || 0;
                         return '$' + value.toFixed(2);
@@ -3050,7 +3124,7 @@
         let originalColumnVisibility = {}; // Store original visibility state
         
         // Columns to show when ads view is active (matching temu/ads page)
-        const adsColumnFields = ['sku', 'missing', 'inventory', 'ovl30', 'temu_l30', 'dil_percent', 'nr_req', 'spend', 'target', 'ad_clicks', 'acos_ad', 'out_roas_l30', 'in_roas_l30', 'campaign_status'];
+        const adsColumnFields = ['sku', 'has_campaign', 'inventory', 'ovl30', 'temu_l30', 'dil_percent', 'nr_req', 'spend', 'spend_l60', 'l60_vs_l30', 'ad_clicks', 'acos_ad', 'out_roas_l30', 'in_roas_l30', 'campaign_status'];
         
         $('#toggle-ads-columns-btn').on('click', function() {
             adsColumnsVisible = !adsColumnsVisible;
@@ -3073,6 +3147,9 @@
                         column.show();
                     }
                 });
+                if (typeof l60ColumnsVisible !== 'undefined' && l60ColumnsVisible && typeof l60ColumnFields !== 'undefined') {
+                    table.getColumns().filter(c => c.getField() && l60ColumnFields.includes(c.getField())).forEach(c => c.show());
+                }
                 
                 $(this).html('<i class="fa fa-filter"></i> Show All Columns');
                 $(this).removeClass('btn-secondary btn-primary').addClass('btn-danger');
@@ -3091,6 +3168,9 @@
                         }
                     }
                 });
+                if (typeof l60ColumnsVisible !== 'undefined' && l60ColumnsVisible && typeof l60ColumnFields !== 'undefined') {
+                    table.getColumns().filter(c => c.getField() && l60ColumnFields.includes(c.getField())).forEach(c => c.show());
+                }
                 
                 $(this).html('<i class="fa fa-filter"></i> Show Ads Columns');
                 $(this).removeClass('btn-danger btn-primary').addClass('btn-secondary');
@@ -3162,6 +3242,27 @@
                 doTemuUploadReport(this, 'L30', 'temu-upload-status-container');
             });
             $('#temu-l30-upload-file')[0].click();
+        });
+
+        let l60ColumnsVisible = false;
+        const l60ColumnFields = ['ad_sold_l60', 'ad_sales_l60', 'l60_vs_l30'];
+        function toggleL60Columns(show) {
+            if (!table) return;
+            l60ColumnsVisible = show;
+            const cols = table.getColumns().filter(c => c.getField() && l60ColumnFields.includes(c.getField()));
+            cols.forEach(c => { show ? c.show() : c.hide(); });
+        }
+        $(document).on('click', '.l60-spend-info-icon', function(e) {
+            e.stopPropagation();
+            l60ColumnsVisible = !l60ColumnsVisible;
+            toggleL60Columns(l60ColumnsVisible);
+        });
+
+        $('#temu-l60-upload-btn').on('click', function() {
+            $('#temu-l60-upload-file').off('change').on('change', function() {
+                doTemuUploadReport(this, 'L60', 'temu-upload-status-container');
+            });
+            $('#temu-l60-upload-file')[0].click();
         });
 
         $('#sku-search').on('keyup', function() {

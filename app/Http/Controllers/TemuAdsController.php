@@ -409,7 +409,7 @@ class TemuAdsController extends Controller
         try {
             $request->validate([
                 'file' => 'required|file|mimes:xlsx,xls,csv',
-                'report_range' => 'required|in:L7,L30'
+                'report_range' => 'required|in:L7,L30,L60'
             ]);
 
             $file = $request->file('file');

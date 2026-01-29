@@ -364,8 +364,7 @@ class TikTokPricingController extends Controller
                 $processedItem["GPFT%"] = 0;
             }
 
-            // PFT%
-            $processedItem["PFT %"] = $processedItem["GPFT%"];
+            // TACOS% and PFT % calculated after spend is set below
 
             // ROI%
             if ($lp > 0) {
@@ -403,6 +402,15 @@ class TikTokPricingController extends Controller
             $processedItem["ads_price"] = $processedItem["TT Price"] ?? 0;
             $processedItem["budget"] = isset($metrics['budget']) && $metrics['budget'] !== null ? round((float)$metrics['budget'], 2) : null;
             $processedItem["spend"] = round((float)($metrics['cost'] ?? 0), 2);
+            // TACOS% = (spend / (TT L30 * TT Price)) * 100
+            $spend = (float)$processedItem["spend"];
+            $ttL30 = (float)($processedItem["TT L30"] ?? 0);
+            $ttPrice = (float)($processedItem["TT Price"] ?? 0);
+            $salesValue = $ttL30 * $ttPrice;
+            $processedItem["TACOS%"] = $salesValue > 0 ? round(($spend / $salesValue) * 100, 2) : ($spend > 0 ? 100 : 0);
+            $processedItem["PFT %"] = round($processedItem["GPFT%"] - $processedItem["TACOS%"], 2);
+            // SPFT = SGPFT - TACOS%
+            $processedItem["SPFT"] = round($processedItem["SGPFT"] - $processedItem["TACOS%"], 2);
             $processedItem["ad_sold"] = (int)($metrics['sku_orders'] ?? 0);
             $processedItem["ad_clicks"] = (int)($metrics['clicks'] ?? 0);
             $processedItem["acos"] = $outRoas > 0 ? round(100 / $outRoas) : 0;

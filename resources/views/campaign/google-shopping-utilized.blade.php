@@ -539,6 +539,20 @@
                                 <div class="col-md-2">
                                     <label class="form-label fw-semibold mb-2"
                                         style="color: #475569; font-size: 0.8125rem;">
+                                        <i class="fa-solid fa-percent me-1" style="color: #64748b;"></i>ACOS
+                                    </label>
+                                    <select id="acos-filter" class="form-select form-select-md">
+                                        <option value="">All ACOS</option>
+                                        <option value="0-10">&lt; 10%</option>
+                                        <option value="10-30">10–30%</option>
+                                        <option value="30-40">30–40%</option>
+                                        <option value="40-50">40–50%</option>
+                                        <option value="50-">≥ 50%</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label fw-semibold mb-2"
+                                        style="color: #475569; font-size: 0.8125rem;">
                                         <i class="fa-solid fa-check-square me-1" style="color: #64748b;"></i>Bulk
                                         Actions
                                     </label>
@@ -869,6 +883,7 @@
                 const fullData = table.getData('all') || [];
                 const comboCounts = { gg: 0, gp: 0, gr: 0, pg: 0, pp: 0, pr: 0, rg: 0, rp: 0, rr: 0 };
                 const statusCounts = { all: 0, ENABLED: 0, PAUSED: 0, ARCHIVED: 0 };
+                const acosCounts = { '0-10': 0, '10-30': 0, '30-40': 0, '40-50': 0, '50-': 0 };
                 let allSkuCount = 0;
                 let allCampaignCount = 0;
                 let enabledCampaignCountAll = 0;
@@ -901,6 +916,11 @@
                         let ub1 = budget > 0 ? (spend_L1 / budget) * 100 : 0;
                         let combo = ubZone(ub7) + ubZone(ub1);
                         if (comboCounts[combo] !== undefined) comboCounts[combo]++;
+                        var spend_L30 = Math.round(parseFloat(row.spend_L30 || 0));
+                        var sales_L30 = Math.round(parseFloat(row.ad_sales_L30 || 0));
+                        var acos = (sales_L30 >= 1) ? (spend_L30 / sales_L30) * 100 : (spend_L30 > 0 ? 100 : 0);
+                        var b = acos < 10 ? '0-10' : acos < 30 ? '10-30' : acos < 40 ? '30-40' : acos < 50 ? '40-50' : '50-';
+                        if (acosCounts[b] !== undefined) acosCounts[b]++;
                     }
                 });
 
@@ -1039,6 +1059,21 @@
                         if (lastCounts[k] === txt) continue;
                         lastCounts[k] = txt;
                         statusSelect.options[i].text = txt;
+                    }
+                }
+
+                const acosSelect = document.getElementById('acos-filter');
+                const acosLabels = { '': 'All ACOS', '0-10': '< 10%', '10-30': '10–30%', '30-40': '30–40%', '40-50': '40–50%', '50-': '≥ 50%' };
+                const allAcosCount = (acosCounts['0-10'] || 0) + (acosCounts['10-30'] || 0) + (acosCounts['30-40'] || 0) + (acosCounts['40-50'] || 0) + (acosCounts['50-'] || 0);
+                if (acosSelect) {
+                    for (let i = 0; i < acosSelect.options.length; i++) {
+                        const v = acosSelect.options[i].value;
+                        const n = v === '' ? allAcosCount : (acosCounts[v] || 0);
+                        const txt = `${acosLabels[v] || v} (${n})`;
+                        const k = 'AcosOption' + i;
+                        if (lastCounts[k] === txt) continue;
+                        lastCounts[k] = txt;
+                        acosSelect.options[i].text = txt;
                     }
                 }
             }
@@ -1399,6 +1434,8 @@
                         field: "SPRICE",
                         hozAlign: "center",
                         visible: false,
+                        editor: "number",
+                        editorParams: { min: 0, step: 0.01 },
                         formatter: function(cell) {
                             const value = cell.getValue();
                             const rowData = cell.getRow().getData();
@@ -2342,16 +2379,22 @@
                     if (sbidMax && sbid > parseFloat(sbidMax)) return false;
                 }
 
-                // ACOS L30 range filter
-                let acosMin = $("#acos-min").val();
-                let acosMax = $("#acos-max").val();
-                if (acosMin || acosMax) {
-                    let spend_L30 = Math.round(parseFloat(data.spend_L30 || 0));
-                    let sales_L30 = Math.round(parseFloat(data.ad_sales_L30 || 0));
-                    let acos = (sales_L30 >= 1) ? (spend_L30 / sales_L30) * 100 : (spend_L30 > 0 ? 100 : 0);
+                // ACOS L30 dropdown filter (bucket) or range filter (min/max)
+                let spend_L30 = Math.round(parseFloat(data.spend_L30 || 0));
+                let sales_L30 = Math.round(parseFloat(data.ad_sales_L30 || 0));
+                let acos = (sales_L30 >= 1) ? (spend_L30 / sales_L30) * 100 : (spend_L30 > 0 ? 100 : 0);
+                let acosBucket = acos < 10 ? '0-10' : acos < 30 ? '10-30' : acos < 40 ? '30-40' : acos < 50 ? '40-50' : '50-';
 
-                    if (acosMin && acos < parseFloat(acosMin)) return false;
-                    if (acosMax && acos > parseFloat(acosMax)) return false;
+                let acosFilterVal = $("#acos-filter").val();
+                if (acosFilterVal) {
+                    if (acosBucket !== acosFilterVal) return false;
+                } else {
+                    let acosMin = $("#acos-min").val();
+                    let acosMax = $("#acos-max").val();
+                    if (acosMin || acosMax) {
+                        if (acosMin && acos < parseFloat(acosMin)) return false;
+                        if (acosMax && acos > parseFloat(acosMax)) return false;
+                    }
                 }
 
                 // Price range filter
@@ -2570,7 +2613,7 @@
                     }, 300);
                 });
 
-                $("#status-filter, #inv-filter, #nrl-filter, #nra-filter").on("change", function() {
+                $("#status-filter, #inv-filter, #nrl-filter, #nra-filter, #acos-filter").on("change", function() {
                     table.setFilter(combinedFilter);
                     setTimeout(updatePaginationCount, 100);
                 });
@@ -2584,13 +2627,13 @@
 
                 // Clear range filters button
                 $("#clear-range-filters-btn").on("click", function() {
-                    // Clear all range filter inputs
+                    // Clear all range filter inputs and ACOS dropdown
                     $("#1ub-min, #1ub-max").val('');
                     $("#7ub-min, #7ub-max").val('');
                     $("#sbid-min, #sbid-max").val('');
                     $("#acos-min, #acos-max").val('');
                     $("#price-min, #price-max").val('');
-                    
+                    $("#acos-filter").val('');
                     table.setFilter(combinedFilter);
                     setTimeout(updatePaginationCount, 100);
                 });
@@ -3089,43 +3132,79 @@
 
             // Persist mbid edit to backend (save only, no Google push)
             table.on("cellEdited", function(cell) {
-                if (cell.getField() !== "mbid") return;
-                var row = cell.getRow().getData();
-                if (!row.campaign_id || !row.campaignName) return;
-                var val = cell.getValue();
-                if (val == null || val === "" || isNaN(parseFloat(val))) return;
-                var bid = Math.max(0.01, Math.floor(parseFloat(val) * 100) / 100);
-                var overlay = document.getElementById("progress-overlay");
-                if (overlay) overlay.style.display = "flex";
-                fetch("/update-google-ads-bid-price", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]').getAttribute("content")
-                    },
-                    body: JSON.stringify({
-                        campaign_ids: [row.campaign_id],
-                        bids: [bid],
-                        save_mbid_only: true
+                var field = cell.getField();
+                var row = cell.getRow();
+                var rowData = row.getData();
+                var csrf = document.querySelector('meta[name="csrf-token"]');
+                var token = csrf ? csrf.getAttribute("content") : '';
+
+                if (field === "mbid") {
+                    if (!rowData.campaign_id || !rowData.campaignName) return;
+                    var val = cell.getValue();
+                    if (val == null || val === "" || isNaN(parseFloat(val))) return;
+                    var bid = Math.max(0.01, Math.floor(parseFloat(val) * 100) / 100);
+                    var overlay = document.getElementById("progress-overlay");
+                    if (overlay) overlay.style.display = "flex";
+                    fetch("/update-google-ads-bid-price", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-CSRF-TOKEN": token
+                        },
+                        body: JSON.stringify({
+                            campaign_ids: [rowData.campaign_id],
+                            bids: [bid],
+                            save_mbid_only: true
+                        })
                     })
-                })
-                .then(function(r) { return r.json(); })
-                .then(function(data) {
-                    if (data.status === 200 || data.status === 207) {
-                        if (typeof updateButtonCounts === "function") updateButtonCounts();
-                    } else {
-                        alert("Error saving mbid: " + (data.message || "Request failed."));
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.status === 200 || data.status === 207) {
+                            if (typeof updateButtonCounts === "function") updateButtonCounts();
+                        } else {
+                            alert("Error saving mbid: " + (data.message || "Request failed."));
+                            if (typeof table !== "undefined" && table) table.setData("/google/shopping/data");
+                        }
+                    })
+                    .catch(function(err) {
+                        console.error(err);
+                        alert("Request failed: " + (err.message || "Unknown error"));
                         if (typeof table !== "undefined" && table) table.setData("/google/shopping/data");
-                    }
-                })
-                .catch(function(err) {
-                    console.error(err);
-                    alert("Request failed: " + (err.message || "Unknown error"));
-                    if (typeof table !== "undefined" && table) table.setData("/google/shopping/data");
-                })
-                .finally(function() {
-                    if (overlay) overlay.style.display = "none";
-                });
+                    })
+                    .finally(function() {
+                        if (overlay) overlay.style.display = "none";
+                    });
+                    return;
+                }
+
+                if (field === "SPRICE") {
+                    var sku = rowData.sku || '';
+                    if (!sku || String(sku).toUpperCase().includes('PARENT')) return;
+                    var newSprice = parseFloat(cell.getValue()) || 0;
+                    fetch("/shopify/save-sprice", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-CSRF-TOKEN": token
+                        },
+                        body: JSON.stringify({ sku: sku, sprice: newSprice })
+                    })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.error) {
+                            alert("Error saving SPRICE: " + (data.error || "Request failed."));
+                            if (typeof table !== "undefined" && table) table.setData("/google/shopping/data");
+                        } else {
+                            if (typeof updateButtonCounts === "function") updateButtonCounts();
+                        }
+                    })
+                    .catch(function(err) {
+                        console.error(err);
+                        alert("Request failed: " + (err.message || "Unknown error"));
+                        if (typeof table !== "undefined" && table) table.setData("/google/shopping/data");
+                    });
+                    return;
+                }
             });
 
             // Handle info icon toggle for INV column
