@@ -102,6 +102,13 @@ class Kernel extends ConsoleKernel
             Log::info('Test scheduler is working at ' . now());
         })->everyMinute()->name('test-scheduler-log');
 
+        // Execute Automated Tasks - Check every minute
+        $schedule->command('tasks:execute-automated')
+            ->everyFiveMinutes()
+            ->timezone('Asia/Kolkata')
+            ->name('automated-tasks-executor')
+            ->withoutOverlapping();
+
         // Clear Laravel log after test log
         $schedule->call(function () {
             $logPath = storage_path('logs/laravel.log');

@@ -3138,6 +3138,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     // Task Manager Routes
     Route::get('/tasks', [\App\Http\Controllers\TaskController::class, 'index'])->name('tasks.index');
     Route::get('/tasks/data', [\App\Http\Controllers\TaskController::class, 'getData'])->name('tasks.data');
+    Route::get('/tasks/automated', [\App\Http\Controllers\TaskController::class, 'automatedIndex'])->name('tasks.automated');
+    Route::get('/tasks/automated/data', [\App\Http\Controllers\TaskController::class, 'getAutomatedData'])->name('tasks.automatedData');
+    Route::get('/tasks/automated/create', [\App\Http\Controllers\TaskController::class, 'automatedCreate'])->name('tasks.automatedCreate');
+    Route::post('/tasks/automated/store', [\App\Http\Controllers\TaskController::class, 'automatedStore'])->name('tasks.automatedStore');
+    Route::get('/tasks/automated/{id}/edit', [\App\Http\Controllers\TaskController::class, 'automatedEdit'])->name('tasks.automatedEdit');
+    Route::put('/tasks/automated/{id}', [\App\Http\Controllers\TaskController::class, 'automatedUpdate'])->name('tasks.automatedUpdate');
+    Route::delete('/tasks/automated/{id}', [\App\Http\Controllers\TaskController::class, 'automatedDestroy'])->name('tasks.automatedDestroy');
     Route::get('/tasks/users-list', [\App\Http\Controllers\TaskController::class, 'getUsersList'])->name('tasks.usersList');
     Route::get('/tasks/download-template', [\App\Http\Controllers\TaskController::class, 'downloadTemplate'])->name('tasks.downloadTemplate');
     Route::post('/tasks/import-csv', [\App\Http\Controllers\TaskController::class, 'importCsv'])->name('tasks.importCsv');
