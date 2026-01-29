@@ -1544,6 +1544,17 @@ class TemuController extends Controller
                 ->get()
                 ->keyBy('goods_id');
 
+            // Fetch campaign report data (L60) for spend, ad sold, ad sales
+            $campaignReportL60 = TemuCampaignReport::whereIn('goods_id', $goodsIds)
+                ->where('report_range', 'L60')
+                ->selectRaw('goods_id, 
+                    SUM(spend) as spend_l60,
+                    SUM(COALESCE(net_number_pieces, 0)) as ad_sold_l60,
+                    SUM(COALESCE(base_price_sales, 0)) as ad_sales_l60')
+                ->groupBy('goods_id')
+                ->get()
+                ->keyBy('goods_id');
+
             // Fetch saved SPRICE values from TemuDataView
             $temuDataViewData = TemuDataView::whereIn('sku', $skus)
                 ->select('sku', 'value')
@@ -1563,7 +1574,7 @@ class TemuController extends Controller
             $statusData = TemuListingStatus::whereIn('sku', $skus)->get()->keyBy('sku');
 
             // 4. Process data - iterate through ALL product masters
-            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $viewData, $adData, $temuDataViewData, $amazonData, $rPricingData, $percentage, $temuPricingSkusNormalized, $normalizeSku, $statusData, $campaignReportL30) {
+            $processedData = $productMasters->map(function($productMaster) use ($pricingData, $shopifyData, $temuSalesData, $viewData, $adData, $temuDataViewData, $amazonData, $rPricingData, $percentage, $temuPricingSkusNormalized, $normalizeSku, $statusData, $campaignReportL30, $campaignReportL60) {
                 $sku = $productMaster->sku;
                 
                 // Get related data (may be null if not in Temu)
@@ -1631,6 +1642,13 @@ class TemuController extends Controller
                 $inRoasL30 = $campaignReportItem ? round((float)$campaignReportItem->in_roas_l30, 2) : 0;
                 $outRoasL30 = $campaignReportItem ? round((float)$campaignReportItem->roas_l30, 2) : ($netRoas > 0 ? round($netRoas, 2) : 0);
                 $campaignStatus = null;
+                // Get campaign report data (L60) for spend, ad sold, ad sales
+                $l60Item = $goodsId ? $campaignReportL60->get($goodsId) : null;
+                $spendL60 = $l60Item ? round((float)$l60Item->spend_l60, 2) : 0;
+                $adSoldL60 = $l60Item ? (int)($l60Item->ad_sold_l60 ?? 0) : 0;
+                $adSalesL60 = $l60Item ? round((float)($l60Item->ad_sales_l60 ?? 0), 2) : 0;
+                $l60Acos = ($adSalesL60 > 0) ? round(($spendL60 / $adSalesL60) * 100, 2) : null;
+                $l60VsL30 = ($l60Acos !== null && $l60Acos != 0) ? round((($acosAd - $l60Acos) / $l60Acos) * 100, 2) : null;
                 if ($campaignReportItem && isset($campaignReportItem->status_l30) && !empty($campaignReportItem->status_l30) && $campaignReportItem->status_l30 !== 'NULL') {
                     $campaignStatus = $campaignReportItem->status_l30;
                 } else {
@@ -1771,14 +1789,28 @@ class TemuController extends Controller
                     // Add saved campaign data
                     'in_roas_l30' => $inRoasL30,
                     'out_roas_l30' => $outRoasL30,
-                    'campaign_status' => $campaignStatus
+                    'campaign_status' => $campaignStatus,
+                    'spend_l60' => $spendL60,
+                    'ad_sold_l60' => $adSoldL60,
+                    'ad_sales_l60' => $adSalesL60,
+                    'l60_vs_l30' => $l60VsL30
                 ];
             });
 
             // Auto-save daily summary in background (non-blocking)
             $this->saveDailySummaryIfNeeded($processedData->toArray());
 
-            return response()->json($processedData);
+            // Campaign count: same as Temu Utilized / TemuAdsController (distinct goods_id in temu_campaign_reports)
+            $totalCampaignCount = TemuCampaignReport::distinct('goods_id')
+                ->pluck('goods_id')
+                ->filter()
+                ->unique()
+                ->count();
+
+            return response()->json([
+                'data' => $processedData,
+                'total_campaign_count' => $totalCampaignCount,
+            ]);
         } catch (\Exception $e) {
             Log::error('Error fetching Temu decrease data: ' . $e->getMessage());
             return response()->json(['error' => 'Failed to fetch data'], 500);

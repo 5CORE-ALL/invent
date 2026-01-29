@@ -3024,6 +3024,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/google/shopping/chart/filter', 'filterGoogleShoppingChart')->name('google.shopping.chart.filter');
         Route::get('/google/shopping/running/chart/filter', 'filterGoogleShoppingRunningChart')->name('google.shopping.running.chart.filter');
         Route::get('/google/shopping/campaign/chart-data', 'getGoogleShoppingCampaignChartData');
+        Route::get('/google/shopping/campaign/acos-chart-data', 'getGoogleShoppingCampaignAcosChartData');
+        Route::get('/google/shopping/campaign/cvr-price-chart-data', 'getGoogleShoppingCampaignCvrPriceChartData');
+        Route::get('/google/shopping/overall-acos-chart-data', 'getGoogleShoppingOverallAcosChartData');
+        Route::get('/google/shopping/overall-cvr-price-chart-data', 'getGoogleShoppingOverallCvrPriceChartData');
         Route::get('/google/shopping/report/chart/filter', 'filterGoogleShoppingReportChart')->name('google.shopping.report.chart.filter');
         Route::get('/google/serp/chart/filter', 'filterGoogleSerpChart')->name('google.shopping.serp.chart.filter');
         

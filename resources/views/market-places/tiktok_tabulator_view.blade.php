@@ -250,7 +250,7 @@
                         <span class="badge fs-6 p-2 ads-section-badge" id="total-sku-count" data-ads-filter="all" style="color: black; font-weight: bold; background-color: #adb5bd; cursor: pointer;" title="Click to show all">Total SKU: 0</span>
                         <span class="badge fs-6 p-2 ads-section-badge" id="total-campaign-count" data-ads-filter="campaign" style="color: black; font-weight: bold; background-color: #9ec5fe; cursor: pointer;" title="Click to filter: has campaign">Campaign: 0</span>
                         <span class="badge fs-6 p-2 ads-section-badge" id="ad-sku-count" data-ads-filter="ad-sku" style="color: black; font-weight: bold; background-color: #b8d4a8; cursor: pointer;" title="Click to filter: SKU active in ads with &gt;0 inventory">Ad SKU: 0</span>
-                        <span class="badge fs-6 p-2 ads-section-badge" id="missing-campaign-count" data-ads-filter="missing" style="color: black; font-weight: bold; background-color: #f1aeb5; cursor: pointer;" title="Click to filter: missing campaign (no campaign, INV&gt;0, not NRA)">Missing: 0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="missing-campaign-count" data-ads-filter="missing" style="color: black; font-weight: bold; background-color: #f1aeb5; cursor: pointer;" title="Click to filter: missing ad (no campaign, INV&gt;0, not NRA)">Missing Ad: 0</span>
                         <span class="badge fs-6 p-2 ads-section-badge" id="nra-missing-count" data-ads-filter="nra-missing" style="color: black; font-weight: bold; background-color: #ffe69c; cursor: pointer;" title="Click to filter: NRA missing">NRA MISSING: 0</span>
                         <span class="badge fs-6 p-2 ads-section-badge" id="zero-inv-count" data-ads-filter="zero-inv" style="color: black; font-weight: bold; background-color: #ffda6a; cursor: pointer;" title="Click to filter: zero inventory">Zero INV: 0</span>
                         <span class="badge fs-6 p-2 ads-section-badge" id="nra-count" data-ads-filter="nra" style="color: black; font-weight: bold; background-color: #f1aeb5; cursor: pointer;" title="Click to filter: NRA">NRA: 0</span>
@@ -928,7 +928,7 @@
                     }
                 },
                 {
-                    title: "Missing",
+                    title: "Missing Ad",
                     field: "hasCampaign",
                     hozAlign: "center",
                     width: 80,
@@ -1153,6 +1153,20 @@
                     width: 50
                 },
                 {
+                    title: "TACOS",
+                    field: "TACOS%",
+                    hozAlign: "center",
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value === null || value === undefined) return '';
+                        const percent = parseFloat(value);
+                        let color = percent >= 40 ? '#a00211' : percent >= 20 ? '#ffc107' : percent >= 10 ? '#3591dc' : '#28a745';
+                        return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
+                    },
+                    width: 55
+                },
+                {
                     title: "PFT%",
                     field: "PFT %",
                     hozAlign: "center",
@@ -1329,6 +1343,9 @@
                     field: "SROI",
                     hozAlign: "center",
                     sorter: "number",
+                    width: 50,
+                    minWidth: 50,
+                    maxWidth: 50,
                     formatter: function(cell) {
                         const value = cell.getValue();
                         if (value === null || value === undefined) return '';
@@ -1341,8 +1358,7 @@
                         else color = '#e83e8c';
                         
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
-                    },
-                    width: 50
+                    }
                 }
             ]
         });
@@ -1826,7 +1842,7 @@
             $('#total-sku-count').text('Total SKU: ' + validSkuCount);
             $('#total-campaign-count').text('Campaign: ' + totalDistinctCampaigns);
             $('#ad-sku-count').text('Ad SKU: ' + adSkuSet.size);
-            $('#missing-campaign-count').text('Missing: ' + missingCount);
+            $('#missing-campaign-count').text('Missing Ad: ' + missingCount);
             $('#nra-missing-count').text('NRA MISSING: ' + nraMissingCount);
             $('#zero-inv-count').text('Zero INV: ' + zeroInvCount);
             $('#nra-count').text('NRA: ' + nraCount);

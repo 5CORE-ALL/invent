@@ -1461,6 +1461,290 @@ class GoogleAdsController extends Controller
         ]);
     }
 
+    /**
+     * Daily ACOS history for a campaign (line chart, period selector, min/max).
+     * Used by ACOS "eye" icon in google-shopping-utilized.
+     */
+    public function getGoogleShoppingCampaignAcosChartData(Request $request)
+    {
+        $campaignName = $request->campaignName;
+        $startDate = $request->startDate ?? \Carbon\Carbon::now()->subDays(29)->format('Y-m-d');
+        $endDate = $request->endDate ?? \Carbon\Carbon::now()->format('Y-m-d');
+
+        if (!$campaignName) {
+            return response()->json(['error' => 'Campaign name is required'], 400);
+        }
+
+        $campaignNameUpper = strtoupper(trim($campaignName));
+        $campaignNameCleaned = rtrim(trim($campaignNameUpper), '.');
+
+        $data = DB::table('google_ads_campaigns')
+            ->selectRaw('
+                date,
+                SUM(metrics_cost_micros) / 1000000 as spend,
+                SUM(ga4_actual_revenue) as ga4_actual_sales,
+                SUM(ga4_ad_sales) as ga4_sales
+            ')
+            ->whereNotNull('date')
+            ->where('advertising_channel_type', 'SHOPPING')
+            ->whereBetween('date', [$startDate, $endDate])
+            ->where(function ($q) use ($campaignNameUpper, $campaignNameCleaned, $campaignName) {
+                $q->whereRaw('UPPER(TRIM(campaign_name)) = ?', [$campaignNameUpper])
+                  ->orWhereRaw('UPPER(TRIM(campaign_name)) = ?', [$campaignNameCleaned])
+                  ->orWhere('campaign_name', 'LIKE', '%' . trim($campaignName) . '%');
+            })
+            ->groupBy('date')
+            ->orderBy('date', 'asc')
+            ->get();
+
+        $useGA4Actual = $data->sum('ga4_actual_sales') > 0;
+
+        $byDate = [];
+        foreach ($data as $row) {
+            $spend = (float) $row->spend;
+            $sales = $useGA4Actual ? (float) $row->ga4_actual_sales : (float) $row->ga4_sales;
+            $acos = 0;
+            if ($sales >= 1) {
+                $acos = ($spend / $sales) * 100;
+            } elseif ($spend > 0) {
+                $acos = 100;
+            }
+            $byDate[$row->date] = round($acos, 2);
+        }
+
+        $labels = [];
+        $dates = [];
+        $acosValues = [];
+        $start = \Carbon\Carbon::parse($startDate);
+        $end = \Carbon\Carbon::parse($endDate);
+
+        for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
+            $dateStr = $d->format('Y-m-d');
+            $labels[] = $d->format('M d');
+            $dates[] = $dateStr;
+            $acosValues[] = $byDate[$dateStr] ?? 0;
+        }
+
+        $min = $acosValues ? min($acosValues) : 0;
+        $max = $acosValues ? max($acosValues) : 0;
+
+        return response()->json([
+            'labels' => $labels,
+            'dates' => $dates,
+            'acos' => $acosValues,
+            'min' => round($min, 2),
+            'max' => round($max, 2),
+        ]);
+    }
+
+    /**
+     * Daily CVR and Price (CPC) history per campaign for CVR column eye icon.
+     * CVR = (orders / clicks) * 100; Price = CPC = spend / clicks.
+     */
+    public function getGoogleShoppingCampaignCvrPriceChartData(Request $request)
+    {
+        $campaignName = $request->campaignName;
+        $startDate = $request->startDate ?? \Carbon\Carbon::now()->subDays(29)->format('Y-m-d');
+        $endDate = $request->endDate ?? \Carbon\Carbon::now()->format('Y-m-d');
+
+        if (!$campaignName) {
+            return response()->json(['error' => 'Campaign name is required'], 400);
+        }
+
+        $campaignNameUpper = strtoupper(trim($campaignName));
+        $campaignNameCleaned = rtrim(trim($campaignNameUpper), '.');
+
+        $data = DB::table('google_ads_campaigns')
+            ->selectRaw('
+                date,
+                SUM(metrics_clicks) as clicks,
+                SUM(metrics_cost_micros) / 1000000 as spend,
+                SUM(ga4_actual_sold_units) as ga4_actual_orders,
+                SUM(ga4_sold_units) as ga4_orders
+            ')
+            ->whereNotNull('date')
+            ->where('advertising_channel_type', 'SHOPPING')
+            ->whereBetween('date', [$startDate, $endDate])
+            ->where(function ($q) use ($campaignNameUpper, $campaignNameCleaned, $campaignName) {
+                $q->whereRaw('UPPER(TRIM(campaign_name)) = ?', [$campaignNameUpper])
+                  ->orWhereRaw('UPPER(TRIM(campaign_name)) = ?', [$campaignNameCleaned])
+                  ->orWhere('campaign_name', 'LIKE', '%' . trim($campaignName) . '%');
+            })
+            ->groupBy('date')
+            ->orderBy('date', 'asc')
+            ->get();
+
+        $useGA4Actual = $data->sum('ga4_actual_orders') > 0;
+        $byDate = [];
+        foreach ($data as $row) {
+            $clicks = (float) $row->clicks;
+            $spend = (float) $row->spend;
+            $orders = $useGA4Actual ? (float) $row->ga4_actual_orders : (float) $row->ga4_orders;
+            $cvr = ($clicks >= 1 && $orders > 0) ? round(($orders / $clicks) * 100, 2) : 0;
+            $price = ($clicks >= 1) ? round($spend / $clicks, 4) : 0;
+            $byDate[$row->date] = ['cvr' => $cvr, 'price' => $price];
+        }
+
+        $labels = [];
+        $dates = [];
+        $cvrValues = [];
+        $priceValues = [];
+        $start = \Carbon\Carbon::parse($startDate);
+        $end = \Carbon\Carbon::parse($endDate);
+        for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
+            $dateStr = $d->format('Y-m-d');
+            $labels[] = $d->format('M d');
+            $dates[] = $dateStr;
+            $entry = $byDate[$dateStr] ?? ['cvr' => 0, 'price' => 0];
+            $cvrValues[] = $entry['cvr'];
+            $priceValues[] = $entry['price'];
+        }
+
+        $cvrMin = $cvrValues ? min($cvrValues) : 0;
+        $cvrMax = $cvrValues ? max($cvrValues) : 0;
+        $priceMin = $priceValues ? min($priceValues) : 0;
+        $priceMax = $priceValues ? max($priceValues) : 0;
+
+        return response()->json([
+            'labels' => $labels,
+            'dates' => $dates,
+            'cvr' => $cvrValues,
+            'price' => $priceValues,
+            'cvr_min' => round($cvrMin, 2),
+            'cvr_max' => round($cvrMax, 2),
+            'price_min' => round($priceMin, 4),
+            'price_max' => round($priceMax, 4),
+        ]);
+    }
+
+    /**
+     * Overall (aggregate) daily ACOS history for all SHOPPING campaigns.
+     * Used by overall ACOS badge eye icon.
+     */
+    public function getGoogleShoppingOverallAcosChartData(Request $request)
+    {
+        $startDate = $request->startDate ?? \Carbon\Carbon::now()->subDays(29)->format('Y-m-d');
+        $endDate = $request->endDate ?? \Carbon\Carbon::now()->format('Y-m-d');
+
+        $data = DB::table('google_ads_campaigns')
+            ->selectRaw('
+                date,
+                SUM(metrics_cost_micros) / 1000000 as spend,
+                SUM(ga4_actual_revenue) as ga4_actual_sales,
+                SUM(ga4_ad_sales) as ga4_sales
+            ')
+            ->whereNotNull('date')
+            ->where('advertising_channel_type', 'SHOPPING')
+            ->whereBetween('date', [$startDate, $endDate])
+            ->groupBy('date')
+            ->orderBy('date', 'asc')
+            ->get();
+
+        $useGA4Actual = $data->sum('ga4_actual_sales') > 0;
+        $byDate = [];
+        foreach ($data as $row) {
+            $spend = (float) $row->spend;
+            $sales = $useGA4Actual ? (float) $row->ga4_actual_sales : (float) $row->ga4_sales;
+            $acos = 0;
+            if ($sales >= 1) {
+                $acos = ($spend / $sales) * 100;
+            } elseif ($spend > 0) {
+                $acos = 100;
+            }
+            $byDate[$row->date] = round($acos, 2);
+        }
+
+        $labels = [];
+        $dates = [];
+        $acosValues = [];
+        $start = \Carbon\Carbon::parse($startDate);
+        $end = \Carbon\Carbon::parse($endDate);
+        for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
+            $dateStr = $d->format('Y-m-d');
+            $labels[] = $d->format('M d');
+            $dates[] = $dateStr;
+            $acosValues[] = $byDate[$dateStr] ?? 0;
+        }
+
+        $min = $acosValues ? min($acosValues) : 0;
+        $max = $acosValues ? max($acosValues) : 0;
+
+        return response()->json([
+            'labels' => $labels,
+            'dates' => $dates,
+            'acos' => $acosValues,
+            'min' => round($min, 2),
+            'max' => round($max, 2),
+        ]);
+    }
+
+    /**
+     * Overall (aggregate) daily CVR and Price (CPC) history for all SHOPPING campaigns.
+     * Used by overall CVR badge eye icon.
+     */
+    public function getGoogleShoppingOverallCvrPriceChartData(Request $request)
+    {
+        $startDate = $request->startDate ?? \Carbon\Carbon::now()->subDays(29)->format('Y-m-d');
+        $endDate = $request->endDate ?? \Carbon\Carbon::now()->format('Y-m-d');
+
+        $data = DB::table('google_ads_campaigns')
+            ->selectRaw('
+                date,
+                SUM(metrics_clicks) as clicks,
+                SUM(metrics_cost_micros) / 1000000 as spend,
+                SUM(ga4_actual_sold_units) as ga4_actual_orders,
+                SUM(ga4_sold_units) as ga4_orders
+            ')
+            ->whereNotNull('date')
+            ->where('advertising_channel_type', 'SHOPPING')
+            ->whereBetween('date', [$startDate, $endDate])
+            ->groupBy('date')
+            ->orderBy('date', 'asc')
+            ->get();
+
+        $useGA4Actual = $data->sum('ga4_actual_orders') > 0;
+        $byDate = [];
+        foreach ($data as $row) {
+            $clicks = (float) $row->clicks;
+            $spend = (float) $row->spend;
+            $orders = $useGA4Actual ? (float) $row->ga4_actual_orders : (float) $row->ga4_orders;
+            $cvr = ($clicks >= 1 && $orders > 0) ? round(($orders / $clicks) * 100, 2) : 0;
+            $price = ($clicks >= 1) ? round($spend / $clicks, 4) : 0;
+            $byDate[$row->date] = ['cvr' => $cvr, 'price' => $price];
+        }
+
+        $labels = [];
+        $dates = [];
+        $cvrValues = [];
+        $priceValues = [];
+        $start = \Carbon\Carbon::parse($startDate);
+        $end = \Carbon\Carbon::parse($endDate);
+        for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
+            $dateStr = $d->format('Y-m-d');
+            $labels[] = $d->format('M d');
+            $dates[] = $dateStr;
+            $entry = $byDate[$dateStr] ?? ['cvr' => 0, 'price' => 0];
+            $cvrValues[] = $entry['cvr'];
+            $priceValues[] = $entry['price'];
+        }
+
+        $cvrMin = $cvrValues ? min($cvrValues) : 0;
+        $cvrMax = $cvrValues ? max($cvrValues) : 0;
+        $priceMin = $priceValues ? min($priceValues) : 0;
+        $priceMax = $priceValues ? max($priceValues) : 0;
+
+        return response()->json([
+            'labels' => $labels,
+            'dates' => $dates,
+            'cvr' => $cvrValues,
+            'price' => $priceValues,
+            'cvr_min' => round($cvrMin, 2),
+            'cvr_max' => round($cvrMax, 2),
+            'price_min' => round($priceMin, 4),
+            'price_max' => round($priceMax, 4),
+        ]);
+    }
+
     private function getFilteredChartData(Request $request, $filterType = null)
     {
         $startDate = $request->input('startDate');
