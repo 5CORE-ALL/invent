@@ -65,6 +65,10 @@ class FetchReverbData extends Command
         $rL30 = $this->calculateQuantitiesFromMetrics($l30Start, $l30End);
         $rL60 = $this->calculateQuantitiesFromMetrics($l60Start, $l60End);
 
+        // Fetch bump bid % for each listing (only bump bid from Reverb API)
+        $this->info('Fetching bump bid % for each listing...');
+        $bumpBidBySku = $this->fetchBumpBidForListings($listingMap);
+
         // Prepare bulk update data - Process ALL listed SKUs (not just those with orders)
         $bulkData = [];
         foreach ($listingMap as $sku => $listing) {
@@ -74,6 +78,7 @@ class FetchReverbData extends Command
             $price = $listing['price']['amount'] ?? null;
             $views = $listing['stats']['views'] ?? null;
             $remainingInventory = $listing['inventory'] ?? null;
+            $bumpBid = $bumpBidBySku[$sku] ?? null;
 
             $bulkData[] = [
                 'sku' => $sku,
@@ -82,6 +87,7 @@ class FetchReverbData extends Command
                 'price' => $price,
                 'views' => $views,
                 'remaining_inventory' => $remainingInventory,
+                'bump_bid' => $bumpBid,
                 'updated_at' => now(),
                 'created_at' => now(),
             ];
@@ -121,6 +127,49 @@ class FetchReverbData extends Command
 
         $this->info('Fetched total listings: ' . count($listings));
         return $listings;
+    }
+
+    /**
+     * Fetch bump bid % only from Reverb API for each listing.
+     * GET https://api.reverb.com/api/listings/{id}/bump returns current_bid (display e.g. "2%").
+     */
+    protected function fetchBumpBidForListings(array $listingMap): array
+    {
+        $result = [];
+        $total = count($listingMap);
+        $index = 0;
+        $headers = [
+            'Authorization' => 'Bearer ' . config('services.reverb.token'),
+            'Accept' => 'application/hal+json',
+            'Accept-Version' => '3.0',
+        ];
+
+        foreach ($listingMap as $sku => $listing) {
+            $listingId = $listing['id'] ?? null;
+            if (!$listingId) {
+                continue;
+            }
+            $index++;
+            if ($index % 50 === 0) {
+                $this->info("  Bump bid: {$index}/{$total}...");
+            }
+
+            $response = Http::withHeaders($headers)->get("https://api.reverb.com/api/listings/{$listingId}/bump");
+            if ($response->failed()) {
+                continue;
+            }
+            $data = $response->json();
+            // current_bid: display "2%", or bump_v2_stats.current_bid.display
+            $currentBid = $data['current_bid'] ?? $data['bump_v2_stats']['current_bid'] ?? null;
+            $display = is_array($currentBid) ? ($currentBid['display'] ?? null) : null;
+            if ($display !== null) {
+                $result[$sku] = $display;
+            }
+            usleep(150000); // 0.15s between calls to avoid rate limit
+        }
+
+        $this->info('Fetched bump bid for ' . count($result) . ' listings.');
+        return $result;
     }
 
     protected function fetchAllOrders(): void

@@ -211,6 +211,8 @@ class ReverbController extends Controller
                 $processedItem["views"] = $reverbItem->views ?? 0;
                 $processedItem["r_l30"] = $reverbItem->r_l30 ?? 0;
                 $processedItem["r_l60"] = $reverbItem->r_l60 ?? 0;
+                // Bump bid % only (from Reverb API)
+                $processedItem["Bump"] = $reverbItem->bump_bid ?? null;
             } else {
                 $processedItem["price"] = 0;
                 $processedItem["price_wo_ship"] = 0;
@@ -219,13 +221,15 @@ class ReverbController extends Controller
                 $processedItem["r_l60"] = 0;
             }
 
-            // Add all data from reverb_view_data if available
+            // Add all data from reverb_view_data if available (Bump already set from reverb_products.bump_bid when present)
             if (isset($reverbViewData[$sku])) {
                 $viewData = $reverbViewData[$sku];
 
                 // Process values column (cast to array)
                 $valuesArr = $viewData->values ?: [];
-                $processedItem["Bump"] = $valuesArr["bump"] ?? null;
+                if (!isset($processedItem["Bump"]) || $processedItem["Bump"] === null) {
+                    $processedItem["Bump"] = $valuesArr["bump"] ?? null;
+                }
                 $processedItem["s bump"] = $valuesArr["s_bump"] ?? null;
                 $processedItem["sprice"] = isset($valuesArr["SPRICE"]) ? floatval($valuesArr["SPRICE"]) : null;
                 $processedItem["spft_percent"] = isset($valuesArr["SPFT"]) ? floatval(str_replace("%", "", $valuesArr["SPFT"])) : null;
@@ -407,6 +411,49 @@ class ReverbController extends Controller
                 500
             );
         }
+    }
+
+    /**
+     * Save recommended bid (RE BID) to reverb_products.recommended_bid column (after bump_bid)
+     */
+    public function saveRecommendedBid(Request $request)
+    {
+        $request->validate([
+            'sku' => 'required|string',
+            'recommended_bid' => 'nullable|string|max:50',
+        ]);
+        $sku = $request->input('sku');
+        $recommendedBid = $request->input('recommended_bid');
+        $value = ($recommendedBid === '' || $recommendedBid === null) ? null : trim($recommendedBid);
+
+        $reverbProduct = ReverbProduct::updateOrCreate(
+            ['sku' => $sku],
+            ['recommended_bid' => $value]
+        );
+
+        return response()->json(['success' => true, 'data' => $reverbProduct]);
+    }
+
+    /**
+     * Save Bump Req (like NRA: REQ/NR) to reverb_view_data.bump_req column
+     */
+    public function saveBumpReq(Request $request)
+    {
+        $request->validate([
+            'sku' => 'required|string',
+            'bump_req' => 'required|in:REQ,NR',
+        ]);
+        $sku = $request->input('sku');
+        $bumpReq = $request->input('bump_req');
+
+        $reverbViewData = ReverbViewData::firstOrNew(['sku' => $sku]);
+        $reverbViewData->bump_req = $bumpReq;
+        if (!$reverbViewData->exists) {
+            $reverbViewData->parent = ProductMaster::where('sku', $sku)->value('parent');
+        }
+        $reverbViewData->save();
+
+        return response()->json(['success' => true, 'data' => $reverbViewData]);
     }
 
     public function saveNrToDatabase(Request $request)
@@ -765,6 +812,8 @@ class ReverbController extends Controller
                 $processedItem["RV L30"] = $reverbItem->r_l30 ?? 0;
                 $processedItem["RV L60"] = $reverbItem->r_l60 ?? 0;
                 $processedItem["R Stock"] = $reverbItem->remaining_inventory ?? 0;
+                $processedItem["Bump"] = $reverbItem->bump_bid ?? null; // Bump bid % only from API
+                $processedItem["RE_BID"] = $reverbItem->recommended_bid ?? null; // Recommended bid in reverb_products
                 $processedItem["Missing"] = ''; // SKU exists in Reverb
             } else {
                 $processedItem["RV Price"] = 0;
@@ -772,6 +821,8 @@ class ReverbController extends Controller
                 $processedItem["RV L30"] = 0;
                 $processedItem["RV L60"] = 0;
                 $processedItem["R Stock"] = 0;
+                $processedItem["Bump"] = null;
+                $processedItem["RE_BID"] = null;
                 $processedItem["Missing"] = ''; // Will be set later based on INV and nr_req
             }
 
@@ -850,6 +901,7 @@ class ReverbController extends Controller
             $processedItem["SGPFT"] = 0;
             $processedItem["SPFT"] = 0;
             $processedItem["SROI"] = 0;
+            $processedItem["bump_req"] = 'REQ';
 
             if (isset($reverbViewData[$sku])) {
                 $viewData = $reverbViewData[$sku];
@@ -859,6 +911,8 @@ class ReverbController extends Controller
                 $processedItem["SGPFT"] = isset($valuesArr["SGPFT"]) ? floatval($valuesArr["SGPFT"]) : 0;
                 $processedItem["SPFT"] = isset($valuesArr["SPFT"]) ? floatval(str_replace("%", "", $valuesArr["SPFT"])) : 0;
                 $processedItem["SROI"] = isset($valuesArr["SROI"]) ? floatval(str_replace("%", "", $valuesArr["SROI"])) : 0;
+                // Bump Req like NRA: column first, fallback to values
+                $processedItem["bump_req"] = $viewData->bump_req ?? $valuesArr["bump_req"] ?? 'REQ';
             }
 
             // Calculate profit metrics

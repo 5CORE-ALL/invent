@@ -18,6 +18,8 @@ class ReverbProduct extends Model
         'price',
         'views',
         'remaining_inventory',
+        'bump_bid',
+        'recommended_bid',
         'status',
     ];
 }
