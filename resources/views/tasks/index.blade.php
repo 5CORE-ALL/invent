@@ -732,6 +732,30 @@
     </div>
 </div>
 
+<!-- Task Info Modal (Full Text) -->
+<div class="modal fade" id="taskInfoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                <h5 class="modal-title">
+                    <i class="mdi mdi-text-box me-2"></i>Task Details
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <h6 class="text-primary mb-3">Task Title:</h6>
+                <p id="task-info-title" class="mb-4" style="font-size: 15px; line-height: 1.6;"></p>
+                
+                <h6 class="text-primary mb-3">Description:</h6>
+                <p id="task-info-description" style="font-size: 14px; line-height: 1.6; white-space: pre-wrap;"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Mark as Done Modal -->
 <div class="modal fade" id="doneModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog">
@@ -1652,6 +1676,30 @@
                     }
                 });
             }
+
+            // Expand Task Info (show full title and description)
+            $(document).on('click', '.expand-task-info', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                var taskId = $(this).data('id');
+                console.log('Expanding task:', taskId);
+                
+                $.ajax({
+                    url: '/tasks/' + taskId,
+                    type: 'GET',
+                    success: function(response) {
+                        console.log('Task data loaded:', response);
+                        $('#task-info-title').text(response.title || 'No title');
+                        $('#task-info-description').text(response.description || 'No description available.');
+                        $('#taskInfoModal').modal('show');
+                    },
+                    error: function(xhr) {
+                        console.error('Error loading task:', xhr);
+                        alert('Failed to load task details');
+                    }
+                });
+            });
 
             // View Links
             $(document).on('click', '.view-links', function(e) {
