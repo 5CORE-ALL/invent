@@ -5,6 +5,7 @@ namespace App\Http\Controllers\MarketPlace;
 use App\Http\Controllers\Controller;
 use App\Models\ProductMaster;
 use App\Models\TikTokProduct;
+use App\Models\TiktokCampaignReport;
 use App\Models\ShopifySku;
 use App\Models\ChannelMaster;
 use App\Models\MarketplacePercentage;
@@ -50,6 +51,7 @@ class TikTokPricingController extends Controller
             // Auto-save daily summary in background (non-blocking)
             $this->saveDailySummaryIfNeeded($data['data'] ?? []);
 
+            // Tabulator expects an array; totalDistinctCampaigns is fetched separately via /tiktok-distinct-campaign-count
             return response()->json($data['data'] ?? []);
         } catch (\Exception $e) {
             Log::error('Error fetching TikTok data for Tabulator: ' . $e->getMessage());
@@ -62,6 +64,24 @@ class TikTokPricingController extends Controller
             }
             
             return response()->json(['error' => 'Failed to fetch data: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Return total distinct campaign count for Ads section badge (matches COUNT(DISTINCT campaign_name) in tiktok_campaign_reports).
+     */
+    public function tiktokDistinctCampaignCount(Request $request)
+    {
+        try {
+            $totalDistinctCampaigns = (int) DB::table('tiktok_campaign_reports')
+                ->whereNotNull('campaign_name')
+                ->where('campaign_name', '!=', '')
+                ->selectRaw('COUNT(DISTINCT campaign_name) as cnt')
+                ->value('cnt');
+            return response()->json(['totalDistinctCampaigns' => $totalDistinctCampaigns]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching TikTok distinct campaign count: ' . $e->getMessage());
+            return response()->json(['totalDistinctCampaigns' => 0]);
         }
     }
 
@@ -136,6 +156,111 @@ class TikTokPricingController extends Controller
             foreach ($orderItems as $item) {
                 $soldData[strtoupper($item->sku)] = intval($item->total_sold);
             }
+        }
+
+        // Campaign map and metrics for utilized/ads columns (same as tiktok/utilized)
+        $campaignMapBySku = [];
+        $campaignMetricsBySku = [];
+        try {
+            $allCampaignsL30 = TiktokCampaignReport::where('report_range', 'L30')
+                ->where('creative_type', 'Product card')
+                ->whereNotNull('campaign_name')->where('campaign_name', '!=', '')
+                ->whereNotNull('product_id')->where('product_id', '!=', '')
+                ->select('product_id', 'campaign_name', 'campaign_id', 'creative_type')
+                ->get();
+            $allCampaignsL7 = TiktokCampaignReport::where('report_range', 'L7')
+                ->where('creative_type', 'Product card')
+                ->whereNotNull('campaign_name')->where('campaign_name', '!=', '')
+                ->whereNotNull('product_id')->where('product_id', '!=', '')
+                ->select('product_id', 'campaign_name', 'campaign_id', 'creative_type')
+                ->get();
+            $allCampaigns = $allCampaignsL30->concat($allCampaignsL7);
+
+            $campaignMetricsL30 = TiktokCampaignReport::where('report_range', 'L30')
+                ->where('creative_type', 'Product card')
+                ->whereNotNull('campaign_name')->where('campaign_name', '!=', '')
+                ->whereNotNull('product_id')->where('product_id', '!=', '')
+                ->get()
+                ->groupBy(function ($item) { return strtoupper(trim($item->campaign_name)); })
+                ->map(function ($group) {
+                    $first = $group->first();
+                    return (object)[
+                        'sku_upper' => strtoupper(trim($group->first()->campaign_name)),
+                        'total_cost' => $group->sum('cost'),
+                        'total_clicks' => $group->sum('product_ad_clicks'),
+                        'total_revenue' => $group->sum('gross_revenue'),
+                        'total_sku_orders' => $group->sum('sku_orders'),
+                        'avg_roi' => $first && $first->roi !== null ? (float)$first->roi : 0,
+                        'avg_in_roas' => $first && $first->in_roas !== null ? (float)$first->in_roas : 0,
+                        'custom_status' => $first && $first->custom_status ? $first->custom_status : null,
+                        'budget' => $first && $first->budget !== null ? (float)$first->budget : null,
+                    ];
+                });
+            $campaignMetricsL7 = TiktokCampaignReport::where('report_range', 'L7')
+                ->where('creative_type', 'Product card')
+                ->whereNotNull('campaign_name')->where('campaign_name', '!=', '')
+                ->whereNotNull('product_id')->where('product_id', '!=', '')
+                ->get()
+                ->groupBy(function ($item) { return strtoupper(trim($item->campaign_name)); })
+                ->map(function ($group) {
+                    $first = $group->first();
+                    return (object)[
+                        'sku_upper' => strtoupper(trim($group->first()->campaign_name)),
+                        'total_cost' => $group->sum('cost'),
+                        'total_clicks' => $group->sum('product_ad_clicks'),
+                        'total_revenue' => $group->sum('gross_revenue'),
+                        'total_sku_orders' => $group->sum('sku_orders'),
+                        'avg_roi' => $first && $first->roi !== null ? (float)$first->roi : 0,
+                        'avg_in_roas' => $first && $first->in_roas !== null ? (float)$first->in_roas : 0,
+                        'custom_status' => $first && $first->custom_status ? $first->custom_status : null,
+                        'budget' => $first && $first->budget !== null ? (float)$first->budget : null,
+                    ];
+                });
+
+            foreach ($campaignMetricsL30 as $skuUpper => $metrics) {
+                $campaignMetricsBySku[$skuUpper] = [
+                    'cost' => (float)($metrics->total_cost ?? 0),
+                    'clicks' => (int)($metrics->total_clicks ?? 0),
+                    'revenue' => (float)($metrics->total_revenue ?? 0),
+                    'sku_orders' => (int)($metrics->total_sku_orders ?? 0),
+                    'roi' => (float)($metrics->avg_roi ?? 0),
+                    'in_roas' => (float)($metrics->avg_in_roas ?? 0),
+                    'custom_status' => $metrics->custom_status ?? null,
+                    'budget' => $metrics->budget !== null ? (float)$metrics->budget : null,
+                ];
+            }
+            foreach ($campaignMetricsL7 as $skuUpper => $metrics) {
+                if (isset($campaignMetricsBySku[$skuUpper])) {
+                    $campaignMetricsBySku[$skuUpper]['cost'] += (float)($metrics->total_cost ?? 0);
+                    $campaignMetricsBySku[$skuUpper]['clicks'] += (int)($metrics->total_clicks ?? 0);
+                    $campaignMetricsBySku[$skuUpper]['revenue'] += (float)($metrics->total_revenue ?? 0);
+                    $campaignMetricsBySku[$skuUpper]['sku_orders'] += (int)($metrics->total_sku_orders ?? 0);
+                    if ($campaignMetricsBySku[$skuUpper]['roi'] == 0) $campaignMetricsBySku[$skuUpper]['roi'] = (float)($metrics->avg_roi ?? 0);
+                    if ($campaignMetricsBySku[$skuUpper]['in_roas'] == 0) $campaignMetricsBySku[$skuUpper]['in_roas'] = (float)($metrics->avg_in_roas ?? 0);
+                    if (empty($campaignMetricsBySku[$skuUpper]['custom_status'])) $campaignMetricsBySku[$skuUpper]['custom_status'] = $metrics->custom_status ?? null;
+                    if ($campaignMetricsBySku[$skuUpper]['budget'] === null && $metrics->budget !== null) $campaignMetricsBySku[$skuUpper]['budget'] = (float)$metrics->budget;
+                } else {
+                    $campaignMetricsBySku[$skuUpper] = [
+                        'cost' => (float)($metrics->total_cost ?? 0),
+                        'clicks' => (int)($metrics->total_clicks ?? 0),
+                        'revenue' => (float)($metrics->total_revenue ?? 0),
+                        'sku_orders' => (int)($metrics->total_sku_orders ?? 0),
+                        'roi' => (float)($metrics->avg_roi ?? 0),
+                        'in_roas' => (float)($metrics->avg_in_roas ?? 0),
+                        'custom_status' => $metrics->custom_status ?? null,
+                        'budget' => $metrics->budget !== null ? (float)$metrics->budget : null,
+                    ];
+                }
+            }
+            foreach ($allCampaigns as $campaign) {
+                if (!empty($campaign->campaign_name)) {
+                    $cn = strtoupper(trim($campaign->campaign_name));
+                    if (!isset($campaignMapBySku[$cn])) $campaignMapBySku[$cn] = [];
+                    if (!in_array($campaign->campaign_name, $campaignMapBySku[$cn])) $campaignMapBySku[$cn][] = $campaign->campaign_name;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('TikTok pricing: campaign/ads data fetch failed: ' . $e->getMessage());
         }
 
         // Process data
@@ -221,6 +346,7 @@ class TikTokPricingController extends Controller
                 $processedItem["SGPFT"] = isset($valuesArr["SGPFT"]) ? floatval($valuesArr["SGPFT"]) : 0;
                 $processedItem["SPFT"] = isset($valuesArr["SPFT"]) ? floatval(str_replace("%", "", $valuesArr["SPFT"])) : 0;
                 $processedItem["SROI"] = isset($valuesArr["SROI"]) ? floatval(str_replace("%", "", $valuesArr["SROI"])) : 0;
+                $processedItem["NR"] = $valuesArr["NR"] ?? 'RA';
             }
 
             // Calculate profit metrics
@@ -259,6 +385,30 @@ class TikTokPricingController extends Controller
             $inv = $processedItem["INV"];
             $l30 = $processedItem["L30"];
             $processedItem["TT Dil%"] = $inv > 0 ? round(($l30 / $inv) * 100, 2) : 0;
+
+            // Ads/utilized columns (for "Show Utilized Columns" button)
+            $skuUpper = strtoupper(trim($sku));
+            $hasCampaign = isset($campaignMapBySku[$skuUpper]) && !empty($campaignMapBySku[$skuUpper]);
+            $processedItem["campaign_name"] = $hasCampaign ? implode(', ', array_unique($campaignMapBySku[$skuUpper])) : '';
+            $processedItem["hasCampaign"] = $hasCampaign;
+            $metrics = $campaignMetricsBySku[$skuUpper] ?? [
+                'cost' => 0, 'clicks' => 0, 'revenue' => 0, 'sku_orders' => 0, 'roi' => 0, 'in_roas' => 0, 'custom_status' => null, 'budget' => null,
+            ];
+            $outRoas = (float)($metrics['roi'] ?? 0);
+            $inRoas = (float)($metrics['in_roas'] ?? 0);
+            $customStatus = $metrics['custom_status'] ?? null;
+            if ($hasCampaign && (empty($customStatus) || $customStatus === null)) $customStatus = 'Active';
+            elseif (empty($customStatus) || $customStatus === null) $customStatus = 'Not Created';
+            $processedItem["NR"] = $processedItem["NR"] ?? 'RA';
+            $processedItem["ads_price"] = $processedItem["TT Price"] ?? 0;
+            $processedItem["budget"] = isset($metrics['budget']) && $metrics['budget'] !== null ? round((float)$metrics['budget'], 2) : null;
+            $processedItem["spend"] = round((float)($metrics['cost'] ?? 0), 2);
+            $processedItem["ad_sold"] = (int)($metrics['sku_orders'] ?? 0);
+            $processedItem["ad_clicks"] = (int)($metrics['clicks'] ?? 0);
+            $processedItem["acos"] = $outRoas > 0 ? round(100 / $outRoas) : 0;
+            $processedItem["out_roas"] = round($outRoas, 2);
+            $processedItem["in_roas"] = round($inRoas, 2);
+            $processedItem["status"] = $customStatus;
 
             $processedData[] = $processedItem;
         }

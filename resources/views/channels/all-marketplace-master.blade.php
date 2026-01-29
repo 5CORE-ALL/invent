@@ -875,11 +875,15 @@
                         hozAlign: "center",
                         sorter: function(a, b, aRow, bRow) {
                             const calcTotal = (row) => {
+                                const channel = (row['Channel '] || '').trim().toLowerCase();
+                                if (channel === 'tiktok shop') return parseNumber(row['TikTok Ad Spend'] || 0);
                                 const kwSpent = parseNumber(row['KW Spent'] || 0);
                                 const pmtSpent = parseNumber(row['PMT Spent'] || 0);
                                 const hlSpent = parseNumber(row['HL Spent'] || 0);
                                 const walmartSpent = parseNumber(row['Walmart Spent'] || 0);
-                                return kwSpent + pmtSpent + hlSpent + walmartSpent;
+                                if (channel === 'walmart') return walmartSpent;
+                                if (channel === 'temu' || channel === 'shopifyb2c') return kwSpent;
+                                return kwSpent + pmtSpent + hlSpent;
                             };
                             return calcTotal(aRow.getData()) - calcTotal(bRow.getData());
                         },
@@ -890,20 +894,41 @@
                             const pmtSpent = parseNumber(rowData['PMT Spent'] || 0);
                             const hlSpent = parseNumber(rowData['HL Spent'] || 0);
                             const walmartSpent = parseNumber(rowData['Walmart Spent'] || 0);
+                            const tiktokAdSpend = parseNumber(rowData['TikTok Ad Spend'] || 0);
                             
                             // For Walmart, use Walmart Spent as total
                             // For Temu and Shopify B2C, use KW Spent as total (Google Ads/Temu ad spend is stored in KW Spent field)
+                            // For Tiktok Shop, use TikTok Ad Spend from tiktok_campaign_reports
                             let totalSpent = 0;
                             if (channel === 'walmart') {
                                 totalSpent = walmartSpent;
                             } else if (channel === 'temu' || channel === 'shopifyb2c') {
                                 totalSpent = kwSpent;
+                            } else if (channel === 'tiktok shop') {
+                                totalSpent = tiktokAdSpend;
                             } else {
                                 totalSpent = kwSpent + pmtSpent + hlSpent;
                             }
                             
                             if (totalSpent === 0) return '-';
                             
+                            // For Tiktok Shop, show TikTok Ad Spend (from tiktok_campaign_reports)
+                            if (channel === 'tiktok shop') {
+                                return `
+                                    <select class="form-select form-select-sm ad-spend-select"
+                                            style="min-width: 90px;
+                                                   font-size: 10px;
+                                                   padding: 3px 6px;
+                                                   background-color: #91e1ff;
+                                                   color: black;
+                                                   border: 1px solid #91e1ff;
+                                                   font-weight: bold;">
+                                        <option value="total" selected style="background-color: #91e1ff; color: black; font-weight: bold;">$${Math.round(totalSpent).toLocaleString('en-US')}</option>
+                                        <option value="tiktok" style="background-color: #000000; color: white; font-weight: bold;">TT: $${tiktokAdSpend.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option>
+                                    </select>
+                                `;
+                            }
+
                             // For Walmart, show single option
                             if (channel === 'walmart') {
                                 return `
@@ -980,12 +1005,15 @@
                                 const pmtSpent = parseNumber(row['PMT Spent'] || 0);
                                 const hlSpent = parseNumber(row['HL Spent'] || 0);
                                 const walmartSpent = parseNumber(row['Walmart Spent'] || 0);
+                                const tiktokAdSpend = parseNumber(row['TikTok Ad Spend'] || 0);
                                 
-                                // For Walmart, Temu, and Shopify B2C, only count their specific spend field to avoid double counting
+                                // For Walmart, Temu, Shopify B2C, Tiktok Shop - only count their specific spend field
                                 if (channel === 'walmart') {
                                     total += walmartSpent;
                                 } else if (channel === 'temu' || channel === 'shopifyb2c') {
                                     total += kwSpent; // Temu/Google Ads spend is stored in KW Spent
+                                } else if (channel === 'tiktok shop') {
+                                    total += tiktokAdSpend; // TikTok Ad Spend from tiktok_campaign_reports
                                 } else {
                                     total += kwSpent + pmtSpent + hlSpent;
                                 }
@@ -1149,17 +1177,20 @@
                     const missCount = parseNumber(row['Miss'] || 0);
                     const nmapCount = parseNumber(row['NMap'] || 0);
                     
-                    // Ad spend - handle Walmart, Temu, and Shopify B2C separately to avoid double counting
+                    // Ad spend - handle Walmart, Temu, Shopify B2C, Tiktok Shop separately to avoid double counting
                     const kwSpent = parseNumber(row['KW Spent'] || 0);
                     const pmtSpent = parseNumber(row['PMT Spent'] || 0);
                     const hlSpent = parseNumber(row['HL Spent'] || 0);
                     const walmartSpent = parseNumber(row['Walmart Spent'] || 0);
+                    const tiktokAdSpend = parseNumber(row['TikTok Ad Spend'] || 0);
                     
                     let adSpend = 0;
                     if (channel === 'walmart') {
                         adSpend = walmartSpent;
                     } else if (channel === 'temu' || channel === 'shopifyb2c') {
                         adSpend = kwSpent; // Temu/Google Ads spend is stored in KW Spent
+                    } else if (channel === 'tiktok shop') {
+                        adSpend = tiktokAdSpend; // TikTok Ad Spend from tiktok_campaign_reports
                     } else {
                         adSpend = kwSpent + pmtSpent + hlSpent;
                     }

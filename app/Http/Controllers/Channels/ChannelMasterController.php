@@ -99,6 +99,7 @@ use App\Models\TemuMetric;
 use App\Models\TemuProductSheet;
 use App\Models\TiendamiaProduct;
 use App\Models\TiendamiaListingStatus;
+use App\Models\TiktokCampaignReport;
 use App\Models\TiktokSheet;
 use App\Models\TiktokShopListingStatus;
 use App\Models\TopDawgSheetdata;
@@ -2885,6 +2886,23 @@ class ChannelMasterController extends Controller
         // Get Map and Miss counts from amazon_channel_summary_data table
         $mapMissCounts = $this->getMapAndMissCounts('tiktok');
 
+        // TikTok Ad Spend: same logic as Ads/Pricing page - only campaigns whose campaign_name matches a product SKU (Product card = SKU-named campaigns). Sum L30+L7 cost for those campaigns only.
+        $productSkusUpper = ProductMaster::whereRaw("LOWER(sku) NOT LIKE '%parent%'")->pluck('sku')->map(function ($s) { return strtoupper(trim($s)); })->unique()->values()->toArray();
+        $tiktokAdSpend = 0.0;
+        if (!empty($productSkusUpper)) {
+            $placeholders = implode(',', array_fill(0, count($productSkusUpper), '?'));
+            $tiktokAdSpend = (float) TiktokCampaignReport::whereIn('report_range', ['L30', 'L7'])
+                ->where('creative_type', 'Product card')
+                ->whereNotNull('campaign_name')->where('campaign_name', '!=', '')
+                ->whereNotNull('product_id')->where('product_id', '!=', '')
+                ->whereRaw('UPPER(TRIM(campaign_name)) IN (' . $placeholders . ')', $productSkusUpper)
+                ->sum('cost');
+        }
+        $adsPct = $l30Sales > 0 ? ($tiktokAdSpend / $l30Sales) * 100 : 0;
+        $netProfit = $totalProfit - $tiktokAdSpend;
+        $nPftWithAds = $gProfitPct - $adsPct;
+        $nRoiWithAds = $totalCogs > 0 ? ($netProfit / $totalCogs) * 100 : 0;
+
         $result[] = [
             'Channel '   => 'Tiktok Shop',
             'L-60 Sales' => intval($l60Sales),
@@ -2898,9 +2916,10 @@ class ChannelMasterController extends Controller
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
             'Total PFT'  => round($totalProfit, 2),
-            'N PFT'      => round($nPft, 2),
-            'N ROI'      => round($nRoi, 2),
-            'Ads%'       => 0, // TikTok has no ads
+            'N PFT'      => round($nPftWithAds, 2),
+            'N ROI'      => round($nRoiWithAds, 2),
+            'Ads%'       => round($adsPct, 2),
+            'TikTok Ad Spend' => round($tiktokAdSpend, 2),
             'KW Spent'   => 0,
             'PMT Spent'  => 0,
             'HL Spent'   => 0,

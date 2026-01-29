@@ -73,6 +73,8 @@ class GoogleAdsCampaign extends Model
         'metrics_video_view_rate',
         'ga4_sold_units',
         'ga4_ad_sales',
+        'ga4_actual_sold_units',
+        'ga4_actual_revenue',
         'date',
     ];
 
@@ -121,5 +123,7 @@ class GoogleAdsCampaign extends Model
         'budget_total_amount_micros' => 'integer',
         'ga4_sold_units' => 'decimal:2',
         'ga4_ad_sales' => 'decimal:2',
+        'ga4_actual_sold_units' => 'decimal:2',
+        'ga4_actual_revenue' => 'decimal:2',
     ];
 }

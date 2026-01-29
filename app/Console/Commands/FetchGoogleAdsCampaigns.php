@@ -4,8 +4,10 @@ namespace App\Console\Commands;
 
 use App\Models\GoogleAdsCampaign;
 use App\Services\GoogleAdsSbidService;
+use App\Services\GA4ApiService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class FetchGoogleAdsCampaigns extends Command
@@ -25,11 +27,13 @@ class FetchGoogleAdsCampaigns extends Command
     protected $description = 'Fetch Google Ads campaign data and metrics';
 
     protected $googleAdsService;
+    protected $ga4Service;
 
-    public function __construct(GoogleAdsSbidService $googleAdsService)
+    public function __construct(GoogleAdsSbidService $googleAdsService, GA4ApiService $ga4Service)
     {
         parent::__construct();
         $this->googleAdsService = $googleAdsService;
+        $this->ga4Service = $ga4Service;
     }
 
     /**
@@ -170,6 +174,11 @@ class FetchGoogleAdsCampaigns extends Command
                 $this->info("Created {$zeroMetricsCount} records for campaigns with zero metrics");
             }
             Log::info("Google Ads campaign data fetch completed. Inserted: {$insertedCount}, Updated: {$updatedCount}, Zero-metrics: {$zeroMetricsCount}");
+
+            // Step 5: Fetch GA4 actual data for the same date range
+            $this->info("");
+            $this->info("Step 5: Fetching GA4 actual data...");
+            $this->fetchGA4Data($startDate, $endDate);
 
             return 0;
 
@@ -400,8 +409,12 @@ class FetchGoogleAdsCampaigns extends Command
             // allConversions = add-to-cart, begin-checkout, purchase, etc. — too high vs GA4
             // conversions = primary conversion (Purchase) — closer to GA4 Key events purchase (e.g. 97)
             'ga4_sold_units' => $metrics['conversions'] ?? 0,
-            // allConversionsValue = conversion value (revenue), same units as Amazon sales30d
-            'ga4_ad_sales' => $metrics['allConversionsValue'] ?? 0,
+            // ga4_ad_sales: Use conversionsValue (primary conversion value) to align with conversions count
+            // Note: This is Google Ads conversion value (set in conversion action), NOT actual GA4 e-commerce revenue
+            // GA4 "Total revenue" uses actual purchase amounts from e-commerce tracking, which may differ
+            // conversionsValue = value of primary conversion (Purchase) — matches conversions count
+            // allConversionsValue = includes all conversion actions (add-to-cart, checkout, etc.) — too high
+            'ga4_ad_sales' => $metrics['conversionsValue'] ?? 0,
             
             // Date
             'date' => $segments['date'] ?? Carbon::now()->format('Y-m-d'),
@@ -504,5 +517,97 @@ class FetchGoogleAdsCampaigns extends Command
             // Date
             'date' => $date,
         ];
+    }
+
+    /**
+     * Fetch GA4 actual data and update database
+     */
+    private function fetchGA4Data($startDate, $endDate)
+    {
+        try {
+            // Check if GA4 API is configured
+            if (empty(env('GA4_PROPERTY_ID')) || empty(env('GA4_CLIENT_ID')) || 
+                empty(env('GA4_CLIENT_SECRET')) || empty(env('GA4_REFRESH_TOKEN'))) {
+                $this->warn('GA4 API not configured. Skipping GA4 data fetch.');
+                $this->info('To enable GA4 data, configure GA4_PROPERTY_ID, GA4_CLIENT_ID, GA4_CLIENT_SECRET, GA4_REFRESH_TOKEN in .env');
+                return;
+            }
+
+            $this->info("Fetching GA4 data for date range: {$startDate} to {$endDate}");
+
+            // Fetch daily GA4 data
+            $ga4DailyData = $this->ga4Service->getCampaignMetricsDaily($startDate, $endDate);
+
+            if (empty($ga4DailyData)) {
+                $this->warn('No GA4 data returned. Check API credentials and property ID.');
+                return;
+            }
+
+            $this->info('Found ' . count($ga4DailyData) . ' campaigns in GA4');
+
+            $updated = 0;
+            $notFound = 0;
+            $totalRecords = 0;
+
+            // Update database with GA4 daily data
+            foreach ($ga4DailyData as $campaignName => $dailyRecords) {
+                $campaignNameUpper = strtoupper(trim($campaignName));
+                $campaignNameClean = trim($campaignName);
+                
+                // Find matching campaign in database - try multiple matching strategies
+                $dbCampaign = DB::table('google_ads_campaigns')
+                    ->where('advertising_channel_type', 'SHOPPING')
+                    ->where(function($query) use ($campaignNameUpper, $campaignNameClean) {
+                        // Exact match (case-insensitive, trimmed)
+                        $query->whereRaw('UPPER(TRIM(campaign_name)) = ?', [$campaignNameUpper])
+                              // Partial match from GA4 name
+                              ->orWhere('campaign_name', 'LIKE', '%' . $campaignNameClean . '%')
+                              // Reverse partial match (database name contains GA4 name)
+                              ->orWhereRaw('UPPER(TRIM(campaign_name)) LIKE ?', ['%' . $campaignNameUpper . '%']);
+                    })
+                    ->select('campaign_id', 'campaign_name')
+                    ->distinct()
+                    ->first();
+
+                if (!$dbCampaign) {
+                    $notFound++;
+                    $this->warn("  Not found in DB: {$campaignName}");
+                    continue;
+                }
+
+                // Update each day's data
+                foreach ($dailyRecords as $date => $metrics) {
+                    $updatedCount = DB::table('google_ads_campaigns')
+                        ->where('campaign_id', $dbCampaign->campaign_id)
+                        ->where('date', $date)
+                        ->where('advertising_channel_type', 'SHOPPING')
+                        ->update([
+                            'ga4_actual_sold_units' => $metrics['purchases'],
+                            'ga4_actual_revenue' => $metrics['revenue'],
+                        ]);
+
+                    if ($updatedCount > 0) {
+                        $totalRecords += $updatedCount;
+                    }
+                }
+                
+                $totalPurchases = array_sum(array_column($dailyRecords, 'purchases'));
+                $totalRevenue = array_sum(array_column($dailyRecords, 'revenue'));
+                $updated++;
+                $this->info("  Updated: {$dbCampaign->campaign_name} - Purchases: {$totalPurchases}, Revenue: \${$totalRevenue}");
+            }
+
+            $this->info("GA4 data update completed: {$updated} campaigns, {$totalRecords} records updated");
+            if ($notFound > 0) {
+                $this->warn("  {$notFound} GA4 campaigns not found in database");
+            }
+
+        } catch (\Exception $e) {
+            $this->error("Error fetching GA4 data: " . $e->getMessage());
+            Log::error('Error fetching GA4 data in FetchGoogleAdsCampaigns', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+        }
     }
 }

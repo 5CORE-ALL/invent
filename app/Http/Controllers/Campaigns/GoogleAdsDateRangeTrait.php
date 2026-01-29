@@ -52,32 +52,40 @@ trait GoogleAdsDateRangeTrait
     {
         $campaignRanges = $googleCampaigns->filter(function ($c) use ($sku, $dateRange, $statusFilter) {
             $campaign = strtoupper(trim($c->campaign_name));
+            $campaignCleaned = rtrim(trim($campaign), '.'); // Remove trailing period
             $skuTrimmed = strtoupper(trim($sku));
+            $skuCleaned = rtrim(trim($skuTrimmed), '.'); // Remove trailing period from SKU too
             
             // Handle SEARCH campaigns (end with " SEARCH.")
             $isSearchCampaign = str_ends_with($campaign, ' SEARCH.');
             if ($isSearchCampaign) {
                 // Remove ' SEARCH.' suffix for matching
-                $campaignBase = str_replace(' SEARCH.', '', $campaign);
+                $campaignBase = str_replace(' SEARCH.', '', $campaignCleaned);
                 
                 // Check if SKU is in comma-separated list
                 $parts = array_map('trim', explode(',', $campaignBase));
-                $exactMatch = in_array($skuTrimmed, $parts);
+                $parts = array_map(function($part) {
+                    return rtrim(trim($part), '.');
+                }, $parts);
+                $exactMatch = in_array($skuCleaned, $parts);
                 
                 // If not in list, check if campaign base exactly equals SKU
                 if (!$exactMatch) {
-                    $exactMatch = $campaignBase === $skuTrimmed;
+                    $exactMatch = $campaignBase === $skuCleaned;
                 }
             } else {
                 // For non-SEARCH campaigns (SHOPPING), use standard matching
                 // Check if SKU is in comma-separated list
-                $parts = array_map('trim', explode(',', $campaign));
-                $exactMatch = in_array($skuTrimmed, $parts);
+                $parts = array_map('trim', explode(',', $campaignCleaned));
+                $parts = array_map(function($part) {
+                    return rtrim(trim($part), '.');
+                }, $parts);
+                $exactMatch = in_array($skuCleaned, $parts);
                 
                 // If not in list, check if campaign name exactly equals SKU
                 // This prevents partial matches like "MX 12CH" matching "MX 12CH XU"
                 if (!$exactMatch) {
-                    $exactMatch = $campaign === $skuTrimmed;
+                    $exactMatch = $campaignCleaned === $skuCleaned;
                 }
             }
             
@@ -94,8 +102,14 @@ trait GoogleAdsDateRangeTrait
         $totalCost = $campaignRanges->sum('metrics_cost_micros');
         $totalClicks = $campaignRanges->sum('metrics_clicks');
         $totalImpressions = $campaignRanges->sum('metrics_impressions');
-        $totalGA4Sales = $campaignRanges->sum('ga4_ad_sales');
-        $totalGA4Units = $campaignRanges->sum('ga4_sold_units');
+        
+        // Prefer GA4 actual data (from GA4 API) if available, otherwise use Google Ads API data
+        $totalGA4ActualSales = $campaignRanges->sum('ga4_actual_revenue');
+        $totalGA4ActualUnits = $campaignRanges->sum('ga4_actual_sold_units');
+        
+        // Use GA4 actual data if available (non-zero), otherwise fallback to Google Ads API data
+        $totalGA4Sales = ($totalGA4ActualSales > 0) ? $totalGA4ActualSales : $campaignRanges->sum('ga4_ad_sales');
+        $totalGA4Units = ($totalGA4ActualUnits > 0) ? $totalGA4ActualUnits : $campaignRanges->sum('ga4_sold_units');
 
         // Calculate CPC: cost per click
         // If there are no clicks, CPC is 0 (this is correct - you can't have a CPC without clicks)
