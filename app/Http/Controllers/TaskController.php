@@ -19,26 +19,27 @@ class TaskController extends Controller
         
         if (!$isAdmin) {
             // Normal user: only see tasks they created OR tasks assigned to them
+            // Old table uses email fields
             $tasksQuery->where(function($query) use ($user) {
-                $query->where('assignor_id', $user->id)
-                      ->orWhere('assignee_id', $user->id);
+                $query->where('assignor', $user->email)
+                      ->orWhere('assign_to', $user->email);
             });
         }
 
         // Calculate statistics based on filtered tasks
-        $overdueQuery = (clone $tasksQuery)->whereNotNull('tid')
-                           ->whereRaw('DATE_ADD(tid, INTERVAL 10 DAY) < NOW()')
-                           ->whereNotIn('status', ['completed', 'cancelled']);
+        $overdueQuery = (clone $tasksQuery)->whereNotNull('start_date')
+                           ->whereRaw('DATE_ADD(start_date, INTERVAL 10 DAY) < NOW()')
+                           ->whereNotIn('status', ['Done', 'Archived']);
 
         $stats = [
             'total' => (clone $tasksQuery)->count(),
-            'pending' => (clone $tasksQuery)->where('status', 'pending')->count(),
+            'pending' => (clone $tasksQuery)->where('status', 'Todo')->count(),
             'overdue' => $overdueQuery->count(),
-            'etc_total' => (clone $tasksQuery)->sum('etc_minutes') ?? 0,
-            'atc_total' => (clone $tasksQuery)->sum('atc') ?? 0,
-            'done' => (clone $tasksQuery)->where('status', 'completed')->count(),
-            'done_etc' => (clone $tasksQuery)->where('status', 'completed')->sum('etc_minutes') ?? 0,
-            'done_atc' => (clone $tasksQuery)->where('status', 'completed')->sum('atc') ?? 0,
+            'etc_total' => (clone $tasksQuery)->sum('eta_time') ?? 0,
+            'atc_total' => (clone $tasksQuery)->sum('etc_done') ?? 0,
+            'done' => (clone $tasksQuery)->where('status', 'Done')->count(),
+            'done_etc' => (clone $tasksQuery)->where('status', 'Done')->sum('eta_time') ?? 0,
+            'done_atc' => (clone $tasksQuery)->where('status', 'Done')->sum('etc_done') ?? 0,
         ];
 
         // Get all users for filter dropdowns
@@ -52,17 +53,40 @@ class TaskController extends Controller
         $user = Auth::user();
         $isAdmin = strtolower($user->role ?? '') === 'admin';
 
-        $tasksQuery = Task::with(['assignor', 'assignee']);
+        $tasksQuery = Task::query();
         
         if (!$isAdmin) {
             // Normal user: only see tasks they created OR tasks assigned to them
+            // Old table uses email fields
             $tasksQuery->where(function($query) use ($user) {
-                $query->where('assignor_id', $user->id)
-                      ->orWhere('assignee_id', $user->id);
+                $query->where('assignor', $user->email)
+                      ->orWhere('assign_to', $user->email);
             });
         }
 
         $tasks = $tasksQuery->orderBy('id', 'desc')->get();
+
+        // Map emails to names for display
+        $tasks->each(function($task) {
+            // Find users by email and get their names
+            if ($task->assignor) {
+                $assignorUser = User::where('email', $task->assignor)->first();
+                $task->assignor_name = $assignorUser ? $assignorUser->name : $task->assignor;
+            } else {
+                $task->assignor_name = '-';
+            }
+            
+            if ($task->assign_to) {
+                $assigneeUser = User::where('email', $task->assign_to)->first();
+                $task->assignee_name = $assigneeUser ? $assigneeUser->name : $task->assign_to;
+            } else {
+                $task->assignee_name = '-';
+            }
+            
+            // For permission checks
+            $task->assignor_email = $task->assignor;
+            $task->assignee_email = $task->assign_to;
+        });
 
         return response()->json($tasks);
     }
@@ -98,45 +122,81 @@ class TaskController extends Controller
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
         ]);
 
-        // Set assignor_id
+        // Map to old table field names
         $user = Auth::user();
         $isAdmin = strtolower($user->role ?? '') === 'admin';
         
+        // Get assignor email
         if ($isAdmin && $request->has('assignor_id')) {
-            // Admin can set custom assignor
-            $validated['assignor_id'] = $validated['assignor_id'];
+            $assignorUser = User::find($validated['assignor_id']);
+            $assignorEmail = $assignorUser ? $assignorUser->email : $user->email;
         } else {
-            // Normal user: assignor is always themselves
-            $validated['assignor_id'] = Auth::id();
+            $assignorEmail = $user->email;
         }
         
-        // Set default status to pending for new tasks
-        $validated['status'] = 'pending';
-        
-        $validated['split_tasks'] = $request->has('split_tasks') ? 1 : 0;
-        $validated['flag_raise'] = $request->has('flag_raise') ? 1 : 0;
-
-        // Handle image upload
-        if ($request->hasFile('image')) {
-            $image = $request->file('image');
-            $imageName = time() . '_' . $image->getClientOriginalName();
-            $image->move(public_path('uploads/tasks'), $imageName);
-            $validated['image'] = $imageName;
+        // Get assignee email
+        $assigneeEmail = null;
+        if ($request->has('assignee_id') && $validated['assignee_id']) {
+            $assigneeUser = User::find($validated['assignee_id']);
+            $assigneeEmail = $assigneeUser ? $assigneeUser->email : null;
         }
+        
+        // Map new fields to old table columns
+        $taskData = [
+            'title' => $validated['title'],
+            'description' => $validated['description'] ?? null,
+            'group' => $validated['group'] ?? null,
+            'priority' => $validated['priority'],
+            'assignor' => $assignorEmail,
+            'assign_to' => $assigneeEmail,
+            'split_tasks' => $request->has('split_tasks') ? 1 : 0,
+            'status' => 'Todo', // Default status
+            'eta_time' => $validated['etc_minutes'] ?? 10,
+            'start_date' => $validated['tid'] ?? now(),
+            'link1' => $validated['l1'] ?? null,
+            'link2' => $validated['l2'] ?? null,
+            'link3' => $validated['training_link'] ?? null,
+            'link4' => $validated['video_link'] ?? null,
+            'link5' => $validated['form_link'] ?? null,
+            'link6' => $validated['form_report_link'] ?? null,
+            'link7' => $validated['checklist_link'] ?? null,
+            'link8' => $validated['pl'] ?? null,
+            'link9' => $validated['process'] ?? null,
+            'is_data_from' => 0, // Manual entry
+        ];
 
-        Task::create($validated);
+        Task::create($taskData);
 
         return redirect()->route('tasks.index')->with('success', 'Task created successfully!');
     }
 
     public function show($id)
     {
-        $task = Task::with(['assignor', 'assignee'])->findOrFail($id);
-        
-        // Check if user can view this task
-        $this->authorize('view', $task);
-        
-        return response()->json($task);
+        try {
+            $task = Task::findOrFail($id);
+            
+            // Check if user can view this task
+            $this->authorize('view', $task);
+            
+            // Map email to names for display
+            $taskData = $task->toArray();
+            
+            if ($task->assignor) {
+                $assignorUser = User::where('email', $task->assignor)->first();
+                $taskData['assignor_name'] = $assignorUser ? $assignorUser->name : $task->assignor;
+            }
+            
+            if ($task->assign_to) {
+                $assigneeUser = User::where('email', $task->assign_to)->first();
+                $taskData['assignee_name'] = $assigneeUser ? $assigneeUser->name : $task->assign_to;
+            }
+            
+            return response()->json($taskData);
+        } catch (\Illuminate\Auth\Access\AuthorizationException $e) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Task not found or error loading: ' . $e->getMessage()], 500);
+        }
     }
 
     public function edit($id)
@@ -180,32 +240,52 @@ class TaskController extends Controller
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
         ]);
 
-        // Handle assignor_id (only admin can change it)
+        // Map to old table field names
         $user = Auth::user();
         $isAdmin = strtolower($user->role ?? '') === 'admin';
         
-        if (!$isAdmin || !$request->has('assignor_id')) {
-            // Keep original assignor if not admin or not provided
-            $validated['assignor_id'] = $task->assignor_id;
+        // Get assignor email
+        if ($isAdmin && $request->has('assignor_id')) {
+            $assignorUser = User::find($validated['assignor_id']);
+            $assignorEmail = $assignorUser ? $assignorUser->email : $task->assignor;
+        } else {
+            $assignorEmail = $task->assignor;
         }
-
-        $validated['split_tasks'] = $request->has('split_tasks') ? 1 : 0;
-        $validated['flag_raise'] = $request->has('flag_raise') ? 1 : 0;
-
-        // Handle image upload
-        if ($request->hasFile('image')) {
-            // Delete old image
-            if ($task->image && file_exists(public_path('uploads/tasks/' . $task->image))) {
-                unlink(public_path('uploads/tasks/' . $task->image));
+        
+        // Get assignee email
+        $assigneeEmail = $task->assign_to;
+        if ($request->has('assignee_id')) {
+            if ($validated['assignee_id']) {
+                $assigneeUser = User::find($validated['assignee_id']);
+                $assigneeEmail = $assigneeUser ? $assigneeUser->email : null;
+            } else {
+                $assigneeEmail = null;
             }
-            
-            $image = $request->file('image');
-            $imageName = time() . '_' . $image->getClientOriginalName();
-            $image->move(public_path('uploads/tasks'), $imageName);
-            $validated['image'] = $imageName;
         }
+        
+        // Map new fields to old table columns
+        $updateData = [
+            'title' => $validated['title'],
+            'description' => $validated['description'] ?? null,
+            'group' => $validated['group'] ?? null,
+            'priority' => $validated['priority'],
+            'assignor' => $assignorEmail,
+            'assign_to' => $assigneeEmail,
+            'split_tasks' => $request->has('split_tasks') ? 1 : 0,
+            'eta_time' => $validated['etc_minutes'] ?? $task->eta_time,
+            'start_date' => $validated['tid'] ?? $task->start_date,
+            'link1' => $validated['l1'] ?? null,
+            'link2' => $validated['l2'] ?? null,
+            'link3' => $validated['training_link'] ?? null,
+            'link4' => $validated['video_link'] ?? null,
+            'link5' => $validated['form_link'] ?? null,
+            'link6' => $validated['form_report_link'] ?? null,
+            'link7' => $validated['checklist_link'] ?? null,
+            'link8' => $validated['pl'] ?? null,
+            'link9' => $validated['process'] ?? null,
+        ];
 
-        $task->update($validated);
+        $task->update($updateData);
 
         return redirect()->route('tasks.index')->with('success', 'Task updated successfully!');
     }
@@ -230,19 +310,25 @@ class TaskController extends Controller
         $this->authorize('updateStatus', $task);
 
         $validated = $request->validate([
-            'status' => 'required|in:pending,in_progress,archived,completed,need_help,need_approval,dependent,approved,hold,cancelled',
+            'status' => 'required|in:Todo,Working,Archived,Done,Need Help,Need Approval,Dependent,Approved,Hold,Rework',
             'atc' => 'nullable|integer',
             'rework_reason' => 'nullable|string',
         ]);
 
         $task->status = $validated['status'];
 
-        // If status is completed (done), save ATC and completion time
-        if ($validated['status'] === 'completed') {
+        // If status is Done, save ATC and completion time
+        if ($validated['status'] === 'Done') {
             if (isset($validated['atc'])) {
-                $task->atc = $validated['atc'];
+                $task->etc_done = $validated['atc']; // Map to old column name
             }
-            $task->completed_at = now();
+            $task->completion_date = now(); // Map to old column name
+            
+            // Calculate completion days
+            if ($task->start_date) {
+                $startDate = \Carbon\Carbon::parse($task->start_date);
+                $task->completion_day = $startDate->diffInDays(now());
+            }
         }
 
         // If reason is provided (for any status change or rework)
@@ -336,6 +422,72 @@ class TaskController extends Controller
         return response()->json($users);
     }
 
+    // Automated Tasks Methods
+    public function automatedIndex()
+    {
+        $user = Auth::user();
+        $isAdmin = strtolower($user->role ?? '') === 'admin';
+
+        // Get all users for filter dropdowns
+        $users = User::select('id', 'name')->orderBy('name')->get();
+
+        // Calculate statistics for automated tasks
+        $automatedQuery = \DB::table('automate_tasks');
+        
+        if (!$isAdmin) {
+            $automatedQuery->where(function($query) use ($user) {
+                $query->where('assignor', $user->email)
+                      ->orWhere('assign_to', $user->email);
+            });
+        }
+
+        $stats = [
+            'total' => (clone $automatedQuery)->count(),
+            'daily' => (clone $automatedQuery)->where('schedule_type', 'daily')->count(),
+            'weekly' => (clone $automatedQuery)->where('schedule_type', 'weekly')->count(),
+            'monthly' => (clone $automatedQuery)->where('schedule_type', 'monthly')->count(),
+            'active' => (clone $automatedQuery)->where('status', 'Todo')->count(),
+        ];
+
+        return view('tasks.automated', compact('stats', 'isAdmin', 'users'));
+    }
+
+    public function getAutomatedData()
+    {
+        $user = Auth::user();
+        $isAdmin = strtolower($user->role ?? '') === 'admin';
+
+        $query = \DB::table('automate_tasks');
+        
+        if (!$isAdmin) {
+            $query->where(function($q) use ($user) {
+                $q->where('assignor', $user->email)
+                  ->orWhere('assign_to', $user->email);
+            });
+        }
+
+        $tasks = $query->orderBy('id', 'desc')->get();
+
+        // Map emails to names
+        $tasks->each(function($task) {
+            if ($task->assignor) {
+                $assignorUser = User::where('email', $task->assignor)->first();
+                $task->assignor_name = $assignorUser ? $assignorUser->name : $task->assignor;
+            } else {
+                $task->assignor_name = '-';
+            }
+            
+            if ($task->assign_to) {
+                $assigneeUser = User::where('email', $task->assign_to)->first();
+                $task->assignee_name = $assigneeUser ? $assigneeUser->name : $task->assign_to;
+            } else {
+                $task->assignee_name = '-';
+            }
+        });
+
+        return response()->json($tasks);
+    }
+
     public function downloadTemplate()
     {
         $headers = [
@@ -403,20 +555,20 @@ class TaskController extends Controller
                     $assignor = Auth::user(); // Default to current user
                 }
 
-                // Map status values
+                // Map status values (keep old format)
                 $statusMap = [
-                    'todo' => 'pending',
-                    'working' => 'in_progress',
-                    'archived' => 'archived',
-                    'done' => 'completed',
-                    'need help' => 'need_help',
-                    'need approval' => 'need_approval',
-                    'dependent' => 'dependent',
-                    'approved' => 'approved',
-                    'hold' => 'hold',
-                    'cancelled' => 'cancelled',
+                    'todo' => 'Todo',
+                    'working' => 'Working',
+                    'archived' => 'Archived',
+                    'done' => 'Done',
+                    'need help' => 'Need Help',
+                    'need approval' => 'Need Approval',
+                    'dependent' => 'Dependent',
+                    'approved' => 'Approved',
+                    'hold' => 'Hold',
+                    'rework' => 'Rework',
                 ];
-                $status = $statusMap[strtolower($status)] ?? 'pending';
+                $status = $statusMap[strtolower($status)] ?? 'Todo';
 
                 // Map priority
                 $priorityMap = [
@@ -462,5 +614,147 @@ class TaskController extends Controller
             'errors' => $errors,
             'message' => "$imported task(s) imported successfully!",
         ]);
+    }
+
+    public function automatedCreate()
+    {
+        $users = User::all();
+        return view('tasks.automated-create', compact('users'));
+    }
+
+    public function automatedStore(Request $request)
+    {
+        $validated = $request->validate([
+            'title' => 'required|string',
+            'group' => 'nullable|string',
+            'priority' => 'required|in:Low,Normal,High,Urgent',
+            'assignor_id' => 'nullable|exists:users,id',
+            'assignee_id' => 'nullable|exists:users,id',
+            'etc_minutes' => 'nullable|integer',
+            'tid' => 'nullable|date',
+            'schedule_type' => 'required|in:daily,weekly,monthly',
+            'schedule_time' => 'nullable',
+            'schedule_days' => 'nullable|string',
+            'l1' => 'nullable|string',
+            'l2' => 'nullable|string',
+            'training_link' => 'nullable|string',
+            'video_link' => 'nullable|string',
+            'form_link' => 'nullable|string',
+            'form_report_link' => 'nullable|string',
+            'checklist_link' => 'nullable|string',
+            'description' => 'nullable|string',
+        ]);
+
+        $user = Auth::user();
+        $isAdmin = strtolower($user->role ?? '') === 'admin';
+        
+        $assignorEmail = $isAdmin && $request->has('assignor_id') 
+            ? User::find($validated['assignor_id'])->email ?? $user->email
+            : $user->email;
+        
+        $assigneeEmail = $request->has('assignee_id') && $validated['assignee_id']
+            ? User::find($validated['assignee_id'])->email ?? null
+            : null;
+        
+        // Insert into automate_tasks table (ONLY fields that exist in this table)
+        $automateTaskId = \DB::table('automate_tasks')->insertGetId([
+            'title' => $validated['title'],
+            'group' => $validated['group'],
+            'priority' => $validated['priority'],
+            'description' => $validated['description'],
+            'assignor' => $assignorEmail,
+            'assign_to' => $assigneeEmail,
+            'eta_time' => $validated['etc_minutes'] ?? 10,
+            'start_date' => $validated['tid'] ?? now(),
+            'due_date' => $validated['tid'] ?? now(),
+            'split_tasks' => $request->has('split_tasks') ? 1 : 0,
+            'schedule_type' => $validated['schedule_type'],
+            'schedule_time' => $validated['schedule_time'],
+            'schedule_days' => $validated['schedule_days'] ?? '',
+            'status' => 'Todo',
+            'link1' => $validated['l1'],
+            'link2' => $validated['l2'],
+            'link3' => $validated['training_link'],
+            'link4' => $validated['video_link'],
+            'link5' => $validated['form_link'],
+            'link6' => $validated['form_report_link'],
+            'link7' => $validated['checklist_link'],
+            'workspace' => 0,
+            'order' => 0,
+            'is_pause' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Note: Task instances will be created automatically by the scheduler when it's time to execute
+        // No immediate insert into tasks table
+
+        $scheduleInfo = $validated['schedule_type'];
+        if ($request->input('schedule_days')) {
+            $scheduleInfo .= ' (' . $request->input('schedule_days') . ')';
+        }
+        $scheduleInfo .= ' at ' . ($validated['schedule_time'] ?? 'scheduled time');
+
+        return redirect()->route('tasks.automated')->with('success', 'Automated task scheduled! Will execute: ' . $scheduleInfo);
+    }
+
+    public function automatedEdit($id)
+    {
+        $task = \DB::table('automate_tasks')->where('id', $id)->first();
+        
+        if (!$task) {
+            return redirect()->route('tasks.automated')->with('error', 'Automated task not found');
+        }
+        
+        $users = User::all();
+        return view('tasks.automated-edit', compact('task', 'users'));
+    }
+
+    public function automatedUpdate(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'title' => 'required|string',
+            'group' => 'nullable|string',
+            'priority' => 'required|in:Low,Normal,High,Urgent',
+            'etc_minutes' => 'nullable|integer',
+            'schedule_type' => 'required|in:daily,weekly,monthly',
+            'schedule_days' => 'nullable|string',
+            'schedule_time' => 'nullable',
+        ]);
+
+        // Update automate_tasks table
+        \DB::table('automate_tasks')->where('id', $id)->update([
+            'title' => $validated['title'],
+            'group' => $validated['group'],
+            'priority' => $validated['priority'],
+            'eta_time' => $validated['etc_minutes'] ?? 10,
+            'schedule_type' => $validated['schedule_type'],
+            'schedule_days' => $validated['schedule_days'] ?? '',
+            'schedule_time' => $validated['schedule_time'],
+            'updated_at' => now(),
+        ]);
+
+        // Update any existing executed instances in tasks table
+        \DB::table('tasks')->where('automate_task_id', $id)->update([
+            'title' => $validated['title'],
+            'group' => $validated['group'],
+            'priority' => $validated['priority'],
+            'eta_time' => $validated['etc_minutes'] ?? 10,
+            'schedule_type' => $validated['schedule_type'],
+            'updated_at' => now(),
+        ]);
+
+        return redirect()->route('tasks.automated')->with('success', 'Automated task updated! New schedule will take effect immediately.');
+    }
+
+    public function automatedDestroy($id)
+    {
+        // Delete from automate_tasks
+        \DB::table('automate_tasks')->where('id', $id)->delete();
+        
+        // Also delete any executed instances from tasks table
+        \DB::table('tasks')->where('automate_task_id', $id)->delete();
+
+        return response()->json(['success' => true, 'message' => 'Automated task and all its instances deleted!']);
     }
 }

@@ -35,8 +35,8 @@ class TaskPolicy
             return true;
         }
 
-        // User can view if they are the assignor OR assignee
-        return $task->assignor_id === $user->id || $task->assignee_id === $user->id;
+        // User can view if they are the assignor OR assignee (old table uses emails)
+        return $task->assignor === $user->email || $task->assign_to === $user->email;
     }
 
     /**
@@ -58,8 +58,8 @@ class TaskPolicy
             return true;
         }
 
-        // User can update only if they are the assignor (task creator)
-        return $task->assignor_id === $user->id;
+        // User can update only if they are the assignor (task creator) - old table uses emails
+        return $task->assignor === $user->email;
     }
 
     /**
@@ -72,8 +72,8 @@ class TaskPolicy
             return true;
         }
 
-        // User can update status if they are assignor OR assignee
-        return $task->assignor_id === $user->id || $task->assignee_id === $user->id;
+        // User can update status if they are assignor OR assignee - old table uses emails
+        return $task->assignor === $user->email || $task->assign_to === $user->email;
     }
 
     /**
@@ -86,8 +86,8 @@ class TaskPolicy
             return true;
         }
 
-        // User can delete only if they are the assignor (task creator)
-        return $task->assignor_id === $user->id;
+        // User can delete only if they are the assignor (task creator) - old table uses emails
+        return $task->assignor === $user->email;
     }
 
     /**

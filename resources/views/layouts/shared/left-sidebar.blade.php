@@ -70,12 +70,28 @@
 
             </li>
 
-            {{-- Task Manager --}}
+            {{-- Action Manager --}}
             <li class="side-nav-item">
-                <a href="{{ url('tasks') }}" class="side-nav-link">
-                    <i class="ri-task-line"></i>
-                    <span>Task Manager</span>
+                <a data-bs-toggle="collapse" href="#actionManager" aria-expanded="false" aria-controls="actionManager"
+                    class="side-nav-link">
+                    <i class="ri-settings-3-line"></i>
+                    <span>Action Manager</span>
+                    <span class="menu-arrow"></span>
                 </a>
+                <div class="collapse" id="actionManager">
+                    <ul class="side-nav-second-level">
+                        <li>
+                            <a href="{{ route('tasks.automated') }}">
+                                <i class="ri-robot-line me-2"></i>Automated Tasks
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('tasks.index') }}">
+                                <i class="ri-task-line me-2"></i>Task Manager
+                            </a>
+                        </li>
+                    </ul>
+                </div>
             </li>
 
             <li class="side-nav-item">
