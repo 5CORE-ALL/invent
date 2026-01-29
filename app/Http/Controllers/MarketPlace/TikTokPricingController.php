@@ -10,6 +10,7 @@ use App\Models\ShopifySku;
 use App\Models\ChannelMaster;
 use App\Models\MarketplacePercentage;
 use App\Models\ReverbViewData;
+use App\Models\TiktokShopDataView;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -120,6 +121,8 @@ class TikTokPricingController extends Controller
 
         // Fetch reverb view data for SPRICE
         $reverbViewData = ReverbViewData::whereIn("sku", $skus)->get()->keyBy("sku");
+        // Fetch TikTok shop view data for NR (and INV=0 auto-save)
+        $tiktokShopDataView = TiktokShopDataView::whereIn("sku", $skus)->get()->keyBy("sku");
 
         // Get L30 sold data from ShipHub (last 30 days)
         $latestDate = DB::connection('shiphub')
@@ -332,21 +335,37 @@ class TikTokPricingController extends Controller
                 $processedItem["MAP"] = "Diff|$diff";
             }
 
-            // Get SPRICE from reverb_view_data (reusing same table)
+            // Get SPRICE, SGPFT, SPFT, SROI, NR from TiktokShopDataView first; fallback to reverb_view_data
             $processedItem["SPRICE"] = 0;
             $processedItem["SGPFT"] = 0;
             $processedItem["SPFT"] = 0;
             $processedItem["SROI"] = 0;
 
-            if (isset($reverbViewData[$sku])) {
+            if (isset($tiktokShopDataView[$sku])) {
+                $tiktokVal = $tiktokShopDataView[$sku]->value;
+                $tiktokValArr = is_array($tiktokVal) ? $tiktokVal : (json_decode($tiktokVal, true) ?: []);
+                $processedItem["SPRICE"] = isset($tiktokValArr["SPRICE"]) ? floatval($tiktokValArr["SPRICE"]) : 0;
+                $processedItem["SGPFT"] = isset($tiktokValArr["SGPFT"]) ? floatval($tiktokValArr["SGPFT"]) : 0;
+                $processedItem["SPFT"] = isset($tiktokValArr["SPFT"]) ? floatval(str_replace("%", "", $tiktokValArr["SPFT"])) : 0;
+                $processedItem["SROI"] = isset($tiktokValArr["SROI"]) ? floatval(str_replace("%", "", $tiktokValArr["SROI"])) : 0;
+                if (array_key_exists('NR', $tiktokValArr)) {
+                    $nrVal = $tiktokValArr['NR'];
+                    $processedItem["NR"] = is_bool($nrVal) ? ($nrVal ? 'RA' : 'NRA') : (string) $nrVal;
+                }
+            }
+            if (!isset($processedItem["NR"]) && isset($reverbViewData[$sku])) {
+                $valuesArr = $reverbViewData[$sku]->values ?: [];
+                $processedItem["NR"] = $valuesArr["NR"] ?? 'RA';
+            }
+            if (!isset($processedItem["NR"])) $processedItem["NR"] = 'RA';
+
+            if (!isset($tiktokShopDataView[$sku]) && isset($reverbViewData[$sku])) {
                 $viewData = $reverbViewData[$sku];
                 $valuesArr = $viewData->values ?: [];
-                
                 $processedItem["SPRICE"] = isset($valuesArr["SPRICE"]) ? floatval($valuesArr["SPRICE"]) : 0;
                 $processedItem["SGPFT"] = isset($valuesArr["SGPFT"]) ? floatval($valuesArr["SGPFT"]) : 0;
                 $processedItem["SPFT"] = isset($valuesArr["SPFT"]) ? floatval(str_replace("%", "", $valuesArr["SPFT"])) : 0;
                 $processedItem["SROI"] = isset($valuesArr["SROI"]) ? floatval(str_replace("%", "", $valuesArr["SROI"])) : 0;
-                $processedItem["NR"] = $valuesArr["NR"] ?? 'RA';
             }
 
             // Calculate profit metrics
@@ -399,6 +418,16 @@ class TikTokPricingController extends Controller
             if ($hasCampaign && (empty($customStatus) || $customStatus === null)) $customStatus = 'Active';
             elseif (empty($customStatus) || $customStatus === null) $customStatus = 'Not Created';
             $processedItem["NR"] = $processedItem["NR"] ?? 'RA';
+            // If INV is 0 or negative, show NRA and auto-save to TiktokShopDataView (tiktok_shop_data_views)
+            $inv = (float)($processedItem["INV"] ?? 0);
+            if ($inv <= 0) {
+                $processedItem["NR"] = 'NRA';
+                $view = TiktokShopDataView::firstOrNew(['sku' => $sku]);
+                $values = is_array($view->value) ? $view->value : (json_decode($view->value, true) ?: []);
+                $values['NR'] = 'NRA';
+                $view->value = $values;
+                $view->save();
+            }
             $processedItem["ads_price"] = $processedItem["TT Price"] ?? 0;
             $processedItem["budget"] = isset($metrics['budget']) && $metrics['budget'] !== null ? round((float)$metrics['budget'], 2) : null;
             $processedItem["spend"] = round((float)($metrics['cost'] ?? 0), 2);
@@ -534,7 +563,7 @@ class TikTokPricingController extends Controller
     }
 
     /**
-     * Save SPRICE updates (same as Reverb)
+     * Save SPRICE updates to TiktokShopDataView (tiktok_shop_data_views)
      */
     public function saveSpriceUpdates(Request $request)
     {
@@ -562,11 +591,8 @@ class TikTokPricingController extends Controller
                     continue;
                 }
 
-                $reverbViewData = ReverbViewData::firstOrNew(['sku' => $sku]);
-                
-                $values = is_array($reverbViewData->values) 
-                    ? $reverbViewData->values 
-                    : (json_decode($reverbViewData->values, true) ?: []);
+                $view = TiktokShopDataView::firstOrNew(['sku' => $sku]);
+                $values = is_array($view->value) ? $view->value : (json_decode($view->value, true) ?: []);
 
                 $values['SPRICE'] = floatval($sprice);
 
@@ -594,8 +620,8 @@ class TikTokPricingController extends Controller
                     }
                 }
 
-                $reverbViewData->values = $values;
-                $reverbViewData->save();
+                $view->value = $values;
+                $view->save();
 
                 $updatedCount++;
             }
@@ -605,8 +631,8 @@ class TikTokPricingController extends Controller
                     $update = $updates[0];
                     $sku = $update['sku'];
                     
-                    $reverbViewData = ReverbViewData::where('sku', $sku)->first();
-                    $values = $reverbViewData ? ($reverbViewData->values ?: []) : [];
+                    $view = TiktokShopDataView::where('sku', $sku)->first();
+                    $values = $view ? (is_array($view->value) ? $view->value : (json_decode($view->value, true) ?: [])) : [];
                     
                     return response()->json([
                         'success' => true,

@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Temu Pricing', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Temu Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -127,14 +127,14 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Temu Pricing',
-        'sub_title' => 'Temu Pricing',
+        'page_title' => 'Temu Analytics',
+        'sub_title' => 'Temu Analytics',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>Temu Pricing</h4>
+                <h4>Temu Analytics</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
                     <!-- Inventory Filter -->
                     <div>

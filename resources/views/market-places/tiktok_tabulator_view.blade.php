@@ -193,6 +193,12 @@
                         <option value="60plus">60%+</option>
                     </select>
 
+                    <select id="ad-click-filter" class="form-select form-select-sm" style="width: 130px;">
+                        <option value="all">Ad Click</option>
+                        <option value="zero">0 Clicks</option>
+                        <option value="has">Has Clicks</option>
+                    </select>
+
                     <!-- DIL Filter -->
                     <div class="dropdown manual-dropdown-container">
                         <button class="btn btn-light dropdown-toggle" type="button" id="dilFilterDropdown">
@@ -259,6 +265,7 @@
                         <span class="badge fs-6 p-2 ads-section-badge" id="total-budget-badge" data-ads-filter="budget" style="color: black; font-weight: bold; background-color: #ced4da; cursor: pointer;" title="Click to filter: has budget">Budget: $0</span>
                         <span class="badge fs-6 p-2 ads-section-badge" id="total-ad-sales-badge" data-ads-filter="ad-sales" style="color: black; font-weight: bold; background-color: #9eeaf9; cursor: pointer;" title="Click to filter: has ad sales">Ad Sales: $0</span>
                         <span class="badge fs-6 p-2 ads-section-badge" id="total-ad-clicks-badge" data-ads-filter="ad-clicks" style="color: black; font-weight: bold; background-color: #a5d6e8; cursor: pointer;" title="Click to filter: has ad clicks">Ad Clicks: 0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="avg-clicks-badge" style="color: black; font-weight: bold; background-color: #b8d4e3;" title="Avg Clicks = Total Clicks / Total Ad SKU">Avg Clicks: 0</span>
                         <span class="badge fs-6 p-2 ads-section-badge" id="avg-acos-badge" data-ads-filter="avg-acos" style="color: black; font-weight: bold; background-color: #ffe69c; cursor: pointer;" title="Click to filter: has spend/sales">Avg ACOS: 0%</span>
                         <span class="badge fs-6 p-2 ads-section-badge" id="roas-badge" data-ads-filter="roas" style="color: black; font-weight: bold; background-color: #a3cfbb; cursor: pointer;" title="Click to filter: has spend/sales">ROAS: 0.00</span>
                     </div>
@@ -1363,10 +1370,9 @@
             ]
         });
 
-        // SKU Search functionality
+        // SKU Search: run applyFilters() so Ad Click and other filters stay applied (missing campaign stays hidden when Ad Click filter is on)
         $('#sku-search').on('keyup', function() {
-            const value = $(this).val();
-            table.setFilter("(Child) sku", "like", value);
+            applyFilters();
         });
 
         // SPRICE cell edited - save to database
@@ -1550,6 +1556,7 @@
         function applyFilters() {
             const inventoryFilter = $('#inventory-filter').val();
             const gpftFilter = $('#gpft-filter').val();
+            const adClickFilter = $('#ad-click-filter').val();
             const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
 
             table.clearFilter();
@@ -1580,6 +1587,18 @@
                     table.addFilter("GPFT%", ">=", min);
                     table.addFilter("GPFT%", "<", max);
                 }
+            }
+
+            // Ad Click filter (campaign exist + 0 clicks OR campaign exist + has clicks)
+            if (adClickFilter !== 'all') {
+                table.addFilter(function(data) {
+                    const hasCampaign = data.hasCampaign === true || data.hasCampaign === 'true' || data.hasCampaign === 1;
+                    const clicks = parseInt(data.ad_clicks, 10) || 0;
+                    if (!hasCampaign) return false;
+                    if (adClickFilter === 'zero') return clicks === 0;
+                    if (adClickFilter === 'has') return clicks > 0;
+                    return true;
+                });
             }
 
             // DIL filter
@@ -1697,10 +1716,19 @@
                 }
             }
 
+            // SKU search (apply last so it works with Ad Click and other filters; excludes missing campaign when Ad Click is on)
+            const skuSearchVal = $('#sku-search').val();
+            if (skuSearchVal && skuSearchVal.trim() !== '') {
+                table.addFilter(function(data) {
+                    const sku = (data['(Child) sku'] || '').toString().toLowerCase();
+                    return sku.indexOf(skuSearchVal.trim().toLowerCase()) !== -1;
+                });
+            }
+
             updateSummary();
         }
 
-        $('#inventory-filter, #gpft-filter, #tiktok-stock-filter').on('change', function() {
+        $('#inventory-filter, #gpft-filter, #tiktok-stock-filter, #ad-click-filter').on('change', function() {
             applyFilters();
         });
 
@@ -1838,6 +1866,7 @@
             const raCount = Math.max(0, validSkuCount - nraCount);
             const avgAcos = totalAdSales > 0 ? (totalSpend / totalAdSales) * 100 : 0;
             const roas = totalSpend > 0 ? totalAdSales / totalSpend : 0;
+            const avgClicks = adSkuSet.size > 0 ? totalAdClicks / adSkuSet.size : 0;
 
             $('#total-sku-count').text('Total SKU: ' + validSkuCount);
             $('#total-campaign-count').text('Campaign: ' + totalDistinctCampaigns);
@@ -1851,6 +1880,7 @@
             $('#total-budget-badge').text('Budget: $' + totalBudget.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
             $('#total-ad-sales-badge').text('Ad Sales: $' + Math.round(totalAdSales).toLocaleString());
             $('#total-ad-clicks-badge').text('Ad Clicks: ' + totalAdClicks.toLocaleString());
+            $('#avg-clicks-badge').text('Avg Clicks: ' + Math.round(avgClicks).toLocaleString());
             $('#avg-acos-badge').text('Avg ACOS: ' + Math.round(avgAcos) + '%');
             $('#roas-badge').text('ROAS: ' + roas.toFixed(2));
         }

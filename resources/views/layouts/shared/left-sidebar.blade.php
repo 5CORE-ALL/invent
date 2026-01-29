@@ -2470,7 +2470,7 @@
                                         <a href="{{ route('listing.temu') }}">Listing Temu</a>
                                     </li>
                                     <li>
-                                        <a href="{{ url('temu-decrease') }}">Temu Pricing CVR </a>
+                                        <a href="{{ url('temu-decrease') }}">Temu Analytics </a>
                                     </li>
 
 

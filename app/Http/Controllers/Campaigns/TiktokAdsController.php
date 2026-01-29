@@ -8,6 +8,7 @@ use App\Models\TiktokCampaignReport;
 use App\Models\ProductMaster;
 use App\Models\ReverbViewData;
 use App\Models\ShopifySku;
+use App\Models\TiktokShopDataView;
 use App\Models\TikTokDailyData;
 use App\Models\TikTokProduct;
 use Illuminate\Http\Request;
@@ -588,11 +589,11 @@ class TiktokAdsController extends Controller
                 ], 400);
             }
 
-            // Store NRA in reverb_view_data (same table used by TikTok pricing for SPRICE), so it shows on both tiktok/utilized and TikTok pricing page
-            $view = ReverbViewData::firstOrNew(['sku' => $sku]);
-            $values = is_array($view->values) ? $view->values : [];
+            // Store NR in tiktok_shop_data_views (TiktokShopDataView) so it shows on TikTok pricing / utilized page
+            $view = TiktokShopDataView::firstOrNew(['sku' => $sku]);
+            $values = is_array($view->value) ? $view->value : (json_decode($view->value, true) ?: []);
             $values['NR'] = $value;
-            $view->values = $values;
+            $view->value = $values;
             $view->save();
 
             return response()->json([
