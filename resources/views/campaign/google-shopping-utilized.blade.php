@@ -410,19 +410,22 @@
                         <div class="col-md-2 mb-3 mb-md-0">
                             <div class="p-3 border rounded bg-light h-100">
                                 <div class="text-muted small">ACOS</div>
-                                <div class="h3 mb-0 fw-bold text-warning card-acos">
-                                    @php
-                                        $totalSpend = $spend->sum();
-                                        $totalSales = $sales->sum();
-                                        if ($totalSales >= 1) {
-                                            $acos = ($totalSpend / $totalSales) * 100;
-                                        } elseif ($totalSpend > 0) {
-                                            $acos = 100; // Spend but no/negligible sales
-                                        } else {
-                                            $acos = 0;
-                                        }
-                                    @endphp
-                                    {{ number_format($acos, 0) }}%
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <div class="h3 mb-0 fw-bold text-warning card-acos">
+                                        @php
+                                            $totalSpend = $spend->sum();
+                                            $totalSales = $sales->sum();
+                                            if ($totalSales >= 1) {
+                                                $acos = ($totalSpend / $totalSales) * 100;
+                                            } elseif ($totalSpend > 0) {
+                                                $acos = 100; // Spend but no/negligible sales
+                                            } else {
+                                                $acos = 0;
+                                            }
+                                        @endphp
+                                        {{ number_format($acos, 0) }}%
+                                    </div>
+                                    <i class="fa fa-eye text-secondary overall-acos-history-eye-btn ms-1" style="cursor: pointer; font-size: 1.1rem;" title="View overall ACOS history"></i>
                                 </div>
                             </div>
                         </div>
@@ -433,13 +436,16 @@
                                 <div class="d-flex justify-content-between align-items-center">
                                     <div>
                                         <div class="text-muted small">CVR</div>
-                                        <div class="h3 mb-0 fw-bold text-danger card-cvr">
-                                            @php
-                                                $totalOrders = $orders->sum();
-                                                $totalClicks = $clicks->sum();
-                                                $cvr = $totalClicks > 0 ? ($totalOrders / $totalClicks) * 100 : 0;
-                                            @endphp
-                                            {{ number_format($cvr, 2) }}%
+                                        <div class="d-flex align-items-center">
+                                            <div class="h3 mb-0 fw-bold text-danger card-cvr">
+                                                @php
+                                                    $totalOrders = $orders->sum();
+                                                    $totalClicks = $clicks->sum();
+                                                    $cvr = $totalClicks > 0 ? ($totalOrders / $totalClicks) * 100 : 0;
+                                                @endphp
+                                                {{ number_format($cvr, 2) }}%
+                                            </div>
+                                            <i class="fa fa-eye text-secondary overall-cvr-price-history-eye-btn ms-1" style="cursor: pointer; font-size: 1.1rem;" title="View overall CVR & Price history"></i>
                                         </div>
                                     </div>
                                     <button id="toggleChartBtn" class="btn btn-sm btn-info ms-2">
@@ -810,13 +816,13 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
     <!-- Bootstrap JS for modal functionality -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <!-- SheetJS for Excel Export -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
     <script type="text/javascript" src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-moment@1.0.0/dist/chartjs-adapter-moment.min.js"></script>
     <script>
         document.addEventListener("DOMContentLoaded", function() {
 
@@ -1584,8 +1590,13 @@
                                 acos = 0;
                             }
 
+                            var campaignName = (row.campaignName || '').trim();
+                            var eyeHtml = campaignName
+                                ? " <i class='fa fa-eye text-secondary acos-history-eye-btn' style='cursor:pointer; margin-left:4px; pointer-events:auto;' title='View ACOS history' data-campaign-name=\"" + String(campaignName).replace(/"/g, '&quot;') + "\"></i>"
+                                : "";
                             return Math.round(acos) + "%" +
-                                " <i class='fa fa-info-circle text-primary toggle-l7-l1-cols-btn' style='cursor:pointer; margin-left:5px; pointer-events:auto;' title='Click to show/hide L30 columns'></i>";
+                                " <i class='fa fa-info-circle text-primary toggle-l7-l1-cols-btn' style='cursor:pointer; margin-left:5px; pointer-events:auto;' title='Click to show/hide Spend L7 & L30 columns'></i>" +
+                                eyeHtml;
                         },
                         sorter: function(a, b, aRow, bRow, column, dir) {
                             var dataA = aRow.getData();
@@ -1613,6 +1624,22 @@
                             return clicks_L30;
                         },
                         sorter: "number"
+                    },
+                    {
+                        title: "Spend L7",
+                        field: "spend_L7_raw",
+                        hozAlign: "right",
+                        visible: false,
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var spend_L7 = parseFloat(row.spend_L7) || 0;
+                            return Math.round(spend_L7);
+                        },
+                        sorter: function(a, b, aRow, bRow, column, dir) {
+                            var vA = parseFloat(aRow.getData().spend_L7) || 0;
+                            var vB = parseFloat(bRow.getData().spend_L7) || 0;
+                            return vA - vB;
+                        }
                     },
                     {
                         title: "Spend L30",
@@ -1673,24 +1700,29 @@
                             var clicks_L30 = parseFloat(row.clicks_L30 || 0);
                             var cvr = 0;
 
-                            // Calculate AD CVR: (AD SOLD / CLICKS) * 100
-                            if (clicks_L30 > 0) {
-                                cvr = (ad_sold_L30 / clicks_L30) * 100;
+                            // Use same rounded AD SOLD as display: when AD SOLD shows 0, CVR must be 0%
+                            var soldRounded = Math.round(ad_sold_L30);
+                            if (clicks_L30 > 0 && soldRounded > 0) {
+                                cvr = (soldRounded / clicks_L30) * 100;
                             }
 
-                            return cvr.toFixed(2) + "%";
+                            var campaignName = (row.campaignName || '').trim();
+                            var eyeHtml = campaignName
+                                ? " <i class='fa fa-eye text-secondary cvr-price-history-eye-btn' style='cursor:pointer; margin-left:4px; pointer-events:auto;' title='View CVR & Price history' data-campaign-name=\"" + String(campaignName).replace(/"/g, '&quot;') + "\"></i>"
+                                : "";
+                            return cvr.toFixed(2) + "%" + eyeHtml;
                         },
                         sorter: function(a, b, aRow, bRow, column, dir) {
                             var dataA = aRow.getData();
                             var dataB = bRow.getData();
 
-                            var soldA = parseFloat(dataA.ad_sold_L30 || 0);
+                            var soldA = Math.round(parseFloat(dataA.ad_sold_L30 || 0));
                             var clicksA = parseFloat(dataA.clicks_L30 || 0);
-                            var cvrA = clicksA > 0 ? (soldA / clicksA) * 100 : 0;
+                            var cvrA = clicksA > 0 && soldA > 0 ? (soldA / clicksA) * 100 : 0;
 
-                            var soldB = parseFloat(dataB.ad_sold_L30 || 0);
+                            var soldB = Math.round(parseFloat(dataB.ad_sold_L30 || 0));
                             var clicksB = parseFloat(dataB.clicks_L30 || 0);
-                            var cvrB = clicksB > 0 ? (soldB / clicksB) * 100 : 0;
+                            var cvrB = clicksB > 0 && soldB > 0 ? (soldB / clicksB) * 100 : 0;
 
                             return cvrA - cvrB;
                         }
@@ -2465,6 +2497,11 @@
                                 options: {
                                     responsive: true,
                                     maintainAspectRatio: true,
+                                    interaction: {
+                                        mode: 'index',
+                                        intersect: false,
+                                        axis: 'x'
+                                    },
                                     plugins: {
                                         legend: {
                                             display: true,
@@ -2472,8 +2509,6 @@
                                         },
                                         tooltip: {
                                             enabled: true,
-                                            mode: 'index',
-                                            intersect: false,
                                             callbacks: {
                                                 title: function(context) {
                                                     return 'Date: ' + context[0].label;
@@ -2486,6 +2521,7 @@
                                         }
                                     },
                                     scales: {
+                                        x: { offset: false },
                                         y: {
                                             beginAtZero: true,
                                             ticks: {
@@ -2580,6 +2616,49 @@
                     e.stopPropagation();
                     const name = btn.getAttribute("data-campaign-name");
                     if (name) showCampaignChart(name);
+                }
+            });
+
+            // ACOS History eye icon (next to ACOS L30) – open modal, chart, period selector, min/max
+            window.acosHistoryCampaignName = null;
+            document.addEventListener("click", function(e) {
+                const eye = e.target.closest(".acos-history-eye-btn");
+                if (eye) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const name = eye.getAttribute("data-campaign-name");
+                    if (name) showAcosHistoryModal(name);
+                }
+            });
+
+            // Overall ACOS badge eye icon (top) – open overall ACOS history modal
+            document.addEventListener("click", function(e) {
+                const eye = e.target.closest(".overall-acos-history-eye-btn");
+                if (eye) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    showOverallAcosHistoryModal();
+                }
+            });
+
+            // Overall CVR badge eye icon (top) – open overall CVR & Price history modal
+            document.addEventListener("click", function(e) {
+                const eye = e.target.closest(".overall-cvr-price-history-eye-btn");
+                if (eye) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    showOverallCvrPriceHistoryModal();
+                }
+            });
+
+            // CVR & Price history eye icon (AD CVR column)
+            document.addEventListener("click", function(e) {
+                const eye = e.target.closest(".cvr-price-history-eye-btn");
+                if (eye) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const name = eye.getAttribute("data-campaign-name");
+                    if (name) showCvrPriceHistoryModal(name);
                 }
             });
 
@@ -3090,13 +3169,14 @@
                     e.preventDefault();
                     e.stopPropagation();
                     e.stopImmediatePropagation();
-                    const l30ColumnFields = ['clicks_L30', 'spend_L30', 'ad_sales_L30', 'ad_sold_L30',
+                    const l30ColumnFields = ['spend_L7_raw', 'clicks_L30', 'spend_L30', 'ad_sales_L30', 'ad_sold_L30',
                         'ad_cvr'
                     ];
 
-                    // Check if any L30 column is visible to determine current state
+                    // Check if any L7/L30 column is visible to determine current state
+                    const spendL7Col = table.getColumn('spend_L7_raw');
                     const clicksL30Col = table.getColumn('clicks_L30');
-                    const anyVisible = clicksL30Col && clicksL30Col.isVisible();
+                    const anyVisible = (spendL7Col && spendL7Col.isVisible()) || (clicksL30Col && clicksL30Col.isVisible());
 
                     // Toggle visibility
                     l30ColumnFields.forEach(field => {
@@ -3353,6 +3433,7 @@
                             Budget: budget.toFixed(2),
                             "Clicks L30": parseFloat(row.clicks_L30 || 0),
                             "Spend L30": Math.round(parseFloat(row.spend_L30 || 0)),
+                            "Spend L7": Math.round(parseFloat(row.spend_L7 || 0)),
                             "7 UB%": ub7.toFixed(0) + "%",
                             "1 UB%": ub1.toFixed(0) + "%",
                             "L7 CPC": parseFloat(row.cpc_L7 || 0).toFixed(2),
@@ -3441,7 +3522,8 @@
                 maintainAspectRatio: false,
                 interaction: {
                     mode: 'index',
-                    intersect: false
+                    intersect: false,
+                    axis: 'x'
                 },
                 plugins: {
                     tooltip: {
@@ -3486,6 +3568,7 @@
                     }
                 },
                 scales: {
+                    x: { offset: false },
                     y1: {
                         type: 'linear',
                         position: 'left',
@@ -3711,6 +3794,7 @@
                     interaction: {
                         mode: 'index',
                         intersect: false,
+                        axis: 'x'
                     },
                     plugins: {
                         legend: {
@@ -3720,6 +3804,7 @@
                     scales: {
                         x: {
                             display: true,
+                            offset: false,
                             title: {
                                 display: true,
                                 text: 'Date'
@@ -3749,6 +3834,395 @@
                     }
                 }
             });
+        }
+
+        function timeChartTooltipTitle(items) {
+            if (!items || !items.length) return '';
+            const x = items[0].parsed && items[0].parsed.x;
+            if (x == null) return '';
+            return moment(x).format('MMM D');
+        }
+
+        function setAcosHistoryPeriod(days) {
+            const end = moment();
+            const start = moment().subtract(days - 1, 'days');
+            document.getElementById('acos-history-start').value = start.format('YYYY-MM-DD');
+            document.getElementById('acos-history-end').value = end.format('YYYY-MM-DD');
+        }
+
+        function fetchAcosChartData() {
+            if (!window.acosHistoryCampaignName) return;
+            const start = document.getElementById('acos-history-start').value;
+            const end = document.getElementById('acos-history-end').value;
+            if (!start || !end) return;
+            fetch('/google/shopping/campaign/acos-chart-data?campaignName=' + encodeURIComponent(window.acosHistoryCampaignName) + '&startDate=' + start + '&endDate=' + end)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        console.warn('ACOS chart error:', data.error);
+                        return;
+                    }
+                    updateAcosHistoryChart(data.dates || [], data.acos || []);
+                    document.getElementById('acos-history-min').textContent = 'Lowest: ' + (data.min != null ? data.min + '%' : '—%');
+                    document.getElementById('acos-history-max').textContent = 'Highest: ' + (data.max != null ? data.max + '%' : '—%');
+                })
+                .catch(err => console.error('ACOS chart fetch error:', err));
+        }
+
+        function updateAcosHistoryChart(dates, acos) {
+            const canvas = document.getElementById('acosHistoryChart');
+            if (!canvas || !canvas.getContext) return;
+            const ctx = canvas.getContext('2d');
+
+            if (window.acosHistoryChartInstance) {
+                window.acosHistoryChartInstance.destroy();
+            }
+            const dts = dates || [];
+            const pts = dts.map((d, i) => ({ x: moment(d).startOf('day').valueOf(), y: (acos || [])[i] ?? 0 }));
+            const xMin = dts.length ? moment(dts[0]).startOf('day').valueOf() : undefined;
+            const xMax = dts.length ? moment(dts[dts.length - 1]).endOf('day').valueOf() : undefined;
+            window.acosHistoryChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [{
+                        label: 'ACOS %',
+                        data: pts,
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false, axis: 'x' },
+                    plugins: {
+                        legend: { position: 'top' },
+                        tooltip: { callbacks: { title: timeChartTooltipTitle } }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            min: xMin,
+                            max: xMax,
+                            bounds: 'data',
+                            time: { unit: 'day', displayFormats: { day: 'MMM D', week: 'MMM D', month: 'MMM YYYY' } },
+                            display: true,
+                            title: { display: true, text: 'Date' }
+                        },
+                        y: {
+                            display: true,
+                            title: { display: true, text: 'ACOS %' },
+                            min: 0
+                        }
+                    }
+                }
+            });
+        }
+
+        function showAcosHistoryModal(campaignName) {
+            window.acosHistoryCampaignName = campaignName;
+            document.getElementById('acosHistoryModalLabel').textContent = 'ACOS History – ' + campaignName;
+            setAcosHistoryPeriod(30);
+            const el = document.getElementById('acosHistoryModal');
+            if (el) {
+                const modal = new bootstrap.Modal(el);
+                modal.show();
+            }
+            fetchAcosChartData();
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('acos-history-apply')?.addEventListener('click', function() { fetchAcosChartData(); });
+            document.querySelectorAll('.acos-history-preset').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    const days = parseInt(btn.getAttribute('data-days'), 10) || 30;
+                    setAcosHistoryPeriod(days);
+                    fetchAcosChartData();
+                });
+            });
+            document.getElementById('overall-acos-history-apply')?.addEventListener('click', function() { fetchOverallAcosChartData(); });
+            document.querySelectorAll('.overall-acos-history-preset').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    const days = parseInt(btn.getAttribute('data-days'), 10) || 30;
+                    setOverallAcosHistoryPeriod(days);
+                    fetchOverallAcosChartData();
+                });
+            });
+            document.getElementById('cvr-price-history-apply')?.addEventListener('click', function() { fetchCvrPriceChartData(); });
+            document.querySelectorAll('.cvr-price-history-preset').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    const days = parseInt(btn.getAttribute('data-days'), 10) || 30;
+                    setCvrPriceHistoryPeriod(days);
+                    fetchCvrPriceChartData();
+                });
+            });
+            document.getElementById('overall-cvr-price-history-apply')?.addEventListener('click', function() { fetchOverallCvrPriceChartData(); });
+            document.querySelectorAll('.overall-cvr-price-history-preset').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    const days = parseInt(btn.getAttribute('data-days'), 10) || 30;
+                    setOverallCvrPriceHistoryPeriod(days);
+                    fetchOverallCvrPriceChartData();
+                });
+            });
+        });
+
+        function setOverallAcosHistoryPeriod(days) {
+            const end = moment();
+            const start = moment().subtract(days - 1, 'days');
+            document.getElementById('overall-acos-history-start').value = start.format('YYYY-MM-DD');
+            document.getElementById('overall-acos-history-end').value = end.format('YYYY-MM-DD');
+        }
+
+        function fetchOverallAcosChartData() {
+            const start = document.getElementById('overall-acos-history-start').value;
+            const end = document.getElementById('overall-acos-history-end').value;
+            if (!start || !end) return;
+            fetch('/google/shopping/overall-acos-chart-data?startDate=' + start + '&endDate=' + end)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        console.warn('Overall ACOS chart error:', data.error);
+                        return;
+                    }
+                    updateOverallAcosHistoryChart(data.dates || [], data.acos || []);
+                    document.getElementById('overall-acos-history-min').textContent = 'Lowest: ' + (data.min != null ? data.min + '%' : '—%');
+                    document.getElementById('overall-acos-history-max').textContent = 'Highest: ' + (data.max != null ? data.max + '%' : '—%');
+                })
+                .catch(err => console.error('Overall ACOS chart fetch error:', err));
+        }
+
+        function updateOverallAcosHistoryChart(dates, acos) {
+            const canvas = document.getElementById('overallAcosHistoryChart');
+            if (!canvas || !canvas.getContext) return;
+            const ctx = canvas.getContext('2d');
+            if (window.overallAcosHistoryChartInstance) {
+                window.overallAcosHistoryChartInstance.destroy();
+            }
+            const dts = dates || [];
+            const pts = dts.map((d, i) => ({ x: moment(d).startOf('day').valueOf(), y: (acos || [])[i] ?? 0 }));
+            const xMin = dts.length ? moment(dts[0]).startOf('day').valueOf() : undefined;
+            const xMax = dts.length ? moment(dts[dts.length - 1]).endOf('day').valueOf() : undefined;
+            window.overallAcosHistoryChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [{
+                        label: 'ACOS %',
+                        data: pts,
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false, axis: 'x' },
+                    plugins: {
+                        legend: { position: 'top' },
+                        tooltip: { callbacks: { title: timeChartTooltipTitle } }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            min: xMin,
+                            max: xMax,
+                            bounds: 'data',
+                            time: { unit: 'day', displayFormats: { day: 'MMM D', week: 'MMM D', month: 'MMM YYYY' } },
+                            display: true,
+                            title: { display: true, text: 'Date' }
+                        },
+                        y: { display: true, title: { display: true, text: 'ACOS %' }, min: 0 }
+                    }
+                }
+            });
+        }
+
+        function showOverallAcosHistoryModal() {
+            document.getElementById('overallAcosHistoryModalLabel').textContent = 'Overall ACOS History';
+            setOverallAcosHistoryPeriod(30);
+            const el = document.getElementById('overallAcosHistoryModal');
+            if (el) {
+                const modal = new bootstrap.Modal(el);
+                modal.show();
+            }
+            fetchOverallAcosChartData();
+        }
+
+        function setCvrPriceHistoryPeriod(days) {
+            const end = moment();
+            const start = moment().subtract(days - 1, 'days');
+            document.getElementById('cvr-price-history-start').value = start.format('YYYY-MM-DD');
+            document.getElementById('cvr-price-history-end').value = end.format('YYYY-MM-DD');
+        }
+
+        function fetchCvrPriceChartData() {
+            const start = document.getElementById('cvr-price-history-start').value;
+            const end = document.getElementById('cvr-price-history-end').value;
+            const campaignName = window.cvrPriceHistoryCampaignName;
+            if (!start || !end || !campaignName) return;
+            fetch('/google/shopping/campaign/cvr-price-chart-data?campaignName=' + encodeURIComponent(campaignName) + '&startDate=' + start + '&endDate=' + end)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        console.warn('CVR & Price chart error:', data.error);
+                        return;
+                    }
+                    updateCvrPriceHistoryChart(data.dates || [], data.cvr || [], data.price || []);
+                    document.getElementById('cvr-price-history-cvr-min').textContent = 'CVR Lowest: ' + (data.cvr_min != null ? data.cvr_min + '%' : '—%');
+                    document.getElementById('cvr-price-history-cvr-max').textContent = 'CVR Highest: ' + (data.cvr_max != null ? data.cvr_max + '%' : '—%');
+                    const fmt = (v) => (v != null && !isNaN(v)) ? ('$' + Number(v).toFixed(4)) : '—';
+                    document.getElementById('cvr-price-history-price-min').textContent = 'Price Lowest: ' + fmt(data.price_min);
+                    document.getElementById('cvr-price-history-price-max').textContent = 'Price Highest: ' + fmt(data.price_max);
+                })
+                .catch(err => console.error('CVR & Price chart fetch error:', err));
+        }
+
+        function updateCvrPriceHistoryChart(dates, cvr, price) {
+            const canvas = document.getElementById('cvrPriceHistoryChart');
+            if (!canvas || !canvas.getContext) return;
+            const ctx = canvas.getContext('2d');
+            if (window.cvrPriceHistoryChartInstance) {
+                window.cvrPriceHistoryChartInstance.destroy();
+            }
+            const dts = dates || [];
+            const cvrArr = cvr || [];
+            const priceArr = price || [];
+            const ptsCvr = dts.map((d, i) => ({ x: moment(d).startOf('day').valueOf(), y: cvrArr[i] ?? 0 }));
+            const ptsPrice = dts.map((d, i) => ({ x: moment(d).startOf('day').valueOf(), y: priceArr[i] ?? 0 }));
+            const xMin = dts.length ? moment(dts[0]).startOf('day').valueOf() : undefined;
+            const xMax = dts.length ? moment(dts[dts.length - 1]).endOf('day').valueOf() : undefined;
+            window.cvrPriceHistoryChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [
+                        { label: 'CVR %', data: ptsCvr, borderColor: '#dc3545', backgroundColor: 'rgba(220, 53, 69, 0.1)', tension: 0.4, fill: true, yAxisID: 'y' },
+                        { label: 'Price (CPC)', data: ptsPrice, borderColor: '#0dcaf0', backgroundColor: 'rgba(13, 202, 240, 0.1)', tension: 0.4, fill: true, yAxisID: 'y1' }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false, axis: 'x' },
+                    plugins: {
+                        legend: { position: 'top' },
+                        tooltip: { callbacks: { title: timeChartTooltipTitle } }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            min: xMin,
+                            max: xMax,
+                            bounds: 'data',
+                            time: { unit: 'day', displayFormats: { day: 'MMM D', week: 'MMM D', month: 'MMM YYYY' } },
+                            display: true,
+                            title: { display: true, text: 'Date' }
+                        },
+                        y: { type: 'linear', display: true, position: 'left', title: { display: true, text: 'CVR %' }, min: 0 },
+                        y1: { type: 'linear', display: true, position: 'right', title: { display: true, text: 'Price (CPC)' }, min: 0, grid: { drawOnChartArea: false } }
+                    }
+                }
+            });
+        }
+
+        function showCvrPriceHistoryModal(campaignName) {
+            window.cvrPriceHistoryCampaignName = campaignName;
+            document.getElementById('cvrPriceHistoryModalLabel').textContent = 'CVR & Price History – ' + campaignName;
+            setCvrPriceHistoryPeriod(30);
+            const el = document.getElementById('cvrPriceHistoryModal');
+            if (el) {
+                const modal = new bootstrap.Modal(el);
+                modal.show();
+            }
+            fetchCvrPriceChartData();
+        }
+
+        function setOverallCvrPriceHistoryPeriod(days) {
+            const end = moment();
+            const start = moment().subtract(days - 1, 'days');
+            document.getElementById('overall-cvr-price-history-start').value = start.format('YYYY-MM-DD');
+            document.getElementById('overall-cvr-price-history-end').value = end.format('YYYY-MM-DD');
+        }
+
+        function fetchOverallCvrPriceChartData() {
+            const start = document.getElementById('overall-cvr-price-history-start').value;
+            const end = document.getElementById('overall-cvr-price-history-end').value;
+            if (!start || !end) return;
+            fetch('/google/shopping/overall-cvr-price-chart-data?startDate=' + start + '&endDate=' + end)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        console.warn('Overall CVR & Price chart error:', data.error);
+                        return;
+                    }
+                    updateOverallCvrPriceHistoryChart(data.dates || [], data.cvr || [], data.price || []);
+                    document.getElementById('overall-cvr-price-history-cvr-min').textContent = 'CVR Lowest: ' + (data.cvr_min != null ? data.cvr_min + '%' : '—%');
+                    document.getElementById('overall-cvr-price-history-cvr-max').textContent = 'CVR Highest: ' + (data.cvr_max != null ? data.cvr_max + '%' : '—%');
+                    const fmt = (v) => (v != null && !isNaN(v)) ? ('$' + Number(v).toFixed(4)) : '—';
+                    document.getElementById('overall-cvr-price-history-price-min').textContent = 'Price Lowest: ' + fmt(data.price_min);
+                    document.getElementById('overall-cvr-price-history-price-max').textContent = 'Price Highest: ' + fmt(data.price_max);
+                })
+                .catch(err => console.error('Overall CVR & Price chart fetch error:', err));
+        }
+
+        function updateOverallCvrPriceHistoryChart(dates, cvr, price) {
+            const canvas = document.getElementById('overallCvrPriceHistoryChart');
+            if (!canvas || !canvas.getContext) return;
+            const ctx = canvas.getContext('2d');
+            if (window.overallCvrPriceHistoryChartInstance) {
+                window.overallCvrPriceHistoryChartInstance.destroy();
+            }
+            const dts = dates || [];
+            const cvrArr = cvr || [];
+            const priceArr = price || [];
+            const ptsCvr = dts.map((d, i) => ({ x: moment(d).startOf('day').valueOf(), y: cvrArr[i] ?? 0 }));
+            const ptsPrice = dts.map((d, i) => ({ x: moment(d).startOf('day').valueOf(), y: priceArr[i] ?? 0 }));
+            const xMin = dts.length ? moment(dts[0]).startOf('day').valueOf() : undefined;
+            const xMax = dts.length ? moment(dts[dts.length - 1]).endOf('day').valueOf() : undefined;
+            window.overallCvrPriceHistoryChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [
+                        { label: 'CVR %', data: ptsCvr, borderColor: '#dc3545', backgroundColor: 'rgba(220, 53, 69, 0.1)', tension: 0.4, fill: true, yAxisID: 'y' },
+                        { label: 'Price (CPC)', data: ptsPrice, borderColor: '#0dcaf0', backgroundColor: 'rgba(13, 202, 240, 0.1)', tension: 0.4, fill: true, yAxisID: 'y1' }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false, axis: 'x' },
+                    plugins: {
+                        legend: { position: 'top' },
+                        tooltip: { callbacks: { title: timeChartTooltipTitle } }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            min: xMin,
+                            max: xMax,
+                            bounds: 'data',
+                            time: { unit: 'day', displayFormats: { day: 'MMM D', week: 'MMM D', month: 'MMM YYYY' } },
+                            display: true,
+                            title: { display: true, text: 'Date' }
+                        },
+                        y: { type: 'linear', display: true, position: 'left', title: { display: true, text: 'CVR %' }, min: 0 },
+                        y1: { type: 'linear', display: true, position: 'right', title: { display: true, text: 'Price (CPC)' }, min: 0, grid: { drawOnChartArea: false } }
+                    }
+                }
+            });
+        }
+
+        function showOverallCvrPriceHistoryModal() {
+            document.getElementById('overallCvrPriceHistoryModalLabel').textContent = 'Overall CVR & Price History';
+            setOverallCvrPriceHistoryPeriod(30);
+            const el = document.getElementById('overallCvrPriceHistoryModal');
+            if (el) {
+                const modal = new bootstrap.Modal(el);
+                modal.show();
+            }
+            fetchOverallCvrPriceChartData();
         }
     </script>
 
@@ -3804,6 +4278,162 @@
                     <!-- Chart -->
                     <div id="campaignModalChartContainer">
                         <canvas id="campaignModalChart" height="300"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ACOS History Modal (eye icon) -->
+    <div class="modal fade" id="acosHistoryModal" tabindex="-1" aria-labelledby="acosHistoryModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="acosHistoryModalLabel">ACOS History</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row align-items-end mb-3">
+                        <div class="col-auto">
+                            <label class="form-label small mb-1">Period</label>
+                            <div class="d-flex gap-2 align-items-center flex-wrap">
+                                <input type="date" id="acos-history-start" class="form-control form-control-sm" style="width: 140px;">
+                                <span class="text-muted">to</span>
+                                <input type="date" id="acos-history-end" class="form-control form-control-sm" style="width: 140px;">
+                                <button type="button" id="acos-history-apply" class="btn btn-sm btn-primary">Apply</button>
+                                <span class="text-muted small ms-2">Presets:</span>
+                                <button type="button" class="acos-history-preset btn btn-sm btn-outline-secondary" data-days="7">7d</button>
+                                <button type="button" class="acos-history-preset btn btn-sm btn-outline-secondary" data-days="14">14d</button>
+                                <button type="button" class="acos-history-preset btn btn-sm btn-outline-secondary" data-days="30">30d</button>
+                            </div>
+                        </div>
+                        <div class="col-auto ms-auto">
+                            <div class="d-flex gap-3">
+                                <span class="badge bg-success" id="acos-history-min">Lowest: —%</span>
+                                <span class="badge bg-danger" id="acos-history-max">Highest: —%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="acosHistoryChartContainer" style="min-height: 300px;">
+                        <canvas id="acosHistoryChart" height="300"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Overall ACOS History Modal (eye on top ACOS badge) -->
+    <div class="modal fade" id="overallAcosHistoryModal" tabindex="-1" aria-labelledby="overallAcosHistoryModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="overallAcosHistoryModalLabel">Overall ACOS History</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row align-items-end mb-3">
+                        <div class="col-auto">
+                            <label class="form-label small mb-1">Period</label>
+                            <div class="d-flex gap-2 align-items-center flex-wrap">
+                                <input type="date" id="overall-acos-history-start" class="form-control form-control-sm" style="width: 140px;">
+                                <span class="text-muted">to</span>
+                                <input type="date" id="overall-acos-history-end" class="form-control form-control-sm" style="width: 140px;">
+                                <button type="button" id="overall-acos-history-apply" class="btn btn-sm btn-primary">Apply</button>
+                                <span class="text-muted small ms-2">Presets:</span>
+                                <button type="button" class="overall-acos-history-preset btn btn-sm btn-outline-secondary" data-days="7">7d</button>
+                                <button type="button" class="overall-acos-history-preset btn btn-sm btn-outline-secondary" data-days="14">14d</button>
+                                <button type="button" class="overall-acos-history-preset btn btn-sm btn-outline-secondary" data-days="30">30d</button>
+                            </div>
+                        </div>
+                        <div class="col-auto ms-auto">
+                            <div class="d-flex gap-3">
+                                <span class="badge bg-success" id="overall-acos-history-min">Lowest: —%</span>
+                                <span class="badge bg-danger" id="overall-acos-history-max">Highest: —%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="overallAcosHistoryChartContainer" style="min-height: 300px;">
+                        <canvas id="overallAcosHistoryChart" height="300"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CVR & Price History Modal (eye on AD CVR column) -->
+    <div class="modal fade" id="cvrPriceHistoryModal" tabindex="-1" aria-labelledby="cvrPriceHistoryModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="cvrPriceHistoryModalLabel">CVR & Price History</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row align-items-end mb-3">
+                        <div class="col-auto">
+                            <label class="form-label small mb-1">Period</label>
+                            <div class="d-flex gap-2 align-items-center flex-wrap">
+                                <input type="date" id="cvr-price-history-start" class="form-control form-control-sm" style="width: 140px;">
+                                <span class="text-muted">to</span>
+                                <input type="date" id="cvr-price-history-end" class="form-control form-control-sm" style="width: 140px;">
+                                <button type="button" id="cvr-price-history-apply" class="btn btn-sm btn-primary">Apply</button>
+                                <span class="text-muted small ms-2">Presets:</span>
+                                <button type="button" class="cvr-price-history-preset btn btn-sm btn-outline-secondary" data-days="7">7d</button>
+                                <button type="button" class="cvr-price-history-preset btn btn-sm btn-outline-secondary" data-days="14">14d</button>
+                                <button type="button" class="cvr-price-history-preset btn btn-sm btn-outline-secondary" data-days="30">30d</button>
+                            </div>
+                        </div>
+                        <div class="col-auto ms-auto">
+                            <div class="d-flex gap-3 flex-wrap">
+                                <span class="badge bg-success" id="cvr-price-history-cvr-min">CVR Lowest: —%</span>
+                                <span class="badge bg-danger" id="cvr-price-history-cvr-max">CVR Highest: —%</span>
+                                <span class="badge bg-info" id="cvr-price-history-price-min">Price Lowest: —</span>
+                                <span class="badge bg-warning text-dark" id="cvr-price-history-price-max">Price Highest: —</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="cvrPriceHistoryChartContainer" style="min-height: 300px;">
+                        <canvas id="cvrPriceHistoryChart" height="300"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Overall CVR & Price History Modal (eye on top CVR badge) -->
+    <div class="modal fade" id="overallCvrPriceHistoryModal" tabindex="-1" aria-labelledby="overallCvrPriceHistoryModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="overallCvrPriceHistoryModalLabel">Overall CVR & Price History</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row align-items-end mb-3">
+                        <div class="col-auto">
+                            <label class="form-label small mb-1">Period</label>
+                            <div class="d-flex gap-2 align-items-center flex-wrap">
+                                <input type="date" id="overall-cvr-price-history-start" class="form-control form-control-sm" style="width: 140px;">
+                                <span class="text-muted">to</span>
+                                <input type="date" id="overall-cvr-price-history-end" class="form-control form-control-sm" style="width: 140px;">
+                                <button type="button" id="overall-cvr-price-history-apply" class="btn btn-sm btn-primary">Apply</button>
+                                <span class="text-muted small ms-2">Presets:</span>
+                                <button type="button" class="overall-cvr-price-history-preset btn btn-sm btn-outline-secondary" data-days="7">7d</button>
+                                <button type="button" class="overall-cvr-price-history-preset btn btn-sm btn-outline-secondary" data-days="14">14d</button>
+                                <button type="button" class="overall-cvr-price-history-preset btn btn-sm btn-outline-secondary" data-days="30">30d</button>
+                            </div>
+                        </div>
+                        <div class="col-auto ms-auto">
+                            <div class="d-flex gap-3 flex-wrap">
+                                <span class="badge bg-success" id="overall-cvr-price-history-cvr-min">CVR Lowest: —%</span>
+                                <span class="badge bg-danger" id="overall-cvr-price-history-cvr-max">CVR Highest: —%</span>
+                                <span class="badge bg-info" id="overall-cvr-price-history-price-min">Price Lowest: —</span>
+                                <span class="badge bg-warning text-dark" id="overall-cvr-price-history-price-max">Price Highest: —</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="overallCvrPriceHistoryChartContainer" style="min-height: 300px;">
+                        <canvas id="overallCvrPriceHistoryChart" height="300"></canvas>
                     </div>
                 </div>
             </div>
