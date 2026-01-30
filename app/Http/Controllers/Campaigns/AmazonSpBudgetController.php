@@ -2692,8 +2692,9 @@ class AmazonSpBudgetController extends Controller
                     $sales30 = $matchedCampaignL30->sales30d ?? 0;
                     $spend30 = $matchedCampaignL30->spend ?? 0;
                     $clicks30 = $matchedCampaignL30->clicks ?? 0;
-                    $purchases30 = $matchedCampaignL30->unitsSoldSameSku30d ?? 0;
-                    $unitsSold30 = $matchedCampaignL30->unitsSoldSameSku30d ?? 0;
+                    // Ad Sold L30: use unitsSoldClicks30d (units sold from clicks in L30)
+                    $purchases30 = $matchedCampaignL30->unitsSoldClicks30d ?? 0;
+                    $unitsSold30 = $matchedCampaignL30->unitsSoldClicks30d ?? 0;
                 }
                 if ($spend30 > 0 && $sales30 > 0) {
                     $campaignMap[$mapKey]['acos_L30'] = round(($spend30 / $sales30) * 100, 2);
@@ -2704,9 +2705,10 @@ class AmazonSpBudgetController extends Controller
                 }
                 $campaignMap[$mapKey]['acos'] = $campaignMap[$mapKey]['acos_L30'];
                 $campaignMap[$mapKey]['l30_spend'] = $spend30;
+                $campaignMap[$mapKey]['l30_sales'] = $sales30;
                 $campaignMap[$mapKey]['l30_clicks'] = $clicks30;
                 $campaignMap[$mapKey]['l30_purchases'] = $unitsSold30;
-                // Calculate AD CVR: (purchases / clicks) * 100
+                // Calculate AD CVR: (units sold from clicks / clicks) * 100
                 $campaignMap[$mapKey]['ad_cvr'] = $clicks30 > 0 ? round(($purchases30 / $clicks30) * 100, 2) : 0;
                 // Set lifetime avg_cpc
                 $campaignMap[$mapKey]['avg_cpc'] = $avgCpcData->get($campaignId, 0);
@@ -2794,10 +2796,12 @@ class AmazonSpBudgetController extends Controller
         $childL7SpendByParent = [];
         $childL1SpendByParent = [];
         $childBudgetByParent = [];
+        $childSalesByParent = [];
         $childL7CpcSumByParent = [];
         $childL7CpcCountByParent = [];
         $childL1CpcSumByParent = [];
         $childL1CpcCountByParent = [];
+        // Parent Sales L30: use direct campaign only (parent SKU se match hone wala campaign), children ka sum NAHI
         if ($campaignType === 'KW' || $campaignType === 'PT') {
             foreach ($campaignMap as $mapKey => $row) {
                 $skuStr = $row['sku'] ?? '';
@@ -2811,9 +2815,11 @@ class AmazonSpBudgetController extends Controller
                 $l7 = (float)($row['l7_spend'] ?? 0);
                 $l1 = (float)($row['l1_spend'] ?? 0);
                 $budget = (float)($row['campaignBudgetAmount'] ?? 0);
+                $sales30 = (float)($row['l30_sales'] ?? 0);
                 $childL7SpendByParent[$p] = ($childL7SpendByParent[$p] ?? 0) + $l7;
                 $childL1SpendByParent[$p] = ($childL1SpendByParent[$p] ?? 0) + $l1;
                 $childBudgetByParent[$p] = ($childBudgetByParent[$p] ?? 0) + $budget;
+                $childSalesByParent[$p] = ($childSalesByParent[$p] ?? 0) + $sales30;
                 $l7Cpc = (float)($row['l7_cpc'] ?? 0);
                 $l1Cpc = (float)($row['l1_cpc'] ?? 0);
                 if ($l7Cpc > 0) {
@@ -2836,6 +2842,7 @@ class AmazonSpBudgetController extends Controller
                 }
                 $row['l7_spend'] = $childL7SpendByParent[$p];
                 $row['l1_spend'] = $childL1SpendByParent[$p];
+                // Parent Sales L30: direct campaign ka value hi rahega (main loop me already set), children ka sum nahi
                 // Keep campaignBudgetAmount as DB value (for BGT column); use utilization_budget for 7 UB%, 1 UB%, SBID
                 $row['utilization_budget'] = $childBudgetByParent[$p];
                 // Parent has "campaign" when at least one child has campaign (so Type=Parent shows correct Campaign count)
@@ -4234,6 +4241,7 @@ class AmazonSpBudgetController extends Controller
                     $row['acos_L15'] = 0;
                     $row['acos_L7'] = 0;
                     $row['l30_spend'] = 0;
+                    $row['l30_sales'] = 0;
                     $row['l30_clicks'] = 0;
                     $row['ad_cvr'] = 0;
                     $row['NRA'] = '';
@@ -4244,8 +4252,9 @@ class AmazonSpBudgetController extends Controller
                         $sales30 = $matchedCampaignL30->sales30d ?? 0;
                         $spend30 = $matchedCampaignL30->spend ?? 0;
                         $clicks30 = $matchedCampaignL30->clicks ?? 0;
-                        $purchases30 = $matchedCampaignL30->unitsSoldSameSku30d ?? 0;
-                        $unitsSold30 = $matchedCampaignL30->unitsSoldSameSku30d ?? 0;
+                        // Ad Sold L30: use unitsSoldClicks30d (units sold from clicks in L30)
+                        $purchases30 = $matchedCampaignL30->unitsSoldClicks30d ?? 0;
+                        $unitsSold30 = $matchedCampaignL30->unitsSoldClicks30d ?? 0;
                         if ($spend30 > 0 && $sales30 > 0) {
                             $row['acos_L30'] = round(($spend30 / $sales30) * 100, 2);
                         } elseif ($spend30 > 0 && $sales30 == 0) {
@@ -4255,6 +4264,7 @@ class AmazonSpBudgetController extends Controller
                         }
                         $row['acos'] = $row['acos_L30'];
                         $row['l30_spend'] = $spend30;
+                        $row['l30_sales'] = $sales30;
                         $row['l30_clicks'] = $clicks30;
                         $row['l30_purchases'] = $unitsSold30;
                         $row['ad_cvr'] = $clicks30 > 0 ? round(($purchases30 / $clicks30) * 100, 2) : 0;
