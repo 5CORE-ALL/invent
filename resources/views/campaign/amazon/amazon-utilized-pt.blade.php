@@ -2230,6 +2230,18 @@
                         width: 90
                     },
                     {
+                        title: "Sales L30",
+                        field: "l30_sales",
+                        hozAlign: "right",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return value.toFixed(0);
+                        },
+                        sorter: "number",
+                        width: 90
+                    },
+                    {
                         title: "Ad Sold L30",
                         field: "l30_purchases",
                         hozAlign: "right",
@@ -3438,16 +3450,19 @@
                         e.stopPropagation();
                         var clicksCol = table.getColumn('l30_clicks');
                         var spendCol = table.getColumn('l30_spend');
+                        var salesCol = table.getColumn('l30_sales');
                         var adSoldCol = table.getColumn('l30_purchases');
                         
                         // Toggle visibility
                         if (clicksCol.isVisible()) {
                             table.hideColumn('l30_clicks');
                             table.hideColumn('l30_spend');
+                            table.hideColumn('l30_sales');
                             table.hideColumn('l30_purchases');
                         } else {
                             table.showColumn('l30_clicks');
                             table.showColumn('l30_spend');
+                            table.showColumn('l30_sales');
                             table.showColumn('l30_purchases');
                         }
                     }
