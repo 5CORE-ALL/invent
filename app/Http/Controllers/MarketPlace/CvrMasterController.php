@@ -25,6 +25,7 @@ use App\Models\Ebay3PriorityReport;
 use App\Models\Ebay3GeneralReport;
 use App\Models\AmazonDataView;
 use App\Models\TemuDataView;
+use App\Models\DobaDataView;
 use App\Models\DobaMetric;
 use App\Models\WalmartPriceData;
 use App\Models\WalmartOrderData;
@@ -1229,16 +1230,34 @@ class CvrMasterController extends Controller
             
             $hasDobaData = $dobaMetric && ($dobaMetric->quantity_l30 > 0 || $dobaPrice > 0);
             
+            // Get Doba suggested data from doba_data_view
+            $dobaDataView = DobaDataView::where('sku', $fullSku)->first();
+            $dobaSuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            if ($dobaDataView) {
+                $val = is_array($dobaDataView->value) ? $dobaDataView->value : json_decode($dobaDataView->value, true);
+                if (is_array($val)) {
+                    $dobaSuggested = ['sprice' => floatval($val['SPRICE'] ?? 0), 'sgpft' => floatval($val['SGPFT'] ?? 0),
+                                      'sroi' => floatval($val['SROI'] ?? 0), 'spft' => floatval($val['SPFT'] ?? 0)];
+                }
+            }
+            
             $breakdownData[] = [
-                'marketplace' => 'DOBA',
+                'marketplace' => 'Doba',
                 'sku' => $hasDobaData ? $fullSku : 'Not Listed',
                 'price' => $dobaPrice,
                 'views' => $dobaMetric->impressions ?? 0,
                 'l30' => $dobaMetric->quantity_l30 ?? 0,
                 'gpft' => $dobaGPFT,
-                'ad' => 0, // Doba doesn't have ads
+                'ad' => 0,
                 'npft' => $dobaNPFT,
                 'is_listed' => $hasDobaData,
+                'sprice' => $dobaSuggested['sprice'],
+                'sgpft' => $dobaSuggested['sgpft'],
+                'sroi' => $dobaSuggested['sroi'],
+                'spft' => $dobaSuggested['spft'],
+                'lp' => $lp,
+                'ship' => $ship,
+                'margin' => $dobaPercentage,
             ];
 
             // Fetch Walmart data (matching WalmartSheetUploadController)
@@ -1287,12 +1306,28 @@ class CvrMasterController extends Controller
             }
             
             // Calculate Walmart NPFT% = GPFT% - AD%
-            $wNPFT = $wGPFT - $wAD;
+            $wNPFT = $wQty == 0 ? $wGPFT : ($wGPFT - $wAD);
+            
+            // Get Walmart suggested data from walmart_data_view (uses lowercase 'sprice')
+            $walmartSuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            if ($walmartDataViewItem) {
+                $val = is_array($walmartDataViewItem->value) ? $walmartDataViewItem->value : 
+                       json_decode($walmartDataViewItem->value, true);
+                if (is_array($val)) {
+                    // Note: Walmart uses lowercase 'sprice', not 'SPRICE'
+                    $walmartSuggested = [
+                        'sprice' => floatval($val['sprice'] ?? $val['SPRICE'] ?? 0),
+                        'sgpft' => floatval($val['SGPFT'] ?? 0),
+                        'sroi' => floatval($val['SROI'] ?? 0),
+                        'spft' => floatval($val['SPFT'] ?? 0)
+                    ];
+                }
+            }
             
             $hasWalmartData = $walmartPriceItem || $walmartDataViewItem || ($walmartOrders && $wQty > 0) || $walmartViewsItem;
             
             $breakdownData[] = [
-                'marketplace' => 'WM',
+                'marketplace' => 'Walmart',
                 'sku' => $hasWalmartData ? $fullSku : 'Not Listed',
                 'price' => $wPrice,
                 'views' => $wViews,
@@ -1301,6 +1336,13 @@ class CvrMasterController extends Controller
                 'ad' => $wAD,
                 'npft' => $wNPFT,
                 'is_listed' => $hasWalmartData,
+                'sprice' => $walmartSuggested['sprice'],
+                'sgpft' => $walmartSuggested['sgpft'],
+                'sroi' => $walmartSuggested['sroi'],
+                'spft' => $walmartSuggested['spft'],
+                'lp' => $lp,
+                'ship' => $ship,
+                'margin' => 0.80,
             ];
 
             // Fetch TikTok data (matching TikTokPricingController)
@@ -1661,6 +1703,10 @@ class CvrMasterController extends Controller
                 $dataView = EbayThreeDataView::firstOrNew(['sku' => $sku]);
             } elseif ($marketplace === 'temu') {
                 $dataView = TemuDataView::firstOrNew(['sku' => $sku]);
+            } elseif ($marketplace === 'doba') {
+                $dataView = DobaDataView::firstOrNew(['sku' => $sku]);
+            } elseif ($marketplace === 'walmart') {
+                $dataView = WalmartDataView::firstOrNew(['sku' => $sku]);
             } else {
                 return response()->json(['error' => 'Marketplace not supported'], 400);
             }
@@ -1670,14 +1716,23 @@ class CvrMasterController extends Controller
                      (is_string($dataView->value) ? json_decode($dataView->value, true) : []);
             if (!is_array($value)) $value = [];
             
-            // Update values
-            $value['SPRICE'] = $sprice;
+            // Update values (Walmart uses lowercase 'sprice', others use 'SPRICE')
+            if ($marketplace === 'walmart') {
+                $value['sprice'] = $sprice;  // Walmart uses lowercase
+            } else {
+                $value['SPRICE'] = $sprice;  // Others use uppercase
+            }
             $value['SGPFT'] = $sgpft;
             $value['SROI'] = $sroi;
             $value['SPFT'] = $spft;
             
-            // Remove duplicates
-            unset($value['sprice'], $value['sgpft'], $value['sroi'], $value['spft']);
+            // Remove lowercase duplicates (but not for Walmart which uses lowercase 'sprice')
+            if ($marketplace !== 'walmart') {
+                unset($value['sprice'], $value['sgpft'], $value['sroi'], $value['spft']);
+            } else {
+                // For Walmart, remove uppercase duplicates instead
+                unset($value['SPRICE']);
+            }
             
             $dataView->value = $value;
             $dataView->save();
