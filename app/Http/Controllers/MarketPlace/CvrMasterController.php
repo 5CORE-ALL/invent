@@ -17,6 +17,14 @@ use App\Models\TemuPricing;
 use App\Models\EbayMetric;
 use App\Models\Ebay2Metric;
 use App\Models\Ebay3Metric;
+use App\Models\EbayDataView;
+use App\Models\EbayTwoDataView;
+use App\Models\EbayThreeDataView;
+use App\Models\EbayPriorityReport;
+use App\Models\Ebay3PriorityReport;
+use App\Models\Ebay3GeneralReport;
+use App\Models\AmazonDataView;
+use App\Models\TemuDataView;
 use App\Models\DobaMetric;
 use App\Models\WalmartPriceData;
 use App\Models\WalmartOrderData;
@@ -50,6 +58,20 @@ class CvrMasterController extends Controller
         $demo = $request->query("demo");
 
         return view("market-places.cvr_master_tabulator_view", [
+            "mode" => $mode,
+            "demo" => $demo,
+        ]);
+    }
+
+    /**
+     * Display Pricing Master CVR view (uses same data as CVR Master)
+     */
+    public function pricingMasterCvrView(Request $request)
+    {
+        $mode = $request->query("mode");
+        $demo = $request->query("demo");
+
+        return view("market-places.pricing_master_cvr_view", [
             "mode" => $mode,
             "demo" => $demo,
         ]);
@@ -829,12 +851,14 @@ class CvrMasterController extends Controller
             $lp = 0;
             $ship = 0;
             $temuShip = 0;
+            $ebay2Ship = 0;
             
             if ($values) {
                 foreach ($values as $k => $v) {
                     if (strtolower($k) === "lp") $lp = floatval($v);
                     if (strtolower($k) === "ship") $ship = floatval($v);
                     if (strtolower($k) === "temu_ship") $temuShip = floatval($v);
+                    if (strtolower($k) === "ebay2_ship") $ebay2Ship = floatval($v);
                 }
             }
 
@@ -881,35 +905,99 @@ class CvrMasterController extends Controller
             
             Log::info('Amazon AD% calculation - L30: ' . $amazonL30 . ', Ad Sales: ' . $amazonAdSales . ', Total Revenue: ' . $amazonTotalRevenue . ', AD Spend: ' . $amazonAdSpend . ', AD%: ' . $amazonAD);
             
-            // Amazon NPFT% (line 1892-1893: GPFT% - AD%)
-            $amazonNPFT = $amazonGPFT - $amazonAD;
+            // If ad spend exists but no sales, show 100% AD%
+            if ($amazonAdSpend > 0 && $amazonTotalRevenue == 0) {
+                $amazonAD = 100;
+            }
             
-            Log::info('Amazon Profits - GPFT%: ' . $amazonGPFT . ', AD%: ' . $amazonAD . ', NPFT%: ' . $amazonNPFT);
+            // Amazon NPFT% - If no sales, NPFT = GPFT
+            $amazonNPFT = $amazonL30 == 0 ? $amazonGPFT : ($amazonGPFT - $amazonAD);
+            
+            // Get Amazon suggested data from amazon_data_view
+            $amazonDataView = AmazonDataView::where('sku', $fullSku)->first();
+            $amazonSuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            if ($amazonDataView) {
+                $val = is_array($amazonDataView->value) ? $amazonDataView->value : 
+                       (is_string($amazonDataView->value) ? json_decode($amazonDataView->value, true) : []);
+                if (is_array($val)) {
+                    $amazonSuggested = [
+                        'sprice' => $val['SPRICE'] ?? 0,
+                        'sgpft' => $val['SGPFT'] ?? 0,
+                        'sroi' => $val['SROI'] ?? 0,
+                        'spft' => $val['SPFT'] ?? 0,
+                    ];
+                }
+            }
             
             $breakdownData[] = [
-                'marketplace' => 'AMZ',
+                'marketplace' => 'Amazon',
                 'sku' => $amazonData ? $fullSku : 'Not Listed',
                 'price' => $amazonPrice,
                 'views' => $amazonData->sessions_l30 ?? 0,
-                'l30' => $amazonL30, // Using correct field
+                'l30' => $amazonL30,
                 'gpft' => $amazonGPFT,
                 'ad' => $amazonAD,
                 'npft' => $amazonNPFT,
                 'is_listed' => $amazonData ? true : false,
+                'sprice' => $amazonSuggested['sprice'],
+                'sgpft' => $amazonSuggested['sgpft'],
+                'sroi' => $amazonSuggested['sroi'],
+                'spft' => $amazonSuggested['spft'],
+                'lp' => $lp,
+                'ship' => $ship,
+                'margin' => 0.80,
             ];
 
-            // Fetch eBay 1 data from EbayMetric model (using full SKU)
+            // Get parent SKU for eBay 3 campaigns
+            $parentSku = $productMaster->parent ?? $fullSku;
+            
+            // Fetch eBay campaigns
+            $ebay12Campaigns = EbayPriorityReport::where('report_range', 'L30')
+                ->whereIn('channels', ['ebay1', 'ebay2'])
+                ->where('campaign_name', 'LIKE', '%' . $fullSku . '%')
+                ->get();
+            $ebay3Campaigns = Ebay3PriorityReport::where('report_range', 'L30')
+                ->where(function($q) use ($parentSku) {
+                    $q->where('campaign_name', 'LIKE', '%' . $parentSku . '%')
+                      ->orWhere('campaign_name', 'LIKE', '%PARENT ' . $parentSku . '%');
+                })->get();
+            
+            // eBay 1
             $ebayData = EbayMetric::where('sku', $fullSku)->first();
+            $ebay1Margin = 0.85;
+            $ebay1Price = $ebayData->ebay_price ?? 0;
+            $ebay1L30 = $ebayData->ebay_l30 ?? 0;
+            $ebay1GPFT = $ebay1Price > 0 ? (($ebay1Price * $ebay1Margin - $ship - $lp) / $ebay1Price) * 100 : 0;
+            $ebay1AD = 0;
+            $ebay1NPFT = $ebay1L30 == 0 ? $ebay1GPFT : ($ebay1GPFT - $ebay1AD);
+            
+            $ebayDataView = EbayDataView::where('sku', $fullSku)->first();
+            $ebay1Suggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            if ($ebayDataView) {
+                $val = is_array($ebayDataView->value) ? $ebayDataView->value : json_decode($ebayDataView->value, true);
+                if (is_array($val)) {
+                    $ebay1Suggested = ['sprice' => $val['SPRICE'] ?? 0, 'sgpft' => $val['SGPFT'] ?? 0,
+                                       'sroi' => $val['SROI'] ?? 0, 'spft' => $val['SPFT'] ?? 0];
+                }
+            }
+            
             $breakdownData[] = [
-                'marketplace' => 'E 1',
+                'marketplace' => 'Ebay',
                 'sku' => $ebayData ? $fullSku : 'Not Listed',
-                'price' => $ebayData->ebay_price ?? 0,
+                'price' => $ebay1Price,
                 'views' => $ebayData->views ?? 0,
-                'l30' => $ebayData->ebay_l30 ?? 0,
-                'gpft' => 0,
-                'ad' => 0,
-                'npft' => 0,
+                'l30' => $ebay1L30,
+                'gpft' => $ebay1GPFT,
+                'ad' => $ebay1AD,
+                'npft' => $ebay1NPFT,
                 'is_listed' => $ebayData ? true : false,
+                'sprice' => $ebay1Suggested['sprice'],
+                'sgpft' => $ebay1Suggested['sgpft'],
+                'sroi' => $ebay1Suggested['sroi'],
+                'spft' => $ebay1Suggested['spft'],
+                'lp' => $lp,
+                'ship' => $ship,
+                'margin' => $ebay1Margin,
             ];
 
             // Fetch eBay 2 data from Ebay2Metric model (using full SKU)
@@ -924,30 +1012,88 @@ class CvrMasterController extends Controller
                     ->first();
             }
             
+            // eBay 2
+            $ebay2Margin = 0.85;
+            $ebay2Price = $ebay2Data->ebay_price ?? 0;
+            $ebay2L30 = $ebay2Data->ebay_l30 ?? 0;
+            $ebay2GPFT = $ebay2Price > 0 ? (($ebay2Price * $ebay2Margin - $lp - $ebay2Ship) / $ebay2Price) * 100 : 0;
+            $ebay2AD = 0;
+            $ebay2NPFT = $ebay2L30 == 0 ? $ebay2GPFT : ($ebay2GPFT - $ebay2AD);
+            
+            $ebay2DataView = $ebay2Data ? EbayTwoDataView::where('sku', $ebay2Data->sku)->first() : null;
+            $ebay2Suggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            if ($ebay2DataView) {
+                $val = is_array($ebay2DataView->value) ? $ebay2DataView->value : json_decode($ebay2DataView->value, true);
+                if (is_array($val)) {
+                    $ebay2Suggested = ['sprice' => $val['SPRICE'] ?? 0, 'sgpft' => $val['SGPFT'] ?? 0,
+                                       'sroi' => $val['SROI'] ?? 0, 'spft' => $val['SPFT'] ?? 0];
+                }
+            }
+            
             $breakdownData[] = [
-                'marketplace' => 'E 2',
+                'marketplace' => 'EbayTwo',
                 'sku' => $ebay2Data ? $ebay2Data->sku : 'Not Listed',
-                'price' => $ebay2Data->ebay_price ?? 0,
+                'price' => $ebay2Price,
                 'views' => $ebay2Data->views ?? 0,
-                'l30' => $ebay2Data->ebay_l30 ?? 0,
-                'gpft' => 0,
-                'ad' => 0,
-                'npft' => 0,
+                'l30' => $ebay2L30,
+                'gpft' => $ebay2GPFT,
+                'ad' => $ebay2AD,
+                'npft' => $ebay2NPFT,
                 'is_listed' => $ebay2Data ? true : false,
+                'sprice' => $ebay2Suggested['sprice'],
+                'sgpft' => $ebay2Suggested['sgpft'],
+                'sroi' => $ebay2Suggested['sroi'],
+                'spft' => $ebay2Suggested['spft'],
+                'lp' => $lp,
+                'ship' => $ebay2Ship,
+                'margin' => $ebay2Margin,
             ];
 
-            // Fetch eBay 3 data from Ebay3Metric model (using full SKU)
+            // eBay 3
             $ebay3Data = Ebay3Metric::where('sku', $fullSku)->first();
+            $ebay3Margin = 0.85;
+            $ebay3Price = $ebay3Data->ebay_price ?? 0;
+            $ebay3L30 = $ebay3Data->ebay_l30 ?? 0;
+            $ebay3GPFT = $ebay3Price > 0 ? (($ebay3Price * $ebay3Margin - $ship - $lp) / $ebay3Price) * 100 : 0;
+            
+            // eBay 3 AD% using parent SKU campaigns
+            $ebay3AD = 0;
+            $ebay3Campaign = $ebay3Campaigns->first();
+            if ($ebay3Campaign) {
+                $spend = (float) str_replace(['USD ', ','], '', $ebay3Campaign->cpc_ad_fees_payout_currency ?? '0');
+                $revenue = $ebay3Price * $ebay3L30;
+                if ($spend > 0 && $revenue == 0) $ebay3AD = 100;
+                else $ebay3AD = $revenue > 0 ? ($spend / $revenue) * 100 : 0;
+            }
+            $ebay3NPFT = $ebay3L30 == 0 ? $ebay3GPFT : ($ebay3GPFT - $ebay3AD);
+            
+            $ebay3DataView = $ebay3Data ? EbayThreeDataView::where('sku', $fullSku)->first() : null;
+            $ebay3Suggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            if ($ebay3DataView) {
+                $val = is_array($ebay3DataView->value) ? $ebay3DataView->value : json_decode($ebay3DataView->value, true);
+                if (is_array($val)) {
+                    $ebay3Suggested = ['sprice' => $val['SPRICE'] ?? 0, 'sgpft' => $val['SGPFT'] ?? 0,
+                                       'sroi' => $val['SROI'] ?? 0, 'spft' => $val['SPFT'] ?? 0];
+                }
+            }
+            
             $breakdownData[] = [
-                'marketplace' => 'E 3',
+                'marketplace' => 'EbayThree',
                 'sku' => $ebay3Data ? $fullSku : 'Not Listed',
-                'price' => $ebay3Data->ebay_price ?? 0,
+                'price' => $ebay3Price,
                 'views' => $ebay3Data->views ?? 0,
-                'l30' => $ebay3Data->ebay_l30 ?? 0,
-                'gpft' => 0,
-                'ad' => 0,
-                'npft' => 0,
+                'l30' => $ebay3L30,
+                'gpft' => $ebay3GPFT,
+                'ad' => $ebay3AD,
+                'npft' => $ebay3NPFT,
                 'is_listed' => $ebay3Data ? true : false,
+                'sprice' => $ebay3Suggested['sprice'],
+                'sgpft' => $ebay3Suggested['sgpft'],
+                'sroi' => $ebay3Suggested['sroi'],
+                'spft' => $ebay3Suggested['spft'],
+                'lp' => $lp,
+                'ship' => $ship,
+                'margin' => $ebay3Margin,
             ];
 
             // Fetch Temu data (with SKU normalization matching TemuController)
@@ -1346,6 +1492,48 @@ class CvrMasterController extends Controller
                 'is_listed' => $hasReverbData,
             ];
 
+            // Add Temu
+            $temuMargin = 0.95;
+            $temuPricing = TemuPricing::where('sku', $fullSku)->first();
+            $temuPrice = 0;
+            if ($temuPricing) {
+                $basePrice = $temuPricing->base_price ?? 0;
+                $temuPrice = $basePrice <= 26.99 ? $basePrice + 2.99 : $basePrice;
+            }
+            $temuL30 = TemuDailyData::where('contribution_sku', $fullSku)
+                ->selectRaw('SUM(quantity_purchased) as l30')->value('l30') ?? 0;
+            $temuGPFT = $temuPrice > 0 ? (($temuPrice * $temuMargin - $lp - $temuShip) / $temuPrice) * 100 : 0;
+            $temuNPFT = $temuL30 == 0 ? $temuGPFT : $temuGPFT;
+            
+            $temuDataView = TemuDataView::where('sku', $fullSku)->first();
+            $temuSuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            if ($temuDataView) {
+                $val = is_array($temuDataView->value) ? $temuDataView->value : json_decode($temuDataView->value, true);
+                if (is_array($val)) {
+                    $temuSuggested = ['sprice' => $val['SPRICE'] ?? 0, 'sgpft' => $val['SGPFT'] ?? 0,
+                                      'sroi' => $val['SROI'] ?? 0, 'spft' => $val['SPFT'] ?? 0];
+                }
+            }
+            
+            $breakdownData[] = [
+                'marketplace' => 'Temu',
+                'sku' => $temuPricing ? $fullSku : 'Not Listed',
+                'price' => $temuPrice,
+                'views' => 0,
+                'l30' => $temuL30,
+                'gpft' => $temuGPFT,
+                'ad' => 0,
+                'npft' => $temuNPFT,
+                'is_listed' => $temuPricing ? true : false,
+                'sprice' => $temuSuggested['sprice'],
+                'sgpft' => $temuSuggested['sgpft'],
+                'sroi' => $temuSuggested['sroi'],
+                'spft' => $temuSuggested['spft'],
+                'lp' => $lp,
+                'ship' => $temuShip,
+                'margin' => $temuMargin,
+            ];
+
             Log::info('Total marketplaces: ' . count($breakdownData));
 
             return response()->json($breakdownData);
@@ -1456,6 +1644,58 @@ class CvrMasterController extends Controller
         } catch (\Exception $e) {
             Log::error('Error toggling remark solved status: ' . $e->getMessage());
             return response()->json(['error' => 'Failed to update remark'], 500);
+        }
+    }
+
+    /**
+     * Save suggested pricing data (SPRICE, SGPFT, SPFT, SROI) to data_view tables
+     */
+    public function saveSuggestedData(Request $request)
+    {
+        try {
+            $sku = $request->input('sku');
+            $marketplace = strtolower($request->input('marketplace'));
+            $sprice = floatval($request->input('sprice', 0));
+            $sgpft = floatval($request->input('sgpft', 0));
+            $sroi = floatval($request->input('sroi', 0));
+            $spft = floatval($request->input('spft', 0));
+
+            // Determine which data_view table to use
+            if ($marketplace === 'amazon') {
+                $dataView = AmazonDataView::firstOrNew(['sku' => $sku]);
+            } elseif ($marketplace === 'ebay') {
+                $dataView = EbayDataView::firstOrNew(['sku' => $sku]);
+            } elseif ($marketplace === 'ebaytwo') {
+                $dataView = EbayTwoDataView::firstOrNew(['sku' => $sku]);
+            } elseif ($marketplace === 'ebaythree') {
+                $dataView = EbayThreeDataView::firstOrNew(['sku' => $sku]);
+            } elseif ($marketplace === 'temu') {
+                $dataView = TemuDataView::firstOrNew(['sku' => $sku]);
+            } else {
+                return response()->json(['error' => 'Marketplace not supported'], 400);
+            }
+
+            // Get existing value
+            $value = is_array($dataView->value) ? $dataView->value : 
+                     (is_string($dataView->value) ? json_decode($dataView->value, true) : []);
+            if (!is_array($value)) $value = [];
+            
+            // Update values
+            $value['SPRICE'] = $sprice;
+            $value['SGPFT'] = $sgpft;
+            $value['SROI'] = $sroi;
+            $value['SPFT'] = $spft;
+            
+            // Remove duplicates
+            unset($value['sprice'], $value['sgpft'], $value['sroi'], $value['spft']);
+            
+            $dataView->value = $value;
+            $dataView->save();
+
+            return response()->json(['success' => true]);
+        } catch (\Exception $e) {
+            Log::error('Error saving suggested data: ' . $e->getMessage());
+            return response()->json(['error' => 'Failed to save'], 500);
         }
     }
 }
