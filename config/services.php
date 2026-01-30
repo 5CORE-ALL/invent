@@ -97,4 +97,31 @@ return [
     'serpapi' => [
         'key' => env('SERPAPI_KEY'),
     ],
+
+    /*
+    | Task Manager WhatsApp (Gupshup). Two modes:
+    | 1) Wa/Sm API: GUPSHUP_API_KEY + GUPSHUP_SOURCE (+ GUPSHUP_SRC_NAME). Endpoint: wa/api/v1/msg.
+    | 2) Partner v3: GUPSHUP_APP_ID + GUPSHUP_ACCESS_TOKEN + GUPSHUP_SOURCE.
+    | Set WHATSAPP_ENABLED=true. Users need `phone` (digits only) for delivery.
+    */
+    'whatsapp' => [
+        'enabled' => env('WHATSAPP_ENABLED', false),
+        'provider' => env('WHATSAPP_PROVIDER', 'gupshup'),
+        'gupshup' => [
+            'api_key' => env('GUPSHUP_API_KEY'),
+            'source' => env('GUPSHUP_SOURCE'),
+            'src_name' => env('GUPSHUP_SRC_NAME', ''),
+            'app_id' => env('GUPSHUP_APP_ID'),
+            'access_token' => env('GUPSHUP_ACCESS_TOKEN'),
+            'api_base' => env('GUPSHUP_API_BASE', 'https://partner.gupshup.io/partner/app'),
+            'wa_api_base' => env('GUPSHUP_WA_API_BASE', 'https://api.gupshup.io/sm/api/v1'),
+            'template_api_base' => env('GUPSHUP_TEMPLATE_API_BASE', 'https://api.gupshup.io/wa/api/v1'),
+            'template_id' => env('GUPSHUP_TEMPLATE_ID'),
+            'template_id_task_assigned' => env('GUPSHUP_TEMPLATE_ID_TASK_ASSIGNED', env('GUPSHUP_TEMPLATE_ID')),
+            'template_id_task_done' => env('GUPSHUP_TEMPLATE_ID_DONE_TASK', env('GUPSHUP_TEMPLATE_ID')),
+            'template_id_task_rework' => env('GUPSHUP_TEMPLATE_ID_REWORK_TASK', env('GUPSHUP_TEMPLATE_ID')),
+            'template_id_task_updated' => env('GUPSHUP_TEMPLATE_ID_UPDATE_TASK', env('GUPSHUP_TEMPLATE_ID')),
+        ],
+        'use_template_for_tasks' => env('WHATSAPP_USE_TEMPLATE_FOR_TASKS', true),
+    ],
 ];

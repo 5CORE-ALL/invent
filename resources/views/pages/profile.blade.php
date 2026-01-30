@@ -50,6 +50,7 @@
                                                 <label class="form-label">Full Name</label>
                                                 <input type="text" name="name" value="{{ old('name', $user->name) }}"
                                                     class="form-control @error('name') is-invalid @enderror" required>
+                                                <small class="text-muted">Use full name (e.g. Akash Nishad) so it appears correctly in Task WhatsApp notifications.</small>
                                                 @error('name')
                                                     <div class="invalid-feedback">{{ $message }}</div>
                                                 @enderror
@@ -61,6 +62,17 @@
                                                     value="{{ old('email', $user->email) }}"
                                                     class="form-control @error('email') is-invalid @enderror" required>
                                                 @error('email')
+                                                    <div class="invalid-feedback">{{ $message }}</div>
+                                                @enderror
+                                            </div>
+
+                                            <div class="mb-3">
+                                                <label class="form-label">Phone (for Task WhatsApp)</label>
+                                                <input type="text" name="phone" placeholder="e.g. 919876543210"
+                                                    value="{{ old('phone', $user->phone ?? '') }}"
+                                                    class="form-control @error('phone') is-invalid @enderror">
+                                                <small class="text-muted">Digits + country code only. Required to receive task notifications on WhatsApp.</small>
+                                                @error('phone')
                                                     <div class="invalid-feedback">{{ $message }}</div>
                                                 @enderror
                                             </div>

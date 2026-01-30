@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Reverb Pricing', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Reverb Analytics', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -125,8 +125,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Reverb Pricing',
-        'sub_title' => 'Reverb Pricing',
+        'page_title' => 'Reverb Analytics',
+        'sub_title' => 'Reverb Analytics',
     ])
     <div class="toast-container"></div>
     <div class="row">
@@ -225,6 +225,9 @@
                     
                     <button id="increase-btn" class="btn btn-sm btn-success">
                         <i class="fas fa-arrow-up"></i> Increase Mode
+                    </button>
+                    <button id="show-ads-column-btn" class="btn btn-sm btn-outline-primary" title="First click: ads columns only. Second click: show all columns.">
+                        <i class="fa fa-bullhorn"></i> Show Ads Column
                     </button>
                 </div>
 
@@ -706,6 +709,31 @@
             showToast(message, updatedCount > 0 ? 'success' : 'warning');
         }
 
+        // Save recommended bid (RE BID) to database
+        function saveRecommendedBid(sku, recommendedBid) {
+            $.ajax({
+                url: '/reverb-save-recommended-bid',
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content'),
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                data: JSON.stringify({
+                    sku: sku,
+                    recommended_bid: recommendedBid || null
+                }),
+                contentType: 'application/json',
+                success: function() {
+                    showToast('Recommended bid saved for ' + sku, 'success');
+                },
+                error: function(xhr) {
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Failed to save recommended bid';
+                    showToast(msg, 'error');
+                }
+            });
+        }
+
         // Save SPRICE updates to backend (unified function for all SPRICE updates)
         function saveSpriceUpdates(updates) {
             $.ajax({
@@ -981,6 +1009,70 @@
                         if (value === 0) {
                             return '<span style="color: #dc3545; font-weight: 600;">0</span>';
                         }
+                        return `<span style="font-weight: 600;">${value}</span>`;
+                    }
+                },
+                {
+                    title: "Missing Ad",
+                    field: "Missing_Ad",
+                    hozAlign: "center",
+                    width: 70,
+                    visible: false,
+                    formatter: function(cell) {
+                        const bump = cell.getRow().getData().Bump;
+                        const hasBump = bump !== null && bump !== undefined && String(bump).trim() !== '';
+                        if (hasBump) {
+                            return '<span class="status-circle green" title="Has Bump Bid"></span>';
+                        }
+                        return '<span class="status-circle red" title="Missing Ad"></span>';
+                    },
+                    headerSort: false
+                },
+                {
+                    title: "Bump Req",
+                    field: "bump_req",
+                    hozAlign: "center",
+                    headerSort: false,
+                    width: 70,
+                    visible: false,
+                    formatter: function(cell) {
+                        let value = cell.getValue();
+                        if (value === null || value === undefined || value === '' || String(value).trim() === '') {
+                            value = 'REQ';
+                        }
+                        return `<select class="form-select form-select-sm bump-req-dropdown" 
+                            style="border: 1px solid #ddd; text-align: center; cursor: pointer; padding: 2px 4px; font-size: 16px; width: 50px; height: 28px;">
+                            <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>🟢</option>
+                            <option value="NR" ${value === 'NR' ? 'selected' : ''}>🔴</option>
+                        </select>`;
+                    },
+                    cellClick: function(e, cell) {
+                        e.stopPropagation();
+                    }
+                },
+                {
+                    title: "Bump%",
+                    field: "Bump",
+                    hozAlign: "center",
+                    width: 70,
+                    visible: false,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value === null || value === undefined || value === '') return '<span class="text-muted">-</span>';
+                        return `<span style="font-weight: 600;">${value}</span>`;
+                    }
+                },
+                {
+                    title: "S Bump%",
+                    field: "RE_BID",
+                    hozAlign: "center",
+                    width: 70,
+                    visible: false,
+                    editor: "input",
+                    editorParams: { placeholder: "e.g. 5%" },
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value === null || value === undefined || value === '') return '<span class="text-muted">-</span>';
                         return `<span style="font-weight: 600;">${value}</span>`;
                     }
                 },
@@ -1360,6 +1452,32 @@
             });
         });
 
+        // Bump Req dropdown change handler (like NRA)
+        $(document).on('change', '.bump-req-dropdown', function() {
+            const $cell = $(this).closest('.tabulator-cell');
+            const $rowEl = $cell.closest('.tabulator-row');
+            const row = table.getRow($rowEl[0]);
+            const rowData = row.getData();
+            const sku = rowData['(Child) sku'];
+            const newValue = $(this).val();
+            $.ajax({
+                url: '{{ url("/reverb-save-bump-req") }}',
+                method: 'POST',
+                data: {
+                    sku: sku,
+                    bump_req: newValue,
+                    _token: '{{ csrf_token() }}'
+                },
+                success: function(response) {
+                    showToast(`${sku}: Bump Req updated to ${newValue}`, 'success');
+                    row.update({ bump_req: newValue });
+                },
+                error: function(xhr) {
+                    showToast(`Failed to update Bump Req for ${sku}`, 'error');
+                }
+            });
+        });
+
         // SPRICE cell edited - save to database
         table.on('cellEdited', function(cell) {
             if (cell.getField() === 'SPRICE') {
@@ -1386,6 +1504,13 @@
                 
                 // Save to database
                 saveSpriceWithRetry(sku, newSprice, row);
+            }
+            if (cell.getField() === 'RE_BID') {
+                const row = cell.getRow();
+                const sku = row.getData()['(Child) sku'];
+                const value = cell.getValue();
+                const recommendedBid = value === null || value === undefined ? '' : String(value).trim();
+                saveRecommendedBid(sku, recommendedBid);
             }
         });
 
@@ -1711,8 +1836,13 @@
                                 }
                             }
                         });
-                        buildColumnDropdown();
                     }
+                    // Parent + ads-only columns: always hidden by default (never show from server)
+                    ['Parent', 'Missing_Ad', 'bump_req', 'Bump', 'RE_BID'].forEach(function(field) {
+                        const col = table.getColumn(field);
+                        if (col) col.hide();
+                    });
+                    buildColumnDropdown();
                 }
             });
         }
@@ -1752,13 +1882,52 @@
             }
         });
 
-        // Show All Columns button
+        // Show All Columns button (Parent + ads-only columns never shown)
         document.getElementById("show-all-columns-btn").addEventListener("click", function() {
             table.getColumns().forEach(col => {
-                if (col.getField() !== '_select') {
+                const field = col.getField();
+                if (field === '_select') return;
+                if (adsOnlyColumnFields.indexOf(field) !== -1) {
+                    col.hide();
+                } else {
                     col.show();
                 }
             });
+            buildColumnDropdown();
+            saveColumnVisibilityToServer();
+        });
+
+        // Show Ads Column: these columns show only when "Show Ads Column" is clicked; hidden when "Show All"
+        const adsColumnFields = ['image_path', '(Child) sku', 'INV', 'L30', 'RV L30', 'R Stock', 'Missing_Ad', 'bump_req', 'Bump', 'RE_BID'];
+        const adsOnlyColumnFields = ['Parent', 'Missing_Ad', 'bump_req', 'Bump', 'RE_BID'];
+        let adsColumnModeActive = false;
+        const showAdsColumnBtn = document.getElementById("show-ads-column-btn");
+        showAdsColumnBtn.addEventListener("click", function() {
+            if (adsColumnModeActive) {
+                // Second click: show all columns (Parent + ads-only columns hidden)
+                table.getColumns().forEach(col => {
+                    const field = col.getField();
+                    if (field === '_select') return;
+                    if (adsOnlyColumnFields.indexOf(field) !== -1) col.hide();
+                    else col.show();
+                });
+                adsColumnModeActive = false;
+                showAdsColumnBtn.classList.remove('btn-primary');
+                showAdsColumnBtn.classList.add('btn-outline-primary');
+                showAdsColumnBtn.innerHTML = '<i class="fa fa-bullhorn"></i> Show Ads Column';
+            } else {
+                // First click: only image, sku, inv, ov l30, rv l30, r stock
+                table.getColumns().forEach(col => {
+                    const field = col.getField();
+                    if (field === '_select') return;
+                    if (adsColumnFields.indexOf(field) !== -1) col.show();
+                    else col.hide();
+                });
+                adsColumnModeActive = true;
+                showAdsColumnBtn.classList.remove('btn-outline-primary');
+                showAdsColumnBtn.classList.add('btn-primary');
+                showAdsColumnBtn.innerHTML = '<i class="fa fa-eye"></i> Show All Columns';
+            }
             buildColumnDropdown();
             saveColumnVisibilityToServer();
         });

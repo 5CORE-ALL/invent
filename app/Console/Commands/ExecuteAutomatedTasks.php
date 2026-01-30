@@ -2,16 +2,19 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Task;
+use App\Services\TaskWhatsAppNotificationService;
+use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
 
 class ExecuteAutomatedTasks extends Command
 {
     protected $signature = 'tasks:execute-automated';
     protected $description = 'Execute automated tasks based on their schedule';
 
-    public function handle()
+    public function handle(TaskWhatsAppNotificationService $taskWhatsApp)
     {
         $this->info('Checking for automated tasks to execute...');
         
@@ -87,9 +90,7 @@ class ExecuteAutomatedTasks extends Command
                 
                 // For automated tasks: completion_date = same as TID (start_date)
                 $completionDate = $now;
-                
-                // Create a new task instance in tasks table
-                DB::table('tasks')->insert([
+                $taskData = [
                     'title' => $task->title . ' [Auto: ' . $now->format('d-M-y') . ']',
                     'group' => $task->group,
                     'priority' => $task->priority,
@@ -122,7 +123,6 @@ class ExecuteAutomatedTasks extends Command
                     'rework_reason' => '',
                     'delete_rating' => 0,
                     'delete_feedback' => '',
-                    'completion_date' => $now,
                     'completion_day' => 0,
                     'etc_done' => 0,
                     'is_missed' => 0,
@@ -130,8 +130,22 @@ class ExecuteAutomatedTasks extends Command
                     'is_data_from' => 0,
                     'created_at' => $now,
                     'updated_at' => $now,
-                ]);
-                
+                ];
+
+                $taskId = DB::table('tasks')->insertGetId($taskData);
+                $taskInstance = Task::find($taskId);
+
+                if ($taskInstance && $task->assign_to) {
+                    try {
+                        $taskWhatsApp->notifyNewTaskAssigned($taskInstance);
+                    } catch (\Throwable $e) {
+                        Log::warning('Task WhatsApp notify new assigned (automated) failed: ' . $e->getMessage(), [
+                            'task_id' => $taskId,
+                            'assign_to' => $task->assign_to,
+                        ]);
+                    }
+                }
+
                 $executed++;
                 $this->info("✓ Executed: {$task->title}");
             }

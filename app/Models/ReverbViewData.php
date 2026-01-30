@@ -14,6 +14,7 @@ class ReverbViewData extends Model
         'sku',
         'parent',
         'values',
+        'bump_req',
     ];
 
     protected $casts = [

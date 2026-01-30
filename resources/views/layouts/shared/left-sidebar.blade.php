@@ -2424,7 +2424,7 @@
                                             <ul class="side-nav-fourth-level">
                                                 <li>
                                                     <a href="{{ url('reverb-pricing') }}">
-                                                        Reverb Pricing</a>
+                                                        Reverb Analytics</a>
                                                 </li>
 
                                                 <li>
@@ -2451,7 +2451,7 @@
 
                                     {{-- <li>
                                         <a href="{{ url('reverb-pricing-decrease-cvr') }}">
-                                            Reverb Pricing Decrease CVR</a>
+                                            Reverb Analytics Decrease CVR</a>
                                     </li> --}}
                                 </ul>
                             </div>
@@ -2473,7 +2473,7 @@
                                         <a href="{{ route('listing.temu') }}">Listing Temu</a>
                                     </li>
                                     <li>
-                                        <a href="{{ url('temu-decrease') }}">Temu Pricing CVR </a>
+                                        <a href="{{ url('temu-decrease') }}">Temu Analytics </a>
                                     </li>
 
 

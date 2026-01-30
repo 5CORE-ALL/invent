@@ -34,11 +34,13 @@ class UserProfileController extends Controller
                 'max:255',
                 Rule::unique('users')->ignore($user->id)
             ],
+            'phone' => ['nullable', 'string', 'max:20'],
         ]);
 
         $user->update([
             'name' => $request->name,
-            'email' => $request->email
+            'email' => $request->email,
+            'phone' => $request->filled('phone') ? $request->phone : null,
         ]);
 
         return back()->with('success', 'Profile updated successfully');

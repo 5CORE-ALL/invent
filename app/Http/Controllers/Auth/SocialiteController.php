@@ -45,9 +45,17 @@ class SocialiteController extends Controller
                 return redirect()->intended(RouteServiceProvider::HOME);
             }
 
+            // Prefer full name from given_name + family_name (Google often sends short "name")
+            $given = $googleUser->user['given_name'] ?? '';
+            $family = $googleUser->user['family_name'] ?? '';
+            $fullName = trim($given . ($given && $family ? ' ' : '') . $family);
+            if ($fullName === '') {
+                $fullName = $googleUser->name ?? explode('@', $googleUser->email)[0];
+            }
+
             // Create new user with additional validation
             $userData = User::create([
-                'name' => $googleUser->name ?? explode('@', $googleUser->email)[0],
+                'name' => $fullName,
                 'email' => $googleUser->email,
                 'google_id' => $googleUser->id,
                 'password' => bcrypt(Str::random(24)),
