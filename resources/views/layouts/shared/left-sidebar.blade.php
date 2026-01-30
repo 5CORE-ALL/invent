@@ -304,9 +304,12 @@
                 </a>
                 <div class="collapse" id="pricingmaster">
                     <ul class="side-nav-second-level">
-                        <li>
+                        {{-- <li>
                             <a href="{{ url('pricing-masters.pricing_masters') }}">Pricing Masters </a>
-                        </li>
+                        </li> --}}
+                        <li>
+                            <a href="{{ url('/pricing-master-cvr') }}">Pricing Master CVR</a>
+                        </li>   
 
                     </ul>
                 </div>
