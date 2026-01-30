@@ -494,7 +494,7 @@
                     sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
                 }
                 
-                const isEditable = ['amazon', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'doba', 'walmart', 'tiktok', 'bestbuy', 'macy', 'reverb', 'tiendamia'].includes((item.marketplace || '').toLowerCase());
+                const isEditable = ['amazon', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'doba', 'walmart', 'tiktok', 'bestbuy', 'macy', 'reverb', 'tiendamia', 'sb2c', 'shopifyb2c', 'sb2b', 'shopifyb2b'].includes((item.marketplace || '').toLowerCase());
                 
                 // Color coding for CVR%
                 let cvrColor = '';

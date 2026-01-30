@@ -30,6 +30,8 @@ use App\Models\TikTokDataView;
 use App\Models\BestbuyUSADataView;
 use App\Models\MacyDataView;
 use App\Models\ReverbViewData;
+use App\Models\Shopifyb2cDataView;
+use App\Models\ShopifyB2BDataView;
 use App\Models\TiendamiaProduct;
 use App\Models\TiendamiaDataView;
 use App\Models\DobaMetric;
@@ -1457,38 +1459,89 @@ class CvrMasterController extends Controller
             
             // NOTE: BestBuy is added later with enhanced suggested data (line ~1594)
 
-            // Fetch Shopify B2C data (matching Shopifyb2cController)
-            // L30 from shopify_b2c_daily_data (period = 'l30')
-            $shopifyB2COrders = ShopifyB2CDailyData::where('sku', $fullSku)
-                ->where('period', 'l30')
-                ->where('financial_status', '!=', 'refunded')
-                ->selectRaw('SUM(quantity) as total_quantity, AVG(price) as avg_price')
-                ->first();
+            // Fetch Shopify B2C data
+            // Price from shopify_skus, L30 from shopify_b2c_daily_data (count rows)
+            $shopifySku = ShopifySku::where('sku', $fullSku)->first();
+            $sb2cPrice = $shopifySku ? floatval($shopifySku->price ?? 0) : 0;
+            
+            // L30: Count rows in shopify_b2c_daily_data (not sum quantity)
+            $sb2cL30 = ShopifyB2CDailyData::where('sku', $fullSku)->count();
             
             // Get Shopify B2C percentage
             $sb2cMarketplace = MarketplacePercentage::where('marketplace', 'ShopifyB2C')->first();
-            $sb2cPercentage = $sb2cMarketplace ? ($sb2cMarketplace->percentage / 100) : 1.00;
+            $sb2cPercentage = $sb2cMarketplace ? ($sb2cMarketplace->percentage / 100) : 0.95;
             
-            $sb2cPrice = $shopifyB2COrders ? floatval($shopifyB2COrders->avg_price ?? 0) : 0;
-            
-            // Calculate Shopify B2C GPFT% = ((price × percentage - ship - lp) / price) × 100
+            // Calculate Shopify B2C GPFT%
             $sb2cGPFT = $sb2cPrice > 0 ? ((($sb2cPrice * $sb2cPercentage - $lp - $ship) / $sb2cPrice) * 100) : 0;
+            $sb2cNPFT = $sb2cL30 == 0 ? $sb2cGPFT : $sb2cGPFT;
             
-            // Shopify B2C doesn't have ads, so NPFT = GPFT
-            $sb2cNPFT = $sb2cGPFT;
-            
-            $hasShopifyB2CData = $shopifyB2COrders && $shopifyB2COrders->total_quantity > 0;
+            // Get suggested data
+            $sb2cDataView = Shopifyb2cDataView::where('sku', $fullSku)->first();
+            $sb2cSuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            if ($sb2cDataView) {
+                $val = is_array($sb2cDataView->value) ? $sb2cDataView->value : json_decode($sb2cDataView->value, true);
+                if (is_array($val)) {
+                    $sb2cSuggested = ['sprice' => floatval($val['SPRICE'] ?? 0), 'sgpft' => floatval($val['SGPFT'] ?? 0),
+                                      'sroi' => floatval($val['SROI'] ?? 0), 'spft' => floatval($val['SPFT'] ?? 0)];
+                }
+            }
             
             $breakdownData[] = [
                 'marketplace' => 'SB2C',
-                'sku' => $hasShopifyB2CData ? $fullSku : 'Not Listed',
+                'sku' => $fullSku, // Always show SKU (from ProductMaster)
                 'price' => $sb2cPrice,
                 'views' => 0,
-                'l30' => $shopifyB2COrders->total_quantity ?? 0,
+                'l30' => $sb2cL30,
                 'gpft' => $sb2cGPFT,
-                'ad' => 0, // Shopify B2C doesn't have ads
+                'ad' => 0,
                 'npft' => $sb2cNPFT,
-                'is_listed' => $hasShopifyB2CData,
+                'is_listed' => true, // Always true - never "Not Listed"
+                'sprice' => $sb2cSuggested['sprice'],
+                'sgpft' => $sb2cSuggested['sgpft'],
+                'sroi' => $sb2cSuggested['sroi'],
+                'spft' => $sb2cSuggested['spft'],
+                'lp' => $lp,
+                'ship' => $ship,
+                'margin' => $sb2cPercentage,
+            ];
+
+            // Add Shopify B2B - Same logic as B2C
+            $sb2bPrice = $shopifySku ? floatval($shopifySku->b2b_price ?? 0) : 0;
+            $sb2bL30 = DB::table('shopify_b2b_daily_data')->where('sku', $fullSku)->count();
+            
+            $sb2bMarketplace = MarketplacePercentage::where('marketplace', 'ShopifyB2B')->first();
+            $sb2bMargin = $sb2bMarketplace ? ($sb2bMarketplace->percentage / 100) : 0.95;
+            
+            $sb2bGPFT = $sb2bPrice > 0 ? (($sb2bPrice * $sb2bMargin - $lp - $ship) / $sb2bPrice) * 100 : 0;
+            $sb2bNPFT = $sb2bL30 == 0 ? $sb2bGPFT : $sb2bGPFT;
+            
+            $sb2bDataView = ShopifyB2BDataView::where('sku', $fullSku)->first();
+            $sb2bSuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            if ($sb2bDataView) {
+                $val = is_array($sb2bDataView->value) ? $sb2bDataView->value : json_decode($sb2bDataView->value, true);
+                if (is_array($val)) {
+                    $sb2bSuggested = ['sprice' => floatval($val['SPRICE'] ?? 0), 'sgpft' => floatval($val['SGPFT'] ?? 0),
+                                      'sroi' => floatval($val['SROI'] ?? 0), 'spft' => floatval($val['SPFT'] ?? 0)];
+                }
+            }
+            
+            $breakdownData[] = [
+                'marketplace' => 'SB2B',
+                'sku' => $fullSku,
+                'price' => $sb2bPrice,
+                'views' => 0,
+                'l30' => $sb2bL30,
+                'gpft' => $sb2bGPFT,
+                'ad' => 0,
+                'npft' => $sb2bNPFT,
+                'is_listed' => true,
+                'sprice' => $sb2bSuggested['sprice'],
+                'sgpft' => $sb2bSuggested['sgpft'],
+                'sroi' => $sb2bSuggested['sroi'],
+                'spft' => $sb2bSuggested['spft'],
+                'lp' => $lp,
+                'ship' => $ship,
+                'margin' => $sb2bMargin,
             ];
 
             // Fetch Macy data from macy_products table (using full SKU)
@@ -1866,6 +1919,10 @@ class CvrMasterController extends Controller
                 $dataView = ReverbViewData::firstOrNew(['sku' => $sku]);
             } elseif ($marketplace === 'tiendamia') {
                 $dataView = TiendamiaDataView::firstOrNew(['sku' => $sku]);
+            } elseif ($marketplace === 'shopifyb2c' || $marketplace === 'sb2c') {
+                $dataView = Shopifyb2cDataView::firstOrNew(['sku' => $sku]);
+            } elseif ($marketplace === 'shopifyb2b' || $marketplace === 'sb2b') {
+                $dataView = ShopifyB2BDataView::firstOrNew(['sku' => $sku]);
             } else {
                 return response()->json(['error' => 'Marketplace not supported'], 400);
             }
