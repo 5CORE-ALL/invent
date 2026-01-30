@@ -302,39 +302,66 @@ class ReadyToShipController extends Controller
 
         $readyItems = ReadyToShip::whereIn('sku', $skus)->get();
 
+        $normalizeSku = function ($sku) {
+            if (empty($sku)) return '';
+            $sku = strtoupper(trim($sku));
+            $sku = preg_replace('/\s+/u', ' ', $sku);
+            return trim($sku);
+        };
+
+        $productMaster = DB::table('product_master')
+            ->get()
+            ->keyBy(fn($row) => $normalizeSku($row->sku ?? ''));
+
         foreach ($readyItems as $item) {
+            $qtyForTransit = $item->rec_qty ?? $item->qty;
+            $rate = $item->rate ?? null;
+            $cbm = $item->cbm ?? null;
+            if ($cbm === null || $cbm === '') {
+                $skuNorm = $normalizeSku($item->sku);
+                if (isset($productMaster[$skuNorm])) {
+                    $valuesRaw = $productMaster[$skuNorm]->Values ?? '{}';
+                    $values = json_decode($valuesRaw, true);
+                    if (is_array($values) && isset($values['cbm'])) {
+                        $cbm = (float) $values['cbm'];
+                    }
+                }
+            } else {
+                $cbm = is_numeric($cbm) ? (float) $cbm : $cbm;
+            }
+
+            $transitData = [
+                'our_sku'       => $item->sku,
+                'tab_name'      => $tabName,
+                'rec_qty'       => $item->rec_qty,
+                'no_of_units'   => 1,
+                'total_ctn'     => $qtyForTransit,
+                'rate'          => $rate,
+                'cbm'           => $cbm,
+                'updated_at'    => now(),
+            ];
+
             $existing = TransitContainerDetail::where('our_sku', $item->sku)->where('tab_name', $tabName)->first();
             if ($existing) {
-                $existing->update([
-                    'our_sku'       => $item->sku,
-                    'tab_name'      => $tabName,
-                    'rec_qty'       => $item->rec_qty,
-                    'updated_at'    => now(),
-                ]);
+                $existing->update($transitData);
                 $item->update([
                     'rec_qty' => NULL,
                     'updated_at' => now(),
                 ]);
             } else {
-                TransitContainerDetail::create([
-                    'our_sku'       => $item->sku,
-                    'tab_name'      => $tabName,
-                    'rec_qty'       => $item->rec_qty,
-                    'created_at'    => now(),
-                    'updated_at'    => now(),
-                ]);
+                $transitData['created_at'] = now();
+                TransitContainerDetail::create($transitData);
                 $item->update([
                     'rec_qty' => NULL,
                     'updated_at' => now(),
                 ]);
             }
 
-            if($item->qty === 0){
-                $item->update([
-                    'transit_inv_status' => 1,
-                    'updated_at' => now(),
-                ]);
-            }
+            // Mark as transit so it no longer shows in Ready to Ship list
+            $item->update([
+                'transit_inv_status' => 1,
+                'updated_at' => now(),
+            ]);
         }
 
         return response()->json(['success' => true, 'message' => 'Data moved to TransitContainerDetail.']);

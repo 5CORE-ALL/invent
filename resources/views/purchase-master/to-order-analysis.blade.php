@@ -126,6 +126,14 @@
         .red-bg {
             color: #ff2727 !important;
         }
+        .to-order-filter-row { gap: 1.25rem; padding: 1rem 0; }
+        .filter-item .form-label { white-space: nowrap; font-size: 0.95rem !important; margin-bottom: 0.4rem !important; }
+        .filter-item .form-select,
+        .filter-item .form-control { min-height: 38px; font-size: 0.95rem; padding: 0.4rem 0.65rem; }
+        .filter-item .form-select { min-width: 145px; }
+        .to-order-counts-box { padding: 0.75rem 1.25rem; min-width: 200px; }
+        .to-order-counts-box .count-label { font-size: 0.85rem; letter-spacing: 0.02em; }
+        .to-order-counts-box .count-value { font-size: 2rem; line-height: 1.2; font-weight: 700; }
     </style>
 @endsection
 @section('content')
@@ -140,111 +148,82 @@
                         <h4 class="mb-0">To Order Analysis</h4>
                     </div>
 
-                    <div class="row mb-4 g-3 align-items-end justify-content-between">
-                        {{-- ▶️ Navigation --}}
-                        <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block">▶️ Navigation</label>
-                            <div class="btn-group time-navigation-group" role="group">
-                                <button id="play-backward" class="btn btn-light rounded-circle shadow-sm me-2"
-                                    title="Previous parent">
-                                    <i class="fas fa-step-backward"></i>
-                                </button>
-                                <button id="play-pause" class="btn btn-light rounded-circle shadow-sm me-2"
-                                    style="display: none;" title="Pause">
-                                    <i class="fas fa-pause"></i>
-                                </button>
-                                <button id="play-auto" class="btn btn-primary rounded-circle shadow-sm me-2" title="Play">
-                                    <i class="fas fa-play"></i>
-                                </button>
-                                <button id="play-forward" class="btn btn-light rounded-circle shadow-sm"
-                                    title="Next parent">
-                                    <i class="fas fa-step-forward"></i>
-                                </button>
+                    {{-- Single row: all filters left, counts right --}}
+                    <div class="d-flex flex-wrap align-items-end to-order-filter-row mb-4">
+                        <div class="filter-item">
+                            <label class="form-label fw-semibold d-block">▶️ Navigation</label>
+                            <div class="btn-group" role="group">
+                                <button id="play-backward" class="btn btn-light rounded-circle shadow-sm me-2" style="width: 38px; height: 38px;" title="Previous parent"><i class="fas fa-step-backward"></i></button>
+                                <button id="play-pause" class="btn btn-light rounded-circle shadow-sm me-2" style="width: 38px; height: 38px; display: none;" title="Pause"><i class="fas fa-pause"></i></button>
+                                <button id="play-auto" class="btn btn-primary rounded-circle shadow-sm me-2" style="width: 38px; height: 38px;" title="Play"><i class="fas fa-play"></i></button>
+                                <button id="play-forward" class="btn btn-light rounded-circle shadow-sm" style="width: 38px; height: 38px;" title="Next parent"><i class="fas fa-step-forward"></i></button>
                             </div>
                         </div>
-
-                        <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block">Parent / Sku</label>
-                            <select id="row-data-type" class="form-select border border-primary" style="width: 150px;">
+                        <div class="filter-item">
+                            <label class="form-label fw-semibold d-block">Parent / Sku</label>
+                            <select id="row-data-type" class="form-select border border-primary">
                                 <option value="all">🔁 Show All</option>
-                                <option value="sku">🔹 SKU (Child)</option>
+                                <option value="sku">🔹 SKU</option>
                                 <option value="parent">🔸 Parent</option>
                             </select>
                         </div>
-
-                        <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block">Pending Status</label>
-                            <select id="row-data-pending-status" class="form-select border border-primary" style="width: 150px;">
-                                <option value="">select color</option>
+                        <div class="filter-item">
+                            <label class="form-label fw-semibold d-block">Pending Status</label>
+                            <select id="row-data-pending-status" class="form-select border border-primary">
+                                <option value="">Color</option>
                                 <option value="green">Green <span id="greenCount"></span></option>
                                 <option value="yellow">Yellow <span id="yellowCount"></span></option>
                                 <option value="red">Red <span id="redCount"></span></option>
                             </select>
                         </div>
-
-                        {{-- 🕒 Pending Items & 📦 Total CBM Combined --}}
-                        <div class="col-auto">
-                            <div class="card shadow-sm border-0" style="background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%); min-width: 280px;">
-                                <div class="card-body p-3">
-                                    <div class="d-flex align-items-center justify-content-between">
-                                        <div class="text-center flex-fill">
-                                            <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
-                                                🕒 Pending Items
-                                            </div>
-                                            <div id="pendingItemsCount" class="fw-bold text-primary" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-                                                00
-                                            </div>
-                                        </div>
-                                        <div class="vr mx-3" style="height: 50px; width: 1px; background: linear-gradient(to bottom, transparent, #dee2e6, transparent);"></div>
-                                        <div class="text-center flex-fill">
-                                            <div class="text-muted mb-1" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;">
-                                                📦 Total CBM
-                                            </div>
-                                            <div id="totalCBM" class="fw-bold text-success" style="font-size: 2.5rem; line-height: 1.2; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-                                                00
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="col-auto" hidden>
-                            <label class="form-label fw-semibold mb-1 d-block">Total Approved Qty</label>
-                            <div id="totalApprovedQty" class="fw-bold text-primary" style="font-size: 1.1rem;">
-                                00
-                            </div>
-                        </div>
-
-                        {{-- 🎯 Stage Filter --}}
-                        <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block">🎯 Stage</label>
-                            <select id="stage-filter" class="form-select form-select-sm" style="min-width: 160px;">
-                                <option value="">All Stages</option>
+                        <div class="filter-item">
+                            <label class="form-label fw-semibold d-block">🎯 Stage</label>
+                            <select id="stage-filter" class="form-select">
+                                <option value="">All</option>
                                 <option value="to_order_analysis" selected>2 Order</option>
                                 <option value="mip">MIP</option>
                                 <option value="r2s">R2S</option>
                             </select>
                         </div>
-
-                        {{-- NRP Filter Dropdown --}}
-                        <div class="col-auto">
-                            <label class="form-label fw-semibold mb-1 d-block">🔍 NRP Filter</label>
-                            <select id="nrp-filter" class="form-select form-select-sm" style="min-width: 140px;">
+                        <div class="filter-item">
+                            <label class="form-label fw-semibold d-block">🔍 NRP</label>
+                            <select id="nrp-filter" class="form-select">
                                 <option value="all" selected>All</option>
-                                <option value="show_nr">Show 2BDC</option>
-                                <option value="show_later">Show LATER</option>
+                                <option value="show_nr">2BDC</option>
+                                <option value="show_later">LATER</option>
                             </select>
                         </div>
-
-                        {{-- 🔍 Search --}}
-                        <div class="col-auto">
-                            <label for="search-input" class="form-label fw-semibold mb-1 d-block">🔍 Search</label>
-                            <input type="text" id="search-input" class="form-control form-control-sm" placeholder="Search anything...">
+                        <div class="filter-item">
+                            <label class="form-label fw-semibold d-block">🏢 Supplier</label>
+                            <select id="supplier-filter" class="form-select">
+                                <option value="">All Suppliers</option>
+                                @foreach($allSuppliers ?? [] as $s)
+                                <option value="{{ $s }}">{{ $s }}</option>
+                                @endforeach
+                            </select>
                         </div>
-                        {{-- 🗑️ Delete Selected --}}
-                        <div class="col-auto">
-                            <button class="btn btn-sm btn-danger d-none" id="delete-selected-btn">
+                        <div class="filter-item">
+                            <label for="search-input" class="form-label fw-semibold d-block">🔍 Search</label>
+                            <input type="text" id="search-input" class="form-control" placeholder="Search..." style="width: 160px;">
+                        </div>
+
+                        <div class="ms-auto d-flex align-items-end">
+                            <div class="d-flex align-items-center to-order-counts-box gap-4 rounded border bg-light">
+                                <div class="text-center">
+                                    <div class="text-muted count-label fw-semibold mb-1">🕒 Pending</div>
+                                    <div id="pendingItemsCount" class="count-value text-primary">00</div>
+                                </div>
+                                <div class="vr" style="height: 40px;"></div>
+                                <div class="text-center">
+                                    <div class="text-muted count-label fw-semibold mb-1">📦 CBM</div>
+                                    <div id="totalCBM" class="count-value text-success">00</div>
+                                </div>
+                            </div>
+                            <div class="filter-item d-none" id="totalApprovedQty-wrap">
+                                <label class="form-label fw-semibold mb-1 d-block small">Approved Qty</label>
+                                <div id="totalApprovedQty" class="fw-bold text-primary small">00</div>
+                            </div>
+                            <button class="btn btn-sm btn-danger d-none align-self-end" id="delete-selected-btn">
                                 <i class="fas fa-trash-alt me-1"></i> Delete
                             </button>
                         </div>
@@ -358,6 +337,7 @@
 
             let hideTimeout;
             let uniqueSuppliers = [];
+            let allSuppliers = @json($allSuppliers ?? []);
 
             const table = new Tabulator("#toOrderAnalysis-table", {
                 ajaxURL: "/to-order-analysis/data",
@@ -503,14 +483,15 @@
                         field: "Supplier",
                         formatter: function(cell){
                             let value = cell.getValue() || "";
-                            let options = uniqueSuppliers.map(supplier => {
+                            let sku = (cell.getRow().getData().SKU || "").replace(/"/g, "&quot;");
+                            let list = [...new Set([...(allSuppliers || []), value].filter(Boolean))].sort();
+                            let options = list.map(supplier => {
                                 let selected = (supplier === value) ? "selected" : "";
-                                return `<option value="${supplier}" ${selected}>${supplier}</option>`;
+                                return `<option value="${(supplier || "").replace(/"/g, "&quot;")}" ${selected}>${(supplier || "").replace(/</g, "&lt;")}</option>`;
                             }).join("");
-
                             return `
-                                <select class="form-select form-select-sm editable-select" 
-                                    data-sku="${cell.getRow().getData().SKU}" data-column="Supplier" style="width: 120px;">
+                                <select class="form-select form-select-sm editable-select" data-sku="${sku}" data-column="Supplier" style="width: 140px; max-width: 100%;">
+                                    <option value="">-- Select --</option>
                                     ${options}
                                 </select>`;
                         }
@@ -634,91 +615,30 @@
                             return normalized;
                         },
                         headerSort: false,
-                        formatter: function(cell) {
+                        formatter: function(cell, formatterParams, onRendered) {
                             const rowData = cell.getRow().getData();
                             let value = cell.getValue();
-                            
-                            // Get raw value from row data as fallback - check both cell value and row data
-                            if (value === null || value === undefined || value === '') {
-                                value = rowData["nr"];
-                            }
-                            
-                            // Convert to string and normalize - handle all cases
-                            if (value === null || value === undefined) {
-                                value = '';
-                            } else {
-                                value = String(value).trim().toUpperCase();
-                            }
-                            
-                            const sku = rowData["SKU"] || '';
-                            const parent = rowData["Parent"] || '';
-
-                            let bgColor = '#ffffff'; // default white
-                            let textColor = '#000000'; // default black
-
-                            // ✅ If value is empty or null, treat as REQ by default
-                            if (!value || value === '') {
-                                value = 'REQ';
-                            }
-                            
-                            // Normalize value to match expected values
-                            if (value !== 'REQ' && value !== 'NR' && value !== 'LATER') {
-                                value = 'REQ'; // Default to REQ if value doesn't match
-                            }
-
-                            // ✅ Set background and text color based on value
-                            if (value === 'NR') {
-                                bgColor = '#dc3545'; // red
-                                textColor = '#ffffff';
-                            } else if (value === 'REQ') {
-                                bgColor = '#28a745'; // green
-                                textColor = '#000000';
-                            } else if (value === 'LATER') {
-                                bgColor = '#ffc107'; // yellow
-                                textColor = '#000000';
-                            }
-
-                            return `
-                                <select class="form-select form-select-sm editable-select"
-                                    data-type="NR"
-                                    data-sku='${sku}'
-                                    data-parent='${parent}'
-                                    style="
-                                        width: auto; 
-                                        min-width: 85px; 
-                                        padding: 4px 8px;
-                                        font-size: 0.875rem; 
-                                        border-radius: 4px; 
-                                        border: 1px solid #dee2e6;
-                                        background-color: ${bgColor};
-                                        color: ${textColor};
-                                    ">
+                            if (value === null || value === undefined || value === '') value = rowData["nr"];
+                            if (value === null || value === undefined) value = ''; else value = String(value).trim().toUpperCase();
+                            if (!value || value === '') value = 'REQ';
+                            if (value !== 'REQ' && value !== 'NR' && value !== 'LATER') value = 'REQ';
+                            const sku = rowData["SKU"] || '', parent = rowData["Parent"] || '';
+                            let bgColor = '#ffffff', textColor = '#000000';
+                            if (value === 'NR') { bgColor = '#dc3545'; textColor = '#ffffff'; }
+                            else if (value === 'REQ') { bgColor = '#28a745'; textColor = '#000000'; }
+                            else if (value === 'LATER') { bgColor = '#ffc107'; textColor = '#000000'; }
+                            const html = `
+                                <select class="form-select form-select-sm editable-select" data-type="NR" data-sku='${sku}' data-parent='${parent}'
+                                    style="width: auto; min-width: 85px; padding: 4px 8px; font-size: 0.875rem; border-radius: 4px; border: 1px solid #dee2e6; background-color: ${bgColor}; color: ${textColor};">
                                     <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>REQ</option>
                                     <option value="NR" ${value === 'NR' ? 'selected' : ''}>2BDC</option>
                                     <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>LATER</option>
-                                </select>
-                            `;
-                        },
-                        hozAlign: "center",
-                        cellCreated: function(cell) {
-                            // Ensure the select element has the correct value set after creation
-                            const selectEl = cell.getElement().querySelector('select');
-                            if (selectEl) {
-                                let value = cell.getValue() ?? '';
-                                value = String(value).trim().toUpperCase();
-                                
-                                // If empty, default to REQ
-                                if (!value || value === '') {
-                                    value = 'REQ';
-                                }
-                                
-                                // Ensure value matches one of the options
-                                if (value !== 'REQ' && value !== 'NR' && value !== 'LATER') {
-                                    value = 'REQ';
-                                }
-                                
-                                selectEl.value = value;
-                            }
+                                </select>`;
+                            if (onRendered) onRendered(function() {
+                                const el = cell.getElement().querySelector('select');
+                                if (el) el.value = value;
+                            });
+                            return html;
                         }
                     },
                 ],
@@ -967,7 +887,7 @@
                         alert('Failed to save NRP.');
                     });
                 } else {
-                    // Handle other columns using existing /update-link endpoint
+                    // Handle other columns (Supplier, RFQ links, Adv date, etc.) using /update-link endpoint
                     fetch('/update-link', {
                         method: 'POST',
                         headers: {
@@ -981,15 +901,31 @@
                             value 
                         })
                     })
-                    .then(res => res.json())
+                    .then(res => {
+                        if (!res.ok) {
+                            return res.json().then(data => { throw new Error(data.message || 'Request failed'); }).catch(() => { throw new Error('Request failed'); });
+                        }
+                        return res.json();
+                    })
                     .then(result => {
                         if (!result.success) {
-                            console.error('Update failed:', result.message);
+                            alert('Update failed: ' + (result.message || 'Unknown error'));
                             return;
+                        }
+                        // Update the row in the table so the UI reflects the change
+                        const tbl = Tabulator.findTable("#toOrderAnalysis-table")[0];
+                        if (tbl && column) {
+                            const row = tbl.searchRows("SKU", "=", sku)[0];
+                            if (row) {
+                                const fieldMap = { 'Supplier': 'Supplier', 'Adv date': 'Adv date', 'RFQ Form Link': 'RFQ Form Link', 'Rfq Report Link': 'Rfq Report Link' };
+                                const field = fieldMap[column] || column;
+                                row.update({ [field]: value }, true);
+                            }
                         }
                     })
                     .catch(error => {
                         console.error('Network error:', error);
+                        alert('Error saving: ' + (error.message || 'Please try again.'));
                     });
                 }
             });
@@ -1045,30 +981,31 @@
                 document.getElementById("totalCBM").innerText = totalCBM.toFixed(0);
             }
 
-            // Apply all filters + optional supplier override
-            function applyFilters(supplierOverride=null) {
+            // Apply all filters + optional supplier override (from nav play uses supplierOverride)
+            function applyFilters(supplierOverride = null) {
                 const type = document.getElementById("row-data-type").value;
                 const pending = document.getElementById("row-data-pending-status").value;
                 const stage = document.getElementById("stage-filter").value.toLowerCase().trim();
                 const searchText = document.getElementById("search-input").value.trim().toLowerCase();
+                const supplierFilterEl = document.getElementById("supplier-filter");
+                const supplierFilter = supplierOverride != null ? supplierOverride : (supplierFilterEl ? supplierFilterEl.value.trim() : '');
 
                 table.clearFilter(true);
-                
+
                 table.setFilter(row => {
                     let keep = true;
 
-                    if(type === 'parent') keep = keep && row.is_parent;
-                    else if(type === 'sku') keep = keep && !row.SKU.startsWith("PARENT");
+                    if (type === 'parent') keep = keep && row.is_parent;
+                    else if (type === 'sku') keep = keep && !row.SKU.startsWith("PARENT");
 
-                    if(stage) keep = keep && (row.stage || '').toLowerCase() === stage;
-                    if(pending) keep = keep && getRowColor(row) === pending;
-                    if(supplierOverride) keep = keep && row.Supplier.trim().toLowerCase() === supplierOverride.trim().toLowerCase();
-                    if(searchText) keep = keep && Object.values(row).some(val => val && val.toString().toLowerCase().includes(searchText));
+                    if (stage) keep = keep && (row.stage || '').toLowerCase() === stage;
+                    if (pending) keep = keep && getRowColor(row) === pending;
+                    if (supplierFilter) keep = keep && (row.Supplier || '').trim().toLowerCase() === supplierFilter.toLowerCase();
+                    if (searchText) keep = keep && Object.values(row).some(val => val && val.toString().toLowerCase().includes(searchText));
 
                     return keep;
                 });
 
-                // Force count update after filter
                 setTimeout(updateCounts, 0);
             }
 
@@ -1121,6 +1058,7 @@
             document.getElementById("row-data-type").addEventListener("change", () => applyFilters());
             document.getElementById("row-data-pending-status").addEventListener("change", () => applyFilters());
             document.getElementById("stage-filter").addEventListener("change", () => applyFilters());
+            document.getElementById("supplier-filter").addEventListener("change", () => applyFilters());
             document.getElementById("search-input").addEventListener("input", debounce(() => applyFilters(), 300));
 
             // Set default stage filter to "2 Order"

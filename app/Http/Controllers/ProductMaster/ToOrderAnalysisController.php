@@ -261,7 +261,8 @@ class ToOrderAnalysisController extends Controller
     }
 
     public function toOrderAnalysisNew(){
-        return view('purchase-master.to-order-analysis');
+        $allSuppliers = Supplier::where('type', 'Supplier')->orderBy('name')->pluck('name')->unique()->values()->toArray();
+        return view('purchase-master.to-order-analysis', compact('allSuppliers'));
     }
 
     public function getToOrderAnalysis()
@@ -271,7 +272,8 @@ class ToOrderAnalysisController extends Controller
             $showNR = request()->get('showNR', '0') === '1';
             $showLATER = request()->get('showLATER', '0') === '1';
             
-            $toOrderRecords = DB::table('to_order_analysis')->whereNull('deleted_at')->get()->keyBy('sku');
+            // orderBy id asc so duplicate SKUs: keyBy keeps last occurrence = highest id (latest row)
+            $toOrderRecords = DB::table('to_order_analysis')->whereNull('deleted_at')->orderBy('id', 'asc')->get()->keyBy('sku');
             $productData = DB::table('product_master')->get()->keyBy(fn($item) => strtoupper(trim($item->sku)));
             $forecastData = DB::table('forecast_analysis')->get()->keyBy(fn($row) => strtoupper(trim($row->sku)));
 
@@ -376,9 +378,13 @@ class ToOrderAnalysisController extends Controller
 
     public function updateLink(Request $request)
     {
-        $sku = trim(strtoupper($request->input('sku')));
+        $sku = trim(strtoupper((string) $request->input('sku', '')));
         $column = $request->input('column');
         $value = $request->input('value');
+
+        if (empty($sku)) {
+            return response()->json(['success' => false, 'message' => 'SKU is required']);
+        }
 
         if (!in_array($column, ['approved_qty','Date of Appr', 'RFQ Form Link', 'Rfq Report Link', 'sheet_link', 'Stage', 'nrl', 'Supplier', 'order_qty', 'Adv date'])) {
             return response()->json(['success' => false, 'message' => 'Invalid column']);
@@ -397,19 +403,23 @@ class ToOrderAnalysisController extends Controller
             'approved_qty'    => 'approved_qty',
         };
 
-        $existing = ToOrderAnalysis::whereRaw('TRIM(UPPER(sku)) = ?', [$sku])->first();
+        try {
+            // Update ALL rows with this SKU (handles duplicate SKU rows so refresh shows correct value)
+            $updated = ToOrderAnalysis::whereRaw('TRIM(UPPER(sku)) = ?', [$sku])->update([$updateColumn => $value]);
 
-        if ($existing) {
-            $existing->{$updateColumn} = $value;
-            $existing->save();
-        } else {
-            ToOrderAnalysis::create([
-                'sku' => $sku,
-                $updateColumn => $value
-            ]);
+            if ($updated === 0) {
+                // No row exists for this SKU, create one (avoid creating if any duplicate already exists)
+                ToOrderAnalysis::create([
+                    'sku' => $sku,
+                    $updateColumn => $value
+                ]);
+            }
+
+            return response()->json(['success' => true]);
+        } catch (\Throwable $e) {
+            Log::error('ToOrderAnalysis updateLink failed', ['sku' => $sku, 'column' => $column, 'error' => $e->getMessage()]);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
-
-        return response()->json(['success' => true]);
     }
 
 
