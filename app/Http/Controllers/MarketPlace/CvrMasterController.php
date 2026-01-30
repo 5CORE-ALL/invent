@@ -1201,17 +1201,7 @@ class CvrMasterController extends Controller
             
             Log::info('Temu NPFT%: ' . $temuNPFT);
             
-            $breakdownData[] = [
-                'marketplace' => 'TEMU',
-                'sku' => $hasTemuData ? $fullSku : 'Not Listed',
-                'price' => $temuPrice,
-                'views' => $temuViews,
-                'l30' => $temuL30Value,
-                'gpft' => $temuGPFT,
-                'ad' => $temuADS,
-                'npft' => $temuNPFT,
-                'is_listed' => $hasTemuData,
-            ];
+            // NOTE: Temu is added later with enhanced suggested data (line ~1518)
 
             // Fetch Doba data from doba_metrics table (using full SKU)
             $dobaMetric = DobaMetric::where('sku', $fullSku)->first();
