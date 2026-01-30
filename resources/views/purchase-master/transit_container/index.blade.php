@@ -639,6 +639,8 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
               editor: false,
               formatter: function(cell) {
                   const data = cell.getRow().getData();
+                  const pcsQty = parseFloat(data.pcs_qty);
+                  if (pcsQty > 0) return pcsQty;
                   const units = parseFloat(data.no_of_units) || 0;
                   const ctn = parseFloat(data.total_ctn) || 0;
                   return units * ctn;
@@ -956,14 +958,16 @@ Object.entries(groupedData).forEach(([tabName, data], index) => {
         const exportData = data
           .filter(row => row.parent || row.our_sku)
           .map(row => {
+              const pcsQty = parseFloat(row.pcs_qty);
+              const qty = (pcsQty > 0) ? pcsQty : (parseFloat(row.no_of_units || 0) * parseFloat(row.total_ctn || 0));
               return {
                   "SKU": row.our_sku,
                   "Supplier": row.supplier_name,
                   "Qty / Ctns": row.no_of_units,
                   "Qty Ctns": row.total_ctn,
-                  "Qty": (parseFloat(row.no_of_units || 0) * parseFloat(row.total_ctn || 0)),
+                  "Qty": qty,
                   "Rate ($)": row.rate,
-                  "Amt ($)": Math.round((parseFloat(row.no_of_units || 0) * parseFloat(row.total_ctn || 0)) * parseFloat(row.rate || 0)),
+                  "Amt ($)": Math.round(qty * parseFloat(row.rate || 0)),
                   "CBM": typeof row.Values === "string" ? JSON.parse(row.Values)?.cbm || 0 : row.Values?.cbm || 0,
                   "Unit": row.unit,
                   "Changes": row.changes,
@@ -1389,8 +1393,8 @@ function updateActiveTabSummary(index, table) {
         const ctn = parseFloat(row.total_ctn) || 0;
         const units = parseFloat(row.no_of_units) || 0;
         const rate = parseFloat(row.rate) || 0;
-
-        const qty = ctn * units;
+        const pcsQty = parseFloat(row.pcs_qty);
+        const qty = (pcsQty > 0) ? pcsQty : (ctn * units);
 
         let cbmPerUnit = 0;
         if (row.Values) {
