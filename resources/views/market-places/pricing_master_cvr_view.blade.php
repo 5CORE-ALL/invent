@@ -494,7 +494,7 @@
                     sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
                 }
                 
-                const isEditable = ['amazon', 'ebay', 'ebaytwo', 'ebaythree', 'temu'].includes((item.marketplace || '').toLowerCase());
+                const isEditable = ['amazon', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'doba', 'walmart', 'tiktok', 'bestbuy', 'macy', 'reverb'].includes((item.marketplace || '').toLowerCase());
                 
                 // Color coding for CVR%
                 let cvrColor = '';
