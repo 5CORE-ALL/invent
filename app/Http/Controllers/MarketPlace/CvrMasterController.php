@@ -26,6 +26,10 @@ use App\Models\Ebay3GeneralReport;
 use App\Models\AmazonDataView;
 use App\Models\TemuDataView;
 use App\Models\DobaDataView;
+use App\Models\TikTokDataView;
+use App\Models\BestbuyUSADataView;
+use App\Models\MacyDataView;
+use App\Models\ReverbViewData;
 use App\Models\DobaMetric;
 use App\Models\WalmartPriceData;
 use App\Models\WalmartOrderData;
@@ -1385,20 +1389,43 @@ class CvrMasterController extends Controller
             $ttGPFT = $ttPrice > 0 ? ((($ttPrice * $tiktokPercentage - $lp - $ship) / $ttPrice) * 100) : 0;
             
             // TikTok doesn't have ads, so NPFT = GPFT
-            $ttNPFT = $ttGPFT;
+            $ttNPFT = $tiktokL30 == 0 ? $ttGPFT : $ttGPFT;
+            
+            // Get TikTok suggested data from tiktok_data_view
+            $tiktokDataView = TikTokDataView::where('sku', $fullSku)->first();
+            $tiktokSuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            if ($tiktokDataView) {
+                $val = is_array($tiktokDataView->value) ? $tiktokDataView->value : 
+                       json_decode($tiktokDataView->value, true);
+                if (is_array($val)) {
+                    $tiktokSuggested = [
+                        'sprice' => floatval($val['SPRICE'] ?? 0),
+                        'sgpft' => floatval($val['SGPFT'] ?? 0),
+                        'sroi' => floatval($val['SROI'] ?? 0),
+                        'spft' => floatval($val['SPFT'] ?? 0)
+                    ];
+                }
+            }
             
             $hasTikTokData = $tiktokData && ($ttPrice > 0 || $tiktokL30 > 0);
             
             $breakdownData[] = [
-                'marketplace' => 'TT',
+                'marketplace' => 'TikTok',
                 'sku' => $hasTikTokData ? $fullSku : 'Not Listed',
                 'price' => $ttPrice,
                 'views' => $tiktokData->views ?? 0,
                 'l30' => $tiktokL30 ?? 0,
                 'gpft' => $ttGPFT,
-                'ad' => 0, // TikTok doesn't have ads
+                'ad' => 0,
                 'npft' => $ttNPFT,
                 'is_listed' => $hasTikTokData,
+                'sprice' => $tiktokSuggested['sprice'],
+                'sgpft' => $tiktokSuggested['sgpft'],
+                'sroi' => $tiktokSuggested['sroi'],
+                'spft' => $tiktokSuggested['spft'],
+                'lp' => $lp,
+                'ship' => $ship,
+                'margin' => $tiktokPercentage,
             ];
 
             // Fetch BestBuy data (matching BestBuyPricingController)
@@ -1418,19 +1445,7 @@ class CvrMasterController extends Controller
             // BestBuy doesn't have ads, so NPFT = GPFT
             $bbNPFT = $bbGPFT;
             
-            $hasBestBuyData = $bestbuyProduct && ($bestbuyProduct->m_l30 > 0 || $bbPrice > 0);
-            
-            $breakdownData[] = [
-                'marketplace' => 'BB',
-                'sku' => $hasBestBuyData ? $fullSku : 'Not Listed',
-                'price' => $bbPrice,
-                'views' => 0,
-                'l30' => $bestbuyProduct->m_l30 ?? 0,
-                'gpft' => $bbGPFT,
-                'ad' => 0, // BestBuy doesn't have ads
-                'npft' => $bbNPFT,
-                'is_listed' => $hasBestBuyData,
-            ];
+            // NOTE: BestBuy is added later with enhanced suggested data (line ~1594)
 
             // Fetch Shopify B2C data (matching Shopifyb2cController)
             // L30 from shopify_b2c_daily_data (period = 'l30')
@@ -1478,21 +1493,40 @@ class CvrMasterController extends Controller
             // Calculate Macy's GPFT% = ((price × percentage - ship - lp) / price) × 100
             $macyGPFT = $macyPrice > 0 ? ((($macyPrice * $macyPercentage - $lp - $ship) / $macyPrice) * 100) : 0;
             
-            // Macy's doesn't have ads, so NPFT = GPFT
-            $macyNPFT = $macyGPFT;
+            // Macy's doesn't have ads, NPFT = GPFT
+            $macyL30 = $macyProduct->m_l30 ?? 0;
+            $macyNPFT = $macyL30 == 0 ? $macyGPFT : $macyGPFT;
             
-            $hasMacyData = $macyProduct && ($macyProduct->m_l30 > 0 || $macyPrice > 0);
+            // Get Macy suggested data from macy_data_view
+            $macyDataView = MacyDataView::where('sku', $fullSku)->first();
+            $macySuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            if ($macyDataView) {
+                $val = is_array($macyDataView->value) ? $macyDataView->value : json_decode($macyDataView->value, true);
+                if (is_array($val)) {
+                    $macySuggested = ['sprice' => floatval($val['SPRICE'] ?? 0), 'sgpft' => floatval($val['SGPFT'] ?? 0),
+                                      'sroi' => floatval($val['SROI'] ?? 0), 'spft' => floatval($val['SPFT'] ?? 0)];
+                }
+            }
+            
+            $hasMacyData = $macyProduct && ($macyL30 > 0 || $macyPrice > 0);
             
             $breakdownData[] = [
                 'marketplace' => 'MACY',
                 'sku' => $hasMacyData ? $fullSku : 'Not Listed',
                 'price' => $macyPrice,
                 'views' => $macyProduct->views ?? 0,
-                'l30' => $macyProduct->m_l30 ?? 0,
+                'l30' => $macyL30,
                 'gpft' => $macyGPFT,
-                'ad' => 0, // Macy's doesn't have ads
+                'ad' => 0,
                 'npft' => $macyNPFT,
                 'is_listed' => $hasMacyData,
+                'sprice' => $macySuggested['sprice'],
+                'sgpft' => $macySuggested['sgpft'],
+                'sroi' => $macySuggested['sroi'],
+                'spft' => $macySuggested['spft'],
+                'lp' => $lp,
+                'ship' => $ship,
+                'margin' => $macyPercentage,
             ];
 
             // Fetch Reverb data from reverb_products table (using full SKU)
@@ -1507,21 +1541,46 @@ class CvrMasterController extends Controller
             // Calculate Reverb GPFT% = ((price × percentage - ship - lp) / price) × 100
             $rvGPFT = $rvPrice > 0 ? ((($rvPrice * $reverbPercentage - $lp - $ship) / $rvPrice) * 100) : 0;
             
-            // Reverb doesn't have ads, so NPFT = GPFT
-            $rvNPFT = $rvGPFT;
+            // Reverb doesn't have ads, NPFT = GPFT
+            $reverbL30 = $reverbProduct->r_l30 ?? 0;
+            $rvNPFT = $reverbL30 == 0 ? $rvGPFT : $rvGPFT;
             
-            $hasReverbData = $reverbProduct && ($reverbProduct->r_l30 > 0 || $rvPrice > 0);
+            // Get Reverb suggested data from reverb_view_data
+            $reverbDataView = ReverbViewData::where('sku', $fullSku)->first();
+            $reverbSuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            if ($reverbDataView) {
+                $val = is_array($reverbDataView->values) ? $reverbDataView->values : 
+                       json_decode($reverbDataView->values, true);
+                if (is_array($val)) {
+                    // Reverb stores SPFT/SROI with % symbols, need to strip them
+                    $reverbSuggested = [
+                        'sprice' => floatval($val['SPRICE'] ?? 0),
+                        'sgpft' => floatval($val['SGPFT'] ?? 0),
+                        'sroi' => floatval(str_replace('%', '', $val['SROI'] ?? '0')),
+                        'spft' => floatval(str_replace('%', '', $val['SPFT'] ?? '0'))
+                    ];
+                }
+            }
+            
+            $hasReverbData = $reverbProduct && ($reverbL30 > 0 || $rvPrice > 0);
             
             $breakdownData[] = [
-                'marketplace' => 'RV',
+                'marketplace' => 'Reverb',
                 'sku' => $hasReverbData ? $fullSku : 'Not Listed',
                 'price' => $rvPrice,
                 'views' => $reverbProduct->views ?? 0,
-                'l30' => $reverbProduct->r_l30 ?? 0,
+                'l30' => $reverbL30,
                 'gpft' => $rvGPFT,
-                'ad' => 0, // Reverb doesn't have ads
+                'ad' => 0,
                 'npft' => $rvNPFT,
                 'is_listed' => $hasReverbData,
+                'sprice' => $reverbSuggested['sprice'],
+                'sgpft' => $reverbSuggested['sgpft'],
+                'sroi' => $reverbSuggested['sroi'],
+                'spft' => $reverbSuggested['spft'],
+                'lp' => $lp,
+                'ship' => $ship,
+                'margin' => $reverbPercentage,
             ];
 
             // Add Temu
@@ -1564,6 +1623,45 @@ class CvrMasterController extends Controller
                 'lp' => $lp,
                 'ship' => $temuShip,
                 'margin' => $temuMargin,
+            ];
+
+            // NOTE: Macy is added earlier as 'MACY' with enhanced suggested data (line ~1500)
+            
+            // Add BestBuy
+            $bestbuyProduct = BestbuyUsaProduct::where('sku', $fullSku)->first();
+            $bestbuyMargin = 0.80;
+            $bestbuyPrice = $bestbuyProduct->price ?? 0;
+            $bestbuyL30 = 0; // BestBuy L30 data source needed
+            $bestbuyGPFT = $bestbuyPrice > 0 ? (($bestbuyPrice * $bestbuyMargin - $lp - $ship) / $bestbuyPrice) * 100 : 0;
+            $bestbuyNPFT = $bestbuyL30 == 0 ? $bestbuyGPFT : $bestbuyGPFT;
+            
+            $bestbuyDataView = BestbuyUSADataView::where('sku', $fullSku)->first();
+            $bestbuySuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            if ($bestbuyDataView) {
+                $val = is_array($bestbuyDataView->value) ? $bestbuyDataView->value : json_decode($bestbuyDataView->value, true);
+                if (is_array($val)) {
+                    $bestbuySuggested = ['sprice' => floatval($val['SPRICE'] ?? 0), 'sgpft' => floatval($val['SGPFT'] ?? 0),
+                                         'sroi' => floatval($val['SROI'] ?? 0), 'spft' => floatval($val['SPFT'] ?? 0)];
+                }
+            }
+            
+            $breakdownData[] = [
+                'marketplace' => 'BestBuy',
+                'sku' => $bestbuyProduct ? $fullSku : 'Not Listed',
+                'price' => $bestbuyPrice,
+                'views' => 0,
+                'l30' => $bestbuyL30,
+                'gpft' => $bestbuyGPFT,
+                'ad' => 0,
+                'npft' => $bestbuyNPFT,
+                'is_listed' => $bestbuyProduct ? true : false,
+                'sprice' => $bestbuySuggested['sprice'],
+                'sgpft' => $bestbuySuggested['sgpft'],
+                'sroi' => $bestbuySuggested['sroi'],
+                'spft' => $bestbuySuggested['spft'],
+                'lp' => $lp,
+                'ship' => $ship,
+                'margin' => $bestbuyMargin,
             ];
 
             Log::info('Total marketplaces: ' . count($breakdownData));
@@ -1707,13 +1805,26 @@ class CvrMasterController extends Controller
                 $dataView = DobaDataView::firstOrNew(['sku' => $sku]);
             } elseif ($marketplace === 'walmart') {
                 $dataView = WalmartDataView::firstOrNew(['sku' => $sku]);
+            } elseif ($marketplace === 'tiktok') {
+                $dataView = TikTokDataView::firstOrNew(['sku' => $sku]);
+            } elseif ($marketplace === 'bestbuy') {
+                $dataView = BestbuyUSADataView::firstOrNew(['sku' => $sku]);
+            } elseif ($marketplace === 'macy') {
+                $dataView = MacyDataView::firstOrNew(['sku' => $sku]);
+            } elseif ($marketplace === 'reverb') {
+                $dataView = ReverbViewData::firstOrNew(['sku' => $sku]);
             } else {
                 return response()->json(['error' => 'Marketplace not supported'], 400);
             }
 
-            // Get existing value
-            $value = is_array($dataView->value) ? $dataView->value : 
-                     (is_string($dataView->value) ? json_decode($dataView->value, true) : []);
+            // Get existing value (Reverb uses 'values', others use 'value')
+            if ($marketplace === 'reverb') {
+                $value = is_array($dataView->values) ? $dataView->values : 
+                         (is_string($dataView->values) ? json_decode($dataView->values, true) : []);
+            } else {
+                $value = is_array($dataView->value) ? $dataView->value : 
+                         (is_string($dataView->value) ? json_decode($dataView->value, true) : []);
+            }
             if (!is_array($value)) $value = [];
             
             // Update values (Walmart uses lowercase 'sprice', others use 'SPRICE')
@@ -1734,7 +1845,12 @@ class CvrMasterController extends Controller
                 unset($value['SPRICE']);
             }
             
-            $dataView->value = $value;
+            // Save to correct field (Reverb uses 'values', others use 'value')
+            if ($marketplace === 'reverb') {
+                $dataView->values = $value;
+            } else {
+                $dataView->value = $value;
+            }
             $dataView->save();
 
             return response()->json(['success' => true]);
