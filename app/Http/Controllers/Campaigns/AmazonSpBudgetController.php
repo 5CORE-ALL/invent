@@ -2838,6 +2838,8 @@ class AmazonSpBudgetController extends Controller
                 $row['l1_spend'] = $childL1SpendByParent[$p];
                 // Keep campaignBudgetAmount as DB value (for BGT column); use utilization_budget for 7 UB%, 1 UB%, SBID
                 $row['utilization_budget'] = $childBudgetByParent[$p];
+                // Parent has "campaign" when at least one child has campaign (so Type=Parent shows correct Campaign count)
+                $row['hasCampaign'] = ($childBudgetByParent[$p] ?? 0) > 0;
                 $l7CpcCount = $childL7CpcCountByParent[$p] ?? 0;
                 $l1CpcCount = $childL1CpcCountByParent[$p] ?? 0;
                 $row['l7_cpc'] = $l7CpcCount > 0 ? ($childL7CpcSumByParent[$p] / $l7CpcCount) : 0;

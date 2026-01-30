@@ -785,26 +785,21 @@
                     // Count rows that would be shown when Utilization Type = "All" (same as combinedFilter when currentUtilizationType === 'all')
                     totalRowsWhenAllUtilization++;
                     
-                    // Check if campaign is missing or exists - only count unique valid SKUs (after filters)
-                    if (isValidSku) {
+                    // Count campaign or missing - for both child SKUs and parent rows (so Type=Parent shows correct Campaign/Missing)
+                    if (isValidSku || isParentRow) {
                         if (hasCampaign) {
-                            // Count campaign only once per SKU
                             if (!processedSkusForCampaign.has(sku)) {
                                 processedSkusForCampaign.add(sku);
                                 totalCampaignCount++;
                             }
                         } else {
-                            // Count missing only once per SKU
                             if (!processedSkusForMissing.has(sku)) {
                                 processedSkusForMissing.add(sku);
-                                // Check if this is a red dot (missing AND not yellow)
                                 let rowNrlForMissing = row.NRL ? row.NRL.trim() : "";
                                 let rowNraForMissing = row.NRA ? row.NRA.trim() : "";
-                                // Only count as missing (red dot) if neither NRL='NRL' nor NRA='NRA'
                                 if (rowNrlForMissing !== 'NRL' && rowNraForMissing !== 'NRA') {
                                     missingCount++;
                                 } else {
-                                    // Count NRA missing (yellow dots) separately
                                     if (!processedSkusForNraMissing.has(sku)) {
                                         processedSkusForNraMissing.add(sku);
                                         nraMissingCount++;
@@ -812,8 +807,9 @@
                                 }
                             }
                         }
-                        
-                        // Count valid SKUs that pass ALL filters (after inventory and NRA filters) - only once per SKU
+                    }
+                    // Count valid SKUs (child only) that pass ALL filters - only once per SKU
+                    if (isValidSku) {
                         if (!processedSkusForValidCount.has(sku)) {
                             processedSkusForValidCount.add(sku);
                             validSkuCount++;
