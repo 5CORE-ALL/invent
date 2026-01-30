@@ -354,9 +354,15 @@
                                         </label>
                                         <select id="utilization-type-select" class="form-select form-select-sm w-100">
                                             <option value="all" selected>All</option>
-                                            <option value="over">Over Utilized</option>
-                                            <option value="under">Under Utilized</option>
-                                            <option value="correctly">Correctly Utilized</option>
+                                            <option value="gg">Green+Green</option>
+                                            <option value="gp">Green+Pink</option>
+                                            <option value="gr">Green+Red</option>
+                                            <option value="pg">Pink+Green</option>
+                                            <option value="pp">Pink+Pink</option>
+                                            <option value="pr">Pink+Red</option>
+                                            <option value="rg">Red+Green</option>
+                                            <option value="rp">Red+Pink</option>
+                                            <option value="rr">Red+Red</option>
                                         </select>
                                     </div>
                                     <div class="flex-grow-1 flex-shrink-0" style="min-width: 0;">
@@ -364,8 +370,8 @@
                                             <i class="fa-solid fa-toggle-on me-1" style="color: #64748b;"></i>Status
                                         </label>
                                         <select id="status-filter" class="form-select form-select-sm w-100">
-                                            <option value="">All</option>
-                                            <option value="ENABLED">Enabled</option>
+                                            <option value="ALL">All</option>
+                                            <option value="ENABLED" selected>Enabled</option>
                                             <option value="PAUSED">Paused</option>
                                             <option value="ENDED">Ended</option>
                                         </select>
@@ -375,8 +381,7 @@
                                             <i class="fa-solid fa-boxes me-1" style="color: #64748b;"></i>Inventory
                                         </label>
                                         <select id="inv-filter" class="form-select form-select-sm w-100">
-                                            <option value="">All</option>
-                                            <option value="ALL">ALL</option>
+                                            <option value="ALL">All</option>
                                             <option value="INV_0">0 INV</option>
                                             <option value="OTHERS" selected>OTHERS</option>
                                         </select>
@@ -714,9 +719,9 @@
                 
                 // Get all data and apply filters (except utilization type filter)
                 const allData = table.getData('all');
-                let overCount = 0;
-                let underCount = 0;
-                let correctlyCount = 0;
+                const comboCounts = { gg: 0, gp: 0, gr: 0, pg: 0, pp: 0, pr: 0, rg: 0, rp: 0, rr: 0 }; // 7UB×1UB color combos (same as google-utilized)
+                let totalForUtilCount = 0; // Rows with valid utilization (campaign + ENABLED + budget) for combo counts
+                let totalRowsWhenAllUtilization = 0; // Rows shown when Utilization Type = "All" (matches pagination)
                 let missingCount = 0;
                 let nraMissingCount = 0; // Count NRA missing campaigns
                 let zeroInvCount = 0; // Count zero and negative inventory
@@ -734,22 +739,39 @@
                 const processedSkusForValidCount = new Set(); // Track SKUs for valid count
                 
                 allData.forEach(function(row) {
-                    // Count valid SKUs (exclude parent SKUs and empty SKUs)
+                    // Count valid SKUs (exclude parent SKUs and empty SKUs); use backend is_parent when present (matches totalSkuCount: sku LIKE 'PARENT %')
                     const sku = row.sku || '';
-                    const isValidSku = sku && !sku.toUpperCase().includes('PARENT');
-                    
+                    const isParentRow = row.is_parent !== undefined ? !!row.is_parent : (sku || '').toUpperCase().includes('PARENT');
+                    const isValidSku = sku && !isParentRow;
                     let inv = parseFloat(row.INV || 0);
                     
-                    // Apply all filters except utilization type filter
+                    // Apply same filters as combinedFilter (same order) so utilization count matches pagination
+                    const typeFilterForCount = $("#sku-type-filter").val() || '';
+                    if (typeFilterForCount === 'parent' && !isParentRow) return;
+                    if (typeFilterForCount === 'sku' && isParentRow) return;
+                    const hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                    if (showCampaignOnly && !hasCampaign) return;
+                    if (showMissingOnly) {
+                        if (hasCampaign) return;
+                        const nrlVal = row.NRL ? row.NRL.trim() : "";
+                        const nraVal = row.NRA ? row.NRA.trim() : "";
+                        if (nrlVal === 'NRL' || nraVal === 'NRA') return;
+                    }
+                    if (showNraMissingOnly) {
+                        if (hasCampaign) return;
+                        if ((row.NRA ? row.NRA.trim() : "") !== 'NRA') return;
+                    }
+                    if (showPinkDilPausedOnly && !row.pink_dil_paused_at) return;
+                    
                     // Global search filter
                     let searchVal = $("#global-search").val()?.toLowerCase() || "";
                     if (searchVal && !(row.campaignName?.toLowerCase().includes(searchVal)) && !(row.sku?.toLowerCase().includes(searchVal))) {
                         return;
                     }
                     
-                    // Status filter
-                    let statusVal = $("#status-filter").val();
-                    if (statusVal && row.campaignStatus !== statusVal) {
+                    // Status filter: default ENABLED only; use "All" to see all campaigns
+                    let statusVal = $("#status-filter").val() || 'ENABLED';
+                    if (statusVal !== 'ALL' && row.campaignStatus !== statusVal) {
                         return;
                     }
                     
@@ -760,19 +782,12 @@
                         zeroInvCount++;
                     }
                     
-                    // Inventory filter
-                    let invFilterVal = $("#inv-filter").val();
-                    if (!invFilterVal || invFilterVal === '') {
-                        // Default: exclude INV = 0 and negative
+                    // Inventory filter (ALL = show all; OTHERS = INV > 0; INV_0 = only 0)
+                    let invFilterVal = $("#inv-filter").val() || '';
+                    if (invFilterVal === "OTHERS") {
                         if (inv <= 0) return;
-                    } else if (invFilterVal === "ALL") {
-                        // ALL option shows everything
                     } else if (invFilterVal === "INV_0") {
-                        // Show only INV = 0
                         if (inv !== 0) return;
-                    } else if (invFilterVal === "OTHERS") {
-                        // Show only INV > 0
-                        if (inv <= 0) return;
                     }
                     
                     // Count NRA and RA only for valid SKUs and only once per SKU (after filters)
@@ -789,22 +804,91 @@
                     }
                     
                     // NRA filter
+                    let rowNra = row.NRA ? row.NRA.trim() : "";
                     let nraFilterVal = $("#nra-filter").val();
                     if (nraFilterVal) {
-                        let rowNra = row.NRA ? row.NRA.trim() : "";
                         if (nraFilterVal === 'RA') {
-                            // For "RA" filter, include empty/null values too
                             if (rowNra === 'NRA') return;
                         } else {
-                            // For "NRA" or "LATER", exact match
                             if (rowNra !== nraFilterVal) return;
                         }
                     }
+                    if (showNraOnly && rowNra !== 'NRA') return;
+                    if (showRaOnly && rowNra === 'NRA') return;
+                    
+                    // ACOS filter (sbgt-filter) - same as combinedFilter
+                    let acosFilterVal = $("#sbgt-filter").val();
+                    if (acosFilterVal) {
+                        let acosVal = parseFloat(row.acos || 0);
+                        if (isNaN(acosVal)) acosVal = 0;
+                        if (acosFilterVal === 'acos35spend10') {
+                            let spendVal = parseFloat(row.l30_spend || 0);
+                            if (acosVal <= 35 || spendVal <= 10 || isNaN(spendVal)) return;
+                        } else {
+                            let acosMatch = false;
+                            if (acosFilterVal === '8' && acosVal >= 0 && acosVal < 5) acosMatch = true;
+                            else if (acosFilterVal === '7' && acosVal >= 5 && acosVal < 10) acosMatch = true;
+                            else if (acosFilterVal === '6' && acosVal >= 10 && acosVal < 15) acosMatch = true;
+                            else if (acosFilterVal === '5' && acosVal >= 15 && acosVal < 20) acosMatch = true;
+                            else if (acosFilterVal === '4' && acosVal >= 20 && acosVal < 25) acosMatch = true;
+                            else if (acosFilterVal === '3' && acosVal >= 25 && acosVal < 30) acosMatch = true;
+                            else if (acosFilterVal === '2' && acosVal >= 30 && acosVal < 35) acosMatch = true;
+                            else if (acosFilterVal === '1' && acosVal >= 35) acosMatch = true;
+                            if (!acosMatch) return;
+                        }
+                    }
+                    if (showZeroInvOnly && inv > 0) return;
+                    
+                    // Price slab filter
+                    let priceSlabFilterVal = $("#price-slab-filter").val();
+                    if (priceSlabFilterVal) {
+                        let price = parseFloat(row.price || 0);
+                        if (isNaN(price)) return;
+                        if (priceSlabFilterVal === 'lt10' && price >= 10) return;
+                        if (priceSlabFilterVal === '10-20' && (price < 10 || price >= 20)) return;
+                        if (priceSlabFilterVal === '20-30' && (price < 20 || price >= 30)) return;
+                        if (priceSlabFilterVal === '30-50' && (price < 30 || price >= 50)) return;
+                        if (priceSlabFilterVal === '50-100' && (price < 50 || price >= 100)) return;
+                        if (priceSlabFilterVal === 'gt100' && price < 100) return;
+                    }
+                    // Rating filter
+                    let ratingFilterVal = $("#rating-filter").val();
+                    if (ratingFilterVal) {
+                        let rating = parseFloat(row.ratings || 0);
+                        if (isNaN(rating) || rating <= 0) return;
+                        if (ratingFilterVal === 'lt3' && rating >= 3) return;
+                        if (ratingFilterVal === '3-3.5' && (rating < 3 || rating >= 4)) return;
+                        if (ratingFilterVal === '4-4.5' && (rating < 4 || rating >= 4.5)) return;
+                        if (ratingFilterVal === 'gte4.5' && rating < 4.5) return;
+                    }
+                    // Range filters (1UB, 7UB, lbid, acos) - same as combinedFilter
+                    let budgetForRange = parseFloat(row.campaignBudgetAmount) || 0;
+                    let l7_spend_r = parseFloat(row.l7_spend || 0), l1_spend_r = parseFloat(row.l1_spend || 0);
+                    let ub7_r = budgetForRange > 0 ? (l7_spend_r / (budgetForRange * 7)) * 100 : 0, ub1_r = budgetForRange > 0 ? (l1_spend_r / budgetForRange) * 100 : 0;
+                    let ub1Min = $("#1ub-min").val(), ub1Max = $("#1ub-max").val();
+                    if (ub1Min && ub1_r < parseFloat(ub1Min)) return;
+                    if (ub1Max && ub1_r > parseFloat(ub1Max)) return;
+                    let ub7Min = $("#7ub-min").val(), ub7Max = $("#7ub-max").val();
+                    if (ub7Min && ub7_r < parseFloat(ub7Min)) return;
+                    if (ub7Max && ub7_r > parseFloat(ub7Max)) return;
+                    let lbidMin = $("#lbid-min").val(), lbidMax = $("#lbid-max").val();
+                    if (lbidMin || lbidMax) {
+                        let lastSbid = parseFloat(row.last_sbid || 0) || 0;
+                        if (lbidMin && lastSbid < parseFloat(lbidMin)) return;
+                        if (lbidMax && lastSbid > parseFloat(lbidMax)) return;
+                    }
+                    let acosMin = $("#acos-min").val(), acosMax = $("#acos-max").val();
+                    if (acosMin || acosMax) {
+                        let acosR = parseFloat(row.acos || 0) || 0;
+                        if (acosMin && acosR < parseFloat(acosMin)) return;
+                        if (acosMax && acosR > parseFloat(acosMax)) return;
+                    }
+                    
+                    // Count rows that would be shown when Utilization Type = "All" (same as combinedFilter when currentUtilizationType === 'all')
+                    totalRowsWhenAllUtilization++;
                     
                     // Check if campaign is missing or exists - only count unique valid SKUs (after filters)
                     if (isValidSku) {
-                        const hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
-                        
                         if (hasCampaign) {
                             // Count campaign only once per SKU
                             if (!processedSkusForCampaign.has(sku)) {
@@ -841,23 +925,27 @@
                         }
                     }
                     
-                    // Now calculate utilization and count - only for valid (child) SKUs so counts match campaign count
-                    if (!isValidSku) return;
-                    let budget = parseFloat(row.campaignBudgetAmount) || 0;
+                    // Check if campaign is missing (red or yellow) - exclude from utilization type counts
+                    const hasCampaignForUtil = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                    if (!hasCampaignForUtil) return;
+                    // When utilization type is selected, combinedFilter excludes non-ENABLED campaigns; match that so count = pagination
+                    const campaignStatusForUtil = row.campaignStatus || 'PAUSED';
+                    if (campaignStatusForUtil !== 'ENABLED') return;
+                    
+                    // Budget: use utilization_budget for PARENT rows (aggregated children budget), else campaignBudgetAmount
+                    let budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
                     let l7_spend = parseFloat(row.l7_spend || 0);
                     let l1_spend = parseFloat(row.l1_spend || 0);
                     
                     let ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
                     let ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
                     
-                    // 7UB + 1UB condition categorization (matches command)
-                    if (ub7 > 99 && ub1 > 99) {
-                        overCount++;
-                    } else if (ub7 < 66 && ub1 < 66) {
-                        underCount++;
-                    } else if (ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99) {
-                        correctlyCount++;
-                    }
+                    // Exclude rows with no valid budget from utilization counts (match combinedFilter)
+                    if (!(budget > 0) || isNaN(budget)) return;
+                    
+                    totalForUtilCount++;
+                    const combo = (ub7 >= 66 && ub7 <= 99 ? 'g' : ub7 > 99 ? 'p' : 'r') + (ub1 >= 66 && ub1 <= 99 ? 'g' : ub1 > 99 ? 'p' : 'r');
+                    if (comboCounts.hasOwnProperty(combo)) comboCounts[combo]++;
                 });
                 
                 // Count ACOS ranges (SBGT mapping)
@@ -870,23 +958,22 @@
                     let acosVal = parseFloat(row.acos || 0);
                     
                     const sku = row.sku || '';
-                    const isValidSku = sku && !sku.toUpperCase().includes('PARENT');
+                    const isParentRowAcos = row.is_parent !== undefined ? !!row.is_parent : (sku || '').toUpperCase().includes('PARENT');
+                    const isValidSku = sku && !isParentRowAcos;
                     if (!isValidSku) return;
                     
                     let inv = parseFloat(row.INV || 0);
                     let searchVal = $("#global-search").val()?.toLowerCase() || "";
                     if (searchVal && !(row.campaignName?.toLowerCase().includes(searchVal)) && !(row.sku?.toLowerCase().includes(searchVal))) return;
                     
-                    let statusVal = $("#status-filter").val();
-                    if (statusVal && row.campaignStatus !== statusVal) return;
+                    let statusVal = $("#status-filter").val() || 'ENABLED';
+                    if (statusVal !== 'ALL' && row.campaignStatus !== statusVal) return;
                     
-                    let invFilterVal = $("#inv-filter").val();
-                    if (!invFilterVal || invFilterVal === '') {
+                    let invFilterVal = $("#inv-filter").val() || '';
+                    if (invFilterVal === "OTHERS") {
                         if (inv <= 0) return;
                     } else if (invFilterVal === "INV_0") {
                         if (inv !== 0) return;
-                    } else if (invFilterVal === "OTHERS") {
-                        if (inv <= 0) return;
                     }
                     
                     let nraFilterVal = $("#nra-filter").val();
@@ -938,6 +1025,12 @@
                     totalCampaignCountEl.textContent = totalCampaignCount;
                 }
                 
+                // Update total SKU count (filter-based - same as table/pagination row count, includes parent rows when Type=All)
+                const totalSkuCountEl = document.getElementById('total-sku-count');
+                if (totalSkuCountEl) {
+                    totalSkuCountEl.textContent = totalRowsWhenAllUtilization;
+                }
+                
                 // Update NRA count
                 const nraCountEl = document.getElementById('nra-count');
                 if (nraCountEl) {
@@ -954,7 +1047,8 @@
                 let pausedCampaignsCount = 0;
                 allData.forEach(function(row) {
                     const sku = row.sku || '';
-                    if (sku.toUpperCase().includes('PARENT')) return;
+                    const isParentRowPaused = row.is_parent !== undefined ? !!row.is_parent : (sku || '').toUpperCase().includes('PARENT');
+                    if (isParentRowPaused) return;
                     if (row.pink_dil_paused_at) {
                         pausedCampaignsCount++;
                     }
@@ -972,14 +1066,15 @@
                     zeroInvCountEl.textContent = zeroInvCount;
                 }
                 
-                // Update dropdown option texts with counts
-                // Use validSkuCount which respects inventory filter (default excludes INV <= 0)
+                // Update dropdown option texts with counts (7UB×1UB color combos - same as google-utilized)
                 const utilizationSelect = document.getElementById('utilization-type-select');
+                const comboLabels = { gg: 'Green+Green', gp: 'Green+Pink', gr: 'Green+Red', pg: 'Pink+Green', pp: 'Pink+Pink', pr: 'Pink+Red', rg: 'Red+Green', rp: 'Red+Pink', rr: 'Red+Red' };
                 if (utilizationSelect) {
-                    utilizationSelect.options[0].text = `All (${validSkuCount})`;
-                    utilizationSelect.options[1].text = `Over Utilized (${overCount})`;
-                    utilizationSelect.options[2].text = `Under Utilized (${underCount})`;
-                    utilizationSelect.options[3].text = `Correctly Utilized (${correctlyCount})`;
+                    utilizationSelect.options[0].text = `All (${totalRowsWhenAllUtilization})`;
+                    for (let i = 1; i <= 9; i++) {
+                        const v = utilizationSelect.options[i].value;
+                        utilizationSelect.options[i].text = `${comboLabels[v] || v} (${comboCounts[v] || 0})`;
+                    }
                 }
                 
                 const sbgtSelect = document.getElementById('sbgt-filter');
@@ -1003,7 +1098,8 @@
                 
                 allData.forEach(function(row) {
                     const sku = row.sku || '';
-                    const isValidSku = sku && !sku.toUpperCase().includes('PARENT');
+                    const isParentRowPrice = row.is_parent !== undefined ? !!row.is_parent : (sku || '').toUpperCase().includes('PARENT');
+                    const isValidSku = sku && !isParentRowPrice;
                     if (!isValidSku) return;
                     
                     let price = parseFloat(row.price || 0);
@@ -1014,16 +1110,14 @@
                     let searchVal = $("#global-search").val()?.toLowerCase() || "";
                     if (searchVal && !(row.campaignName?.toLowerCase().includes(searchVal)) && !(row.sku?.toLowerCase().includes(searchVal))) return;
                     
-                    let statusVal = $("#status-filter").val();
-                    if (statusVal && row.campaignStatus !== statusVal) return;
+                    let statusVal = $("#status-filter").val() || 'ENABLED';
+                    if (statusVal !== 'ALL' && row.campaignStatus !== statusVal) return;
                     
-                    let invFilterVal = $("#inv-filter").val();
-                    if (!invFilterVal || invFilterVal === '') {
+                    let invFilterVal = $("#inv-filter").val() || '';
+                    if (invFilterVal === "OTHERS") {
                         if (inv <= 0) return;
                     } else if (invFilterVal === "INV_0") {
                         if (inv !== 0) return;
-                    } else if (invFilterVal === "OTHERS") {
-                        if (inv <= 0) return;
                     }
                     
                     let nraFilterVal = $("#nra-filter").val();
@@ -1070,7 +1164,8 @@
                 
                 allData.forEach(function(row) {
                     const sku = row.sku || '';
-                    const isValidSku = sku && !sku.toUpperCase().includes('PARENT');
+                    const isParentRowRating = row.is_parent !== undefined ? !!row.is_parent : (sku || '').toUpperCase().includes('PARENT');
+                    const isValidSku = sku && !isParentRowRating;
                     if (!isValidSku) return;
                     
                     let rating = parseFloat(row.ratings || 0);
@@ -1081,16 +1176,14 @@
                     let searchVal = $("#global-search").val()?.toLowerCase() || "";
                     if (searchVal && !(row.campaignName?.toLowerCase().includes(searchVal)) && !(row.sku?.toLowerCase().includes(searchVal))) return;
                     
-                    let statusVal = $("#status-filter").val();
-                    if (statusVal && row.campaignStatus !== statusVal) return;
+                    let statusVal = $("#status-filter").val() || 'ENABLED';
+                    if (statusVal !== 'ALL' && row.campaignStatus !== statusVal) return;
                     
-                    let invFilterVal = $("#inv-filter").val();
-                    if (!invFilterVal || invFilterVal === '') {
+                    let invFilterVal = $("#inv-filter").val() || '';
+                    if (invFilterVal === "OTHERS") {
                         if (inv <= 0) return;
                     } else if (invFilterVal === "INV_0") {
                         if (inv !== 0) return;
-                    } else if (invFilterVal === "OTHERS") {
-                        if (inv <= 0) return;
                     }
                     
                     let nraFilterVal = $("#nra-filter").val();
@@ -1469,8 +1562,9 @@
                         hozAlign: "left",
                         minWidth: 180,
                         formatter: function(cell) {
+                            let row = cell.getRow().getData();
                             let sku = cell.getValue();
-                            let isParentRow = (sku || '').toUpperCase().includes('PARENT');
+                            let isParentRow = row.is_parent !== undefined ? !!row.is_parent : (sku || '').toUpperCase().includes('PARENT');
                             let skuHtml = isParentRow
                                 ? `<strong>${sku}</strong>`
                                 : `<span>${sku}</span>`;
@@ -2326,12 +2420,13 @@
                             var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
                             if (!hasCampaign) return '-';
                             var l7_spend = parseFloat(row.l7_spend) || 0;
-                            var budget = parseFloat(row.campaignBudgetAmount) || 0;
+                            // Same as combinedFilter: use utilization_budget for PARENT (aggregated children), else campaignBudgetAmount
+                            var budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
                             var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
                             
-                            // Color logic based on UB7 only (Amazon rules)
+                            // Color logic based on UB7 only (Amazon rules) - same as over/under/correctly filter
                             if (ub7 >= 66 && ub7 <= 99) {
                                 td.classList.add('green-bg');
                             } else if (ub7 > 99) {
@@ -2352,7 +2447,8 @@
                             var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
                             if (!hasCampaign) return '-';
                             var l1_spend = parseFloat(row.l1_spend) || 0;
-                            var budget = parseFloat(row.campaignBudgetAmount) || 0;
+                            // Same as combinedFilter: use utilization_budget for PARENT (aggregated children), else campaignBudgetAmount
+                            var budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
                             var ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
@@ -2428,10 +2524,10 @@
                             var aData = aRow.getData();
                             var bData = bRow.getData();
                             
-                            // Calculate SBID for row A
+                            // Calculate SBID for row A (same budget logic as combinedFilter: utilization_budget for PARENT)
                             var aL1Cpc = parseFloat(aData.l1_cpc) || 0;
                             var aL7Cpc = parseFloat(aData.l7_cpc) || 0;
-                            var aBudget = parseFloat(aData.campaignBudgetAmount) || 0;
+                            var aBudget = (aData.utilization_budget != null && aData.utilization_budget !== '') ? parseFloat(aData.utilization_budget) : (parseFloat(aData.campaignBudgetAmount) || 0);
                             var aUb7 = 0;
                             if (aBudget > 0) {
                                 aUb7 = (parseFloat(aData.l7_spend) || 0) / (aBudget * 7) * 100;
@@ -2502,10 +2598,10 @@
                                 aSbid = 0.20;
                             }
                             
-                            // Calculate SBID for row B
+                            // Calculate SBID for row B (same budget logic as combinedFilter: utilization_budget for PARENT)
                             var bL1Cpc = parseFloat(bData.l1_cpc) || 0;
                             var bL7Cpc = parseFloat(bData.l7_cpc) || 0;
-                            var bBudget = parseFloat(bData.campaignBudgetAmount) || 0;
+                            var bBudget = (bData.utilization_budget != null && bData.utilization_budget !== '') ? parseFloat(bData.utilization_budget) : (parseFloat(bData.campaignBudgetAmount) || 0);
                             var bUb7 = 0;
                             if (bBudget > 0) {
                                 bUb7 = (parseFloat(bData.l7_spend) || 0) / (bBudget * 7) * 100;
@@ -2581,8 +2677,9 @@
                             if (!hasCampaign) return '-';
                             var l1_cpc = parseFloat(row.l1_cpc) || 0;
                             var l7_cpc = parseFloat(row.l7_cpc) || 0;
+                            // Same as combinedFilter: use utilization_budget for PARENT (aggregated children), else campaignBudgetAmount
+                            var budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
                             var ub7 = 0;
-                            var budget = parseFloat(row.campaignBudgetAmount) || 0;
                             if (budget > 0) {
                                 ub7 = (parseFloat(row.l7_spend) || 0) / (budget * 7) * 100;
                             }
@@ -2594,7 +2691,7 @@
                                 ub1 = (parseFloat(row.l1_spend) || 0) / budget * 100;
                             }
                             
-                            // Determine utilization type for this row
+                            // Determine utilization type for this row (same thresholds as over/under/correctly filter)
                             var rowUtilizationType = 'all';
                             if (ub7 > 99 && ub1 > 99) {
                                 rowUtilizationType = 'over';
@@ -2645,7 +2742,7 @@
                             }
                             
                             // Apply price-based caps (skip for PARENT rows - they often have price 0, which would cap all SBID to 0.10)
-                            var isParentRow = (row.sku || '').toUpperCase().includes('PARENT');
+                            var isParentRow = row.is_parent !== undefined ? !!row.is_parent : (row.sku || '').toUpperCase().includes('PARENT');
                             if (!isParentRow) {
                                 if (price < 10 && sbid > 0.10) {
                                     sbid = 0.10;
@@ -2806,20 +2903,24 @@
                                 var rowData = cell.getRow().getData();
                                 var l1_cpc = parseFloat(rowData.l1_cpc) || 0;
                                 var l7_cpc = parseFloat(rowData.l7_cpc) || 0;
-                                var budget = parseFloat(rowData.campaignBudgetAmount) || 0;
+                                // Same as combinedFilter: use utilization_budget for PARENT (aggregated children), else campaignBudgetAmount
+                                var budget = (rowData.utilization_budget != null && rowData.utilization_budget !== '') ? parseFloat(rowData.utilization_budget) : (parseFloat(rowData.campaignBudgetAmount) || 0);
                                 var ub7 = 0;
                                 if (budget > 0) {
                                     ub7 = (parseFloat(rowData.l7_spend) || 0) / (budget * 7) * 100;
                                 }
                                 
                                 var sbid = '';
-                                if (currentUtilizationType === 'over') {
+                                var ub1 = budget > 0 ? (parseFloat(rowData.l1_spend) || 0) / budget * 100 : 0;
+                                var isOver = (currentUtilizationType === 'pp') || (currentUtilizationType !== 'all' && currentUtilizationType !== 'rr' && currentUtilizationType !== 'gg' && ub7 > 99 && ub1 > 99);
+                                var isUnder = (currentUtilizationType === 'rr') || (currentUtilizationType !== 'all' && currentUtilizationType !== 'pp' && currentUtilizationType !== 'gg' && ub7 < 66 && ub1 < 66);
+                                if (isOver) {
                                     if (l7_cpc === 0) {
                                         sbid = 0.75;
                                     } else {
                                         sbid = Math.floor(l1_cpc * 0.90 * 100) / 100;
                                     }
-                                } else if (currentUtilizationType === 'under') {
+                                } else if (isUnder) {
                                     if (ub7 < 70) {
                                         if (ub7 < 10 || l7_cpc === 0 || l1_cpc === 0) {
                                             sbid = 0.75;
@@ -2840,29 +2941,30 @@
                     }
                 ],
                 ajaxResponse: function(url, params, response) {
-                    // Update pagination count after data is loaded
-                    setTimeout(function() {
-                        if (typeof updatePaginationCount === 'function') {
-                            updatePaginationCount();
-                        }
-                    }, 200);
                     totalACOSValue = parseFloat(response.total_acos) || 0;
                     totalL30Spend = parseFloat(response.total_l30_spend) || 0;
                     totalL30Sales = parseFloat(response.total_l30_sales) || 0;
-                    // Update total SKU count
                     totalSkuCountFromBackend = parseInt(response.total_sku_count) || 0;
-                    const totalSkuCountEl = document.getElementById('total-sku-count');
-                    if (totalSkuCountEl) {
-                        totalSkuCountEl.textContent = totalSkuCountFromBackend;
-                    }
+                    // Update pagination and filter-based counts (including Total SKU) after data is loaded
+                    setTimeout(function() {
+                        if (typeof updateButtonCounts === 'function') updateButtonCounts();
+                        if (typeof updatePaginationCount === 'function') updatePaginationCount();
+                    }, 200);
                     return response.data;
                 }
             });
 
+            // 7UB×1UB color zones: g=66-99 (green), p=>99 (pink), r=<66 (red) - same as google-utilized
+            function ubZone(ub) {
+                if (ub >= 66 && ub <= 99) return 'g';
+                if (ub > 99) return 'p';
+                return 'r';
+            }
+
             // Combined filter function
             function combinedFilter(data) {
                 const skuStr = (data.sku != null) ? (data.sku + '') : '';
-                const isParentRow = skuStr.toUpperCase().includes('PARENT');
+                const isParentRow = data.is_parent !== undefined ? !!data.is_parent : skuStr.toUpperCase().includes('PARENT');
                 const typeFilter = $("#sku-type-filter").val() || '';
                 // Type filter: All, Parent, Sku
                 if (typeFilter === 'parent') {
@@ -2870,12 +2972,11 @@
                     // Fall through so utilization type and other filters still apply to parent rows
                 } else if (typeFilter === 'sku') {
                     if (isParentRow) return false;
-                } else {
-                    // When type is All (''): PARENT rows bypass rest only when utilization is also "all"
-                    if (isParentRow && currentUtilizationType === 'all') return true;
                 }
+                // PARENT rows fall through to search, utilization, and other filters (no early bypass)
                 let acos = parseFloat(data.acos || 0);
-                let budget = parseFloat(data.campaignBudgetAmount) || 0;
+                // Use utilization_budget for PARENT rows (aggregated children budget) for ub7/ub1, else campaignBudgetAmount
+                let budget = (data.utilization_budget != null && data.utilization_budget !== '') ? parseFloat(data.utilization_budget) : (parseFloat(data.campaignBudgetAmount) || 0);
                 let l7_spend = parseFloat(data.l7_spend) || 0;
                 let l1_spend = parseFloat(data.l1_spend) || 0;
 
@@ -2979,14 +3080,11 @@
                     if (!pinkDilPausedAt) return false; // Show only if pink_dil_paused_at is not null/empty
                 }
 
-                // Apply utilization type filter (Amazon rules)
+                // Apply utilization type filter (7UB×1UB color combos: gg, gp, gr, pg, pp, pr, rg, rp, rr - same as google-utilized)
                 if (currentUtilizationType === 'all') {
                     // Show all data (no filter on utilization)
                 } else {
-                    // When utilization type is selected (over/under/correctly), exclude missing items (red and yellow)
-                    const hasCampaign = data.hasCampaign !== undefined 
-                        ? data.hasCampaign 
-                        : (data.campaign_id && data.campaignName);
+                    // When utilization type is selected (one of 9 combos), exclude missing items (red and yellow)
                     if (!hasCampaign) return false;
                     
                     // Exclude yellow dots (NRL='NRL' OR NRA='NRA') when utilization type is selected
@@ -2998,16 +3096,11 @@
                     const campaignStatus = data.campaignStatus || 'PAUSED';
                     if (campaignStatus !== 'ENABLED') return false;
                     
-                    if (currentUtilizationType === 'over') {
-                    // Over-utilized: ub7 > 99 && ub1 > 99
-                    if (!(ub7 > 99 && ub1 > 99)) return false;
-                } else if (currentUtilizationType === 'under') {
-                    // Under-utilized: ub7 < 66
-                    if (!(ub7 < 66 && ub1 < 66)) return false;
-                } else if (currentUtilizationType === 'correctly') {
-                    // Correctly-utilized: ub7 >= 66 && ub7 <= 99
-                    if (!(ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99)) return false;
-                    }
+                    // Exclude rows with no valid budget (budget 0 or NaN) from utilization filter
+                    if (!(budget > 0) || isNaN(budget)) return false;
+                    
+                    const z7 = ubZone(ub7), z1 = ubZone(ub1);
+                    if ((z7 + z1) !== currentUtilizationType) return false;
                 }
 
                 // Global search filter
@@ -3019,21 +3112,14 @@
                     return false;
                 }
 
-                // Status filter
-                let statusVal = $("#status-filter").val();
-                if (statusVal) {
-                    // Check if campaign exists
+                // Status filter: default ENABLED only; use "All" to see all campaigns
+                let statusVal = $("#status-filter").val() || 'ENABLED';
+                if (statusVal !== 'ALL') {
                     const hasCampaign = data.hasCampaign !== undefined 
                         ? data.hasCampaign 
                         : (data.campaign_id && data.campaignName);
-                    
-                    if (statusVal === 'ENABLED') {
-                        // When ENABLED is selected, exclude missing items (rows without campaigns)
-                        if (!hasCampaign) return false;
-                    }
-                    if (data.campaignStatus !== statusVal) {
-                    return false;
-                    }
+                    if (statusVal === 'ENABLED' && !hasCampaign) return false;
+                    if (data.campaignStatus !== statusVal) return false;
                 }
 
                 // Apply zero INV filter first (if enabled)
@@ -3042,21 +3128,13 @@
                     // Show only zero or negative inventory
                     if (inv > 0) return false;
                 } else {
-                // Inventory filter - Default to INV > 0 (exclude INV = 0 and negative)
-                let invFilterVal = $("#inv-filter").val();
-                
-                // By default (no filter selected), show only INV > 0 (exclude INV = 0 and negative)
-                if (!invFilterVal || invFilterVal === '') {
+                // Inventory filter (ALL or empty = show all; OTHERS = INV > 0; INV_0 = only 0) - same logic as updateButtonCounts so count matches table
+                let invFilterVal = $("#inv-filter").val() || '';
+                if (invFilterVal === "OTHERS") {
                     if (inv <= 0) return false;
-                } else if (invFilterVal === "ALL") {
-                    // ALL option shows everything (including INV = 0 and negative), so no filtering needed
                 } else if (invFilterVal === "INV_0") {
-                    // Show only INV = 0
                     if (inv !== 0) return false;
-                } else if (invFilterVal === "OTHERS") {
-                    // Show only INV > 0 (exclude INV = 0 and negative)
-                    if (inv <= 0) return false;
-                    }
+                }
                 }
 
                 // Apply NRA/RA filters first (if enabled)
@@ -3125,7 +3203,7 @@
                 let ub1Min = $("#1ub-min").val();
                 let ub1Max = $("#1ub-max").val();
                 if (ub1Min || ub1Max) {
-                    let budget = parseFloat(data.campaignBudgetAmount) || 0;
+                    let budget = (data.utilization_budget != null && data.utilization_budget !== '') ? parseFloat(data.utilization_budget) : (parseFloat(data.campaignBudgetAmount) || 0);
                     let l1_spend = parseFloat(data.l1_spend || 0);
                     let ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
                     
@@ -3137,7 +3215,7 @@
                 let ub7Min = $("#7ub-min").val();
                 let ub7Max = $("#7ub-max").val();
                 if (ub7Min || ub7Max) {
-                    let budget = parseFloat(data.campaignBudgetAmount) || 0;
+                    let budget = (data.utilization_budget != null && data.utilization_budget !== '') ? parseFloat(data.utilization_budget) : (parseFloat(data.campaignBudgetAmount) || 0);
                     let l7_spend = parseFloat(data.l7_spend || 0);
                     let ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
                     

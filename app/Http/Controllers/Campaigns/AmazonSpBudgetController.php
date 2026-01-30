@@ -2049,7 +2049,6 @@ class AmazonSpBudgetController extends Controller
 
         $result = [];
         $campaignMap = [];
-        $processedSkus = []; // For PT campaigns to ensure unique SKUs
 
         // Fetch last_sbid from day-before-yesterday's date records
         // This ensures last_sbid shows the PREVIOUS day's calculated SBID, not the current day's
@@ -2204,10 +2203,8 @@ class AmazonSpBudgetController extends Controller
             // For KW/PT campaigns, do NOT skip parent SKUs - include them in result so "PARENT 10 FR" etc. show in table
             // (previously skipped here which caused PARENT rows to never appear)
 
-            // For PT campaigns, apply unique SKU filter (same as getAmzUnderUtilizedBgtPt)
-            if ($campaignType === 'PT' && in_array($sku, $processedSkus)) {
-                continue;
-            }
+            // PT: show all product_master rows (same count as KW/product_master), do not deduplicate by SKU
+            // (removed unique SKU filter so PT row count matches product_master 1257)
 
             $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
             $shopify = $shopifyData[$pm->sku] ?? null;
@@ -2355,11 +2352,6 @@ class AmazonSpBudgetController extends Controller
             // For KW/PT campaigns, skip SKUs with NRA = 'NRA'
             if ($campaignType !== 'HL' && $nra === 'NRA') {
                 continue;
-            }
-
-            // For PT campaigns, mark SKU as processed (unique filter)
-            if ($campaignType === 'PT') {
-                $processedSkus[] = $sku;
             }
 
             // Use SKU as key if no campaign, otherwise use campaignId
@@ -2542,9 +2534,12 @@ class AmazonSpBudgetController extends Controller
                     $actionTaken = $historyRecord->action_taken ?? '';
                 }
                 
+                // is_parent: match INV/aggregation logic (contains PARENT) so Type=Sku shows 1005 child SKUs; frontend uses this for Type filter/counts
+                $isParentRow = (stripos($pm->sku ?? '', 'PARENT') !== false);
                 $campaignMap[$mapKey] = [
                     'parent' => $parent,
                     'sku' => $pm->sku,
+                    'is_parent' => $isParentRow,
                     'campaign_id' => $campaignId,
                     'campaignName' => $campaignName,
                     'campaignBudgetAmount' => ($matchedCampaignL30 ? $matchedCampaignL30->campaignBudgetAmount : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignBudgetAmount : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignBudgetAmount : null) ?? 0)),
@@ -2841,7 +2836,8 @@ class AmazonSpBudgetController extends Controller
                 }
                 $row['l7_spend'] = $childL7SpendByParent[$p];
                 $row['l1_spend'] = $childL1SpendByParent[$p];
-                $row['campaignBudgetAmount'] = $childBudgetByParent[$p];
+                // Keep campaignBudgetAmount as DB value (for BGT column); use utilization_budget for 7 UB%, 1 UB%, SBID
+                $row['utilization_budget'] = $childBudgetByParent[$p];
                 $l7CpcCount = $childL7CpcCountByParent[$p] ?? 0;
                 $l1CpcCount = $childL1CpcCountByParent[$p] ?? 0;
                 $row['l7_cpc'] = $l7CpcCount > 0 ? ($childL7CpcSumByParent[$p] / $l7CpcCount) : 0;
@@ -3005,6 +3001,7 @@ class AmazonSpBudgetController extends Controller
                 $result[] = (object) [
                     'parent' => $pm->parent,
                     'sku' => $pm->sku,
+                    'is_parent' => true,
                     'campaign_id' => $campaignId,
                     'campaignName' => $campaignName,
                     'campaignBudgetAmount' => ($matchedCampaignL30 ? $matchedCampaignL30->campaignBudgetAmount : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignBudgetAmount : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignBudgetAmount : null) ?? 0)),
@@ -3466,19 +3463,21 @@ class AmazonSpBudgetController extends Controller
             // For PARENT rows in missing SKUs loop: use aggregated child spend/budget/CPC so SBID rules apply
             $campaignBudgetAmountForRow = ($matchedCampaignL30 ? $matchedCampaignL30->campaignBudgetAmount : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignBudgetAmount : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignBudgetAmount : null) ?? 0));
             $avgCpcForRow = $avgCpcData->get($campaignId, 0);
+            $utilizationBudgetForRow = null;
             if (stripos($sku, 'PARENT') !== false && isset($childL7SpendByParent[$pm->parent ?? ''])) {
                 $p = $pm->parent ?? '';
                 $l7Spend = $childL7SpendByParent[$p];
                 $l1Spend = $childL1SpendByParent[$p];
                 $l7Cpc = ($childL7CpcCountByParent[$p] ?? 0) > 0 ? ($childL7CpcSumByParent[$p] / $childL7CpcCountByParent[$p]) : 0;
                 $l1Cpc = ($childL1CpcCountByParent[$p] ?? 0) > 0 ? ($childL1CpcSumByParent[$p] / $childL1CpcCountByParent[$p]) : 0;
-                $campaignBudgetAmountForRow = $childBudgetByParent[$p];
+                $utilizationBudgetForRow = $childBudgetByParent[$p];
                 $avgCpcForRow = ($l7Cpc + $l1Cpc) / 2;
             }
             
             $result[] = (object) [
                 'parent' => $pm->parent ?? '',
                 'sku' => $pm->sku,
+                'is_parent' => (stripos($pm->sku ?? '', 'PARENT') !== false),
                 'campaign_id' => $campaignId,
                 'campaignName' => $campaignName,
                 'campaignBudgetAmount' => $campaignBudgetAmountForRow,
@@ -3864,6 +3863,7 @@ class AmazonSpBudgetController extends Controller
                 $result[] = (object) [
                     'parent' => $pm->parent,
                     'sku' => $pm->sku,
+                    'is_parent' => true,
                     'campaign_id' => $campaignId,
                     'campaignName' => $campaignName,
                     'campaignBudgetAmount' => ($matchedCampaignL30 ? $matchedCampaignL30->campaignBudgetAmount : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignBudgetAmount : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignBudgetAmount : null) ?? 0)),
