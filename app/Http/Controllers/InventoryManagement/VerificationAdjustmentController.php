@@ -1778,5 +1778,104 @@ class VerificationAdjustmentController extends Controller
         ]);
     }
 
+    /**
+     * Export verification data to Google Sheets (Simple Apps Script approach)
+     */
+    public function exportToGoogleSheets(Request $request)
+    {
+        try {
+            $data = $request->input('data', []);
+            
+            if (empty($data)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No data to export'
+                ], 400);
+            }
+
+            // Google Apps Script Web App URL
+            // You'll get this URL after deploying the Apps Script
+            $appsScriptUrl = env('GOOGLE_APPS_SCRIPT_EXPORT_URL', '');
+            
+            if (empty($appsScriptUrl)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Google Apps Script URL not configured. Please add GOOGLE_APPS_SCRIPT_EXPORT_URL to your .env file. See GOOGLE_SHEETS_SIMPLE_SETUP.md for instructions.'
+                ], 500);
+            }
+
+            // Get the stored spreadsheet ID (if configured to use the same sheet)
+            $spreadsheetId = env('GOOGLE_SHEETS_VERIFICATION_ADJUSTMENT_ID', '');
+
+            // Prepare payload
+            $payload = [
+                'data' => $data,
+                'sheetTitle' => 'Verification Adjustment',
+                'spreadsheetId' => $spreadsheetId // Empty string means create new
+            ];
+
+            // Send data to Google Apps Script
+            Log::info('Sending data to Google Apps Script', [
+                'url' => $appsScriptUrl,
+                'rows' => count($data),
+                'spreadsheetId' => $spreadsheetId ?: 'new'
+            ]);
+
+            $response = Http::timeout(120)
+                ->withHeaders([
+                    'Content-Type' => 'application/json',
+                ])
+                ->post($appsScriptUrl, $payload);
+
+            if (!$response->successful()) {
+                Log::error('Google Apps Script request failed', [
+                    'status' => $response->status(),
+                    'body' => $response->body()
+                ]);
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to export to Google Sheets. Please check your Apps Script deployment.'
+                ], 500);
+            }
+
+            $result = $response->json();
+
+            if (!isset($result['success']) || !$result['success']) {
+                Log::error('Google Apps Script returned error', ['result' => $result]);
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => $result['message'] ?? 'Export failed'
+                ], 500);
+            }
+
+            Log::info('Data exported successfully to Google Sheets', [
+                'spreadsheetId' => $result['spreadsheetId'],
+                'url' => $result['spreadsheetUrl'],
+                'rows' => $result['rowsWritten'] ?? 0
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Data exported to Google Sheets successfully',
+                'spreadsheetId' => $result['spreadsheetId'],
+                'spreadsheetUrl' => $result['spreadsheetUrl'],
+                'rowsWritten' => $result['rowsWritten'] ?? count($data)
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to export to Google Sheets', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to export to Google Sheets: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
     
 }

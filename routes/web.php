@@ -538,6 +538,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/shopify-update-retry', [VerificationAdjustmentController::class, 'retryShopifyUpdate']);
     Route::get('/shopify-update-status', [VerificationAdjustmentController::class, 'getShopifyUpdateStatus']);
     Route::get('/shopify-updates-pending', [VerificationAdjustmentController::class, 'getPendingShopifyUpdates']);
+    // Google Sheets export
+    Route::post('/export-to-google-sheets', [VerificationAdjustmentController::class, 'exportToGoogleSheets']);
 
     //incoming
     Route::get('/incoming-view', [IncomingController::class, 'index'])->name('incoming.view');

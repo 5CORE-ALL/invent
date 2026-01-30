@@ -1338,8 +1338,8 @@
                                 <i class="fas fa-history"></i> Activity Log
                             </button>
 
-                            <button id="exportExcel" class="btn btn-success ml-2">
-                                <i class="fas fa-file-excel"></i> Export
+                            <button id="exportToGoogleSheets" class="btn btn-success ml-2">
+                                <i class="fab fa-google"></i> Export to Google Sheets
                             </button>
 
                             <!-- History Date Range Filter -->
@@ -1869,6 +1869,7 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
     <!--for popup modal script-->
     <script>
@@ -3933,19 +3934,34 @@
                 calculateTotals();
             }
 
-            // Export to Excel (SheetJS)
-            $("#exportExcel").on("click", function () {
+            // Export to Google Sheets
+            $("#exportToGoogleSheets").on("click", function () {
                 if (!filteredData || filteredData.length === 0) {
                     alert("No data to export!");
                     return;
                 }
 
-                // OVERRIDE: Export ALL SKUs - NO FILTERING
-                // All filtering logic based on is_hide has been removed
-                // All SKUs from product_master will be exported
+                // Show loading state
+                const $btn = $(this);
+                const originalHtml = $btn.html();
+                $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Exporting...');
 
-                // Convert filteredData to flat JSON
-                const rows = filteredData.map(item => {
+                // Filter out parent rows (SKUs starting with "PARENT")
+                // Only export child/regular SKUs, just like the view shows
+                const exportData = filteredData.filter(item => {
+                    const skuVal = (item.sku || item.SKU || '').toString().trim().toUpperCase();
+                    const isParentRow = skuVal.startsWith('PARENT') || item.is_parent;
+                    return !isParentRow; // Exclude parent rows
+                });
+
+                if (exportData.length === 0) {
+                    $btn.prop('disabled', false).html(originalHtml);
+                    alert("No data to export after filtering!");
+                    return;
+                }
+
+                // Convert filtered data to flat JSON
+                const rows = exportData.map(item => {
                     // Extract only date from HISTORY (remove time)
                     let historyDate = '';
                     if (item.HISTORY && item.HISTORY.includes(', ')) {
@@ -3988,11 +4004,66 @@
                     };
                 });
 
-                const ws = XLSX.utils.json_to_sheet(rows);
-                const wb = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb, ws, "VerificationData");
-
-                XLSX.writeFile(wb, "verification_data.xlsx");
+                // Send data to backend to export to Google Sheets
+                $.ajax({
+                    url: '/export-to-google-sheets',
+                    method: 'POST',
+                    data: {
+                        data: rows,
+                        _token: '{{ csrf_token() }}'
+                    },
+                    success: function(response) {
+                        $btn.prop('disabled', false).html(originalHtml);
+                        
+                        if (response.success) {
+                            // Show success message with link to the spreadsheet
+                            const sheetUrl = response.spreadsheetUrl;
+                            const message = `
+                                <div style="text-align: left;">
+                                    <p>Data exported successfully to Google Sheets!</p>
+                                    <p><strong>Spreadsheet Link:</strong></p>
+                                    <p><a href="${sheetUrl}" target="_blank" class="btn btn-sm btn-primary">
+                                        <i class="fas fa-external-link-alt"></i> Open Google Sheet
+                                    </a></p>
+                                    <p style="font-size: 12px; margin-top: 10px; word-break: break-all;">
+                                        <strong>URL:</strong><br>${sheetUrl}
+                                    </p>
+                                </div>
+                            `;
+                            
+                            Swal.fire({
+                                icon: 'success',
+                                title: 'Export Successful',
+                                html: message,
+                                confirmButtonText: 'OK',
+                                width: '600px'
+                            });
+                            
+                            // Optionally open the sheet in a new tab immediately
+                            // window.open(sheetUrl, '_blank');
+                        } else {
+                            Swal.fire({
+                                icon: 'error',
+                                title: 'Export Failed',
+                                text: response.message || 'Failed to export data to Google Sheets',
+                            });
+                        }
+                    },
+                    error: function(xhr) {
+                        $btn.prop('disabled', false).html(originalHtml);
+                        
+                        let errorMessage = 'Failed to export data to Google Sheets';
+                        if (xhr.responseJSON && xhr.responseJSON.message) {
+                            errorMessage = xhr.responseJSON.message;
+                        }
+                        
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Export Failed',
+                            text: errorMessage,
+                        });
+                    }
+                });
             });
 
             

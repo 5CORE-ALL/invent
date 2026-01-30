@@ -2,6 +2,9 @@
 /.env
 /.env.example
 
+# Ignore Google credentials
+/storage/app/google-credentials.json
+
 # Ignore vendor and node_modules
 /vendor
 /node_modules
