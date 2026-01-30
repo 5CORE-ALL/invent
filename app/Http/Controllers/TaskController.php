@@ -4,11 +4,15 @@ namespace App\Http\Controllers;
 
 use App\Models\Task;
 use App\Models\User;
+use App\Services\TaskWhatsAppNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class TaskController extends Controller
 {
+    public function __construct(
+        protected TaskWhatsAppNotificationService $taskWhatsApp
+    ) {}
     public function index()
     {
         $user = Auth::user();
@@ -183,9 +187,31 @@ class TaskController extends Controller
             'delete_feedback' => '',
         ];
 
-        Task::create($taskData);
+        $task = Task::create($taskData);
 
-        return redirect()->route('tasks.index')->with('success', 'Task created successfully!');
+        $flash = 'success';
+        $message = 'Task created successfully!';
+
+        if ($assigneeEmail) {
+            try {
+                $status = $this->taskWhatsApp->notifyNewTaskAssigned($task);
+                if ($status === 'skipped_no_phone') {
+                    $message .= ' WhatsApp not sent: assignee has no phone. Add "phone" (digits + country code) in user profile for delivery.';
+                    $flash = 'warning';
+                } elseif ($status === 'skipped_no_user') {
+                    $message .= ' WhatsApp not sent: assignee user not found.';
+                    $flash = 'warning';
+                } elseif ($status === 'sent') {
+                    $message .= ' WhatsApp notification sent to assignee.';
+                }
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Task WhatsApp notify new assigned failed: ' . $e->getMessage());
+                $message .= ' WhatsApp send failed. Check logs.';
+                $flash = 'warning';
+            }
+        }
+
+        return redirect()->route('tasks.index')->with($flash, $message);
     }
 
     public function show($id)
@@ -292,18 +318,28 @@ class TaskController extends Controller
             'split_tasks' => $request->has('split_tasks') ? 1 : 0,
             'eta_time' => $validated['etc_minutes'] ?? $task->eta_time,
             'start_date' => $validated['tid'] ?? $task->start_date,
-            'link1' => $validated['l1'] ?? null,
-            'link2' => $validated['l2'] ?? null,
-            'link3' => $validated['training_link'] ?? null,
-            'link4' => $validated['video_link'] ?? null,
-            'link5' => $validated['form_link'] ?? null,
-            'link6' => $validated['form_report_link'] ?? null,
-            'link7' => $validated['checklist_link'] ?? null,
-            'link8' => $validated['pl'] ?? null,
-            'link9' => $validated['process'] ?? null,
+            'link1' => $validated['l1'] ?? '',
+            'link2' => $validated['l2'] ?? '',
+            'link3' => $validated['training_link'] ?? '',
+            'link4' => $validated['video_link'] ?? '',
+            'link5' => $validated['form_link'] ?? '',
+            'link6' => $validated['form_report_link'] ?? '',
+            'link7' => $validated['checklist_link'] ?? '',
+            'link8' => $validated['pl'] ?? '',
+            'link9' => $validated['process'] ?? '',
         ];
 
+        $relevantChanged = $this->taskDetailsChanged($task, $updateData);
+
         $task->update($updateData);
+
+        if ($relevantChanged && $assigneeEmail) {
+            try {
+                $this->taskWhatsApp->notifyTaskUpdated($task->fresh());
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Task WhatsApp notify updated failed: ' . $e->getMessage());
+            }
+        }
 
         return redirect()->route('tasks.index')->with('success', 'Task updated successfully!');
     }
@@ -355,6 +391,20 @@ class TaskController extends Controller
         }
 
         $task->save();
+
+        if ($validated['status'] === 'Done') {
+            try {
+                $this->taskWhatsApp->notifyTaskDone($task->fresh());
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Task WhatsApp notify done failed: ' . $e->getMessage());
+            }
+        } elseif ($validated['status'] === 'Rework') {
+            try {
+                $this->taskWhatsApp->notifyRework($task->fresh());
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Task WhatsApp notify rework failed: ' . $e->getMessage());
+            }
+        }
 
         return response()->json([
             'success' => true,
@@ -438,6 +488,28 @@ class TaskController extends Controller
     {
         $users = User::select('id', 'name')->get();
         return response()->json($users);
+    }
+
+    /**
+     * Check if task details relevant to "task updated" WhatsApp (title, dates, ETA, assignee) changed.
+     */
+    private function taskDetailsChanged(Task $task, array $updateData): bool
+    {
+        $startNew = isset($updateData['start_date']) ? \Carbon\Carbon::parse($updateData['start_date']) : null;
+        $startOld = $task->start_date ? \Carbon\Carbon::parse($task->start_date) : null;
+        if ($startNew != $startOld) {
+            return true;
+        }
+        if (($updateData['title'] ?? null) !== null && (string) $updateData['title'] !== (string) $task->title) {
+            return true;
+        }
+        if (array_key_exists('eta_time', $updateData) && (int) ($updateData['eta_time'] ?? 0) !== (int) ($task->eta_time ?? 0)) {
+            return true;
+        }
+        if (array_key_exists('assign_to', $updateData) && ($updateData['assign_to'] ?? null) != ($task->assign_to ?? null)) {
+            return true;
+        }
+        return false;
     }
 
     // Automated Tasks Methods

@@ -647,6 +647,12 @@
                                 <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                             </div>
                         @endif
+                        @if(session('warning'))
+                            <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                                <i class="mdi mdi-alert-circle me-2"></i>{{ session('warning') }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                        @endif
 
                         <!-- Search/Filter Bar -->
                         <div class="row mb-3 p-3" style="background: #f8f9fa; border-radius: 8px;">
@@ -2014,8 +2020,7 @@
                     return;
                 }
                 
-                // If rework, set status to in_progress
-                var finalStatus = newStatusValue === 'rework' ? 'in_progress' : newStatusValue;
+                var finalStatus = newStatusValue;
                 updateTaskStatus(currentTaskId, finalStatus, null, reason);
                 $('#statusChangeModal').modal('hide');
                 $('#status-change-reason').val('');

@@ -2049,12 +2049,12 @@
                     return;
                 }
                 
-                updateTaskStatus(currentTaskId, 'completed', atc, null);
+                updateTaskStatus(currentTaskId, 'Done', atc, null);
                 $('#doneModal').modal('hide');
                 $('#atc-input').val('');
             });
 
-            // Confirm Status Change
+            // Confirm Status Change (Rework, etc.) — send backend values (Rework, Todo, …)
             $('#confirm-status-change-btn').on('click', function() {
                 var reason = $('#status-change-reason').val().trim();
                 if (!reason) {
@@ -2062,8 +2062,7 @@
                     return;
                 }
                 
-                // If rework, set status to in_progress
-                var finalStatus = newStatusValue === 'rework' ? 'in_progress' : newStatusValue;
+                var finalStatus = statusLabels[newStatusValue] || newStatusValue;
                 updateTaskStatus(currentTaskId, finalStatus, null, reason);
                 $('#statusChangeModal').modal('hide');
                 $('#status-change-reason').val('');
