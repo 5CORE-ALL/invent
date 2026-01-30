@@ -30,6 +30,8 @@ use App\Models\TikTokDataView;
 use App\Models\BestbuyUSADataView;
 use App\Models\MacyDataView;
 use App\Models\ReverbViewData;
+use App\Models\TiendamiaProduct;
+use App\Models\TiendamiaDataView;
 use App\Models\DobaMetric;
 use App\Models\WalmartPriceData;
 use App\Models\WalmartOrderData;
@@ -873,8 +875,9 @@ class CvrMasterController extends Controller
             // Fetch Amazon data (using full SKU)
             $amazonData = AmazonDatasheet::where('sku', $fullSku)->first();
             
-            // Amazon uses HARDCODED 80% (line 1888), not from database
-            $amazonPercentage = 0.80;
+            // Amazon margin from marketplace_percentages
+            $amazonMarketplace = MarketplacePercentage::where('marketplace', 'Amazon')->first();
+            $amazonPercentage = $amazonMarketplace ? ($amazonMarketplace->percentage / 100) : 0.80;
             
             // Calculate Amazon GPFT% (line 1887-1890: (price × 0.80 - ship - lp) / price × 100)
             $amazonPrice = $amazonData->price ?? 0;
@@ -969,7 +972,8 @@ class CvrMasterController extends Controller
             
             // eBay 1
             $ebayData = EbayMetric::where('sku', $fullSku)->first();
-            $ebay1Margin = 0.85;
+            $ebay1Marketplace = MarketplacePercentage::where('marketplace', 'Ebay')->first();
+            $ebay1Margin = $ebay1Marketplace ? ($ebay1Marketplace->percentage / 100) : 0.85;
             $ebay1Price = $ebayData->ebay_price ?? 0;
             $ebay1L30 = $ebayData->ebay_l30 ?? 0;
             $ebay1GPFT = $ebay1Price > 0 ? (($ebay1Price * $ebay1Margin - $ship - $lp) / $ebay1Price) * 100 : 0;
@@ -1018,7 +1022,8 @@ class CvrMasterController extends Controller
             }
             
             // eBay 2
-            $ebay2Margin = 0.85;
+            $ebay2Marketplace = MarketplacePercentage::where('marketplace', 'EbayTwo')->first();
+            $ebay2Margin = $ebay2Marketplace ? ($ebay2Marketplace->percentage / 100) : 0.85;
             $ebay2Price = $ebay2Data->ebay_price ?? 0;
             $ebay2L30 = $ebay2Data->ebay_l30 ?? 0;
             $ebay2GPFT = $ebay2Price > 0 ? (($ebay2Price * $ebay2Margin - $lp - $ebay2Ship) / $ebay2Price) * 100 : 0;
@@ -1056,7 +1061,8 @@ class CvrMasterController extends Controller
 
             // eBay 3
             $ebay3Data = Ebay3Metric::where('sku', $fullSku)->first();
-            $ebay3Margin = 0.85;
+            $ebay3Marketplace = MarketplacePercentage::where('marketplace', 'EbayThree')->first();
+            $ebay3Margin = $ebay3Marketplace ? ($ebay3Marketplace->percentage / 100) : 0.85;
             $ebay3Price = $ebay3Data->ebay_price ?? 0;
             $ebay3L30 = $ebay3Data->ebay_l30 ?? 0;
             $ebay3GPFT = $ebay3Price > 0 ? (($ebay3Price * $ebay3Margin - $ship - $lp) / $ebay3Price) * 100 : 0;
@@ -1298,8 +1304,12 @@ class CvrMasterController extends Controller
             // Calculate W L30 Sales Amount
             $wL30Sales = $wPrice * $wQty;
             
-            // Calculate Walmart GPFT% = ((price × 0.80 - ship - lp) / price) × 100
-            $wGPFT = $wPrice > 0 ? ((($wPrice * 0.80 - $ship - $lp) / $wPrice) * 100) : 0;
+            // Get Walmart margin from marketplace_percentages
+            $walmartMarketplace = MarketplacePercentage::where('marketplace', 'Walmart')->first();
+            $walmartMargin = $walmartMarketplace ? ($walmartMarketplace->percentage / 100) : 0.80;
+            
+            // Calculate Walmart GPFT% = ((price × margin - ship - lp) / price) × 100
+            $wGPFT = $wPrice > 0 ? ((($wPrice * $walmartMargin - $ship - $lp) / $wPrice) * 100) : 0;
             
             // Calculate Walmart AD%
             $wAD = 0;
@@ -1346,7 +1356,7 @@ class CvrMasterController extends Controller
                 'spft' => $walmartSuggested['spft'],
                 'lp' => $lp,
                 'ship' => $ship,
-                'margin' => 0.80,
+                'margin' => $walmartMargin,
             ];
 
             // Fetch TikTok data (matching TikTokPricingController)
@@ -1584,7 +1594,8 @@ class CvrMasterController extends Controller
             ];
 
             // Add Temu
-            $temuMargin = 0.95;
+            $temuMarketplace = MarketplacePercentage::where('marketplace', 'Temu')->first();
+            $temuMargin = $temuMarketplace ? ($temuMarketplace->percentage / 100) : 0.95;
             $temuPricing = TemuPricing::where('sku', $fullSku)->first();
             $temuPrice = 0;
             if ($temuPricing) {
@@ -1629,7 +1640,8 @@ class CvrMasterController extends Controller
             
             // Add BestBuy
             $bestbuyProduct = BestbuyUsaProduct::where('sku', $fullSku)->first();
-            $bestbuyMargin = 0.80;
+            $bestbuyMarketplace = MarketplacePercentage::where('marketplace', 'BestbuyUSA')->first();
+            $bestbuyMargin = $bestbuyMarketplace ? ($bestbuyMarketplace->percentage / 100) : 0.80;
             $bestbuyPrice = $bestbuyProduct->price ?? 0;
             $bestbuyL30 = 0; // BestBuy L30 data source needed
             $bestbuyGPFT = $bestbuyPrice > 0 ? (($bestbuyPrice * $bestbuyMargin - $lp - $ship) / $bestbuyPrice) * 100 : 0;
@@ -1662,6 +1674,45 @@ class CvrMasterController extends Controller
                 'lp' => $lp,
                 'ship' => $ship,
                 'margin' => $bestbuyMargin,
+            ];
+
+            // Add Tiendamia
+            $tiendamiaProduct = TiendamiaProduct::where('sku', $fullSku)->first();
+            $tiendamiaMarketplace = MarketplacePercentage::where('marketplace', 'Tiendamia')->first();
+            $tiendamiaMargin = $tiendamiaMarketplace ? ($tiendamiaMarketplace->percentage / 100) : 0.83;
+            $tiendamiaPrice = $tiendamiaProduct->price ?? 0;
+            $tiendamiaL30 = $tiendamiaProduct->m_l30 ?? 0;
+            $tiendamiaGPFT = $tiendamiaPrice > 0 ? (($tiendamiaPrice * $tiendamiaMargin - $lp - $ship) / $tiendamiaPrice) * 100 : 0;
+            $tiendamiaNPFT = $tiendamiaL30 == 0 ? $tiendamiaGPFT : $tiendamiaGPFT;
+            
+            $tiendamiaDataView = TiendamiaDataView::where('sku', $fullSku)->first();
+            $tiendamiaSuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            if ($tiendamiaDataView) {
+                $val = is_array($tiendamiaDataView->value) ? $tiendamiaDataView->value : 
+                       json_decode($tiendamiaDataView->value, true);
+                if (is_array($val)) {
+                    $tiendamiaSuggested = ['sprice' => floatval($val['SPRICE'] ?? 0), 'sgpft' => floatval($val['SGPFT'] ?? 0),
+                                           'sroi' => floatval($val['SROI'] ?? 0), 'spft' => floatval($val['SPFT'] ?? 0)];
+                }
+            }
+            
+            $breakdownData[] = [
+                'marketplace' => 'Tiendamia',
+                'sku' => $tiendamiaProduct ? $fullSku : 'Not Listed',
+                'price' => $tiendamiaPrice,
+                'views' => 0,
+                'l30' => $tiendamiaL30,
+                'gpft' => $tiendamiaGPFT,
+                'ad' => 0,
+                'npft' => $tiendamiaNPFT,
+                'is_listed' => $tiendamiaProduct ? true : false,
+                'sprice' => $tiendamiaSuggested['sprice'],
+                'sgpft' => $tiendamiaSuggested['sgpft'],
+                'sroi' => $tiendamiaSuggested['sroi'],
+                'spft' => $tiendamiaSuggested['spft'],
+                'lp' => $lp,
+                'ship' => $ship,
+                'margin' => $tiendamiaMargin,
             ];
 
             Log::info('Total marketplaces: ' . count($breakdownData));
@@ -1813,6 +1864,8 @@ class CvrMasterController extends Controller
                 $dataView = MacyDataView::firstOrNew(['sku' => $sku]);
             } elseif ($marketplace === 'reverb') {
                 $dataView = ReverbViewData::firstOrNew(['sku' => $sku]);
+            } elseif ($marketplace === 'tiendamia') {
+                $dataView = TiendamiaDataView::firstOrNew(['sku' => $sku]);
             } else {
                 return response()->json(['error' => 'Marketplace not supported'], 400);
             }
