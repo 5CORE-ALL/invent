@@ -140,9 +140,6 @@
                             <a href="{{ route('claim.reimbursement') }}">Claims & Reimbursements</a>
                         </li>
                         <li>
-                            <a href="{{ route('inventory.stages') }}">Inventory Stages</a>
-                        </li>
-                        <li>
                             <a href="{{ route('forecast.analysis') }}">Forecast Analysis</a>
                         </li>
                         <li>
