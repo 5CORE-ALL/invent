@@ -117,9 +117,13 @@
             background-color: #dbeafe !important;
         }
 
-        .parent-row {
-            background-color: #e0eaff !important;
-            font-weight: 700;
+        .parent-row,
+        .parent-row .tabulator-cell {
+            background-color: #dbeafe !important;
+            font-weight: 600;
+        }
+        .parent-row:hover .tabulator-cell {
+            background-color: #bfdbfe !important;
         }
 
         #budget-under-table .tabulator {
@@ -237,57 +241,67 @@
                         <!-- Filters and Stats Section -->
                         <div class="card border-0 shadow-sm mb-4" style="border: 1px solid rgba(0, 0, 0, 0.05) !important;">
                             <div class="card-body p-4">
-                                <!-- Filters Row: Utilization Type, Status, Inventory, NRA, Price, Rating, ACOS -->
-                                <div class="row g-2 align-items-end mb-3">
-                                    <div class="col-md-2">
-                                        <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
+                                <!-- Filters Row: All filters in one line with equal spacing -->
+                                <div class="d-flex flex-nowrap align-items-end overflow-x-auto mb-3 pb-1 filters-row-equal" style="min-height: 60px; gap: 1rem;">
+                                    <div class="flex-grow-1 flex-shrink-0" style="min-width: 0;">
+                                        <label class="form-label fw-semibold mb-1" style="color: #475569; font-size: 0.75rem;">
                                             <i class="fa-solid fa-filter me-1" style="color: #64748b;"></i>Utilization Type
                                         </label>
-                                        <select id="utilization-type-select" class="form-select form-select-md">
+                                        <select id="utilization-type-select" class="form-select form-select-sm w-100">
                                             <option value="all" selected>All</option>
                                             <option value="over">Over Utilized</option>
                                             <option value="under">Under Utilized</option>
                                             <option value="correctly">Correctly Utilized</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-2">
-                                        <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
+                                    <div class="flex-grow-1 flex-shrink-0" style="min-width: 0;">
+                                        <label class="form-label fw-semibold mb-1" style="color: #475569; font-size: 0.75rem;">
                                             <i class="fa-solid fa-toggle-on me-1" style="color: #64748b;"></i>Status
                                         </label>
-                                        <select id="status-filter" class="form-select form-select-md">
+                                        <select id="status-filter" class="form-select form-select-sm w-100">
                                             <option value="">All</option>
                                             <option value="ENABLED">Enabled</option>
                                             <option value="PAUSED">Paused</option>
                                             <option value="ENDED">Ended</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-2">
-                                        <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
+                                    <div class="flex-grow-1 flex-shrink-0" style="min-width: 0;">
+                                        <label class="form-label fw-semibold mb-1" style="color: #475569; font-size: 0.75rem;">
                                             <i class="fa-solid fa-boxes me-1" style="color: #64748b;"></i>Inventory
                                         </label>
-                                        <select id="inv-filter" class="form-select form-select-md">
+                                        <select id="inv-filter" class="form-select form-select-sm w-100">
                                             <option value="">All</option>
                                             <option value="ALL">ALL</option>
                                             <option value="INV_0">0 INV</option>
                                             <option value="OTHERS" selected>OTHERS</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-1">
-                                        <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
+                                    <div class="flex-grow-1 flex-shrink-0" style="min-width: 0;">
+                                        <label class="form-label fw-semibold mb-1" style="color: #475569; font-size: 0.75rem;">
+                                            <i class="fa-solid fa-layer-group me-1" style="color: #64748b;"></i>Type
+                                        </label>
+                                        <select id="sku-type-filter" class="form-select form-select-sm w-100">
+                                            <option value="">All</option>
+                                            <option value="parent">Parent</option>
+                                            <option value="sku">Sku</option>
+                                        </select>
+                                    </div>
+                                    <div class="flex-grow-1 flex-shrink-0" style="min-width: 0;">
+                                        <label class="form-label fw-semibold mb-1" style="color: #475569; font-size: 0.75rem;">
                                             <i class="fa-solid fa-tags me-1" style="color: #64748b;"></i>NRA
                                         </label>
-                                        <select id="nra-filter" class="form-select form-select-md">
+                                        <select id="nra-filter" class="form-select form-select-sm w-100">
                                             <option value="">All</option>
                                             <option value="NRA">NRA</option>
                                             <option value="RA">RA</option>
                                             <option value="LATER">LATER</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-2">
-                                        <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
+                                    <div class="flex-grow-1 flex-shrink-0" style="min-width: 0;">
+                                        <label class="form-label fw-semibold mb-1" style="color: #475569; font-size: 0.75rem;">
                                             <i class="fa-solid fa-dollar-sign me-1" style="color: #64748b;"></i>Price
                                         </label>
-                                        <select id="price-slab-filter" class="form-select form-select-md">
+                                        <select id="price-slab-filter" class="form-select form-select-sm w-100">
                                             <option value="">All</option>
                                             <option value="lt10">&lt; $10</option>
                                             <option value="10-20">$10 - $20</option>
@@ -297,11 +311,11 @@
                                             <option value="gt100">&gt; $100</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-1">
-                                        <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
+                                    <div class="flex-grow-1 flex-shrink-0" style="min-width: 0;">
+                                        <label class="form-label fw-semibold mb-1" style="color: #475569; font-size: 0.75rem;">
                                             <i class="fa-solid fa-star me-1" style="color: #64748b;"></i>Rating
                                         </label>
-                                        <select id="rating-filter" class="form-select form-select-md">
+                                        <select id="rating-filter" class="form-select form-select-sm w-100">
                                             <option value="">All</option>
                                             <option value="lt3">&lt; 3</option>
                                             <option value="3-3.5">3 - 3.5</option>
@@ -309,11 +323,11 @@
                                             <option value="gte4.5">≥ 4.5</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-2">
-                                        <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
+                                    <div class="flex-grow-1 flex-shrink-0" style="min-width: 0;">
+                                        <label class="form-label fw-semibold mb-1" style="color: #475569; font-size: 0.75rem;">
                                             <i class="fa-solid fa-filter me-1" style="color: #64748b;"></i>ACOS
                                         </label>
-                                        <select id="sbgt-filter" class="form-select form-select-md">
+                                        <select id="sbgt-filter" class="form-select form-select-sm w-100">
                                             <option value="">All</option>
                                             <option value="8">&lt; 5%</option>
                                             <option value="7">5-9%</option>
@@ -726,7 +740,8 @@
                         return;
                     }
                     
-                    // Now calculate utilization and count
+                    // Now calculate utilization and count - only for valid (child) SKUs so counts match campaign count
+                    if (!isValidSku) return;
                     let budget = parseFloat(row.campaignBudgetAmount) || 0;
                     let l7_spend = parseFloat(row.l7_spend || 0);
                     let l1_spend = parseFloat(row.l1_spend || 0);
@@ -840,10 +855,11 @@
                     raCountEl.textContent = raCount;
                 }
                 
-                // Count paused campaigns (campaigns with pink_dil_paused_at) - count all, not just those with hasCampaign
+                // Count paused campaigns (campaigns with pink_dil_paused_at) - only valid (child) SKUs
                 let pausedCampaignsCount = 0;
                 allData.forEach(function(row) {
-                    // Count all campaigns with pink_dil_paused_at, regardless of hasCampaign
+                    const sku = row.sku || '';
+                    if (sku.toUpperCase().includes('PARENT')) return;
                     if (row.pink_dil_paused_at) {
                         pausedCampaignsCount++;
                     }
@@ -1309,7 +1325,7 @@
             var table = new Tabulator("#budget-under-table", {
                 index: "sku",
                 ajaxURL: "/amazon/utilized/kw/ads/data",
-                layout: "fitData",
+                layout: "fitDataFill",
                 movableColumns: true,
                 resizableColumns: true,
                 height: "700px",             
@@ -1336,8 +1352,9 @@
                         width: 50
                     },
                     {
-                        title: "Parent",
+                        title: "Parent SKU",
                         field: "parent",
+                        hozAlign: "left",
                         visible: false
                     },
                     {
@@ -1377,14 +1394,18 @@
                         title: "SKU",
                         field: "sku",
                         hozAlign: "left",
+                        minWidth: 180,
                         formatter: function(cell) {
                             let sku = cell.getValue();
-                            return `
-                                <span>${sku}</span>
+                            let isParentRow = (sku || '').toUpperCase().includes('PARENT');
+                            let skuHtml = isParentRow
+                                ? `<strong>${sku}</strong>`
+                                : `<span>${sku}</span>`;
+                            let iconHtml = isParentRow ? '' : `
                                 <i class="fa fa-info-circle text-primary toggle-cols-btn" 
                                 data-sku="${sku}" 
-                                style="cursor:pointer; margin-left:8px;"></i>
-                            `;
+                                style="cursor:pointer; margin-left:8px;"></i>`;
+                            return `${skuHtml}${iconHtml}`;
                         }
                     },
                     {
@@ -1982,6 +2003,7 @@
                         title: "ACOS",
                         field: "acos",
                         hozAlign: "right",
+                        minWidth: 72,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var acosRaw = row.acos; 
@@ -2207,6 +2229,7 @@
                         title: "AD CVR",
                         field: "ad_cvr",
                         hozAlign: "right",
+                        minWidth: 72,
                         formatter: function(cell) {
                             var value = parseFloat(cell.getValue() || 0);
                             return value.toFixed(2) + "%";
@@ -2218,8 +2241,11 @@
                         title: "7 UB%",
                         field: "l7_spend",
                         hozAlign: "right",
+                        minWidth: 72,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
+                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            if (!hasCampaign) return '-';
                             var l7_spend = parseFloat(row.l7_spend) || 0;
                             var budget = parseFloat(row.campaignBudgetAmount) || 0;
                             var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
@@ -2241,8 +2267,11 @@
                         title: "1 UB%",
                         field: "l1_spend",
                         hozAlign: "right",
+                        minWidth: 72,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
+                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            if (!hasCampaign) return '-';
                             var l1_spend = parseFloat(row.l1_spend) || 0;
                             var budget = parseFloat(row.campaignBudgetAmount) || 0;
                             var ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
@@ -2262,8 +2291,11 @@
                         title: "AVG CPC",
                         field: "avg_cpc",
                         hozAlign: "center",
+                        minWidth: 72,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
+                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            if (!hasCampaign) return '-';
                             var avg_cpc = parseFloat(row.avg_cpc) || 0;
                             return avg_cpc.toFixed(2);
                         }
@@ -2272,8 +2304,11 @@
                         title: "L7 CPC",
                         field: "l7_cpc",
                         hozAlign: "center",
+                        minWidth: 72,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
+                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            if (!hasCampaign) return '-';
                             var l7_cpc = parseFloat(row.l7_cpc) || 0;
                             return l7_cpc.toFixed(2);
                         }
@@ -2282,8 +2317,11 @@
                         title: "L1 CPC",
                         field: "l1_cpc",
                         hozAlign: "center",
+                        minWidth: 72,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
+                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            if (!hasCampaign) return '-';
                             var l1_cpc = parseFloat(row.l1_cpc) || 0;
                             return l1_cpc.toFixed(2);
                         }
@@ -2292,6 +2330,7 @@
                         title: "Last SBID",
                         field: "last_sbid",
                         hozAlign: "center",
+                        minWidth: 72,
                         formatter: function(cell) {
                             var value = cell.getValue();
                             if (!value || value === '' || value === '0' || value === 0) {
@@ -2304,6 +2343,7 @@
                         title: "SBID",
                         field: "sbid",
                         hozAlign: "center",
+                        minWidth: 72,
                         sorter: function(a, b, aRow, bRow, column, dir, sorterParams) {
                             // Get row data
                             var aData = aRow.getData();
@@ -2458,6 +2498,8 @@
                         visible: true,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
+                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            if (!hasCampaign) return '-';
                             var l1_cpc = parseFloat(row.l1_cpc) || 0;
                             var l7_cpc = parseFloat(row.l7_cpc) || 0;
                             var ub7 = 0;
@@ -2523,11 +2565,14 @@
                                 sbid = 0;
                             }
                             
-                            // Apply price-based caps
-                            if (price < 10 && sbid > 0.10) {
-                                sbid = 0.10;
-                            } else if (price >= 10 && price < 20 && sbid > 0.20) {
-                                sbid = 0.20;
+                            // Apply price-based caps (skip for PARENT rows - they often have price 0, which would cap all SBID to 0.10)
+                            var isParentRow = (row.sku || '').toUpperCase().includes('PARENT');
+                            if (!isParentRow) {
+                                if (price < 10 && sbid > 0.10) {
+                                    sbid = 0.10;
+                                } else if (price >= 10 && price < 20 && sbid > 0.20) {
+                                    sbid = 0.20;
+                                }
                             }
                             return sbid === 0 ? '-' : sbid;
                         }
@@ -2662,7 +2707,8 @@
                     },
                     {
                         title: "CAMPAIGN",
-                        field: "campaignName"
+                        field: "campaignName",
+                        minWidth: 220
                     },
                     {
                         title: "APR BID",
@@ -2736,6 +2782,19 @@
 
             // Combined filter function
             function combinedFilter(data) {
+                const skuStr = (data.sku != null) ? (data.sku + '') : '';
+                const isParentRow = skuStr.toUpperCase().includes('PARENT');
+                const typeFilter = $("#sku-type-filter").val() || '';
+                // Type filter: All, Parent, Sku
+                if (typeFilter === 'parent') {
+                    if (!isParentRow) return false;
+                    // Fall through so utilization type and other filters still apply to parent rows
+                } else if (typeFilter === 'sku') {
+                    if (isParentRow) return false;
+                } else {
+                    // When type is All (''): PARENT rows bypass rest only when utilization is also "all"
+                    if (isParentRow && currentUtilizationType === 'all') return true;
+                }
                 let acos = parseFloat(data.acos || 0);
                 let budget = parseFloat(data.campaignBudgetAmount) || 0;
                 let l7_spend = parseFloat(data.l7_spend) || 0;
@@ -3310,7 +3369,7 @@
                     }
                 });
 
-                $("#status-filter, #inv-filter, #nra-filter, #sbgt-filter, #price-slab-filter, #rating-filter").on("change", function() {
+                $("#status-filter, #inv-filter, #sku-type-filter, #nra-filter, #sbgt-filter, #price-slab-filter, #rating-filter").on("change", function() {
                     table.setFilter(combinedFilter);
                     // Update counts when filter changes - use longer timeout to ensure filter is applied
                     setTimeout(function() {

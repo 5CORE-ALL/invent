@@ -2166,6 +2166,27 @@ class AmazonSpBudgetController extends Controller
             }
         }
 
+        // For PARENT rows: INV = sum of child SKUs' INV (so "PARENT 10 FR" shows total INV of its children)
+        $childInvSumByParent = [];
+        foreach ($productMasters as $pm) {
+            $norm = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $pm->sku);
+            $norm = preg_replace('/\s+/', ' ', $norm);
+            $skuUpper = strtoupper(trim($norm));
+            if (stripos($skuUpper, 'PARENT') !== false) {
+                continue;
+            }
+            $p = $pm->parent ?? '';
+            if ($p === '') {
+                continue;
+            }
+            $shopify = $shopifyData[$pm->sku] ?? null;
+            $inv = ($shopify && isset($shopify->inv)) ? (int) $shopify->inv : 0;
+            if (!isset($childInvSumByParent[$p])) {
+                $childInvSumByParent[$p] = 0;
+            }
+            $childInvSumByParent[$p] += $inv;
+        }
+
         foreach ($productMasters as $pm) {
             // Normalize SKU first - normalize spaces (including non-breaking spaces) and convert to uppercase
             // Replace non-breaking spaces (UTF-8 c2a0) and other unicode spaces with regular spaces
@@ -2180,10 +2201,8 @@ class AmazonSpBudgetController extends Controller
                 continue;
             }
 
-            // For KW/PT campaigns, skip parent SKUs
-            if (($campaignType === 'KW' || $campaignType === 'PT') && stripos($sku, 'PARENT') !== false) {
-                continue;
-            }
+            // For KW/PT campaigns, do NOT skip parent SKUs - include them in result so "PARENT 10 FR" etc. show in table
+            // (previously skipped here which caused PARENT rows to never appear)
 
             // For PT campaigns, apply unique SKU filter (same as getAmzUnderUtilizedBgtPt)
             if ($campaignType === 'PT' && in_array($sku, $processedSkus)) {
@@ -2531,7 +2550,7 @@ class AmazonSpBudgetController extends Controller
                     'campaignBudgetAmount' => ($matchedCampaignL30 ? $matchedCampaignL30->campaignBudgetAmount : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignBudgetAmount : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignBudgetAmount : null) ?? 0)),
                     'campaignStatus' => ($matchedCampaignL30 ? $matchedCampaignL30->campaignStatus : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignStatus : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignStatus : null) ?? '')),
                     'pink_dil_paused_at' => ($matchedCampaignL30 ? $matchedCampaignL30->pink_dil_paused_at : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->pink_dil_paused_at : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->pink_dil_paused_at : null) ?? null)),
-                    'INV' => ($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0,
+                    'INV' => (stripos($sku, 'PARENT') !== false) ? (int)($childInvSumByParent[$parent] ?? 0) : (($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0),
                     'FBA_INV' => isset($fbaData[$baseSku]) ? ($fbaData[$baseSku]->quantity_available ?? 0) : 0,
                     'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
                     'A_L30' => ($amazonSheet && isset($amazonSheet->units_ordered_l30)) ? (int)$amazonSheet->units_ordered_l30 : 0,
@@ -2776,6 +2795,62 @@ class AmazonSpBudgetController extends Controller
 
         $totalACOSAll = $totalSalesAll > 0 ? ($totalSpendAll / $totalSalesAll) * 100 : 0;
 
+        // For KW/PT: Aggregate child spend/budget/CPC per parent so PARENT rows get SBID rules applied (ub7, ub1, CPC)
+        $childL7SpendByParent = [];
+        $childL1SpendByParent = [];
+        $childBudgetByParent = [];
+        $childL7CpcSumByParent = [];
+        $childL7CpcCountByParent = [];
+        $childL1CpcSumByParent = [];
+        $childL1CpcCountByParent = [];
+        if ($campaignType === 'KW' || $campaignType === 'PT') {
+            foreach ($campaignMap as $mapKey => $row) {
+                $skuStr = $row['sku'] ?? '';
+                if (stripos($skuStr, 'PARENT') !== false) {
+                    continue;
+                }
+                $p = $row['parent'] ?? '';
+                if ($p === '') {
+                    continue;
+                }
+                $l7 = (float)($row['l7_spend'] ?? 0);
+                $l1 = (float)($row['l1_spend'] ?? 0);
+                $budget = (float)($row['campaignBudgetAmount'] ?? 0);
+                $childL7SpendByParent[$p] = ($childL7SpendByParent[$p] ?? 0) + $l7;
+                $childL1SpendByParent[$p] = ($childL1SpendByParent[$p] ?? 0) + $l1;
+                $childBudgetByParent[$p] = ($childBudgetByParent[$p] ?? 0) + $budget;
+                $l7Cpc = (float)($row['l7_cpc'] ?? 0);
+                $l1Cpc = (float)($row['l1_cpc'] ?? 0);
+                if ($l7Cpc > 0) {
+                    $childL7CpcSumByParent[$p] = ($childL7CpcSumByParent[$p] ?? 0) + $l7Cpc;
+                    $childL7CpcCountByParent[$p] = ($childL7CpcCountByParent[$p] ?? 0) + 1;
+                }
+                if ($l1Cpc > 0) {
+                    $childL1CpcSumByParent[$p] = ($childL1CpcSumByParent[$p] ?? 0) + $l1Cpc;
+                    $childL1CpcCountByParent[$p] = ($childL1CpcCountByParent[$p] ?? 0) + 1;
+                }
+            }
+            foreach ($campaignMap as $mapKey => &$row) {
+                $skuStr = $row['sku'] ?? '';
+                if (stripos($skuStr, 'PARENT') === false) {
+                    continue;
+                }
+                $p = $row['parent'] ?? '';
+                if ($p === '' || !isset($childL7SpendByParent[$p])) {
+                    continue;
+                }
+                $row['l7_spend'] = $childL7SpendByParent[$p];
+                $row['l1_spend'] = $childL1SpendByParent[$p];
+                $row['campaignBudgetAmount'] = $childBudgetByParent[$p];
+                $l7CpcCount = $childL7CpcCountByParent[$p] ?? 0;
+                $l1CpcCount = $childL1CpcCountByParent[$p] ?? 0;
+                $row['l7_cpc'] = $l7CpcCount > 0 ? ($childL7CpcSumByParent[$p] / $l7CpcCount) : 0;
+                $row['l1_cpc'] = $l1CpcCount > 0 ? ($childL1CpcSumByParent[$p] / $l1CpcCount) : 0;
+                $row['avg_cpc'] = (($row['l7_cpc'] ?? 0) + ($row['l1_cpc'] ?? 0)) / 2;
+            }
+            unset($row);
+        }
+
         // Add all SKUs that were processed
         foreach ($campaignMap as $campaignId => $row) {
             $result[] = (object) $row;
@@ -2935,7 +3010,7 @@ class AmazonSpBudgetController extends Controller
                     'campaignBudgetAmount' => ($matchedCampaignL30 ? $matchedCampaignL30->campaignBudgetAmount : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignBudgetAmount : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignBudgetAmount : null) ?? 0)),
                     'campaignStatus' => ($matchedCampaignL30 ? $matchedCampaignL30->campaignStatus : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignStatus : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignStatus : null) ?? '')),
                     'pink_dil_paused_at' => ($matchedCampaignL30 ? $matchedCampaignL30->pink_dil_paused_at : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->pink_dil_paused_at : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->pink_dil_paused_at : null) ?? null)),
-                    'INV' => ($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0,
+                    'INV' => (int)($childInvSumByParent[$pm->parent ?? ''] ?? 0),
                     'FBA_INV' => isset($fbaData[$baseSku]) ? ($fbaData[$baseSku]->quantity_available ?? 0) : 0,
                     'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
                     'A_L30' => ($amazonSheet && isset($amazonSheet->units_ordered_l30)) ? (int)$amazonSheet->units_ordered_l30 : 0,
@@ -2990,10 +3065,7 @@ class AmazonSpBudgetController extends Controller
                     continue;
                 }
 
-                // For KW/PT campaigns, skip parent SKUs
-                if (stripos($sku, 'PARENT') !== false) {
-                    continue;
-                }
+                // For KW/PT campaigns, do NOT skip parent SKUs - they may have been missed in main loop (e.g. duplicate mapKey), include them here
 
             // Re-check if campaign exists for this SKU (in case it was missed in main loop)
             $matchedCampaignL30 = null;
@@ -3391,15 +3463,28 @@ class AmazonSpBudgetController extends Controller
                 $actionTaken = $historyRecord->action_taken ?? '';
             }
             
+            // For PARENT rows in missing SKUs loop: use aggregated child spend/budget/CPC so SBID rules apply
+            $campaignBudgetAmountForRow = ($matchedCampaignL30 ? $matchedCampaignL30->campaignBudgetAmount : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignBudgetAmount : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignBudgetAmount : null) ?? 0));
+            $avgCpcForRow = $avgCpcData->get($campaignId, 0);
+            if (stripos($sku, 'PARENT') !== false && isset($childL7SpendByParent[$pm->parent ?? ''])) {
+                $p = $pm->parent ?? '';
+                $l7Spend = $childL7SpendByParent[$p];
+                $l1Spend = $childL1SpendByParent[$p];
+                $l7Cpc = ($childL7CpcCountByParent[$p] ?? 0) > 0 ? ($childL7CpcSumByParent[$p] / $childL7CpcCountByParent[$p]) : 0;
+                $l1Cpc = ($childL1CpcCountByParent[$p] ?? 0) > 0 ? ($childL1CpcSumByParent[$p] / $childL1CpcCountByParent[$p]) : 0;
+                $campaignBudgetAmountForRow = $childBudgetByParent[$p];
+                $avgCpcForRow = ($l7Cpc + $l1Cpc) / 2;
+            }
+            
             $result[] = (object) [
-                'parent' => $pm->parent,
+                'parent' => $pm->parent ?? '',
                 'sku' => $pm->sku,
                 'campaign_id' => $campaignId,
                 'campaignName' => $campaignName,
-                'campaignBudgetAmount' => ($matchedCampaignL30 ? $matchedCampaignL30->campaignBudgetAmount : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignBudgetAmount : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignBudgetAmount : null) ?? 0)),
+                'campaignBudgetAmount' => $campaignBudgetAmountForRow,
                 'campaignStatus' => ($matchedCampaignL30 ? $matchedCampaignL30->campaignStatus : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignStatus : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignStatus : null) ?? '')),
                 'pink_dil_paused_at' => ($matchedCampaignL30 ? $matchedCampaignL30->pink_dil_paused_at : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->pink_dil_paused_at : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->pink_dil_paused_at : null) ?? null)),
-                'INV' => ($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0,
+                'INV' => (stripos($sku, 'PARENT') !== false) ? (int)($childInvSumByParent[$pm->parent ?? ''] ?? 0) : (($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0),
                 'FBA_INV' => isset($fbaData[$baseSku]) ? ($fbaData[$baseSku]->quantity_available ?? 0) : 0,
                 'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
                 'A_L30' => ($amazonSheet && isset($amazonSheet->units_ordered_l30)) ? (int)$amazonSheet->units_ordered_l30 : 0,
@@ -3407,7 +3492,7 @@ class AmazonSpBudgetController extends Controller
                 'l7_cpc' => $l7Cpc,
                 'l1_spend' => $l1Spend,
                 'l1_cpc' => $l1Cpc,
-                'avg_cpc' => $avgCpcData->get($campaignId, 0),
+                'avg_cpc' => $avgCpcForRow,
                 'acos' => $acos,
                 'acos_L30' => $acosL30,
                 'acos_L15' => $acosL15,
@@ -3478,7 +3563,7 @@ class AmazonSpBudgetController extends Controller
                     continue;
                 }
                 
-                // This parent SKU is still missing - add it with default values
+                // This parent SKU is still missing - add it with default values (HL Final check)
                 $baseSku = strtoupper(trim($pm->sku));
                 $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
                 $shopify = $shopifyData[$pm->sku] ?? null;
@@ -3784,7 +3869,7 @@ class AmazonSpBudgetController extends Controller
                     'campaignBudgetAmount' => ($matchedCampaignL30 ? $matchedCampaignL30->campaignBudgetAmount : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignBudgetAmount : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignBudgetAmount : null) ?? 0)),
                     'campaignStatus' => ($matchedCampaignL30 ? $matchedCampaignL30->campaignStatus : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->campaignStatus : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->campaignStatus : null) ?? '')),
                     'pink_dil_paused_at' => ($matchedCampaignL30 ? $matchedCampaignL30->pink_dil_paused_at : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->pink_dil_paused_at : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->pink_dil_paused_at : null) ?? null)),
-                    'INV' => ($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0,
+                    'INV' => (int)($childInvSumByParent[$pm->parent ?? ''] ?? 0),
                     'FBA_INV' => isset($fbaData[$baseSku]) ? ($fbaData[$baseSku]->quantity_available ?? 0) : 0,
                     'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
                     'A_L30' => ($amazonSheet && isset($amazonSheet->units_ordered_l30)) ? (int)$amazonSheet->units_ordered_l30 : 0,
