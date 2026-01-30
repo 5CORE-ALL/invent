@@ -1946,13 +1946,12 @@
                                 $('.alert').fadeOut(function() { $(this).remove(); });
                             }, 3000);
                         },
-                        error: function(xhr, status, error) {
-                            console.error('Delete failed:', xhr.responseJSON);
-                            var errorMsg = xhr.responseJSON?.message || 'Failed to delete task. You may not have permission.';
-                            alert('Error: ' + errorMsg);
-                        }
-                    });
-                }
+                    error: function(xhr, status, error) {
+                        console.error('Delete failed:', xhr.responseJSON);
+                        var errorMsg = xhr.responseJSON?.message || 'Failed to delete task. You may not have permission.';
+                        alert('Error: ' + errorMsg);
+                    }
+                });
             });
 
             // Handle Status Change
