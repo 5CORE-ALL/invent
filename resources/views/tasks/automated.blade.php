@@ -1498,12 +1498,10 @@
                 $('#bulkActionsModal').modal('show');
             });
 
-            // Bulk Delete
+            // Bulk Delete (no confirmation)
             $('#bulk-delete-btn').on('click', function(e) {
                 e.preventDefault();
-                if (confirm('Are you sure you want to delete ' + selectedTasks.length + ' task(s)?')) {
-                    bulkUpdate('delete', {});
-                }
+                bulkUpdate('delete', {});
             });
 
             // Bulk Change Priority
@@ -1965,20 +1963,15 @@
                 e.stopPropagation();
                 
                 var taskId = $(this).data('id');
-                console.log('Delete clicked for task ID:', taskId);
                 
-                if(confirm('Are you sure you want to delete this task?')) {
-                    console.log('Delete confirmed, sending request...');
-                    
-                    $.ajax({
-                        url: '/tasks/' + taskId,
-                        type: 'DELETE',
-                        data: {
-                            _token: '{{ csrf_token() }}'
-                        },
-                        success: function(response) {
-                            console.log('Delete successful:', response);
-                            table.replaceData();
+                $.ajax({
+                    url: '/tasks/' + taskId,
+                    type: 'DELETE',
+                    data: {
+                        _token: '{{ csrf_token() }}'
+                    },
+                    success: function(response) {
+                        table.replaceData();
                             
                             // Show success message
                             var alertHtml = `
