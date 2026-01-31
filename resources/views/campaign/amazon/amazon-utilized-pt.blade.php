@@ -2208,7 +2208,7 @@
                             var adSold7 = parseInt(row.l7_purchases || 0).toLocaleString();
                             var tooltipText = "L30: Clicks " + clicks30 + ", Spend " + spend30 + ", Sales " + sales30 + ", Ad Sold " + adSold30 +
                                 "\nL7: Clicks " + clicks7 + ", Spend " + spend7 + ", Sales " + sales7 + ", Ad Sold " + adSold7 +
-                                "\n(Click info to show/hide these columns)";
+                                "\n(Click info to show/hide Clicks L7, Spend L7, Sales L7, Ad Sold L7 and L30 columns)";
                             var td = cell.getElement();
                             td.classList.remove('green-bg', 'pink-bg', 'red-bg');
                             
@@ -2227,6 +2227,56 @@
                             }
                             return `<div class="text-center">${acosDisplay}<i class="bi bi-info-circle ms-1 info-icon-toggle" style="cursor: pointer; color: #0d6efd;" title="${tooltipText}"></i></div>`;
                         }
+                    },
+                    {
+                        title: "Clicks L7",
+                        field: "l7_clicks",
+                        hozAlign: "right",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseInt(cell.getValue() || 0);
+                            var tooltipL7 = "Click info to show/hide Spend L7, Sales L7, Ad Sold L7";
+                            return value.toLocaleString() + '<i class="bi bi-info-circle ms-1 info-icon-l7-toggle" style="cursor: pointer; color: #0d6efd;" title="' + tooltipL7 + '"></i>';
+                        },
+                        sorter: "number",
+                        width: 90
+                    },
+                    {
+                        title: "Spend L7",
+                        field: "spend_l7_col",
+                        hozAlign: "right",
+                        visible: false,
+                        mutator: function(value, data) { return data.l7_spend ?? 0; },
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return value.toFixed(2);
+                        },
+                        sorter: "number",
+                        width: 90
+                    },
+                    {
+                        title: "Sales L7",
+                        field: "l7_sales",
+                        hozAlign: "right",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return value.toFixed(2);
+                        },
+                        sorter: "number",
+                        width: 90
+                    },
+                    {
+                        title: "Ad Sold L7",
+                        field: "l7_purchases",
+                        hozAlign: "right",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseInt(cell.getValue() || 0);
+                            return value.toLocaleString();
+                        },
+                        sorter: "number",
+                        width: 90
                     },
                     {
                         title: "Clicks L30",
@@ -2267,55 +2317,6 @@
                     {
                         title: "Ad Sold L30",
                         field: "l30_purchases",
-                        hozAlign: "right",
-                        visible: false,
-                        formatter: function(cell) {
-                            var value = parseInt(cell.getValue() || 0);
-                            return value.toLocaleString();
-                        },
-                        sorter: "number",
-                        width: 90
-                    },
-                    {
-                        title: "Clicks L7",
-                        field: "l7_clicks",
-                        hozAlign: "right",
-                        visible: false,
-                        formatter: function(cell) {
-                            var value = parseInt(cell.getValue() || 0);
-                            return value.toLocaleString();
-                        },
-                        sorter: "number",
-                        width: 90
-                    },
-                    {
-                        title: "Spend L7",
-                        field: "spend_l7_col",
-                        hozAlign: "right",
-                        visible: false,
-                        mutator: function(value, data) { return data.l7_spend ?? 0; },
-                        formatter: function(cell) {
-                            var value = parseFloat(cell.getValue() || 0);
-                            return value.toFixed(2);
-                        },
-                        sorter: "number",
-                        width: 90
-                    },
-                    {
-                        title: "Sales L7",
-                        field: "l7_sales",
-                        hozAlign: "right",
-                        visible: false,
-                        formatter: function(cell) {
-                            var value = parseFloat(cell.getValue() || 0);
-                            return value.toFixed(2);
-                        },
-                        sorter: "number",
-                        width: 90
-                    },
-                    {
-                        title: "Ad Sold L7",
-                        field: "l7_purchases",
                         hozAlign: "right",
                         visible: false,
                         formatter: function(cell) {
@@ -3516,12 +3517,13 @@
                 table.hideColumn('apr_bid');
                 table.hideColumn('apr_bgt');
 
-                // Add event listener for info icon click to toggle columns
+                // ACOS info icon: toggle all 8 detail columns (Clicks L7, Spend L7, Sales L7, Ad Sold L7, Clicks L30, Spend L30, Sales L30, Ad Sold L30)
                 document.addEventListener('click', function(e) {
                     if (e.target.classList.contains('info-icon-toggle')) {
                         e.stopPropagation();
-                        var acosDetailFields = ['l30_clicks', 'l30_spend', 'l30_sales', 'l30_purchases', 'l7_clicks', 'spend_l7_col', 'l7_sales', 'l7_purchases'];
-                        var firstCol = table.getColumn('l30_clicks');
+                        // ACOS info: only Clicks L7 + L30 columns (Spend L7, Sales L7, Ad Sold L7 stay hidden; toggle via Clicks L7 info)
+                        var acosDetailFields = ['l7_clicks', 'l30_clicks', 'l30_spend', 'l30_sales', 'l30_purchases'];
+                        var firstCol = table.getColumn('l7_clicks');
                         var anyVisible = firstCol && typeof firstCol.isVisible === 'function' && firstCol.isVisible();
                         acosDetailFields.forEach(function(fieldName) {
                             var col = table.getColumn(fieldName);
@@ -3534,7 +3536,23 @@
                             }
                         });
                     }
-                    
+                    // Clicks L7 info icon: toggle only Spend L7, Sales L7, Ad Sold L7
+                    if (e.target.classList.contains('info-icon-l7-toggle')) {
+                        e.stopPropagation();
+                        var l7DetailFields = ['spend_l7_col', 'l7_sales', 'l7_purchases'];
+                        var spendL7Col = table.getColumn('spend_l7_col');
+                        var anyL7Visible = spendL7Col && typeof spendL7Col.isVisible === 'function' && spendL7Col.isVisible();
+                        l7DetailFields.forEach(function(fieldName) {
+                            var col = table.getColumn(fieldName);
+                            if (col) {
+                                if (anyL7Visible) {
+                                    if (typeof col.hide === 'function') col.hide(); else table.hideColumn(fieldName);
+                                } else {
+                                    if (typeof col.show === 'function') col.show(); else table.showColumn(fieldName);
+                                }
+                            }
+                        });
+                    }
                     // Price info icon toggle for PFT%, ROI%, GPFT, SPRICE, Accept, S GPFT, S PFT, SROI
                     if (e.target.classList.contains('info-icon-price-toggle')) {
                         e.stopPropagation();
