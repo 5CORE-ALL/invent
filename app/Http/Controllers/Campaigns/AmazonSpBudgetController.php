@@ -2307,6 +2307,62 @@ class AmazonSpBudgetController extends Controller
                 });
             }
 
+            // SPONSORED_PRODUCTS: if no campaign matched by CHILD SKU, try matching by PARENT SKU (map parent campaign to all its children)
+            if (($campaignType === 'KW' || $campaignType === 'PT') && stripos($sku, 'PARENT') === false && $parent !== '' && $parent !== null) {
+                $parentNorm = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $parent ?? ''))));
+                if (!$matchedCampaignL30 && $parentNorm !== '') {
+                    if ($campaignType === 'PT') {
+                        $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($parentNorm) {
+                            $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName ?? '');
+                            $cn = preg_replace('/\s+/', ' ', $cn);
+                            $clean = strtoupper(trim($cn));
+                            return $clean === $parentNorm . ' PT' || $clean === $parentNorm . ' PT.' || $clean === $parentNorm . 'PT' || $clean === $parentNorm . 'PT.';
+                        });
+                    } else {
+                        $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($parentNorm) {
+                            $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName ?? '');
+                            $cn = preg_replace('/\s+/', ' ', $cn);
+                            $clean = strtoupper(trim(rtrim($cn, '.')));
+                            return $clean === $parentNorm;
+                        });
+                    }
+                }
+                if (!$matchedCampaignL7 && $parentNorm !== '') {
+                    if ($campaignType === 'PT') {
+                        $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($parentNorm) {
+                            $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName ?? '');
+                            $cn = preg_replace('/\s+/', ' ', $cn);
+                            $clean = strtoupper(trim($cn));
+                            return $clean === $parentNorm . ' PT' || $clean === $parentNorm . ' PT.' || $clean === $parentNorm . 'PT' || $clean === $parentNorm . 'PT.';
+                        });
+                    } else {
+                        $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($parentNorm) {
+                            $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName ?? '');
+                            $cn = preg_replace('/\s+/', ' ', $cn);
+                            $clean = strtoupper(trim(rtrim($cn, '.')));
+                            return $clean === $parentNorm;
+                        });
+                    }
+                }
+                if (!$matchedCampaignL1 && $parentNorm !== '') {
+                    if ($campaignType === 'PT') {
+                        $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($parentNorm) {
+                            $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName ?? '');
+                            $cn = preg_replace('/\s+/', ' ', $cn);
+                            $clean = strtoupper(trim($cn));
+                            return $clean === $parentNorm . ' PT' || $clean === $parentNorm . ' PT.' || $clean === $parentNorm . 'PT' || $clean === $parentNorm . 'PT.';
+                        });
+                    } else {
+                        $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($parentNorm) {
+                            $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName ?? '');
+                            $cn = preg_replace('/\s+/', ' ', $cn);
+                            $clean = strtoupper(trim(rtrim($cn, '.')));
+                            return $clean === $parentNorm;
+                        });
+                    }
+                }
+            }
+
             // Check if campaign exists - check L30, L7, or L1
             // Convert to boolean explicitly to ensure proper checking
             $hasCampaign = !empty($matchedCampaignL30) || !empty($matchedCampaignL7) || !empty($matchedCampaignL1);
@@ -2403,6 +2459,35 @@ class AmazonSpBudgetController extends Controller
                     });
                     if ($ptCampaign) {
                         $ptSpend = $ptCampaign->spend ?? 0;
+                    }
+                    // If no KW/PT match by SKU and this is a CHILD row, try PARENT SKU for AD%
+                    if ((!$kwCampaign || !$ptCampaign) && stripos($sku, 'PARENT') === false && $parent !== '' && $parent !== null) {
+                        $parentNormAd = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $parent ?? ''))));
+                        if (!$kwCampaign && $parentNormAd !== '') {
+                            $kwCampaign = $allSpCampaignReportsL30->first(function ($item) use ($parentNormAd) {
+                                $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
+                                $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                                $campaignName = strtoupper(trim(rtrim($campaignName, '.')));
+                                if (stripos($campaignName, ' PT') !== false || stripos($campaignName, 'PT.') !== false) {
+                                    return false;
+                                }
+                                return $campaignName === $parentNormAd;
+                            });
+                            if ($kwCampaign) {
+                                $kwSpend = $kwCampaign->spend ?? 0;
+                            }
+                        }
+                        if (!$ptCampaign && $parentNormAd !== '') {
+                            $ptCampaign = $allSpCampaignReportsL30->first(function ($item) use ($parentNormAd) {
+                                $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName ?? '');
+                                $cn = preg_replace('/\s+/', ' ', $cn);
+                                $clean = strtoupper(trim($cn));
+                                return $clean === $parentNormAd . ' PT' || $clean === $parentNormAd . ' PT.' || $clean === $parentNormAd . 'PT' || $clean === $parentNormAd . 'PT.';
+                            });
+                            if ($ptCampaign) {
+                                $ptSpend = $ptCampaign->spend ?? 0;
+                            }
+                        }
                     }
                     
                     // Get HL campaign spend (SKU or SKU HEAD)
@@ -2554,6 +2639,9 @@ class AmazonSpBudgetController extends Controller
                     'reviews' => $junglescoutReviews[$sku] ?? null,
                     'l7_spend' => 0,
                     'l7_cpc' => 0,
+                    'l7_clicks' => 0,
+                    'l7_sales' => 0,
+                    'l7_purchases' => 0,
                     'l1_spend' => 0,
                     'l1_cpc' => 0,
                     'avg_cpc' => 0,
@@ -2602,9 +2690,15 @@ class AmazonSpBudgetController extends Controller
                         ? ($matchedCampaignL7->cost / $matchedCampaignL7->clicks)
                         : 0;
                     $campaignMap[$mapKey]['l7_cpc'] = $costPerClick7;
+                    $campaignMap[$mapKey]['l7_clicks'] = (int)($matchedCampaignL7->clicks ?? 0);
+                    $campaignMap[$mapKey]['l7_sales'] = (float)($matchedCampaignL7->sales7d ?? 0);
+                    $campaignMap[$mapKey]['l7_purchases'] = (int)($matchedCampaignL7->unitsSoldClicks7d ?? 0);
                 } else {
                     $campaignMap[$mapKey]['l7_spend'] = $matchedCampaignL7->spend ?? 0;
                     $campaignMap[$mapKey]['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
+                    $campaignMap[$mapKey]['l7_clicks'] = (int)($matchedCampaignL7->clicks ?? 0);
+                    $campaignMap[$mapKey]['l7_sales'] = (float)($matchedCampaignL7->sales7d ?? 0);
+                    $campaignMap[$mapKey]['l7_purchases'] = (int)($matchedCampaignL7->unitsSoldClicks7d ?? 0);
                 }
             }
 
@@ -2679,6 +2773,45 @@ class AmazonSpBudgetController extends Controller
                     $cleanSku = strtoupper(trim(rtrim($sku, '.')));
                     return $campaignName === $cleanSku;
                 });
+            }
+
+            // SPONSORED_PRODUCTS: if no L30/L15 match by SKU and this is a CHILD row, try matching by PARENT SKU
+            if (($campaignType === 'KW' || $campaignType === 'PT') && stripos($sku, 'PARENT') === false && $parent !== '' && $parent !== null) {
+                $parentNorm = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $parent ?? ''))));
+                if (!$matchedCampaignL30 && $parentNorm !== '') {
+                    if ($campaignType === 'PT') {
+                        $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($parentNorm) {
+                            $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName ?? '');
+                            $cn = preg_replace('/\s+/', ' ', $cn);
+                            $clean = strtoupper(trim($cn));
+                            return $clean === $parentNorm . ' PT' || $clean === $parentNorm . ' PT.' || $clean === $parentNorm . 'PT' || $clean === $parentNorm . 'PT.';
+                        });
+                    } else {
+                        $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($parentNorm) {
+                            $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName ?? '');
+                            $cn = preg_replace('/\s+/', ' ', $cn);
+                            $clean = strtoupper(trim(rtrim($cn, '.')));
+                            return $clean === $parentNorm;
+                        });
+                    }
+                }
+                if (!$matchedCampaignL15 && $parentNorm !== '') {
+                    if ($campaignType === 'PT') {
+                        $matchedCampaignL15 = $amazonSpCampaignReportsL15->first(function ($item) use ($parentNorm) {
+                            $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName ?? '');
+                            $cn = preg_replace('/\s+/', ' ', $cn);
+                            $clean = strtoupper(trim($cn));
+                            return $clean === $parentNorm . ' PT' || $clean === $parentNorm . ' PT.' || $clean === $parentNorm . 'PT' || $clean === $parentNorm . 'PT.';
+                        });
+                    } else {
+                        $matchedCampaignL15 = $amazonSpCampaignReportsL15->first(function ($item) use ($parentNorm) {
+                            $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName ?? '');
+                            $cn = preg_replace('/\s+/', ' ', $cn);
+                            $clean = strtoupper(trim(rtrim($cn, '.')));
+                            return $clean === $parentNorm;
+                        });
+                    }
+                }
             }
 
             if (isset($matchedCampaignL30) && $matchedCampaignL30) {
@@ -2801,8 +2934,55 @@ class AmazonSpBudgetController extends Controller
         $childL7CpcCountByParent = [];
         $childL1CpcSumByParent = [];
         $childL1CpcCountByParent = [];
-        // Parent Sales L30: use direct campaign only (parent SKU se match hone wala campaign), children ka sum NAHI
+        // Pre-compute parent 7 UB% / 1 UB% from ALL children (product_master) so utilization_budget and L7/L1 sums are correct
+        $parentUtilizationFromAllChildren = [];
         if ($campaignType === 'KW' || $campaignType === 'PT') {
+            foreach ($productMasters as $pm) {
+                $norm = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $pm->sku ?? '');
+                $norm = preg_replace('/\s+/', ' ', $norm);
+                $skuUpper = strtoupper(trim($norm));
+                if (stripos($skuUpper, 'PARENT') !== false) {
+                    continue;
+                }
+                $p = $pm->parent ?? '';
+                if ($p === '') {
+                    continue;
+                }
+                if (!isset($parentUtilizationFromAllChildren[$p])) {
+                    $parentUtilizationFromAllChildren[$p] = ['l7_spend' => 0, 'l1_spend' => 0, 'budget' => 0];
+                }
+                $matchL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($skuUpper, $campaignType) {
+                    $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName ?? '');
+                    $cn = preg_replace('/\s+/', ' ', $cn);
+                    $clean = strtoupper(trim($cn));
+                    if ($campaignType === 'PT') {
+                        return $clean === $skuUpper . ' PT' || $clean === $skuUpper . ' PT.' || $clean === $skuUpper . 'PT' || $clean === $skuUpper . 'PT.';
+                    }
+                    return $clean === $skuUpper;
+                });
+                $matchL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($skuUpper, $campaignType) {
+                    $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName ?? '');
+                    $cn = preg_replace('/\s+/', ' ', $cn);
+                    $clean = strtoupper(trim($cn));
+                    if ($campaignType === 'PT') {
+                        return $clean === $skuUpper . ' PT' || $clean === $skuUpper . ' PT.' || $clean === $skuUpper . 'PT' || $clean === $skuUpper . 'PT.';
+                    }
+                    return $clean === $skuUpper;
+                });
+                $matchL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($skuUpper, $campaignType) {
+                    $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName ?? '');
+                    $cn = preg_replace('/\s+/', ' ', $cn);
+                    $clean = strtoupper(trim($cn));
+                    if ($campaignType === 'PT') {
+                        return $clean === $skuUpper . ' PT' || $clean === $skuUpper . ' PT.' || $clean === $skuUpper . 'PT' || $clean === $skuUpper . 'PT.';
+                    }
+                    return $clean === $skuUpper;
+                });
+                $bgt = $matchL7 ? (float)($matchL7->campaignBudgetAmount ?? 0) : ($matchL1 ? (float)($matchL1->campaignBudgetAmount ?? 0) : ($matchL30 ? (float)($matchL30->campaignBudgetAmount ?? 0) : 0));
+                $parentUtilizationFromAllChildren[$p]['l7_spend'] += $matchL7 ? (float)($matchL7->spend ?? 0) : 0;
+                $parentUtilizationFromAllChildren[$p]['l1_spend'] += $matchL1 ? (float)($matchL1->spend ?? 0) : 0;
+                $parentUtilizationFromAllChildren[$p]['budget'] += $bgt;
+            }
             foreach ($campaignMap as $mapKey => $row) {
                 $skuStr = $row['sku'] ?? '';
                 if (stripos($skuStr, 'PARENT') !== false) {
@@ -2837,28 +3017,57 @@ class AmazonSpBudgetController extends Controller
                     continue;
                 }
                 $p = $row['parent'] ?? '';
-                if ($p === '' || !isset($childL7SpendByParent[$p])) {
+                if ($p === '') {
                     continue;
                 }
-                $row['l7_spend'] = $childL7SpendByParent[$p];
-                $row['l1_spend'] = $childL1SpendByParent[$p];
-                // Parent Sales L30: direct campaign ka value hi rahega (main loop me already set), children ka sum nahi
-                // Keep campaignBudgetAmount as DB value (for BGT column); use utilization_budget for 7 UB%, 1 UB%, SBID
-                $row['utilization_budget'] = $childBudgetByParent[$p];
-                // Parent has "campaign" when at least one child has campaign (so Type=Parent shows correct Campaign count)
-                $row['hasCampaign'] = ($childBudgetByParent[$p] ?? 0) > 0;
-                $l7CpcCount = $childL7CpcCountByParent[$p] ?? 0;
-                $l1CpcCount = $childL1CpcCountByParent[$p] ?? 0;
-                $row['l7_cpc'] = $l7CpcCount > 0 ? ($childL7CpcSumByParent[$p] / $l7CpcCount) : 0;
-                $row['l1_cpc'] = $l1CpcCount > 0 ? ($childL1CpcSumByParent[$p] / $l1CpcCount) : 0;
-                $row['avg_cpc'] = (($row['l7_cpc'] ?? 0) + ($row['l1_cpc'] ?? 0)) / 2;
+                // Parent row: use DIRECT campaign L7/L1 spend and budget (DB value), NOT sum of children
+                // So l7_spend/l1_spend match the campaign report for this parent SKU (e.g. PARENT DS GT -> 6.95)
+                $row['l7_spend'] = (float)($row['l7_spend'] ?? 0);
+                $row['l1_spend'] = (float)($row['l1_spend'] ?? 0);
+                $row['utilization_budget'] = (float)($row['campaignBudgetAmount'] ?? 0);
+                $row['hasCampaign'] = ($row['utilization_budget'] ?? 0) > 0;
+                // l7_cpc, l1_cpc, avg_cpc already set from matchedCampaignL7/L1 in main loop — do not overwrite with child averages
+                // ACOS = (Spend / Sales) * 100; when Spend L30 and Sales L30 both 0, ACOS must be 0
+                $rowSpend = (float)($row['l30_spend'] ?? 0);
+                $rowSales = (float)($row['l30_sales'] ?? 0);
+                if ($rowSpend == 0 && $rowSales == 0) {
+                    $row['acos_L30'] = 0;
+                    $row['acos'] = 0;
+                } else {
+                    $row['acos_L30'] = $rowSales > 0 ? round(($rowSpend / $rowSales) * 100, 2) : ($rowSpend > 0 ? 100 : 0);
+                    $row['acos'] = $row['acos_L30'];
+                }
             }
             unset($row);
         }
 
+        // ACOS must be 0 when Spend L30 and Sales L30 are both 0 (for ALL rows including parents with no children in aggregation)
+        foreach ($campaignMap as $mapKey => &$row) {
+            $rowSpend = (float)($row['l30_spend'] ?? 0);
+            $rowSales = (float)($row['l30_sales'] ?? 0);
+            if ($rowSpend <= 0 && $rowSales <= 0) {
+                $row['acos_L30'] = 0;
+                $row['acos'] = 0;
+            }
+        }
+        unset($row);
+
         // Add all SKUs that were processed
         foreach ($campaignMap as $campaignId => $row) {
             $result[] = (object) $row;
+        }
+
+        // Final pass: parent rows use direct campaign data only; ensure l1_spend=0 when no L1 report so 7 UB% / 1 UB% match DB
+        foreach ($result as $item) {
+            $skuStr = $item->sku ?? '';
+            if (stripos($skuStr, 'PARENT') === false) {
+                continue;
+            }
+            $item->l7_spend = (float)($item->l7_spend ?? 0);
+            $item->l1_spend = (float)($item->l1_spend ?? 0);
+            if (($item->utilization_budget ?? null) === null || ($item->utilization_budget ?? '') === '') {
+                $item->utilization_budget = (float)($item->campaignBudgetAmount ?? 0);
+            }
         }
 
         // For HL campaigns, use a direct approach to ensure ALL parent SKUs are included
@@ -3649,6 +3858,35 @@ class AmazonSpBudgetController extends Controller
                     if ($ptCampaign) {
                         $ptSpend = $ptCampaign->spend ?? 0;
                     }
+                    // If no KW/PT match by SKU and this is a CHILD row, try PARENT SKU for AD%
+                    if ((!$kwCampaign || !$ptCampaign) && stripos($sku, 'PARENT') === false && $parent !== '' && $parent !== null) {
+                        $parentNormAd = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $parent ?? ''))));
+                        if (!$kwCampaign && $parentNormAd !== '') {
+                            $kwCampaign = $allSpCampaignReportsL30->first(function ($item) use ($parentNormAd) {
+                                $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
+                                $campaignName = preg_replace('/\s+/', ' ', $campaignName);
+                                $campaignName = strtoupper(trim(rtrim($campaignName, '.')));
+                                if (stripos($campaignName, ' PT') !== false || stripos($campaignName, 'PT.') !== false) {
+                                    return false;
+                                }
+                                return $campaignName === $parentNormAd;
+                            });
+                            if ($kwCampaign) {
+                                $kwSpend = $kwCampaign->spend ?? 0;
+                            }
+                        }
+                        if (!$ptCampaign && $parentNormAd !== '') {
+                            $ptCampaign = $allSpCampaignReportsL30->first(function ($item) use ($parentNormAd) {
+                                $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName ?? '');
+                                $cn = preg_replace('/\s+/', ' ', $cn);
+                                $clean = strtoupper(trim($cn));
+                                return $clean === $parentNormAd . ' PT' || $clean === $parentNormAd . ' PT.' || $clean === $parentNormAd . 'PT' || $clean === $parentNormAd . 'PT.';
+                            });
+                            if ($ptCampaign) {
+                                $ptSpend = $ptCampaign->spend ?? 0;
+                            }
+                        }
+                    }
                     
                     // Get HL campaign spend (SKU or SKU HEAD)
                     $hlSpend = 0;
@@ -4031,6 +4269,9 @@ class AmazonSpBudgetController extends Controller
                     $row['A_L30'] = 0;
                     $row['l7_spend'] = $matchedCampaignL7->cost ?? 0;
                     $row['l7_cpc'] = ($matchedCampaignL7 && $matchedCampaignL7->clicks > 0) ? ($matchedCampaignL7->cost / $matchedCampaignL7->clicks) : 0;
+                    $row['l7_clicks'] = (int)($matchedCampaignL7->clicks ?? 0);
+                    $row['l7_sales'] = (float)($matchedCampaignL7->sales7d ?? 0);
+                    $row['l7_purchases'] = (int)($matchedCampaignL7->unitsSoldClicks7d ?? 0);
                     $row['l1_spend'] = $matchedCampaignL1->cost ?? 0;
                     $row['l1_cpc'] = ($matchedCampaignL1 && $matchedCampaignL1->clicks > 0) ? ($matchedCampaignL1->cost / $matchedCampaignL1->clicks) : 0;
                     $row['avg_cpc'] = $avgCpcData->get($campaignId, 0);
@@ -4233,6 +4474,9 @@ class AmazonSpBudgetController extends Controller
                     $row['A_L30'] = 0;
                     $row['l7_spend'] = $matchedCampaignL7->spend ?? 0;
                     $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
+                    $row['l7_clicks'] = (int)($matchedCampaignL7->clicks ?? 0);
+                    $row['l7_sales'] = (float)($matchedCampaignL7->sales7d ?? 0);
+                    $row['l7_purchases'] = (int)($matchedCampaignL7->unitsSoldClicks7d ?? 0);
                     $row['l1_spend'] = $matchedCampaignL1->spend ?? 0;
                     $row['l1_cpc'] = $matchedCampaignL1->costPerClick ?? 0;
                     $row['avg_cpc'] = $avgCpcData->get($campaignId, 0);
@@ -4373,6 +4617,42 @@ class AmazonSpBudgetController extends Controller
         // For PT campaigns, apply unique SKU filter (same as getAmzUnderUtilizedBgtPt)
         if ($campaignType === 'PT') {
             $result = collect($result)->unique('sku')->values()->all();
+        }
+
+        // Final pass: ACOS = 0 when Spend L30 and Sales L30 are both 0 (covers all rows including unmatched campaigns)
+        // Parent rows: re-apply DIRECT campaign L7/L1 from DB so 7 UB% / 1 UB% always match database (no child-sum)
+        foreach ($result as $item) {
+            $rowSpend = (float)($item->l30_spend ?? 0);
+            $rowSales = (float)($item->l30_sales ?? 0);
+            if ($rowSpend <= 0 && $rowSales <= 0) {
+                $item->acos_L30 = 0;
+                $item->acos = 0;
+            }
+            $skuStr = $item->sku ?? '';
+            if (stripos($skuStr, 'PARENT') !== false && ($campaignType === 'KW' || $campaignType === 'PT')) {
+                $skuNorm = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $skuStr))));
+                $matchL7 = $amazonSpCampaignReportsL7->first(function ($r) use ($skuNorm, $campaignType) {
+                    $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $r->campaignName ?? '');
+                    $cn = preg_replace('/\s+/', ' ', $cn);
+                    $clean = strtoupper(trim($cn));
+                    if ($campaignType === 'PT') {
+                        return $clean === $skuNorm . ' PT' || $clean === $skuNorm . ' PT.' || $clean === $skuNorm . 'PT' || $clean === $skuNorm . 'PT.';
+                    }
+                    return $clean === $skuNorm;
+                });
+                $matchL1 = $amazonSpCampaignReportsL1->first(function ($r) use ($skuNorm, $campaignType) {
+                    $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $r->campaignName ?? '');
+                    $cn = preg_replace('/\s+/', ' ', $cn);
+                    $clean = strtoupper(trim($cn));
+                    if ($campaignType === 'PT') {
+                        return $clean === $skuNorm . ' PT' || $clean === $skuNorm . ' PT.' || $clean === $skuNorm . 'PT' || $clean === $skuNorm . 'PT.';
+                    }
+                    return $clean === $skuNorm;
+                });
+                $item->l7_spend = $matchL7 ? (float)($matchL7->spend ?? 0) : 0;
+                $item->l1_spend = $matchL1 ? (float)($matchL1->spend ?? 0) : 0;
+                $item->utilization_budget = (float)($item->campaignBudgetAmount ?? 0);
+            }
         }
 
         // Calculate and save SBID for yesterday's actual date records (not L1)
