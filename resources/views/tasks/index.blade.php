@@ -1366,20 +1366,13 @@
                 })(),
             });
 
-            // Combined filter function (AND logic)
+            // Combined filter function (proper AND logic)
             function applyFilters() {
-                var filters = [];
+                // Clear existing filters first
+                table.clearFilter();
                 
-                // Search filter (OR logic within search)
-                var searchValue = $('#filter-search').val();
-                if (searchValue) {
-                    filters.push([
-                        {field:"title", type:"like", value:searchValue},
-                        {field:"group", type:"like", value:searchValue},
-                        {field:"assignor_name", type:"like", value:searchValue},
-                        {field:"assignee_name", type:"like", value:searchValue}
-                    ]);
-                }
+                // Build filter array with AND logic
+                var filters = [];
                 
                 // Group filter
                 var groupValue = $('#filter-group').val();
@@ -1417,8 +1410,21 @@
                     filters.push({field:"priority", type:"=", value:priorityValue});
                 }
                 
-                // Apply all filters (AND logic)
-                table.setFilter(filters);
+                // Search filter (OR logic within search - add last)
+                var searchValue = $('#filter-search').val();
+                if (searchValue) {
+                    filters.push([
+                        {field:"title", type:"like", value:searchValue},
+                        {field:"group", type:"like", value:searchValue},
+                        {field:"assignor_name", type:"like", value:searchValue},
+                        {field:"assignee_name", type:"like", value:searchValue}
+                    ]);
+                }
+                
+                // Apply all filters if any exist
+                if (filters.length > 0) {
+                    table.setFilter(filters);
+                }
             }
 
             // Filter functionality
