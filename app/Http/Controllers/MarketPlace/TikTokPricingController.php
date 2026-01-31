@@ -482,7 +482,22 @@ class TikTokPricingController extends Controller
             
             while (($row = fgetcsv($handle)) !== false) {
                 if (count($row) >= 2 && !empty($row[0])) {
-                    $sku = strtoupper(trim($row[0])); // Normalize to uppercase
+                    // Clean the SKU: remove non-breaking spaces, control characters, and other problematic characters
+                    $sku = $row[0];
+                    
+                    // Replace non-breaking spaces (0xA0) with regular spaces
+                    $sku = str_replace("\xA0", ' ', $sku);
+                    $sku = str_replace("\xC2\xA0", ' ', $sku); // UTF-8 non-breaking space
+                    
+                    // Remove other invisible/control characters
+                    $sku = preg_replace('/[\x00-\x1F\x7F-\x9F]/u', '', $sku);
+                    
+                    // Replace multiple spaces with single space and trim
+                    $sku = preg_replace('/\s+/', ' ', trim($sku));
+                    
+                    // Normalize to uppercase
+                    $sku = strtoupper($sku);
+                    
                     $price = isset($row[1]) ? floatval($row[1]) : 0;
                     $stock = isset($row[2]) ? intval($row[2]) : 0; // Column 3 = Inv (stock)
                     
