@@ -89,7 +89,6 @@ class Kernel extends ConsoleKernel
         FetchShopifyB2CMetrics::class,
         \App\Console\Commands\RunAdvMastersCron::class,
         \App\Console\Commands\CollectWalmartMetrics::class,
-        \App\Console\Commands\AutoLogoutUsers::class,
 
     ];
 

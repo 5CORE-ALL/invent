@@ -37,6 +37,9 @@ class AuthenticatedSessionController extends Controller
 
         $user = $request->user();
         
+        // Set logined = 1 when user logs in
+        $user->update(['logined' => 1]);
+        
         PermissionHelper::cacheUserPermissions($user->id);
 
         return redirect()->intended(RouteServiceProvider::HOME);
@@ -52,6 +55,11 @@ class AuthenticatedSessionController extends Controller
     {
         // Store the current session ID before logout
         $sessionId = $request->session()->getId();
+        
+        // Set logined = 0 when user logs out
+        if (Auth::check()) {
+            Auth::user()->update(['logined' => 0]);
+        }
 
         // Perform logout
         Auth::guard('web')->logout();
