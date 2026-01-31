@@ -1046,16 +1046,14 @@
                         }
                     });
                     
-                    // TASK (Compact with info icon)
+                    // TASK (2 lines with proper wrapping)
                     cols.push({
                         title: "TASK", 
                         field: "title", 
-                        width: 200,
+                        width: 280,
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
                             var title = cell.getValue() || '';
-                            var description = rowData.description || '';
-                            var taskId = rowData.id;
                             var isOverdue = false;
                             
                             var startDate = rowData.start_date;
@@ -1068,11 +1066,11 @@
                             
                             var overdueIcon = isOverdue ? '<i class="mdi mdi-alert-circle text-danger me-1" style="font-size: 14px;"></i>' : '';
                             var htmlTitle = String(title).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-                            var isLong = title.length > 30 || description;
-                            var shortTitle = title.length > 32 ? htmlTitle.substring(0, 30) + '...' : htmlTitle;
-                            var expandIcon = isLong ? '<i class="mdi mdi-information-outline text-primary expand-task-info" data-id="' + taskId + '" style="cursor: pointer; font-size: 16px; margin-left: 4px;"></i>' : '';
                             
-                            return '<div style="display: flex; align-items: center; gap: 4px;">' + overdueIcon + '<span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><strong>' + shortTitle + '</strong></span>' + (isLong ? '<span style="flex-shrink: 0;">' + expandIcon + '</span>' : '') + '</div>';
+                            // Show full text with auto wrapping (no line limit)
+                            return '<div style="word-wrap: break-word; overflow-wrap: break-word; white-space: normal; line-height: 1.4;">' + 
+                                   overdueIcon + '<strong style="font-size: 13px;">' + htmlTitle + '</strong>' + 
+                                   '</div>';
                         }
                     });
                     
