@@ -40,6 +40,9 @@ class SocialiteController extends Controller
                     $user->update(['google_id' => $googleUser->id]);
                 }
 
+                // Set logined = 1 when user logs in
+                $user->update(['logined' => 1]);
+
                 Auth::login($user, true);
                 PermissionHelper::cacheUserPermissions($user->id);
                 return redirect()->intended(RouteServiceProvider::HOME);
@@ -60,6 +63,7 @@ class SocialiteController extends Controller
                 'google_id' => $googleUser->id,
                 'password' => bcrypt(Str::random(24)),
                 'email_verified_at' => now(), // Google emails are verified
+                'logined' => 1, // Set logined = 1 for new users
             ]);
 
             Auth::login($userData, true);
