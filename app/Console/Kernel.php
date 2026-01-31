@@ -89,6 +89,7 @@ class Kernel extends ConsoleKernel
         FetchShopifyB2CMetrics::class,
         \App\Console\Commands\RunAdvMastersCron::class,
         \App\Console\Commands\CollectWalmartMetrics::class,
+        \App\Console\Commands\AutoLogoutUsers::class,
 
     ];
 
@@ -104,7 +105,7 @@ class Kernel extends ConsoleKernel
 
         // Execute Automated Tasks - Check every minute
         $schedule->command('tasks:execute-automated')
-            ->everyFiveMinutes()
+            ->everyMinute()
             ->timezone('Asia/Kolkata')
             ->name('automated-tasks-executor')
             ->withoutOverlapping();
@@ -651,9 +652,14 @@ $schedule->command('amazon:sync-inventory')->everySixHours();
 
         /*
     |--------------------------------------------------------------------------
-    | AUTO LOGOUT INACTIVE USERS (Every Hour)
+    | AUTO LOGOUT INACTIVE USERS (Every 6 Hours)
     |--------------------------------------------------------------------------
     */
+        $schedule->command('users:auto-logout')
+            ->everySixHours()
+            ->timezone('Asia/Kolkata')
+            ->name('auto-logout-users')
+            ->withoutOverlapping();
     }
 
     /**
