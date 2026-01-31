@@ -803,10 +803,11 @@ class AmazonSpBudgetController extends Controller
                       ->orWhere('campaignName', 'LIKE', '%PT.');
                 });
             } else {
-                $amazonSpCampaignReportsL7->where('campaignName', 'NOT LIKE', '%PT')
-                                          ->where('campaignName', 'NOT LIKE', '%PT.');
-                $amazonSpCampaignReportsL1->where('campaignName', 'NOT LIKE', '%PT')
-                                          ->where('campaignName', 'NOT LIKE', '%PT.');
+                // Exclude only Product Targeting (name ends with " PT" or " PT."). Do NOT use '%PT' - it excludes PARENT (contains "PT").
+                $amazonSpCampaignReportsL7->where('campaignName', 'NOT LIKE', '% PT')
+                                          ->where('campaignName', 'NOT LIKE', '% PT.');
+                $amazonSpCampaignReportsL1->where('campaignName', 'NOT LIKE', '% PT')
+                                          ->where('campaignName', 'NOT LIKE', '% PT.');
             }
 
             $amazonSpCampaignReportsL7 = $amazonSpCampaignReportsL7->get();
@@ -839,8 +840,8 @@ class AmazonSpBudgetController extends Controller
                       ->orWhere('campaignName', 'LIKE', '%PT.');
                 });
             } else {
-                $lastSbidReports->where('campaignName', 'NOT LIKE', '%PT')
-                              ->where('campaignName', 'NOT LIKE', '%PT.');
+                $lastSbidReports->where('campaignName', 'NOT LIKE', '% PT')
+                              ->where('campaignName', 'NOT LIKE', '% PT.');
             }
             
             $lastSbidReports = $lastSbidReports->get();
@@ -1117,8 +1118,8 @@ class AmazonSpBudgetController extends Controller
             ->where(function ($q) use ($skus) {
                 foreach ($skus as $sku) $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
             })
-            ->where('campaignName', 'NOT LIKE', '%PT')
-            ->where('campaignName', 'NOT LIKE', '%PT.')
+            ->where('campaignName', 'NOT LIKE', '% PT')
+            ->where('campaignName', 'NOT LIKE', '% PT.')
             ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
@@ -1127,8 +1128,8 @@ class AmazonSpBudgetController extends Controller
             ->where(function ($q) use ($skus) {
                 foreach ($skus as $sku) $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
             })
-            ->where('campaignName', 'NOT LIKE', '%PT')
-            ->where('campaignName', 'NOT LIKE', '%PT.')
+            ->where('campaignName', 'NOT LIKE', '% PT')
+            ->where('campaignName', 'NOT LIKE', '% PT.')
             ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
@@ -1266,8 +1267,8 @@ class AmazonSpBudgetController extends Controller
             ->where(function ($q) use ($skus) {
                 foreach ($skus as $sku) $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
             })
-            ->where('campaignName', 'NOT LIKE', '%PT')
-            ->where('campaignName', 'NOT LIKE', '%PT.')
+            ->where('campaignName', 'NOT LIKE', '% PT')
+            ->where('campaignName', 'NOT LIKE', '% PT.')
             ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
@@ -1276,8 +1277,8 @@ class AmazonSpBudgetController extends Controller
             ->where(function ($q) use ($skus) {
                 foreach ($skus as $sku) $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
             })
-            ->where('campaignName', 'NOT LIKE', '%PT')
-            ->where('campaignName', 'NOT LIKE', '%PT.')
+            ->where('campaignName', 'NOT LIKE', '% PT')
+            ->where('campaignName', 'NOT LIKE', '% PT.')
             ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
@@ -1286,8 +1287,8 @@ class AmazonSpBudgetController extends Controller
             ->where(function ($q) use ($skus) {
                 foreach ($skus as $sku) $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
             })
-            ->where('campaignName', 'NOT LIKE', '%PT')
-            ->where('campaignName', 'NOT LIKE', '%PT.')
+            ->where('campaignName', 'NOT LIKE', '% PT')
+            ->where('campaignName', 'NOT LIKE', '% PT.')
             ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
@@ -1296,8 +1297,8 @@ class AmazonSpBudgetController extends Controller
             ->where(function ($q) use ($skus) {
                 foreach ($skus as $sku) $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
             })
-            ->where('campaignName', 'NOT LIKE', '%PT')
-            ->where('campaignName', 'NOT LIKE', '%PT.')
+            ->where('campaignName', 'NOT LIKE', '% PT')
+            ->where('campaignName', 'NOT LIKE', '% PT.')
             ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
@@ -1889,10 +1890,11 @@ class AmazonSpBudgetController extends Controller
         } else {
             // For KW campaigns, get ALL campaigns (not filtered by SKU) to include unmatched campaigns
             if ($campaignType === 'KW') {
+                // Exclude only Product Targeting (" PT" / " PT."). Do NOT use '%PT' - it excludes PARENT (contains "PT").
                 $amazonSpCampaignReportsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
                     ->where('report_date_range', 'L30')
-                    ->where('campaignName', 'NOT LIKE', '%PT')
-                    ->where('campaignName', 'NOT LIKE', '%PT.')
+                    ->where('campaignName', 'NOT LIKE', '% PT')
+                    ->where('campaignName', 'NOT LIKE', '% PT.')
                     ->where('campaignName', 'NOT LIKE', '%FBA')
                     ->where('campaignName', 'NOT LIKE', '%FBA.')
                     ->where('campaignStatus', '!=', 'ARCHIVED')
@@ -1901,7 +1903,13 @@ class AmazonSpBudgetController extends Controller
                 $amazonSpCampaignReportsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
                     ->where('report_date_range', 'L30')
                     ->where(function ($q) use ($skus) {
-                        foreach ($skus as $sku) $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
+                        foreach ($skus as $sku) {
+                            $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
+                            $skuNoDot = rtrim($sku, '.');
+                            if ($skuNoDot !== $sku) {
+                                $q->orWhere('campaignName', 'LIKE', '%' . $skuNoDot . '%');
+                            }
+                        }
                     });
                 
                 if ($campaignType === 'PT') {
@@ -1912,8 +1920,8 @@ class AmazonSpBudgetController extends Controller
                           ->orWhere('campaignName', 'LIKE', '%PT.');
                     });
                 } else {
-                    $amazonSpCampaignReportsL30->where('campaignName', 'NOT LIKE', '%PT')
-                                              ->where('campaignName', 'NOT LIKE', '%PT.');
+                    $amazonSpCampaignReportsL30->where('campaignName', 'NOT LIKE', '% PT')
+                                              ->where('campaignName', 'NOT LIKE', '% PT.');
                 }
                 
                 $amazonSpCampaignReportsL30 = $amazonSpCampaignReportsL30->where('campaignStatus', '!=', 'ARCHIVED')->get();
@@ -1975,10 +1983,11 @@ class AmazonSpBudgetController extends Controller
         } else {
             // For KW campaigns, get ALL campaigns (not filtered by SKU) to include unmatched campaigns
             if ($campaignType === 'KW') {
+                // Exclude only Product Targeting (" PT" / " PT."). Do NOT use '%PT' - it excludes PARENT (contains "PT").
                 $amazonSpCampaignReportsL15 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
                     ->where('report_date_range', 'L15')
-                    ->where('campaignName', 'NOT LIKE', '%PT')
-                    ->where('campaignName', 'NOT LIKE', '%PT.')
+                    ->where('campaignName', 'NOT LIKE', '% PT')
+                    ->where('campaignName', 'NOT LIKE', '% PT.')
                     ->where('campaignName', 'NOT LIKE', '%FBA')
                     ->where('campaignName', 'NOT LIKE', '%FBA.')
                     ->where('campaignStatus', '!=', 'ARCHIVED')
@@ -1986,8 +1995,8 @@ class AmazonSpBudgetController extends Controller
                 
                 $amazonSpCampaignReportsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
                     ->where('report_date_range', 'L7')
-                    ->where('campaignName', 'NOT LIKE', '%PT')
-                    ->where('campaignName', 'NOT LIKE', '%PT.')
+                    ->where('campaignName', 'NOT LIKE', '% PT')
+                    ->where('campaignName', 'NOT LIKE', '% PT.')
                     ->where('campaignName', 'NOT LIKE', '%FBA')
                     ->where('campaignName', 'NOT LIKE', '%FBA.')
                     ->where('campaignStatus', '!=', 'ARCHIVED')
@@ -1995,8 +2004,8 @@ class AmazonSpBudgetController extends Controller
                 
                 $amazonSpCampaignReportsL1 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
                     ->where('report_date_range', 'L1')
-                    ->where('campaignName', 'NOT LIKE', '%PT')
-                    ->where('campaignName', 'NOT LIKE', '%PT.')
+                    ->where('campaignName', 'NOT LIKE', '% PT')
+                    ->where('campaignName', 'NOT LIKE', '% PT.')
                     ->where('campaignName', 'NOT LIKE', '%FBA')
                     ->where('campaignName', 'NOT LIKE', '%FBA.')
                     ->where('campaignStatus', '!=', 'ARCHIVED')
@@ -2006,7 +2015,13 @@ class AmazonSpBudgetController extends Controller
                 $amazonSpCampaignReportsL15 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
                     ->where('report_date_range', 'L15')
                     ->where(function ($q) use ($skus) {
-                        foreach ($skus as $sku) $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
+                        foreach ($skus as $sku) {
+                            $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
+                            $skuNoDot = rtrim($sku, '.');
+                            if ($skuNoDot !== $sku) {
+                                $q->orWhere('campaignName', 'LIKE', '%' . $skuNoDot . '%');
+                            }
+                        }
                     })
                     ->where(function($q) {
                         $q->where('campaignName', 'LIKE', '% PT')
@@ -2020,7 +2035,13 @@ class AmazonSpBudgetController extends Controller
                 $amazonSpCampaignReportsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
                     ->where('report_date_range', 'L7')
                     ->where(function ($q) use ($skus) {
-                        foreach ($skus as $sku) $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
+                        foreach ($skus as $sku) {
+                            $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
+                            $skuNoDot = rtrim($sku, '.');
+                            if ($skuNoDot !== $sku) {
+                                $q->orWhere('campaignName', 'LIKE', '%' . $skuNoDot . '%');
+                            }
+                        }
                     })
                     ->where(function($q) {
                         $q->where('campaignName', 'LIKE', '% PT')
@@ -2034,7 +2055,13 @@ class AmazonSpBudgetController extends Controller
                 $amazonSpCampaignReportsL1 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
                     ->where('report_date_range', 'L1')
                     ->where(function ($q) use ($skus) {
-                        foreach ($skus as $sku) $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
+                        foreach ($skus as $sku) {
+                            $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
+                            $skuNoDot = rtrim($sku, '.');
+                            if ($skuNoDot !== $sku) {
+                                $q->orWhere('campaignName', 'LIKE', '%' . $skuNoDot . '%');
+                            }
+                        }
                     })
                     ->where(function($q) {
                         $q->where('campaignName', 'LIKE', '% PT')
@@ -2112,8 +2139,8 @@ class AmazonSpBudgetController extends Controller
                       ->orWhere('campaignName', 'LIKE', '%PT.');
                 });
             } else {
-                $lastSbidReports->where('campaignName', 'NOT LIKE', '%PT')
-                              ->where('campaignName', 'NOT LIKE', '%PT.');
+                $lastSbidReports->where('campaignName', 'NOT LIKE', '% PT')
+                              ->where('campaignName', 'NOT LIKE', '% PT.');
             }
             
             $lastSbidReports = $lastSbidReports->get();
@@ -2139,8 +2166,8 @@ class AmazonSpBudgetController extends Controller
                       ->orWhere('campaignName', 'LIKE', '%PT.');
                 });
             } else {
-                $sbidMReports->where('campaignName', 'NOT LIKE', '%PT')
-                            ->where('campaignName', 'NOT LIKE', '%PT.');
+                $sbidMReports->where('campaignName', 'NOT LIKE', '% PT')
+                            ->where('campaignName', 'NOT LIKE', '% PT.');
             }
             
             $sbidMReports = $sbidMReports->get()
@@ -2216,35 +2243,31 @@ class AmazonSpBudgetController extends Controller
             $matchedCampaignL1 = null;
 
             if ($campaignType === 'PT') {
-                // For PT campaigns, also check L30 to determine if campaign exists
-                $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
-                    // Normalize campaign name: replace non-breaking spaces and multiple spaces
+                // For PT: match with and without trailing dot on SKU so "PARENT DS 01." matches campaign "PARENT DS 01 PT"
+                $cleanSkuPt = strtoupper(trim(rtrim($sku, '.')));
+                $ptExpected = [
+                    $sku . ' PT', $sku . ' PT.', $sku . 'PT', $sku . 'PT.',
+                    $cleanSkuPt . ' PT', $cleanSkuPt . ' PT.', $cleanSkuPt . 'PT', $cleanSkuPt . 'PT.',
+                ];
+                $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($ptExpected) {
                     $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
                     $campaignName = preg_replace('/\s+/', ' ', $campaignName);
                     $cleanName = strtoupper(trim($campaignName));
-                    // Check both with space and without space before PT
-                    return ($cleanName === $sku . ' PT' || $cleanName === $sku . ' PT.' || 
-                            $cleanName === $sku . 'PT' || $cleanName === $sku . 'PT.');
+                    return in_array($cleanName, $ptExpected, true);
                 });
 
-                $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($sku) {
-                    // Normalize campaign name: replace non-breaking spaces and multiple spaces
+                $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($ptExpected) {
                     $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
                     $campaignName = preg_replace('/\s+/', ' ', $campaignName);
                     $cleanName = strtoupper(trim($campaignName));
-                    // Check both with space and without space before PT
-                    return ($cleanName === $sku . ' PT' || $cleanName === $sku . ' PT.' || 
-                            $cleanName === $sku . 'PT' || $cleanName === $sku . 'PT.');
+                    return in_array($cleanName, $ptExpected, true);
                 });
 
-                $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($sku) {
-                    // Normalize campaign name: replace non-breaking spaces and multiple spaces
+                $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($ptExpected) {
                     $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
                     $campaignName = preg_replace('/\s+/', ' ', $campaignName);
                     $cleanName = strtoupper(trim($campaignName));
-                    // Check both with space and without space before PT
-                    return ($cleanName === $sku . ' PT' || $cleanName === $sku . ' PT.' || 
-                            $cleanName === $sku . 'PT' || $cleanName === $sku . 'PT.');
+                    return in_array($cleanName, $ptExpected, true);
                 });
             } elseif ($campaignType === 'HL') {
                 // For HL campaigns, also check L30 to determine if campaign exists
@@ -2694,10 +2717,18 @@ class AmazonSpBudgetController extends Controller
                     $campaignMap[$mapKey]['l7_sales'] = (float)($matchedCampaignL7->sales7d ?? 0);
                     $campaignMap[$mapKey]['l7_purchases'] = (int)($matchedCampaignL7->unitsSoldClicks7d ?? 0);
                 } else {
-                    $campaignMap[$mapKey]['l7_spend'] = $matchedCampaignL7->spend ?? 0;
+                    // SP report may store L7 in 'cost'; use spend ?? cost; if still 0, derive from clicks * costPerClick
+                    $l7SpendRaw = (float)($matchedCampaignL7->spend ?? $matchedCampaignL7->cost ?? 0);
+                    $l7Clicks = (int)($matchedCampaignL7->clicks ?? 0);
+                    $l7Cpc = (float)($matchedCampaignL7->costPerClick ?? 0);
+                    if ($l7SpendRaw <= 0 && $l7Clicks > 0 && $l7Cpc > 0) {
+                        $l7SpendRaw = round($l7Clicks * $l7Cpc, 2);
+                    }
+                    $campaignMap[$mapKey]['l7_spend'] = $l7SpendRaw;
                     $campaignMap[$mapKey]['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
-                    $campaignMap[$mapKey]['l7_clicks'] = (int)($matchedCampaignL7->clicks ?? 0);
-                    $campaignMap[$mapKey]['l7_sales'] = (float)($matchedCampaignL7->sales7d ?? 0);
+                    $campaignMap[$mapKey]['l7_clicks'] = $l7Clicks;
+                    // L7 sales: sales7d or attributedSalesSameSku7d (API may use either for L7)
+                    $campaignMap[$mapKey]['l7_sales'] = (float)($matchedCampaignL7->sales7d ?? $matchedCampaignL7->attributedSalesSameSku7d ?? 0);
                     $campaignMap[$mapKey]['l7_purchases'] = (int)($matchedCampaignL7->unitsSoldClicks7d ?? 0);
                 }
             }
@@ -2710,30 +2741,30 @@ class AmazonSpBudgetController extends Controller
                         : 0;
                     $campaignMap[$mapKey]['l1_cpc'] = $costPerClick1;
                 } else {
-                    $campaignMap[$mapKey]['l1_spend'] = $matchedCampaignL1->spend ?? 0;
+                    // SP report may store L1 in 'cost'; use spend ?? cost
+                    $campaignMap[$mapKey]['l1_spend'] = (float)($matchedCampaignL1->spend ?? $matchedCampaignL1->cost ?? 0);
                     $campaignMap[$mapKey]['l1_cpc'] = $matchedCampaignL1->costPerClick ?? 0;
                 }
             }
 
             if ($campaignType === 'PT') {
-                $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
-                    // Normalize campaign name: replace non-breaking spaces and multiple spaces
+                $cleanSkuPt2 = strtoupper(trim(rtrim($sku, '.')));
+                $ptExpected2 = [
+                    $sku . ' PT', $sku . ' PT.', $sku . 'PT', $sku . 'PT.',
+                    $cleanSkuPt2 . ' PT', $cleanSkuPt2 . ' PT.', $cleanSkuPt2 . 'PT', $cleanSkuPt2 . 'PT.',
+                ];
+                $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($ptExpected2) {
                     $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
                     $campaignName = preg_replace('/\s+/', ' ', $campaignName);
                     $cleanName = strtoupper(trim($campaignName));
-                    // Check both with space and without space before PT
-                    return ($cleanName === $sku . ' PT' || $cleanName === $sku . ' PT.' || 
-                            $cleanName === $sku . 'PT' || $cleanName === $sku . 'PT.');
+                    return in_array($cleanName, $ptExpected2, true);
                 });
 
-                $matchedCampaignL15 = $amazonSpCampaignReportsL15->first(function ($item) use ($sku) {
-                    // Normalize campaign name: replace non-breaking spaces and multiple spaces
+                $matchedCampaignL15 = $amazonSpCampaignReportsL15->first(function ($item) use ($ptExpected2) {
                     $campaignName = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->campaignName);
                     $campaignName = preg_replace('/\s+/', ' ', $campaignName);
                     $cleanName = strtoupper(trim($campaignName));
-                    // Check both with space and without space before PT
-                    return ($cleanName === $sku . ' PT' || $cleanName === $sku . ' PT.' || 
-                            $cleanName === $sku . 'PT' || $cleanName === $sku . 'PT.');
+                    return in_array($cleanName, $ptExpected2, true);
                 });
             } elseif ($campaignType === 'HL') {
                 $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
@@ -2869,8 +2900,15 @@ class AmazonSpBudgetController extends Controller
                     $sales7 = $matchedCampaignL7->sales7d ?? 0;
                     $spend7 = $matchedCampaignL7->cost ?? 0;
                 } else {
-                    $sales7 = $matchedCampaignL7->sales7d ?? 0;
-                    $spend7 = $matchedCampaignL7->spend ?? 0;
+                    $sales7 = (float)($matchedCampaignL7->sales7d ?? $matchedCampaignL7->attributedSalesSameSku7d ?? 0);
+                    $spend7 = (float)($matchedCampaignL7->spend ?? $matchedCampaignL7->cost ?? 0);
+                    if ($spend7 <= 0) {
+                        $clicks7 = (int)($matchedCampaignL7->clicks ?? 0);
+                        $cpc7 = (float)($matchedCampaignL7->costPerClick ?? 0);
+                        if ($clicks7 > 0 && $cpc7 > 0) {
+                            $spend7 = round($clicks7 * $cpc7, 2);
+                        }
+                    }
                 }
                 if ($spend7 > 0 && $sales7 > 0) {
                     $campaignMap[$mapKey]['acos_L7'] = round(($spend7 / $sales7) * 100, 2);
@@ -2902,8 +2940,8 @@ class AmazonSpBudgetController extends Controller
                       ->orWhere('campaignName', 'LIKE', '%PT.');
                 });
             } else {
-                $allL30Campaigns->where('campaignName', 'NOT LIKE', '%PT')
-                               ->where('campaignName', 'NOT LIKE', '%PT.');
+                $allL30Campaigns->where('campaignName', 'NOT LIKE', '% PT')
+                               ->where('campaignName', 'NOT LIKE', '% PT.');
             }
             
             $allL30Campaigns = $allL30Campaigns->where('campaignStatus', '!=', 'ARCHIVED')->get();
@@ -2979,8 +3017,8 @@ class AmazonSpBudgetController extends Controller
                     return $clean === $skuUpper;
                 });
                 $bgt = $matchL7 ? (float)($matchL7->campaignBudgetAmount ?? 0) : ($matchL1 ? (float)($matchL1->campaignBudgetAmount ?? 0) : ($matchL30 ? (float)($matchL30->campaignBudgetAmount ?? 0) : 0));
-                $parentUtilizationFromAllChildren[$p]['l7_spend'] += $matchL7 ? (float)($matchL7->spend ?? 0) : 0;
-                $parentUtilizationFromAllChildren[$p]['l1_spend'] += $matchL1 ? (float)($matchL1->spend ?? 0) : 0;
+                $parentUtilizationFromAllChildren[$p]['l7_spend'] += $matchL7 ? (float)($matchL7->spend ?? $matchL7->cost ?? 0) : 0;
+                $parentUtilizationFromAllChildren[$p]['l1_spend'] += $matchL1 ? (float)($matchL1->spend ?? $matchL1->cost ?? 0) : 0;
                 $parentUtilizationFromAllChildren[$p]['budget'] += $bgt;
             }
             foreach ($campaignMap as $mapKey => $row) {
@@ -4631,26 +4669,40 @@ class AmazonSpBudgetController extends Controller
             $skuStr = $item->sku ?? '';
             if (stripos($skuStr, 'PARENT') !== false && ($campaignType === 'KW' || $campaignType === 'PT')) {
                 $skuNorm = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $skuStr))));
-                $matchL7 = $amazonSpCampaignReportsL7->first(function ($r) use ($skuNorm, $campaignType) {
+                $skuNormNoDot = rtrim($skuNorm, '.');
+                // KW: normalize campaign name with rtrim('.') so "PARENT DS 01." in report matches sku "PARENT DS 01"
+                $matchL7 = $amazonSpCampaignReportsL7->first(function ($r) use ($skuNorm, $skuNormNoDot, $campaignType) {
                     $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $r->campaignName ?? '');
                     $cn = preg_replace('/\s+/', ' ', $cn);
                     $clean = strtoupper(trim($cn));
+                    $cleanNoDot = rtrim($clean, '.');
                     if ($campaignType === 'PT') {
-                        return $clean === $skuNorm . ' PT' || $clean === $skuNorm . ' PT.' || $clean === $skuNorm . 'PT' || $clean === $skuNorm . 'PT.';
+                        return $clean === $skuNorm . ' PT' || $clean === $skuNorm . ' PT.' || $clean === $skuNorm . 'PT' || $clean === $skuNorm . 'PT.'
+                            || $clean === $skuNormNoDot . ' PT' || $clean === $skuNormNoDot . ' PT.' || $clean === $skuNormNoDot . 'PT' || $clean === $skuNormNoDot . 'PT.';
                     }
-                    return $clean === $skuNorm;
+                    return $clean === $skuNorm || $clean === $skuNormNoDot || $cleanNoDot === $skuNorm || $cleanNoDot === $skuNormNoDot;
                 });
-                $matchL1 = $amazonSpCampaignReportsL1->first(function ($r) use ($skuNorm, $campaignType) {
+                $matchL1 = $amazonSpCampaignReportsL1->first(function ($r) use ($skuNorm, $skuNormNoDot, $campaignType) {
                     $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $r->campaignName ?? '');
                     $cn = preg_replace('/\s+/', ' ', $cn);
                     $clean = strtoupper(trim($cn));
+                    $cleanNoDot = rtrim($clean, '.');
                     if ($campaignType === 'PT') {
-                        return $clean === $skuNorm . ' PT' || $clean === $skuNorm . ' PT.' || $clean === $skuNorm . 'PT' || $clean === $skuNorm . 'PT.';
+                        return $clean === $skuNorm . ' PT' || $clean === $skuNorm . ' PT.' || $clean === $skuNorm . 'PT' || $clean === $skuNorm . 'PT.'
+                            || $clean === $skuNormNoDot . ' PT' || $clean === $skuNormNoDot . ' PT.' || $clean === $skuNormNoDot . 'PT' || $clean === $skuNormNoDot . 'PT.';
                     }
-                    return $clean === $skuNorm;
+                    return $clean === $skuNorm || $clean === $skuNormNoDot || $cleanNoDot === $skuNorm || $cleanNoDot === $skuNormNoDot;
                 });
-                $item->l7_spend = $matchL7 ? (float)($matchL7->spend ?? 0) : 0;
-                $item->l1_spend = $matchL1 ? (float)($matchL1->spend ?? 0) : 0;
+                $l7SpendVal = $matchL7 ? (float)($matchL7->spend ?? $matchL7->cost ?? 0) : 0;
+                if ($l7SpendVal <= 0 && $matchL7) {
+                    $c7 = (int)($matchL7->clicks ?? 0);
+                    $cpc7 = (float)($matchL7->costPerClick ?? 0);
+                    if ($c7 > 0 && $cpc7 > 0) {
+                        $l7SpendVal = round($c7 * $cpc7, 2);
+                    }
+                }
+                $item->l7_spend = $l7SpendVal;
+                $item->l1_spend = $matchL1 ? (float)($matchL1->spend ?? $matchL1->cost ?? 0) : 0;
                 $item->utilization_budget = (float)($item->campaignBudgetAmount ?? 0);
             }
         }

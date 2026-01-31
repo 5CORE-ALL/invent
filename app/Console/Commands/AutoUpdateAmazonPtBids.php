@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\DB;
 
 class AutoUpdateAmazonPtBids extends Command
 {
-    protected $signature = 'amazon:auto-update-over-pt-bids';
+    protected $signature = 'amazon:auto-update-over-pt-bids {--dry-run : Show what would be updated without calling API}';
     protected $description = 'Automatically update Amazon campaign keyword bids';
 
     protected $profileId;
@@ -27,7 +27,8 @@ class AutoUpdateAmazonPtBids extends Command
     public function handle()
     {
         try {
-            $this->info("Starting Amazon PT bids auto-update...");
+            $dryRun = $this->option('dry-run');
+            $this->info("Starting Amazon PT bids auto-update..." . ($dryRun ? " [DRY RUN - no API calls]" : ""));
 
             // Check database connection (without creating persistent connection)
             try {
@@ -64,10 +65,20 @@ class AutoUpdateAmazonPtBids extends Command
                 if (!empty($campaignId) && $sbid > 0) {
                     // Only add if we haven't seen this campaign ID before
                     if (!isset($campaignBudgetMap[$campaignId])) {
+                        $budget = floatval($campaign->campaignBudgetAmount ?? 0);
+                        $l7_spend = floatval($campaign->l7_spend ?? 0);
+                        $l1_spend = floatval($campaign->l1_spend ?? 0);
+                        $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
+                        $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
+                        $pinkPink = ($ub7 > 99 && $ub1 > 99);
                         $campaignBudgetMap[$campaignId] = $sbid;
                         $campaignDetails[$campaignId] = [
                             'name' => $campaignName,
-                            'bid' => $sbid
+                            'bid' => $sbid,
+                            'ub7' => round($ub7, 2),
+                            'ub1' => round($ub1, 2),
+                            'pink_pink' => $pinkPink,
+                            'inv' => (int)($campaign->INV ?? 0)
                         ];
                     } else {
                         // Log duplicate but keep first one
@@ -104,9 +115,19 @@ class AutoUpdateAmazonPtBids extends Command
                 $this->info("Campaign Name: {$details['name']}");
                 $this->info("  - Campaign ID: {$campaignId}");
                 $this->info("  - Bid: {$details['bid']}");
+                $this->info("  - 7UB: " . ($details['ub7'] ?? 0) . "% | 1UB: " . ($details['ub1'] ?? 0) . "%");
+                $this->info("  - Pink+Pink (Over): " . (!empty($details['pink_pink']) ? 'Yes' : 'No'));
+                $this->info("  - INV: " . ($details['inv'] ?? 0));
                 $this->info("---");
             }
             $this->info("========================================");
+
+            if ($dryRun) {
+                $this->newLine();
+                $this->warn("DRY RUN: No API call made. Remove --dry-run to apply updates.");
+                $this->info("✓ Dry run completed. Total campaigns that would be updated: " . count($campaignIds));
+                return 0;
+            }
 
             // Validate all bids are valid before sending
             $invalidBids = [];
@@ -245,6 +266,30 @@ class AutoUpdateAmazonPtBids extends Command
                 });
             }
 
+            // NRA check: skip SKUs with NRA = 'NRA' (same as frontend - controller does not add these rows)
+            $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+
+            // For PARENT rows: INV = sum of child SKUs' INV (same as BgtKw/BgtPt)
+            $childInvSumByParent = [];
+            foreach ($productMasters as $pm) {
+                $norm = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $pm->sku ?? '');
+                $norm = preg_replace('/\s+/', ' ', $norm);
+                $skuUpper = strtoupper(trim($norm));
+                if (stripos($skuUpper, 'PARENT') !== false) {
+                    continue;
+                }
+                $p = $pm->parent ?? '';
+                if ($p === '') {
+                    continue;
+                }
+                $shopifyChild = $shopifyData[$pm->sku] ?? null;
+                $inv = ($shopifyChild && isset($shopifyChild->inv)) ? (int) $shopifyChild->inv : 0;
+                if (!isset($childInvSumByParent[$p])) {
+                    $childInvSumByParent[$p] = 0;
+                }
+                $childInvSumByParent[$p] += $inv;
+            }
+
         $amazonSpCampaignReportsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L7')
             ->where(function ($q) use ($skus) {
@@ -304,10 +349,21 @@ class AutoUpdateAmazonPtBids extends Command
             }
             $processedCampaignIds[$campaignId] = true;
 
+            // Skip NRA = 'NRA' (matches frontend - these rows are not in controller output)
+            $nrRaw = $nrValues[$pm->sku] ?? null;
+            $nrArr = is_array($nrRaw) ? $nrRaw : (is_string($nrRaw) ? json_decode($nrRaw, true) : []);
+            if (is_array($nrArr) && isset($nrArr['NRA']) && trim((string)$nrArr['NRA']) === 'NRA') {
+                continue;
+            }
+
             $row = [];
-            $row['INV']    = $shopify->inv ?? 0;
+            // INV: for PARENT SKU use sum of children's INV; for child use shopify inv
+            $row['INV'] = (stripos($pm->sku ?? '', 'PARENT') !== false)
+                ? (int) ($childInvSumByParent[$pm->parent ?? $pm->sku ?? ''] ?? 0)
+                : (int) ($shopify->inv ?? 0);
             $row['campaign_id'] = $campaignId;
             $row['campaignName'] = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
+            $row['campaignStatus'] = strtoupper(trim($matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? 'PAUSED')));
             $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? 0);
             $row['l7_spend'] = $matchedCampaignL7->spend ?? 0;
             $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
@@ -348,20 +404,11 @@ class AutoUpdateAmazonPtBids extends Command
             // Calculate SBID based on blade file logic
             $l1_cpc = floatval($row['l1_cpc']);
             $l7_cpc = floatval($row['l7_cpc']);
-            
-            // Special case: If UB7 and UB1 = 0%, use price-based default
-            if ($ub7 === 0 && $ub1 === 0) {
-                if ($price < 50) {
-                    $row['sbid'] = 0.50;
-                } else if ($price >= 50 && $price < 100) {
-                    $row['sbid'] = 1.00;
-                } else if ($price >= 100 && $price < 200) {
-                    $row['sbid'] = 1.50;
-                } else {
-                    $row['sbid'] = 2.00;
-                }
-            } else {
-                // Over-utilized: Priority - L1 CPC → L7 CPC → AVG CPC → 1.00, then decrease by 10%
+            $isParentSku = (stripos($pm->sku ?? '', 'PARENT') !== false);
+
+            // Price-based rules do NOT apply to PARENT SKU (same as HL)
+            if ($isParentSku) {
+                // PARENT SKU: CPC-based only, no price default/caps
                 if ($l1_cpc > 0) {
                     $row['sbid'] = floor($l1_cpc * 0.90 * 100) / 100;
                 } else if ($l7_cpc > 0) {
@@ -371,13 +418,36 @@ class AutoUpdateAmazonPtBids extends Command
                 } else {
                     $row['sbid'] = 1.00;
                 }
-            }
-            
-            // Apply price-based caps
-            if ($price < 10 && $row['sbid'] > 0.10) {
-                $row['sbid'] = 0.10;
-            } else if ($price >= 10 && $price < 20 && $row['sbid'] > 0.20) {
-                $row['sbid'] = 0.20;
+            } else {
+                // Child SKU: Special case - If UB7 and UB1 = 0%, use price-based default
+                if ($ub7 === 0 && $ub1 === 0) {
+                    if ($price < 50) {
+                        $row['sbid'] = 0.50;
+                    } else if ($price >= 50 && $price < 100) {
+                        $row['sbid'] = 1.00;
+                    } else if ($price >= 100 && $price < 200) {
+                        $row['sbid'] = 1.50;
+                    } else {
+                        $row['sbid'] = 2.00;
+                    }
+                } else {
+                    // Over-utilized: Priority - L1 CPC → L7 CPC → AVG CPC → 1.00, then decrease by 10%
+                    if ($l1_cpc > 0) {
+                        $row['sbid'] = floor($l1_cpc * 0.90 * 100) / 100;
+                    } else if ($l7_cpc > 0) {
+                        $row['sbid'] = floor($l7_cpc * 0.90 * 100) / 100;
+                    } else if ($avgCpc > 0) {
+                        $row['sbid'] = floor($avgCpc * 0.90 * 100) / 100;
+                    } else {
+                        $row['sbid'] = 1.00;
+                    }
+                }
+                // Apply price-based caps (only for non-PARENT SKU)
+                if ($price < 10 && $row['sbid'] > 0.10) {
+                    $row['sbid'] = 0.10;
+                } else if ($price >= 10 && $price < 20 && $row['sbid'] > 0.20) {
+                    $row['sbid'] = 0.20;
+                }
             }
 
             // Validate all required fields before adding
@@ -389,7 +459,9 @@ class AutoUpdateAmazonPtBids extends Command
                 continue; // Skip if invalid bid
             }
 
-            if ($row['INV'] > 0 && ($ub7 > 99 && $ub1 > 99)) {
+            // Include only OVER-utilized + ENABLED (matches frontend: Over filter excludes PAUSED).
+            // Frontend shows only ENABLED when filtering by utilization type; command must match.
+            if ($row['INV'] > 0 && ($ub7 > 99 && $ub1 > 99) && ($row['campaignStatus'] ?? '') === 'ENABLED') {
                 $result[] = (object) $row;
             }
         }

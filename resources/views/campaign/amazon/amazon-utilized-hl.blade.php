@@ -1978,20 +1978,18 @@
                         field: "sbgt",
                         mutator: function (value, data) {
                             var acos = parseFloat(data.acos || 0);
-                            var price = parseFloat(data.price || 0);
                             var sbgt;
 
-                            // Rule: If ACOS > 20%, budget = $1
-                            if (acos > 20) {
-                                sbgt = 1;
-                            } else {
-                                sbgt = Math.ceil(price * 0.10);
-                                if (sbgt < 1) sbgt = 1;
-                                // Maximum budget cap: $5
-                                if (sbgt > 5) sbgt = 5;
-                            }
+                            // ACOS-based sbgt rule, max $5
+                            if (acos < 5) sbgt = 6;
+                            else if (acos < 10) sbgt = 5;
+                            else if (acos < 15) sbgt = 4;
+                            else if (acos < 20) sbgt = 3;
+                            else if (acos < 25) sbgt = 2;
+                            else sbgt = 1;
+                            if (sbgt > 5) sbgt = 5;
 
-                            return sbgt; // ✅ sets row.sbgt
+                            return sbgt;
                         }
 
                     },

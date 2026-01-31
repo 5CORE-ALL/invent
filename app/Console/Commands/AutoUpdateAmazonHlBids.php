@@ -65,10 +65,20 @@ class AutoUpdateAmazonHlBids extends Command
                 if (!empty($campaignId) && $sbid > 0) {
                     // Only add if we haven't seen this campaign ID before
                     if (!isset($campaignBudgetMap[$campaignId])) {
+                        $budget = floatval($campaign->campaignBudgetAmount ?? 0);
+                        $l7_spend = floatval($campaign->l7_spend ?? 0);
+                        $l1_spend = floatval($campaign->l1_spend ?? 0);
+                        $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
+                        $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
+                        $pinkPink = ($ub7 > 99 && $ub1 > 99);
                         $campaignBudgetMap[$campaignId] = $sbid;
                         $campaignDetails[$campaignId] = [
                             'name' => $campaignName,
-                            'bid' => $sbid
+                            'bid' => $sbid,
+                            'ub7' => round($ub7, 2),
+                            'ub1' => round($ub1, 2),
+                            'pink_pink' => $pinkPink,
+                            'inv' => (int)($campaign->INV ?? 0)
                         ];
                     } else {
                         // Log duplicate but keep first one
@@ -105,6 +115,9 @@ class AutoUpdateAmazonHlBids extends Command
                 $this->info("Campaign Name: {$details['name']}");
                 $this->info("  - Campaign ID: {$campaignId}");
                 $this->info("  - Bid: {$details['bid']}");
+                $this->info("  - 7UB: " . ($details['ub7'] ?? 0) . "% | 1UB: " . ($details['ub1'] ?? 0) . "%");
+                $this->info("  - Pink+Pink (Over): " . (!empty($details['pink_pink']) ? 'Yes' : 'No'));
+                $this->info("  - INV: " . ($details['inv'] ?? 0));
                 $this->info("---");
             }
             $this->info("========================================");

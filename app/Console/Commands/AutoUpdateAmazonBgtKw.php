@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\DB;
 
 class AutoUpdateAmazonBgtKw extends Command
 {
-    protected $signature = 'amazon:auto-update-amz-bgt-kw';
+    protected $signature = 'amazon:auto-update-amz-bgt-kw {--dry-run : Run without updating Amazon (test only)}';
     protected $description = 'Automatically update Amazon campaign bgt price';
 
     protected $profileId;
@@ -27,7 +27,8 @@ class AutoUpdateAmazonBgtKw extends Command
     public function handle()
     {
         try {
-            $this->info("Starting Amazon bgts auto-update...");
+            $dryRun = $this->option('dry-run');
+            $this->info($dryRun ? "Starting Amazon bgts auto-update (DRY RUN - no updates will be made)..." : "Starting Amazon bgts auto-update...");
 
             // Check database connection (without creating persistent connection)
             try {
@@ -72,11 +73,9 @@ class AutoUpdateAmazonBgtKw extends Command
             }
 
             try {
-                $result = $updateKwBgts->updateAutoAmazonCampaignBgt($campaignIds, $newBgts);
-                
-                // Show detailed campaign information for verification
+                // Show detailed campaign information for verification (before update)
                 $this->info("\n========================================");
-                $this->info("CAMPAIGN BUDGET UPDATE SUMMARY (KW)");
+                $this->info($dryRun ? "CAMPAIGN BUDGET UPDATE SUMMARY (KW) [DRY RUN]" : "CAMPAIGN BUDGET UPDATE SUMMARY (KW)");
                 $this->info("========================================\n");
                 
                 foreach ($validCampaigns as $campaign) {
@@ -91,12 +90,17 @@ class AutoUpdateAmazonBgtKw extends Command
                 $this->info("\nTotal Campaigns: " . count($campaignIds));
                 $this->info("========================================\n");
                 
-                if (isset($result['status']) && $result['status'] !== 200) {
-                    $this->error("Budget update failed: " . ($result['message'] ?? 'Unknown error'));
-                    return 1;
+                if ($dryRun) {
+                    $this->warn("DRY RUN - No updates were made to Amazon.");
+                    $this->info("Run without --dry-run to apply budget updates.");
+                } else {
+                    $result = $updateKwBgts->updateAutoAmazonCampaignBgt($campaignIds, $newBgts);
+                    if (isset($result['status']) && $result['status'] !== 200) {
+                        $this->error("Budget update failed: " . ($result['message'] ?? 'Unknown error'));
+                        return 1;
+                    }
+                    $this->info("Successfully updated " . count($campaignIds) . " campaign budgets.");
                 }
-                
-                $this->info("Successfully prepared " . count($campaignIds) . " campaign budgets for update.");
                 
             } catch (\Exception $e) {
                 $this->error("Error updating campaign budgets: " . $e->getMessage());
@@ -146,13 +150,34 @@ class AutoUpdateAmazonBgtKw extends Command
                         $q->orWhere('campaignName', 'LIKE', '%' . $sku . '%');
                     }
                 })
-                ->where('campaignName', 'NOT LIKE', '%PT')
-                ->where('campaignName', 'NOT LIKE', '%PT.')
-                ->where('campaignStatus', '!=', 'ARCHIVED')
+                ->where('campaignName', 'NOT LIKE', '% PT')
+                ->where('campaignName', 'NOT LIKE', '% PT.')
+                ->whereRaw("UPPER(campaignStatus) = 'ENABLED'")
                 ->get();
 
             // Disconnect after query
             DB::connection()->disconnect();
+
+            // For PARENT rows: INV = sum of child SKUs' INV (same as AmazonSpBudgetController)
+            $childInvSumByParent = [];
+            foreach ($productMasters as $pm) {
+                $norm = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $pm->sku ?? '');
+                $norm = preg_replace('/\s+/', ' ', $norm);
+                $skuUpper = strtoupper(trim($norm));
+                if (stripos($skuUpper, 'PARENT') !== false) {
+                    continue;
+                }
+                $p = $pm->parent ?? '';
+                if ($p === '') {
+                    continue;
+                }
+                $shopifyChild = $shopifyData[$pm->sku] ?? null;
+                $inv = ($shopifyChild && isset($shopifyChild->inv)) ? (int) $shopifyChild->inv : 0;
+                if (!isset($childInvSumByParent[$p])) {
+                    $childInvSumByParent[$p] = 0;
+                }
+                $childInvSumByParent[$p] += $inv;
+            }
 
             $result = [];
             $totalSpend = 0;
@@ -176,8 +201,13 @@ class AutoUpdateAmazonBgtKw extends Command
                     continue;
                 }
 
+                // INV: for PARENT rows use sum of children's INV; for child rows use shopify inv
+                $inv = (stripos($sku, 'PARENT') !== false)
+                    ? (int) ($childInvSumByParent[$pm->parent ?? $pm->sku ?? ''] ?? 0)
+                    : (($shopify && isset($shopify->inv)) ? (int) $shopify->inv : 0);
+
                 // Skip if INV = 0
-                if (($shopify->inv ?? 0) == 0) {
+                if ($inv == 0) {
                     continue;
                 }
 
@@ -239,19 +269,36 @@ class AutoUpdateAmazonBgtKw extends Command
             foreach ($validCampaignsForTotal as $row) {
                 $acos = (float) ($row['acos_L30'] ?? 0);
                 $price = (float) ($row['price'] ?? 0);
+                $isParent = (stripos($row['campaignName'] ?? '', 'PARENT') !== false);
 
-                // New sbgt rule: Budget = 10% of price (rounded up)
-                // BUT if ACOS > 20%, then budget = $1
-                // Maximum budget is $5
-                if ($acos > 20) {
-                    $row['sbgt'] = 1;
+                if ($isParent) {
+                    // PARENT SKU: ACOS-based sbgt, max $5
+                    if ($acos < 5) {
+                        $row['sbgt'] = 6;
+                    } elseif ($acos < 10) {
+                        $row['sbgt'] = 5;
+                    } elseif ($acos < 15) {
+                        $row['sbgt'] = 4;
+                    } elseif ($acos < 20) {
+                        $row['sbgt'] = 3;
+                    } elseif ($acos < 25) {
+                        $row['sbgt'] = 2;
+                    } else {
+                        $row['sbgt'] = 1;
+                    }
+                    if ($row['sbgt'] > 5) {
+                        $row['sbgt'] = 5;
+                    }
                 } else {
-                    $row['sbgt'] = ceil($price * 0.10);
-                }
-
-                // Cap maximum budget at $5
-                if ($row['sbgt'] > 5) {
-                    $row['sbgt'] = 5;
+                    // Child SKU: Budget = 10% of price (rounded up), ACOS > 20% → $1, max $5
+                    if ($acos > 20) {
+                        $row['sbgt'] = 1;
+                    } else {
+                        $row['sbgt'] = ceil($price * 0.10);
+                    }
+                    if ($row['sbgt'] > 5) {
+                        $row['sbgt'] = 5;
+                    }
                 }
 
                 $result[] = (object) $row;

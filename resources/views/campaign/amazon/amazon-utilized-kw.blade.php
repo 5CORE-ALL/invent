@@ -2075,7 +2075,7 @@
                             var isParent = data.is_parent === true || ((data.sku || '').toUpperCase().indexOf('PARENT') !== -1);
                             var sbgt;
 
-                            // Parent SKU: SBGT from ACOS table (0-5→6, 5-10→5, 10-15→4, 15-20→3, 20-25→2, >25%→1)
+                            // Parent SKU: SBGT from ACOS table (0-5→6, 5-10→5, ...), max $5
                             if (isParent) {
                                 if (acos < 5) sbgt = 6;
                                 else if (acos < 10) sbgt = 5;
@@ -2083,6 +2083,7 @@
                                 else if (acos < 20) sbgt = 3;
                                 else if (acos < 25) sbgt = 2;
                                 else sbgt = 1;
+                                if (sbgt > 5) sbgt = 5;
                             } else {
                                 // Child: If ACOS > 20%, budget = $1; else ceil(price*0.10) capped $1-$5
                                 if (acos > 20) {
