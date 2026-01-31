@@ -1366,6 +1366,66 @@
                 })(),
             });
 
+            // Update statistics based on filtered data
+            function updateStatistics() {
+                var filteredData = table.getData("active");
+                
+                var stats = {
+                    total: filteredData.length,
+                    pending: filteredData.filter(t => t.status === 'Todo').length,
+                    done: filteredData.filter(t => t.status === 'Done').length,
+                    etc_total: filteredData.reduce((sum, t) => sum + (parseInt(t.eta_time) || 0), 0),
+                    atc_total: filteredData.reduce((sum, t) => sum + (parseInt(t.etc_done) || 0), 0),
+                    done_etc: filteredData.filter(t => t.status === 'Done').reduce((sum, t) => sum + (parseInt(t.eta_time) || 0), 0),
+                    done_atc: filteredData.filter(t => t.status === 'Done').reduce((sum, t) => sum + (parseInt(t.etc_done) || 0), 0)
+                };
+                
+                // Overdue calculation
+                var now = new Date();
+                stats.overdue = filteredData.filter(function(t) {
+                    if (t.start_date && !['Done', 'Archived'].includes(t.status)) {
+                        var tidDate = new Date(t.start_date);
+                        var overdueDate = new Date(tidDate);
+                        overdueDate.setDate(overdueDate.getDate() + 10);
+                        return overdueDate < now;
+                    }
+                    return false;
+                }).length;
+                
+                // Update stat cards (find by stat-value divs in each card)
+                $('.stat-card').each(function() {
+                    var label = $(this).find('.stat-label').text().trim();
+                    var valueEl = $(this).find('.stat-value');
+                    
+                    switch(label) {
+                        case 'TOTAL':
+                            valueEl.text(stats.total);
+                            break;
+                        case 'PENDING':
+                            valueEl.text(stats.pending);
+                            break;
+                        case 'OVERDUE':
+                            valueEl.text(stats.overdue);
+                            break;
+                        case 'DONE':
+                            valueEl.text(stats.done);
+                            break;
+                        case 'ETC':
+                            valueEl.text(Math.round(stats.etc_total / 60));
+                            break;
+                        case 'ATC':
+                            valueEl.text(Math.round(stats.atc_total / 60));
+                            break;
+                        case 'DONE ETC':
+                            valueEl.text(Math.round(stats.done_etc / 60));
+                            break;
+                        case 'DONE ATC':
+                            valueEl.text(Math.round(stats.done_atc / 60));
+                            break;
+                    }
+                });
+            }
+
             // Combined filter function (proper AND logic)
             function applyFilters() {
                 // Clear existing filters first
@@ -1425,6 +1485,11 @@
                 if (filters.length > 0) {
                     table.setFilter(filters);
                 }
+                
+                // Update statistics after filtering
+                setTimeout(function() {
+                    updateStatistics();
+                }, 100);
             }
 
             // Filter functionality

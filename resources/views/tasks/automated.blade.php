@@ -1327,70 +1327,55 @@
                 })(),
             });
 
+            // Combined filter function (proper AND logic)
+            function applyFilters() {
+                table.clearFilter();
+                
+                var filters = [];
+                
+                // Specific filters
+                var groupValue = $('#filter-group').val();
+                if (groupValue) filters.push({field:"group", type:"like", value:groupValue});
+                
+                var taskValue = $('#filter-task').val();
+                if (taskValue) filters.push({field:"title", type:"like", value:taskValue});
+                
+                var assignorValue = $('#filter-assignor').val();
+                if (assignorValue) filters.push({field:"assignor_name", type:"=", value:assignorValue});
+                
+                var assigneeValue = $('#filter-assignee').val();
+                if (assigneeValue) filters.push({field:"assignee_name", type:"=", value:assigneeValue});
+                
+                var statusValue = $('#filter-status').val();
+                if (statusValue) filters.push({field:"status", type:"=", value:statusValue});
+                
+                var priorityValue = $('#filter-priority').val();
+                if (priorityValue) filters.push({field:"priority", type:"=", value:priorityValue});
+                
+                // Search filter (OR logic - add last)
+                var searchValue = $('#filter-search').val();
+                if (searchValue) {
+                    filters.push([
+                        {field:"title", type:"like", value:searchValue},
+                        {field:"group", type:"like", value:searchValue},
+                        {field:"assignor_name", type:"like", value:searchValue},
+                        {field:"assignee_name", type:"like", value:searchValue}
+                    ]);
+                }
+                
+                if (filters.length > 0) {
+                    table.setFilter(filters);
+                }
+            }
+
             // Filter functionality
-            $('#filter-search').on('keyup', function() {
-                var value = $(this).val();
-                table.setFilter([
-                    {field:"title", type:"like", value:value},
-                    {field:"group", type:"like", value:value},
-                    {field:"assignor.name", type:"like", value:value},
-                    {field:"assignee.name", type:"like", value:value}
-                ], "or");
-            });
-
-            $('#filter-group').on('keyup', function() {
-                var value = $(this).val();
-                if (value) {
-                    table.setFilter("group", "like", value);
-                } else {
-                    table.clearFilter("group");
-                }
-            });
-
-            $('#filter-task').on('keyup', function() {
-                var value = $(this).val();
-                if (value) {
-                    table.setFilter("title", "like", value);
-                } else {
-                    table.clearFilter("title");
-                }
-            });
-
-            $('#filter-assignor').on('change', function() {
-                var value = $(this).val();
-                if (value) {
-                    table.setFilter("assignor.name", "=", value);
-                } else {
-                    table.clearFilter("assignor.name");
-                }
-            });
-
-            $('#filter-assignee').on('change', function() {
-                var value = $(this).val();
-                if (value) {
-                    table.setFilter("assignee.name", "=", value);
-                } else {
-                    table.clearFilter("assignee.name");
-                }
-            });
-
-            $('#filter-status').on('change', function() {
-                var value = $(this).val();
-                if (value) {
-                    table.setFilter("status", "=", value);
-                } else {
-                    table.clearFilter("status");
-                }
-            });
-
-            $('#filter-priority').on('change', function() {
-                var value = $(this).val();
-                if (value) {
-                    table.setFilter("priority", "=", value);
-                } else {
-                    table.clearFilter("priority");
-                }
-            });
+            $('#filter-search').on('keyup', applyFilters);
+            $('#filter-group').on('keyup', applyFilters);
+            $('#filter-task').on('keyup', applyFilters);
+            $('#filter-assignor').on('change', applyFilters);
+            $('#filter-assignee').on('change', applyFilters);
+            $('#filter-status').on('change', applyFilters);
+            $('#filter-priority').on('change', applyFilters);
 
             // Handle Row Selection
             table.on("rowSelectionChanged", function(data, rows) {
