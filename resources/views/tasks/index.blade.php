@@ -1046,16 +1046,14 @@
                         }
                     });
                     
-                    // TASK (Compact with info icon)
+                    // TASK (2 lines with proper wrapping)
                     cols.push({
                         title: "TASK", 
                         field: "title", 
-                        width: 200,
+                        width: 280,
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
                             var title = cell.getValue() || '';
-                            var description = rowData.description || '';
-                            var taskId = rowData.id;
                             var isOverdue = false;
                             
                             var startDate = rowData.start_date;
@@ -1068,11 +1066,11 @@
                             
                             var overdueIcon = isOverdue ? '<i class="mdi mdi-alert-circle text-danger me-1" style="font-size: 14px;"></i>' : '';
                             var htmlTitle = String(title).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-                            var isLong = title.length > 30 || description;
-                            var shortTitle = title.length > 32 ? htmlTitle.substring(0, 30) + '...' : htmlTitle;
-                            var expandIcon = isLong ? '<i class="mdi mdi-information-outline text-primary expand-task-info" data-id="' + taskId + '" style="cursor: pointer; font-size: 16px; margin-left: 4px;"></i>' : '';
                             
-                            return '<div style="display: flex; align-items: center; gap: 4px;">' + overdueIcon + '<span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><strong>' + shortTitle + '</strong></span>' + (isLong ? '<span style="flex-shrink: 0;">' + expandIcon + '</span>' : '') + '</div>';
+                            // Show full text with auto wrapping (no line limit)
+                            return '<div style="word-wrap: break-word; overflow-wrap: break-word; white-space: normal; line-height: 1.4;">' + 
+                                   overdueIcon + '<strong style="font-size: 13px;">' + htmlTitle + '</strong>' + 
+                                   '</div>';
                         }
                     });
                     
@@ -1368,20 +1366,73 @@
                 })(),
             });
 
-            // Combined filter function (AND logic)
-            function applyFilters() {
-                var filters = [];
+            // Update statistics based on filtered data
+            function updateStatistics() {
+                var filteredData = table.getData("active");
                 
-                // Search filter (OR logic within search)
-                var searchValue = $('#filter-search').val();
-                if (searchValue) {
-                    filters.push([
-                        {field:"title", type:"like", value:searchValue},
-                        {field:"group", type:"like", value:searchValue},
-                        {field:"assignor_name", type:"like", value:searchValue},
-                        {field:"assignee_name", type:"like", value:searchValue}
-                    ]);
-                }
+                var stats = {
+                    total: filteredData.length,
+                    pending: filteredData.filter(t => t.status === 'Todo').length,
+                    done: filteredData.filter(t => t.status === 'Done').length,
+                    etc_total: filteredData.reduce((sum, t) => sum + (parseInt(t.eta_time) || 0), 0),
+                    atc_total: filteredData.reduce((sum, t) => sum + (parseInt(t.etc_done) || 0), 0),
+                    done_etc: filteredData.filter(t => t.status === 'Done').reduce((sum, t) => sum + (parseInt(t.eta_time) || 0), 0),
+                    done_atc: filteredData.filter(t => t.status === 'Done').reduce((sum, t) => sum + (parseInt(t.etc_done) || 0), 0)
+                };
+                
+                // Overdue calculation
+                var now = new Date();
+                stats.overdue = filteredData.filter(function(t) {
+                    if (t.start_date && !['Done', 'Archived'].includes(t.status)) {
+                        var tidDate = new Date(t.start_date);
+                        var overdueDate = new Date(tidDate);
+                        overdueDate.setDate(overdueDate.getDate() + 10);
+                        return overdueDate < now;
+                    }
+                    return false;
+                }).length;
+                
+                // Update stat cards (find by stat-value divs in each card)
+                $('.stat-card').each(function() {
+                    var label = $(this).find('.stat-label').text().trim();
+                    var valueEl = $(this).find('.stat-value');
+                    
+                    switch(label) {
+                        case 'TOTAL':
+                            valueEl.text(stats.total);
+                            break;
+                        case 'PENDING':
+                            valueEl.text(stats.pending);
+                            break;
+                        case 'OVERDUE':
+                            valueEl.text(stats.overdue);
+                            break;
+                        case 'DONE':
+                            valueEl.text(stats.done);
+                            break;
+                        case 'ETC':
+                            valueEl.text(Math.round(stats.etc_total / 60));
+                            break;
+                        case 'ATC':
+                            valueEl.text(Math.round(stats.atc_total / 60));
+                            break;
+                        case 'DONE ETC':
+                            valueEl.text(Math.round(stats.done_etc / 60));
+                            break;
+                        case 'DONE ATC':
+                            valueEl.text(Math.round(stats.done_atc / 60));
+                            break;
+                    }
+                });
+            }
+
+            // Combined filter function (proper AND logic)
+            function applyFilters() {
+                // Clear existing filters first
+                table.clearFilter();
+                
+                // Build filter array with AND logic
+                var filters = [];
                 
                 // Group filter
                 var groupValue = $('#filter-group').val();
@@ -1419,8 +1470,26 @@
                     filters.push({field:"priority", type:"=", value:priorityValue});
                 }
                 
-                // Apply all filters (AND logic)
-                table.setFilter(filters);
+                // Search filter (OR logic within search - add last)
+                var searchValue = $('#filter-search').val();
+                if (searchValue) {
+                    filters.push([
+                        {field:"title", type:"like", value:searchValue},
+                        {field:"group", type:"like", value:searchValue},
+                        {field:"assignor_name", type:"like", value:searchValue},
+                        {field:"assignee_name", type:"like", value:searchValue}
+                    ]);
+                }
+                
+                // Apply all filters if any exist
+                if (filters.length > 0) {
+                    table.setFilter(filters);
+                }
+                
+                // Update statistics after filtering
+                setTimeout(function() {
+                    updateStatistics();
+                }, 100);
             }
 
             // Filter functionality

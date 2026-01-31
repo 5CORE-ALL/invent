@@ -89,7 +89,6 @@ class Kernel extends ConsoleKernel
         FetchShopifyB2CMetrics::class,
         \App\Console\Commands\RunAdvMastersCron::class,
         \App\Console\Commands\CollectWalmartMetrics::class,
-        \App\Console\Commands\AutoLogoutUsers::class,
 
     ];
 
@@ -104,11 +103,11 @@ class Kernel extends ConsoleKernel
         })->everyMinute()->name('test-scheduler-log');
 
         // Execute Automated Tasks - Check every minute
-        $schedule->command('tasks:execute-automated')
-            ->everyMinute()
-            ->timezone('Asia/Kolkata')
-            ->name('automated-tasks-executor')
-            ->withoutOverlapping();
+        // $schedule->command('tasks:execute-automated')
+        //     ->everyMinute()
+        //     ->timezone('Asia/Kolkata')
+        //     ->name('automated-tasks-executor')
+        //     ->withoutOverlapping();
 
         // Clear Laravel log after test log
         $schedule->call(function () {
