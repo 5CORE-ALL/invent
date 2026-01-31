@@ -290,6 +290,56 @@ class AutoUpdateAmazonPtBids extends Command
                 $childInvSumByParent[$p] += $inv;
             }
 
+            // For PARENT rows: avg price = average of child SKUs' prices (from amazon datashheet, or ProductMaster Values as fallback)
+            $childPricesByParent = [];
+            foreach ($productMasters as $pmChild) {
+                $norm = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $pmChild->sku ?? '');
+                $norm = preg_replace('/\s+/', ' ', $norm);
+                $skuUpper = strtoupper(trim($norm));
+                if (stripos($skuUpper, 'PARENT') !== false) {
+                    continue;
+                }
+                $p = $pmChild->parent ?? '';
+                if ($p === '') {
+                    continue;
+                }
+                $amazonSheetChild = $amazonDatasheets[$skuUpper] ?? null;
+                $childPrice = ($amazonSheetChild && isset($amazonSheetChild->price) && (float)$amazonSheetChild->price > 0)
+                    ? (float)$amazonSheetChild->price
+                    : null;
+                if ($childPrice === null) {
+                    $values = $pmChild->Values;
+                    if (is_string($values)) {
+                        $values = json_decode($values, true) ?: [];
+                    } elseif (is_object($values)) {
+                        $values = (array) $values;
+                    } else {
+                        $values = is_array($values) ? $values : [];
+                    }
+                    $childPrice = isset($values['msrp']) && (float)$values['msrp'] > 0
+                        ? (float)$values['msrp']
+                        : (isset($values['map']) && (float)$values['map'] > 0 ? (float)$values['map'] : null);
+                }
+                if ($childPrice !== null && $childPrice > 0) {
+                    $normParent = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $p ?? ''))));
+                    $normParent = rtrim($normParent, '.');
+                    if (!isset($childPricesByParent[$normParent])) {
+                        $childPricesByParent[$normParent] = [];
+                    }
+                    $childPricesByParent[$normParent][] = $childPrice;
+                }
+            }
+            $avgPriceByParent = [];
+            $avgPriceByParentCanonical = [];
+            foreach ($childPricesByParent as $pk => $prices) {
+                $avg = count($prices) > 0 ? round(array_sum($prices) / count($prices), 2) : 0;
+                $avgPriceByParent[$pk] = $avg;
+                $canonical = preg_replace('/\s+/', '', $pk);
+                if ($canonical !== '' && $avg > 0) {
+                    $avgPriceByParentCanonical[$canonical] = $avg;
+                }
+            }
+
         $amazonSpCampaignReportsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L7')
             ->where(function ($q) use ($skus) {
@@ -373,6 +423,33 @@ class AutoUpdateAmazonPtBids extends Command
             // Get price from AmazonDatasheet
             $amazonSheet = $amazonDatasheets[strtoupper($pm->sku)] ?? null;
             $price = ($amazonSheet && isset($amazonSheet->price)) ? floatval($amazonSheet->price) : 0;
+            // For parent SKU rows: use average of child SKUs' prices when direct price is 0
+            if (($price === 0 || $price === null) && stripos($pm->sku ?? '', 'PARENT') !== false && !empty($avgPriceByParent)) {
+                $normSku = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $sku))));
+                $normSku = rtrim($normSku, '.');
+                $normParentKey = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $pm->parent ?? ''))));
+                $normParentKey = rtrim($normParentKey, '.');
+                $price = $avgPriceByParent[$normSku] ?? $avgPriceByParent[$normParentKey] ?? $avgPriceByParent[$pm->parent ?? ''] ?? $avgPriceByParent[rtrim($pm->parent ?? '', '.')] ?? 0;
+                if ($price === 0 && !empty($avgPriceByParentCanonical)) {
+                    $canonicalSku = preg_replace('/\s+/', '', $normSku);
+                    $canonicalParentKey = preg_replace('/\s+/', '', $normParentKey);
+                    $price = $avgPriceByParentCanonical[$canonicalSku] ?? $avgPriceByParentCanonical[$canonicalParentKey] ?? 0;
+                }
+                if ($price === 0) {
+                    $parentValues = $pm->Values;
+                    if (is_string($parentValues)) {
+                        $parentValues = json_decode($parentValues, true) ?: [];
+                    } elseif (is_object($parentValues)) {
+                        $parentValues = (array) $parentValues;
+                    } else {
+                        $parentValues = is_array($parentValues) ? $parentValues : [];
+                    }
+                    $price = (isset($parentValues['msrp']) && (float)$parentValues['msrp'] > 0)
+                        ? (float)$parentValues['msrp']
+                        : (isset($parentValues['map']) && (float)$parentValues['map'] > 0 ? (float)$parentValues['map'] : 0);
+                }
+            }
+            $price = (float) ($price ?? 0);
 
             // Calculate avg_cpc (lifetime average from daily records)
             $avgCpc = 0;
@@ -404,11 +481,20 @@ class AutoUpdateAmazonPtBids extends Command
             // Calculate SBID based on blade file logic
             $l1_cpc = floatval($row['l1_cpc']);
             $l7_cpc = floatval($row['l7_cpc']);
-            $isParentSku = (stripos($pm->sku ?? '', 'PARENT') !== false);
-
-            // Price-based rules do NOT apply to PARENT SKU (same as HL)
-            if ($isParentSku) {
-                // PARENT SKU: CPC-based only, no price default/caps
+            // Parent rows now have avg price, so apply same price-based rules for all rows (including PARENT)
+            // Special case - If UB7 and UB1 = 0%, use price-based default
+            if ($ub7 === 0 && $ub1 === 0) {
+                if ($price < 50) {
+                    $row['sbid'] = 0.50;
+                } else if ($price >= 50 && $price < 100) {
+                    $row['sbid'] = 1.00;
+                } else if ($price >= 100 && $price < 200) {
+                    $row['sbid'] = 1.50;
+                } else {
+                    $row['sbid'] = 2.00;
+                }
+            } else {
+                // Over-utilized: Priority - L1 CPC → L7 CPC → AVG CPC → 1.00, then decrease by 10%
                 if ($l1_cpc > 0) {
                     $row['sbid'] = floor($l1_cpc * 0.90 * 100) / 100;
                 } else if ($l7_cpc > 0) {
@@ -418,36 +504,12 @@ class AutoUpdateAmazonPtBids extends Command
                 } else {
                     $row['sbid'] = 1.00;
                 }
-            } else {
-                // Child SKU: Special case - If UB7 and UB1 = 0%, use price-based default
-                if ($ub7 === 0 && $ub1 === 0) {
-                    if ($price < 50) {
-                        $row['sbid'] = 0.50;
-                    } else if ($price >= 50 && $price < 100) {
-                        $row['sbid'] = 1.00;
-                    } else if ($price >= 100 && $price < 200) {
-                        $row['sbid'] = 1.50;
-                    } else {
-                        $row['sbid'] = 2.00;
-                    }
-                } else {
-                    // Over-utilized: Priority - L1 CPC → L7 CPC → AVG CPC → 1.00, then decrease by 10%
-                    if ($l1_cpc > 0) {
-                        $row['sbid'] = floor($l1_cpc * 0.90 * 100) / 100;
-                    } else if ($l7_cpc > 0) {
-                        $row['sbid'] = floor($l7_cpc * 0.90 * 100) / 100;
-                    } else if ($avgCpc > 0) {
-                        $row['sbid'] = floor($avgCpc * 0.90 * 100) / 100;
-                    } else {
-                        $row['sbid'] = 1.00;
-                    }
-                }
-                // Apply price-based caps (only for non-PARENT SKU)
-                if ($price < 10 && $row['sbid'] > 0.10) {
-                    $row['sbid'] = 0.10;
-                } else if ($price >= 10 && $price < 20 && $row['sbid'] > 0.20) {
-                    $row['sbid'] = 0.20;
-                }
+            }
+            // Apply price-based caps (parent rows now have avg price, so apply for all rows)
+            if ($price < 10 && $row['sbid'] > 0.10) {
+                $row['sbid'] = 0.10;
+            } else if ($price >= 10 && $price < 20 && $row['sbid'] > 0.20) {
+                $row['sbid'] = 0.20;
             }
 
             // Validate all required fields before adding

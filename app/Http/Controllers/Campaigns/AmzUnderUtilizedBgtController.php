@@ -370,6 +370,56 @@ class AmzUnderUtilizedBgtController extends Controller
             ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
+        // For PARENT rows: avg price = average of child SKUs' prices (from amazon datasheet, or ProductMaster Values as fallback)
+        $childPricesByParent = [];
+        foreach ($productMasters as $pmChild) {
+            $norm = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $pmChild->sku ?? '');
+            $norm = preg_replace('/\s+/', ' ', $norm);
+            $skuUpper = strtoupper(trim($norm));
+            if (stripos($skuUpper, 'PARENT') !== false) {
+                continue;
+            }
+            $p = $pmChild->parent ?? '';
+            if ($p === '') {
+                continue;
+            }
+            $amazonSheetChild = $amazonDatasheetsBySku[$skuUpper] ?? null;
+            $childPrice = ($amazonSheetChild && isset($amazonSheetChild->price) && (float)$amazonSheetChild->price > 0)
+                ? (float)$amazonSheetChild->price
+                : null;
+            if ($childPrice === null) {
+                $values = $pmChild->Values ?? null;
+                if (is_string($values)) {
+                    $values = json_decode($values, true) ?: [];
+                } elseif (is_object($values)) {
+                    $values = (array) $values;
+                } else {
+                    $values = is_array($values) ? $values : [];
+                }
+                $childPrice = isset($values['msrp']) && (float)$values['msrp'] > 0
+                    ? (float)$values['msrp']
+                    : (isset($values['map']) && (float)$values['map'] > 0 ? (float)$values['map'] : null);
+            }
+            if ($childPrice !== null && $childPrice > 0) {
+                $normParent = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $p ?? ''))));
+                $normParent = rtrim($normParent, '.');
+                if (!isset($childPricesByParent[$normParent])) {
+                    $childPricesByParent[$normParent] = [];
+                }
+                $childPricesByParent[$normParent][] = $childPrice;
+            }
+        }
+        $avgPriceByParent = [];
+        $avgPriceByParentCanonical = [];
+        foreach ($childPricesByParent as $pk => $prices) {
+            $avg = count($prices) > 0 ? round(array_sum($prices) / count($prices), 2) : 0;
+            $avgPriceByParent[$pk] = $avg;
+            $canonical = preg_replace('/\s+/', '', $pk);
+            if ($canonical !== '' && $avg > 0) {
+                $avgPriceByParentCanonical[$canonical] = $avg;
+            }
+        }
+
         $result = [];
 
         foreach ($productMasters as $pm) {
@@ -411,6 +461,33 @@ class AmzUnderUtilizedBgtController extends Controller
             $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
             $row['l1_spend'] = $matchedCampaignL1->spend ?? 0;
             $row['l1_cpc'] = $matchedCampaignL1->costPerClick ?? 0;
+
+            // Price: from AmazonDatasheet or ProductMaster Values; for PARENT use avg of children
+            $price = ($amazonSheet && isset($amazonSheet->price) && (float)$amazonSheet->price > 0) ? (float)$amazonSheet->price : 0;
+            if (($price === 0 || $price === null) && stripos($pm->sku ?? '', 'PARENT') !== false && !empty($avgPriceByParent)) {
+                $normSku = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $sku))));
+                $normSku = rtrim($normSku, '.');
+                $normParentKey = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $parent ?? ''))));
+                $normParentKey = rtrim($normParentKey, '.');
+                $price = $avgPriceByParent[$normSku] ?? $avgPriceByParent[$normParentKey] ?? $avgPriceByParent[$parent ?? ''] ?? $avgPriceByParent[rtrim($parent ?? '', '.')] ?? 0;
+                if ($price === 0 && !empty($avgPriceByParentCanonical)) {
+                    $canonicalSku = preg_replace('/\s+/', '', $normSku);
+                    $canonicalParentKey = preg_replace('/\s+/', '', $normParentKey);
+                    $price = $avgPriceByParentCanonical[$canonicalSku] ?? $avgPriceByParentCanonical[$canonicalParentKey] ?? 0;
+                }
+                if ($price === 0) {
+                    $values = $pm->Values ?? null;
+                    if (is_string($values)) {
+                        $values = json_decode($values, true) ?: [];
+                    } elseif (is_object($values)) {
+                        $values = (array) $values;
+                    } else {
+                        $values = is_array($values) ? $values : [];
+                    }
+                    $price = (isset($values['msrp']) && (float)$values['msrp'] > 0) ? (float)$values['msrp'] : (isset($values['map']) && (float)$values['map'] > 0 ? (float)$values['map'] : 0);
+                }
+            }
+            $row['price'] = (float) ($price ?? 0);
 
             $matchedCampaignL30 = $amazonSpCampaignReportsL30->first(function ($item) use ($sku) {
                 $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
@@ -532,6 +609,56 @@ class AmzUnderUtilizedBgtController extends Controller
             ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
+        // For PARENT rows: avg price = average of child SKUs' prices (from amazon datasheet, or ProductMaster Values as fallback)
+        $childPricesByParent = [];
+        foreach ($productMasters as $pmChild) {
+            $norm = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $pmChild->sku ?? '');
+            $norm = preg_replace('/\s+/', ' ', $norm);
+            $skuUpper = strtoupper(trim($norm));
+            if (stripos($skuUpper, 'PARENT') !== false) {
+                continue;
+            }
+            $p = $pmChild->parent ?? '';
+            if ($p === '') {
+                continue;
+            }
+            $amazonSheetChild = $amazonDatasheetsBySku[$skuUpper] ?? null;
+            $childPrice = ($amazonSheetChild && isset($amazonSheetChild->price) && (float)$amazonSheetChild->price > 0)
+                ? (float)$amazonSheetChild->price
+                : null;
+            if ($childPrice === null) {
+                $values = $pmChild->Values ?? null;
+                if (is_string($values)) {
+                    $values = json_decode($values, true) ?: [];
+                } elseif (is_object($values)) {
+                    $values = (array) $values;
+                } else {
+                    $values = is_array($values) ? $values : [];
+                }
+                $childPrice = isset($values['msrp']) && (float)$values['msrp'] > 0
+                    ? (float)$values['msrp']
+                    : (isset($values['map']) && (float)$values['map'] > 0 ? (float)$values['map'] : null);
+            }
+            if ($childPrice !== null && $childPrice > 0) {
+                $normParent = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $p ?? ''))));
+                $normParent = rtrim($normParent, '.');
+                if (!isset($childPricesByParent[$normParent])) {
+                    $childPricesByParent[$normParent] = [];
+                }
+                $childPricesByParent[$normParent][] = $childPrice;
+            }
+        }
+        $avgPriceByParent = [];
+        $avgPriceByParentCanonical = [];
+        foreach ($childPricesByParent as $pk => $prices) {
+            $avg = count($prices) > 0 ? round(array_sum($prices) / count($prices), 2) : 0;
+            $avgPriceByParent[$pk] = $avg;
+            $canonical = preg_replace('/\s+/', '', $pk);
+            if ($canonical !== '' && $avg > 0) {
+                $avgPriceByParentCanonical[$canonical] = $avg;
+            }
+        }
+
         $result = [];
 
         foreach ($productMasters as $pm) {
@@ -587,10 +714,37 @@ class AmzUnderUtilizedBgtController extends Controller
             $row['l1_spend'] = $matchedCampaignL1->spend ?? 0;
             $row['l1_cpc'] = $matchedCampaignL1->costPerClick ?? 0;
 
-            $sales30 = $matchedCampaignL30->sales30d ?? 0;
-            $spend30 = $matchedCampaignL30->spend ?? 0;
-            $sales15 = ($matchedCampaignL15->sales14d ?? 0) + ($matchedCampaignL1->sales1d ?? 0);
-            $spend15 = $matchedCampaignL15->spend ?? 0;
+            // Price: from AmazonDatasheet or ProductMaster Values; for PARENT use avg of children
+            $price = ($amazonSheet && isset($amazonSheet->price) && (float)$amazonSheet->price > 0) ? (float)$amazonSheet->price : 0;
+            if (($price === 0 || $price === null) && stripos($pm->sku ?? '', 'PARENT') !== false && !empty($avgPriceByParent)) {
+                $normSku = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $sku))));
+                $normSku = rtrim($normSku, '.');
+                $normParentKey = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $parent ?? ''))));
+                $normParentKey = rtrim($normParentKey, '.');
+                $price = $avgPriceByParent[$normSku] ?? $avgPriceByParent[$normParentKey] ?? $avgPriceByParent[$parent ?? ''] ?? $avgPriceByParent[rtrim($parent ?? '', '.')] ?? 0;
+                if ($price === 0 && !empty($avgPriceByParentCanonical)) {
+                    $canonicalSku = preg_replace('/\s+/', '', $normSku);
+                    $canonicalParentKey = preg_replace('/\s+/', '', $normParentKey);
+                    $price = $avgPriceByParentCanonical[$canonicalSku] ?? $avgPriceByParentCanonical[$canonicalParentKey] ?? 0;
+                }
+                if ($price === 0) {
+                    $values = $pm->Values ?? null;
+                    if (is_string($values)) {
+                        $values = json_decode($values, true) ?: [];
+                    } elseif (is_object($values)) {
+                        $values = (array) $values;
+                    } else {
+                        $values = is_array($values) ? $values : [];
+                    }
+                    $price = (isset($values['msrp']) && (float)$values['msrp'] > 0) ? (float)$values['msrp'] : (isset($values['map']) && (float)$values['map'] > 0 ? (float)$values['map'] : 0);
+                }
+            }
+            $row['price'] = (float) ($price ?? 0);
+
+            $sales30 = $matchedCampaign30->sales30d ?? 0;
+            $spend30 = $matchedCampaign30->spend ?? 0;
+            $sales15 = ($matchedCampaign15->sales14d ?? 0) + ($matchedCampaignL1->sales1d ?? 0);
+            $spend15 = $matchedCampaign15->spend ?? 0;
             $sales7 = $matchedCampaignL7->sales7d ?? 0;
             $spend7 = $matchedCampaignL7->spend ?? 0;
 

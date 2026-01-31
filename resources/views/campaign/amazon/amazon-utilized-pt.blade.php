@@ -463,6 +463,10 @@
                                                 <span style="font-size: 0.7rem; margin-right: 4px;">Total SKU:</span>
                                                 <span class="fw-bold" id="total-sku-count" style="font-size: 1.1rem; color: black;">0</span>
                                             </span>
+                                            <span class="badge-count-item" style="background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">Parent Sku:</span>
+                                                <span class="fw-bold" id="parent-sku-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
                                             <span class="badge-count-item total-campaign-card" id="total-campaign-card" style="background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;">
                                                 <span style="font-size: 0.7rem; margin-right: 4px;">Campaign:</span>
                                                 <span class="fw-bold" id="total-campaign-count" style="font-size: 1.1rem; color: black;">0</span>
@@ -486,6 +490,18 @@
                                             <span class="badge-count-item ra-card" id="ra-card" style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;">
                                                 <span style="font-size: 0.7rem; margin-right: 4px;">RA:</span>
                                                 <span class="fw-bold" id="ra-count" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item" style="background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">Total Spend L30:</span>
+                                                <span class="fw-bold" id="total-spend-l30" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item" style="background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">Total Sales L30:</span>
+                                                <span class="fw-bold" id="total-sales-l30" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item" style="background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">Total Ad Sold L30:</span>
+                                                <span class="fw-bold" id="total-ad-sold-l30" style="font-size: 1.1rem; color: black;">0</span>
                                             </span>
                                             <span class="badge-count-item paused-campaigns-card" id="paused-campaigns-card" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;" title="Click to view paused campaigns">
                                                 <span style="font-size: 0.7rem; margin-right: 4px;">PINK DIL PAUSED:</span>
@@ -698,6 +714,7 @@
             let totalACOSValue = 0;
             let totalL30Spend = 0;
             let totalL30Sales = 0;
+            let totalL30Purchases = 0;
             let totalSkuCountFromBackend = 0; // Store total SKU count from backend
 
             const getDilColor = (value) => {
@@ -737,6 +754,50 @@
                 const processedSkusForNraMissing = new Set(); // Track SKUs for NRA missing counting
                 const processedSkusForZeroInv = new Set(); // Track SKUs for zero INV counting
                 const processedSkusForValidCount = new Set(); // Track SKUs for valid count
+                
+                // Total SKU, Parent Sku, Missing, NRA Missing: filter-independent (no filter applied), do not change when user applies filters
+                let totalChildSkuCount = 0;
+                let totalParentSkuCount = 0;
+                let missingCountDirect = 0;   // Missing count (parents only, no campaign, NRL/NRA not NRA) - filter-independent
+                let nraMissingCountDirect = 0; // NRA missing count (parents only, no campaign, NRL/NRA) - filter-independent
+                const childSkusForTotal = new Set();
+                const parentSkusForTotal = new Set();
+                const processedMissingDirect = new Set();
+                const processedNraMissingDirect = new Set();
+                allData.forEach(function(row) {
+                    const skuForTotal = row.sku || '';
+                    const isParentForTotal = row.is_parent !== undefined ? !!row.is_parent : (skuForTotal || '').toUpperCase().includes('PARENT');
+                    if (skuForTotal) {
+                        if (isParentForTotal) {
+                            if (!parentSkusForTotal.has(skuForTotal)) {
+                                parentSkusForTotal.add(skuForTotal);
+                                totalParentSkuCount++;
+                            }
+                            // Missing / NRA Missing: parents only, no filter
+                            const hasCampaignDirect = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            if (!hasCampaignDirect) {
+                                const nrlD = row.NRL ? row.NRL.trim() : "";
+                                const nraD = row.NRA ? row.NRA.trim() : "";
+                                if (nrlD !== 'NRL' && nraD !== 'NRA') {
+                                    if (!processedMissingDirect.has(skuForTotal)) {
+                                        processedMissingDirect.add(skuForTotal);
+                                        missingCountDirect++;
+                                    }
+                                } else {
+                                    if (!processedNraMissingDirect.has(skuForTotal)) {
+                                        processedNraMissingDirect.add(skuForTotal);
+                                        nraMissingCountDirect++;
+                                    }
+                                }
+                            }
+                        } else {
+                            if (!childSkusForTotal.has(skuForTotal)) {
+                                childSkusForTotal.add(skuForTotal);
+                                totalChildSkuCount++;
+                            }
+                        }
+                    }
+                });
                 
                 allData.forEach(function(row) {
                     // Count valid SKUs (exclude parent SKUs and empty SKUs); use backend is_parent when present (matches totalSkuCount: sku LIKE 'PARENT %')
@@ -895,22 +956,7 @@
                                 totalCampaignCount++;
                             }
                         } else {
-                            if (!processedSkusForMissing.has(sku)) {
-                                processedSkusForMissing.add(sku);
-                                let rowNrlForMissing = row.NRL ? row.NRL.trim() : "";
-                                let rowNraForMissing = row.NRA ? row.NRA.trim() : "";
-                                if (rowNrlForMissing !== 'NRL' && rowNraForMissing !== 'NRA') {
-                                    missingCount++;
-                                }
-                            }
-                            if (!processedSkusForNraMissing.has(sku)) {
-                                processedSkusForNraMissing.add(sku);
-                                let rowNrlForNraMissing = row.NRL ? row.NRL.trim() : "";
-                                let rowNraForNraMissing = row.NRA ? row.NRA.trim() : "";
-                                if (rowNrlForNraMissing === 'NRL' || rowNraForNraMissing === 'NRA') {
-                                    nraMissingCount++;
-                                }
-                            }
+                            // Missing / NRA missing: use filter-independent counts (missingCountDirect, nraMissingCountDirect) - not updated here
                         }
                     }
                     // Count valid SKUs (child only) that pass all filters - only once per SKU
@@ -1003,16 +1049,16 @@
                     else acosCount1++;
                 });
                 
-                // Update missing campaign count
+                // Update missing campaign count (filter-independent: direct count from full data, parents only)
                 const missingCountEl = document.getElementById('missing-campaign-count');
                 if (missingCountEl) {
-                    missingCountEl.textContent = missingCount;
+                    missingCountEl.textContent = typeof missingCountDirect !== 'undefined' ? missingCountDirect : missingCount;
                 }
                 
-                // Update NRA missing count
+                // Update NRA missing count (filter-independent: direct count from full data, parents only)
                 const nraMissingCountEl = document.getElementById('nra-missing-count');
                 if (nraMissingCountEl) {
-                    nraMissingCountEl.textContent = nraMissingCount;
+                    nraMissingCountEl.textContent = typeof nraMissingCountDirect !== 'undefined' ? nraMissingCountDirect : nraMissingCount;
                 }
                 
                 // Update total campaign count
@@ -1021,11 +1067,23 @@
                     totalCampaignCountEl.textContent = totalCampaignCount;
                 }
                 
-                // Update total SKU count (filter-based - same as table/pagination row count, includes parent rows when Type=All)
+                // Update total SKU count (child SKUs only, filter-independent - does not change with filters)
                 const totalSkuCountEl = document.getElementById('total-sku-count');
                 if (totalSkuCountEl) {
-                    totalSkuCountEl.textContent = totalRowsWhenAllUtilization;
+                    totalSkuCountEl.textContent = totalChildSkuCount;
                 }
+                // Update parent SKU count (parent SKUs only, filter-independent - does not change with filters)
+                const parentSkuCountEl = document.getElementById('parent-sku-count');
+                if (parentSkuCountEl) {
+                    parentSkuCountEl.textContent = totalParentSkuCount;
+                }
+                // Update Total Spend L30, Total Sales L30, Total Ad Sold L30 (from backend, L30 range)
+                const totalSpendL30El = document.getElementById('total-spend-l30');
+                if (totalSpendL30El) totalSpendL30El.textContent = typeof totalL30Spend !== 'undefined' ? Number(totalL30Spend).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '0';
+                const totalSalesL30El = document.getElementById('total-sales-l30');
+                if (totalSalesL30El) totalSalesL30El.textContent = typeof totalL30Sales !== 'undefined' ? Number(totalL30Sales).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '0';
+                const totalAdSoldL30El = document.getElementById('total-ad-sold-l30');
+                if (totalAdSoldL30El) totalAdSoldL30El.textContent = typeof totalL30Purchases !== 'undefined' ? Number(totalL30Purchases).toLocaleString() : '0';
                 
                 // Update NRA count
                 const nraCountEl = document.getElementById('nra-count');
@@ -1094,14 +1152,11 @@
                 
                 allData.forEach(function(row) {
                     const sku = row.sku || '';
-                    const isParentRowPrice = row.is_parent !== undefined ? !!row.is_parent : (sku || '').toUpperCase().includes('PARENT');
-                    const isValidSku = sku && !isParentRowPrice;
-                    if (!isValidSku) return;
-                    
+                    if (!sku) return;
                     let price = parseFloat(row.price || 0);
                     if (isNaN(price) || price <= 0) return;
                     
-                    // Apply same filters as above (except price slab filter)
+                    // Apply same filters as above (except price slab filter) - include parent rows (they now have avg price)
                     let inv = parseFloat(row.INV || 0);
                     let searchVal = $("#global-search").val()?.toLowerCase() || "";
                     if (searchVal && !(row.campaignName?.toLowerCase().includes(searchVal)) && !(row.sku?.toLowerCase().includes(searchVal))) return;
@@ -2146,27 +2201,14 @@
                         mutator: function (value, data) {
                             var acos = parseFloat(data.acos || 0);
                             var price = parseFloat(data.price || 0);
-                            var isParent = data.is_parent === true || ((data.sku || '').toUpperCase().indexOf('PARENT') !== -1);
                             var sbgt;
-
-                            // Parent SKU: SBGT from ACOS table (0-5→6, 5-10→5, ...), max $5
-                            if (isParent) {
-                                if (acos < 5) sbgt = 6;
-                                else if (acos < 10) sbgt = 5;
-                                else if (acos < 15) sbgt = 4;
-                                else if (acos < 20) sbgt = 3;
-                                else if (acos < 25) sbgt = 2;
-                                else sbgt = 1;
-                                if (sbgt > 5) sbgt = 5;
+                            // Same price-based SBGT for all rows (parent now has avg price)
+                            if (acos > 20) {
+                                sbgt = 1;
                             } else {
-                                // Child: If ACOS > 20%, budget = $1; else ceil(price*0.10) capped $1-$5
-                                if (acos > 20) {
-                                    sbgt = 1;
-                                } else {
-                                    sbgt = Math.ceil(price * 0.10);
-                                    if (sbgt < 1) sbgt = 1;
-                                    if (sbgt > 5) sbgt = 5;
-                                }
+                                sbgt = Math.ceil(price * 0.10);
+                                if (sbgt < 1) sbgt = 1;
+                                if (sbgt > 5) sbgt = 5;
                             }
 
                             return sbgt; // ✅ sets row.sbgt
@@ -2823,14 +2865,11 @@
                                 sbid = 0;
                             }
                             
-                            // Apply price-based caps (skip for PARENT rows - they often have price 0, which would cap all SBID to 0.10)
-                            var isParentRow = row.is_parent !== undefined ? !!row.is_parent : (row.sku || '').toUpperCase().includes('PARENT');
-                            if (!isParentRow) {
-                                if (price < 10 && sbid > 0.10) {
-                                    sbid = 0.10;
-                                } else if (price >= 10 && price < 20 && sbid > 0.20) {
-                                    sbid = 0.20;
-                                }
+                            // Apply price-based caps (parent rows now have avg price, so apply caps for all rows)
+                            if (price < 10 && sbid > 0.10) {
+                                sbid = 0.10;
+                            } else if (price >= 10 && price < 20 && sbid > 0.20) {
+                                sbid = 0.20;
                             }
                             return sbid === 0 ? '-' : sbid;
                         }
@@ -3026,6 +3065,7 @@
                     totalACOSValue = parseFloat(response.total_acos) || 0;
                     totalL30Spend = parseFloat(response.total_l30_spend) || 0;
                     totalL30Sales = parseFloat(response.total_l30_sales) || 0;
+                    totalL30Purchases = parseInt(response.total_l30_purchases) || 0;
                     totalSkuCountFromBackend = parseInt(response.total_sku_count) || 0;
                     // Update pagination and filter-based counts (including Total SKU) after data is loaded
                     setTimeout(function() {

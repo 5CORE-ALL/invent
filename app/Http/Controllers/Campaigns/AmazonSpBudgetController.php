@@ -2213,6 +2213,56 @@ class AmazonSpBudgetController extends Controller
             $childInvSumByParent[$p] += $inv;
         }
 
+        // For PARENT rows: avg price = average of child SKUs' prices (from amazon datashheet, or ProductMaster Values as fallback)
+        $childPricesByParent = [];
+        foreach ($productMasters as $pm) {
+            $norm = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $pm->sku);
+            $norm = preg_replace('/\s+/', ' ', $norm);
+            $skuUpper = strtoupper(trim($norm));
+            if (stripos($skuUpper, 'PARENT') !== false) {
+                continue;
+            }
+            $p = $pm->parent ?? '';
+            if ($p === '') {
+                continue;
+            }
+            $amazonSheetChild = $amazonDatasheetsBySku[$skuUpper] ?? null;
+            $childPrice = ($amazonSheetChild && isset($amazonSheetChild->price) && (float)$amazonSheetChild->price > 0)
+                ? (float)$amazonSheetChild->price
+                : null;
+            if ($childPrice === null) {
+                $values = $pm->Values;
+                if (is_string($values)) {
+                    $values = json_decode($values, true) ?: [];
+                } elseif (is_object($values)) {
+                    $values = (array) $values;
+                } elseif (!is_array($values)) {
+                    $values = [];
+                }
+                $childPrice = isset($values['msrp']) && (float)$values['msrp'] > 0
+                    ? (float)$values['msrp']
+                    : (isset($values['map']) && (float)$values['map'] > 0 ? (float)$values['map'] : null);
+            }
+            if ($childPrice !== null && $childPrice > 0) {
+                $normParent = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $p ?? ''))));
+                $normParent = rtrim($normParent, '.');
+                if (!isset($childPricesByParent[$normParent])) {
+                    $childPricesByParent[$normParent] = [];
+                }
+                $childPricesByParent[$normParent][] = $childPrice;
+            }
+        }
+        $avgPriceByParent = [];
+        $avgPriceByParentCanonical = []; // key = no spaces, so "PARENT MS 080 1PK" and "PARENT MS 080 1 PK" match
+        foreach ($childPricesByParent as $p => $prices) {
+            $avg = count($prices) > 0 ? round(array_sum($prices) / count($prices), 2) : 0;
+            $avgPriceByParent[$p] = $avg;
+            $canonical = preg_replace('/\s+/', '', $p);
+            if ($canonical !== '' && $avg > 0) {
+                $avgPriceByParentCanonical[$canonical] = $avg;
+            }
+        }
+
         foreach ($productMasters as $pm) {
             // Normalize SKU first - normalize spaces (including non-breaking spaces) and convert to uppercase
             // Replace non-breaking spaces (UTF-8 c2a0) and other unicode spaces with regular spaces
@@ -2439,7 +2489,34 @@ class AmazonSpBudgetController extends Controller
             if (!isset($campaignMap[$mapKey])) {
                 $baseSku = strtoupper(trim($pm->sku));
                 $price = ($amazonSheet && isset($amazonSheet->price)) ? $amazonSheet->price : 0;
-                
+                // For parent SKU rows: use average of child SKUs' prices when direct price is 0
+                if (($price === 0 || $price === null) && stripos($sku, 'PARENT') !== false) {
+                    $normSku = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $sku))));
+                    $normSku = rtrim($normSku, '.');
+                    $normParentKey = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $parent ?? ''))));
+                    $normParentKey = rtrim($normParentKey, '.');
+                    $price = $avgPriceByParent[$normSku] ?? $avgPriceByParent[$normParentKey] ?? $avgPriceByParent[$parent ?? ''] ?? $avgPriceByParent[rtrim($parent ?? '', '.')] ?? 0;
+                    if ($price === 0 && !empty($avgPriceByParentCanonical)) {
+                        $canonicalSku = preg_replace('/\s+/', '', $normSku);
+                        $canonicalParentKey = preg_replace('/\s+/', '', $normParentKey);
+                        $price = $avgPriceByParentCanonical[$canonicalSku] ?? $avgPriceByParentCanonical[$canonicalParentKey] ?? 0;
+                    }
+                    if ($price === 0) {
+                        $parentValues = $pm->Values;
+                        if (is_string($parentValues)) {
+                            $parentValues = json_decode($parentValues, true) ?: [];
+                        } elseif (is_object($parentValues)) {
+                            $parentValues = (array) $parentValues;
+                        } else {
+                            $parentValues = is_array($parentValues) ? $parentValues : [];
+                        }
+                        $price = (isset($parentValues['msrp']) && (float)$parentValues['msrp'] > 0)
+                            ? (float)$parentValues['msrp']
+                            : (isset($parentValues['map']) && (float)$parentValues['map'] > 0 ? (float)$parentValues['map'] : 0);
+                    }
+                }
+                $price = (float) ($price ?? 0);
+
                 // Get LP and Ship from ProductMaster
                 $values = $pm->Values ?: [];
                 $lp = $values['lp'] ?? 0;
@@ -3093,6 +3170,51 @@ class AmazonSpBudgetController extends Controller
         // Add all SKUs that were processed
         foreach ($campaignMap as $campaignId => $row) {
             $result[] = (object) $row;
+        }
+
+        // Second pass: fix parent SKU price when still 0 (avg from children or parent's own Values)
+        foreach ($result as $item) {
+            $skuStr = $item->sku ?? '';
+            if (stripos($skuStr, 'PARENT') === false) {
+                continue;
+            }
+            $currentPrice = (float)($item->price ?? 0);
+            if ($currentPrice > 0) {
+                continue;
+            }
+            $normSku = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $skuStr))));
+            $normSku = rtrim($normSku, '.');
+            $normParent = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->parent ?? ''))));
+            $normParent = rtrim($normParent, '.');
+            $item->price = $avgPriceByParent[$normSku] ?? $avgPriceByParent[$normParent] ?? $avgPriceByParent[$item->parent ?? ''] ?? $avgPriceByParent[rtrim($item->parent ?? '', '.')] ?? 0;
+            if ($item->price <= 0 && !empty($avgPriceByParentCanonical)) {
+                $canonicalSku = preg_replace('/\s+/', '', $normSku);
+                $canonicalParent = preg_replace('/\s+/', '', $normParent);
+                $item->price = $avgPriceByParentCanonical[$canonicalSku] ?? $avgPriceByParentCanonical[$canonicalParent] ?? 0;
+            }
+            if ($item->price <= 0) {
+                $pmForParent = $productMasters->first(function ($p) use ($skuStr) {
+                    $n = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $p->sku ?? ''))));
+                    $itemSkuNorm = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $skuStr))));
+                    return $n === $itemSkuNorm;
+                });
+                if ($pmForParent) {
+                    $vals = $pmForParent->Values;
+                    if (is_string($vals)) {
+                        $vals = json_decode($vals, true) ?: [];
+                    } elseif (is_object($vals)) {
+                        $vals = (array) $vals;
+                    } else {
+                        $vals = is_array($vals) ? $vals : [];
+                    }
+                    if (isset($vals['msrp']) && (float)$vals['msrp'] > 0) {
+                        $item->price = (float)$vals['msrp'];
+                    } elseif (isset($vals['map']) && (float)$vals['map'] > 0) {
+                        $item->price = (float)$vals['map'];
+                    }
+                }
+            }
+            $item->price = (float)($item->price ?? 0);
         }
 
         // Final pass: parent rows use direct campaign data only; ensure l1_spend=0 when no L1 report so 7 UB% / 1 UB% match DB
@@ -4655,6 +4777,50 @@ class AmazonSpBudgetController extends Controller
         // For PT campaigns, apply unique SKU filter (same as getAmzUnderUtilizedBgtPt)
         if ($campaignType === 'PT') {
             $result = collect($result)->unique('sku')->values()->all();
+            // PT: fix parent SKU price again after unique (rows added in "missing SKUs" loop have no price set)
+            foreach ($result as $item) {
+                $skuStr = $item->sku ?? '';
+                if (stripos($skuStr, 'PARENT') === false) {
+                    continue;
+                }
+                $currentPrice = (float)($item->price ?? 0);
+                if ($currentPrice > 0) {
+                    continue;
+                }
+                $normSku = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $skuStr))));
+                $normSku = rtrim($normSku, '.');
+                $normParent = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $item->parent ?? ''))));
+                $normParent = rtrim($normParent, '.');
+                $item->price = $avgPriceByParent[$normSku] ?? $avgPriceByParent[$normParent] ?? $avgPriceByParent[$item->parent ?? ''] ?? $avgPriceByParent[rtrim($item->parent ?? '', '.')] ?? 0;
+                if ($item->price <= 0 && !empty($avgPriceByParentCanonical)) {
+                    $canonicalSku = preg_replace('/\s+/', '', $normSku);
+                    $canonicalParent = preg_replace('/\s+/', '', $normParent);
+                    $item->price = $avgPriceByParentCanonical[$canonicalSku] ?? $avgPriceByParentCanonical[$canonicalParent] ?? 0;
+                }
+                if ($item->price <= 0) {
+                    $pmForParent = $productMasters->first(function ($p) use ($skuStr) {
+                        $n = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $p->sku ?? ''))));
+                        $itemSkuNorm = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $skuStr))));
+                        return $n === $itemSkuNorm;
+                    });
+                    if ($pmForParent) {
+                        $vals = $pmForParent->Values;
+                        if (is_string($vals)) {
+                            $vals = json_decode($vals, true) ?: [];
+                        } elseif (is_object($vals)) {
+                            $vals = (array) $vals;
+                        } else {
+                            $vals = is_array($vals) ? $vals : [];
+                        }
+                        if (isset($vals['msrp']) && (float)$vals['msrp'] > 0) {
+                            $item->price = (float)$vals['msrp'];
+                        } elseif (isset($vals['map']) && (float)$vals['map'] > 0) {
+                            $item->price = (float)$vals['map'];
+                        }
+                    }
+                }
+                $item->price = (float)($item->price ?? 0);
+            }
         }
 
         // Final pass: ACOS = 0 when Spend L30 and Sales L30 are both 0 (covers all rows including unmatched campaigns)
@@ -4717,11 +4883,17 @@ class AmazonSpBudgetController extends Controller
             FacadesLog::error('Error saving SBID: ' . $e->getMessage());
         }
 
+        $totalPurchasesAll = 0;
+        foreach ($result as $item) {
+            $totalPurchasesAll += (int)($item->unitsSoldClicks30d ?? 0);
+        }
+
         return response()->json([
             'message' => 'fetched successfully',
             'data' => $result,
             'total_l30_spend' => round($totalSpendAll, 2),
             'total_l30_sales' => round($totalSalesAll, 2),
+            'total_l30_purchases' => (int)$totalPurchasesAll,
             'total_acos' => round($totalACOSAll, 2),
             'total_sku_count' => $totalSkuCount,
             'status' => 200,

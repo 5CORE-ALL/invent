@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\DB;
 
 class AutoUpdateAmzUnderPtBids extends Command
 {
-    protected $signature = 'amazon:auto-update-under-pt-bids';
+    protected $signature = 'amazon:auto-update-under-pt-bids {--dry-run : Show what would be updated without calling API}';
     protected $description = 'Automatically update Amazon campaign pt bids';
 
     protected $profileId;
@@ -27,7 +27,8 @@ class AutoUpdateAmzUnderPtBids extends Command
     public function handle()
     {
         try {
-            $this->info("Starting Amazon bids auto-update...");
+            $dryRun = $this->option('dry-run');
+            $this->info("Starting Amazon Under-Utilized PT bids auto-update..." . ($dryRun ? " [DRY RUN - no API calls]" : ""));
 
             // Check database connection (without creating persistent connection)
             try {
@@ -66,13 +67,36 @@ class AutoUpdateAmzUnderPtBids extends Command
             $this->line("");
 
             // Log campaigns before update
-            $this->info("Campaigns to be updated:");
+            $this->info("========================================");
+            $this->info("CAMPAIGNS TO UPDATE (UNDER-UTILIZED):");
+            $this->info("========================================");
             foreach ($validCampaigns as $campaign) {
                 $campaignName = $campaign->campaignName ?? 'N/A';
                 $newBid = $campaign->sbid ?? 0;
-                $this->line("  Campaign: {$campaignName} | New Bid: {$newBid}");
+                $campaignId = $campaign->campaign_id ?? '';
+                $budget = floatval($campaign->campaignBudgetAmount ?? 0);
+                $l7_spend = floatval($campaign->l7_spend ?? 0);
+                $l1_spend = floatval($campaign->l1_spend ?? 0);
+                $ub7 = $budget > 0 ? ($l7_spend / ($budget * 7)) * 100 : 0;
+                $ub1 = $budget > 0 ? ($l1_spend / $budget) * 100 : 0;
+                $inv = (int)($campaign->INV ?? 0);
+                
+                $this->info("Campaign Name: {$campaignName}");
+                $this->info("  - Campaign ID: {$campaignId}");
+                $this->info("  - Bid: {$newBid}");
+                $this->info("  - 7UB: " . round($ub7, 2) . "% | 1UB: " . round($ub1, 2) . "%");
+                $this->info("  - INV: {$inv}");
+                $this->info("---");
             }
+            $this->info("========================================");
             $this->line("");
+
+            if ($dryRun) {
+                $this->newLine();
+                $this->warn("DRY RUN: No API call made. Remove --dry-run to apply updates.");
+                $this->info("✓ Dry run completed. Total campaigns that would be updated: " . $validCampaigns->count());
+                return 0;
+            }
 
             $campaignIds = $validCampaigns->pluck('campaign_id')->toArray();
             $newBids = $validCampaigns->pluck('sbid')->toArray();
@@ -172,6 +196,77 @@ class AutoUpdateAmzUnderPtBids extends Command
                 $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
             }
 
+        // For PARENT rows: INV = sum of child SKUs' INV (same as Over/BgtPt commands)
+        $childInvSumByParent = [];
+        foreach ($productMasters as $pm) {
+            $norm = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $pm->sku ?? '');
+            $norm = preg_replace('/\s+/', ' ', $norm);
+            $skuUpper = strtoupper(trim($norm));
+            if (stripos($skuUpper, 'PARENT') !== false) {
+                continue;
+            }
+            $p = $pm->parent ?? '';
+            if ($p === '') {
+                continue;
+            }
+            $shopifyChild = $shopifyData[$pm->sku] ?? null;
+            $inv = ($shopifyChild && isset($shopifyChild->inv)) ? (int) $shopifyChild->inv : 0;
+            if (!isset($childInvSumByParent[$p])) {
+                $childInvSumByParent[$p] = 0;
+            }
+            $childInvSumByParent[$p] += $inv;
+        }
+
+        // For PARENT rows: avg price = average of child SKUs' prices (from amazon datashheet, or ProductMaster Values as fallback)
+        $childPricesByParent = [];
+        foreach ($productMasters as $pmChild) {
+            $norm = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $pmChild->sku ?? '');
+            $norm = preg_replace('/\s+/', ' ', $norm);
+            $skuUpper = strtoupper(trim($norm));
+            if (stripos($skuUpper, 'PARENT') !== false) {
+                continue;
+            }
+            $p = $pmChild->parent ?? '';
+            if ($p === '') {
+                continue;
+            }
+            $amazonSheetChild = $amazonDatasheets[$skuUpper] ?? null;
+            $childPrice = ($amazonSheetChild && isset($amazonSheetChild->price) && (float)$amazonSheetChild->price > 0)
+                ? (float)$amazonSheetChild->price
+                : null;
+            if ($childPrice === null) {
+                $values = $pmChild->Values;
+                if (is_string($values)) {
+                    $values = json_decode($values, true) ?: [];
+                } elseif (is_object($values)) {
+                    $values = (array) $values;
+                } else {
+                    $values = is_array($values) ? $values : [];
+                }
+                $childPrice = isset($values['msrp']) && (float)$values['msrp'] > 0
+                    ? (float)$values['msrp']
+                    : (isset($values['map']) && (float)$values['map'] > 0 ? (float)$values['map'] : null);
+            }
+            if ($childPrice !== null && $childPrice > 0) {
+                $normParent = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $p ?? ''))));
+                $normParent = rtrim($normParent, '.');
+                if (!isset($childPricesByParent[$normParent])) {
+                    $childPricesByParent[$normParent] = [];
+                }
+                $childPricesByParent[$normParent][] = $childPrice;
+            }
+        }
+        $avgPriceByParent = [];
+        $avgPriceByParentCanonical = [];
+        foreach ($childPricesByParent as $pk => $prices) {
+            $avg = count($prices) > 0 ? round(array_sum($prices) / count($prices), 2) : 0;
+            $avgPriceByParent[$pk] = $avg;
+            $canonical = preg_replace('/\s+/', '', $pk);
+            if ($canonical !== '' && $avg > 0) {
+                $avgPriceByParentCanonical[$canonical] = $avg;
+            }
+        }
+
         $amazonSpCampaignReportsL7 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L7')
             ->where(function ($q) use ($skus) {
@@ -222,7 +317,11 @@ class AutoUpdateAmzUnderPtBids extends Command
             }
 
             $row = [];
-            $row['INV']    = $shopify->inv ?? 0;
+            // INV: for PARENT SKU use sum of children's INV; for child use shopify inv
+            $isParentSku = stripos($pm->sku ?? '', 'PARENT') !== false;
+            $row['INV'] = $isParentSku
+                ? (int) ($childInvSumByParent[$pm->parent ?? $pm->sku ?? ''] ?? 0)
+                : (int) ($shopify->inv ?? 0);
             $row['campaign_id'] = $matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? '');
             $row['campaignName'] = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? '');
             $row['campaignBudgetAmount'] = $matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? '');
@@ -234,6 +333,33 @@ class AutoUpdateAmzUnderPtBids extends Command
             // Get price from AmazonDatasheet
             $amazonSheet = $amazonDatasheets[strtoupper($pm->sku)] ?? null;
             $price = ($amazonSheet && isset($amazonSheet->price)) ? floatval($amazonSheet->price) : 0;
+            // For parent SKU rows: use average of child SKUs' prices when direct price is 0
+            if (($price === 0 || $price === null) && stripos($pm->sku ?? '', 'PARENT') !== false && !empty($avgPriceByParent)) {
+                $normSku = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $sku))));
+                $normSku = rtrim($normSku, '.');
+                $normParentKey = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $pm->parent ?? ''))));
+                $normParentKey = rtrim($normParentKey, '.');
+                $price = $avgPriceByParent[$normSku] ?? $avgPriceByParent[$normParentKey] ?? $avgPriceByParent[$pm->parent ?? ''] ?? $avgPriceByParent[rtrim($pm->parent ?? '', '.')] ?? 0;
+                if ($price === 0 && !empty($avgPriceByParentCanonical)) {
+                    $canonicalSku = preg_replace('/\s+/', '', $normSku);
+                    $canonicalParentKey = preg_replace('/\s+/', '', $normParentKey);
+                    $price = $avgPriceByParentCanonical[$canonicalSku] ?? $avgPriceByParentCanonical[$canonicalParentKey] ?? 0;
+                }
+                if ($price === 0) {
+                    $parentValues = $pm->Values;
+                    if (is_string($parentValues)) {
+                        $parentValues = json_decode($parentValues, true) ?: [];
+                    } elseif (is_object($parentValues)) {
+                        $parentValues = (array) $parentValues;
+                    } else {
+                        $parentValues = is_array($parentValues) ? $parentValues : [];
+                    }
+                    $price = (isset($parentValues['msrp']) && (float)$parentValues['msrp'] > 0)
+                        ? (float)$parentValues['msrp']
+                        : (isset($parentValues['map']) && (float)$parentValues['map'] > 0 ? (float)$parentValues['map'] : 0);
+                }
+            }
+            $price = (float) ($price ?? 0);
 
             // Calculate avg_cpc (lifetime average from daily records)
             $campaignId = $row['campaign_id'];
@@ -278,7 +404,7 @@ class AutoUpdateAmzUnderPtBids extends Command
             // Under-utilized rule: INV > 0, NRA !== 'NRA', campaignName !== '', ub7 < 66 && ub1 < 66
             if ($row['INV'] > 0 && $row['NRA'] !== 'NRA' && $row['campaignName'] !== '' && ($ub7 < 66 && $ub1 < 66)) {
                 // Calculate SBID based on blade file logic
-                // Special case: If UB7 and UB1 = 0%, use price-based default
+                // Special case: If UB7 and UB1 = 0%, use price-based default (parent rows now have avg price, so apply for all)
                 if ($ub7 === 0 && $ub1 === 0) {
                     if ($price < 50) {
                         $row['sbid'] = 0.50;
@@ -302,7 +428,7 @@ class AutoUpdateAmzUnderPtBids extends Command
                     }
                 }
                 
-                // Apply price-based caps
+                // Apply price-based caps (parent rows now have avg price, so apply for all rows)
                 if ($price < 10 && $row['sbid'] > 0.10) {
                     $row['sbid'] = 0.10;
                 } else if ($price >= 10 && $price < 20 && $row['sbid'] > 0.20) {

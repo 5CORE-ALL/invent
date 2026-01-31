@@ -147,6 +147,50 @@ class AutoUpdateAmazonBgtHl extends Command
                 })
                 ->get();
 
+            // For PARENT rows (HL processes only parent SKUs): avg price = average of child SKUs' prices
+            $childPricesByParent = [];
+            foreach ($productMasters as $pm) {
+                $norm = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $pm->sku ?? '');
+                $norm = preg_replace('/\s+/', ' ', $norm);
+                $skuUpper = strtoupper(trim($norm));
+                if (stripos($skuUpper, 'PARENT') !== false) {
+                    continue;
+                }
+                $p = $pm->parent ?? '';
+                if ($p === '') {
+                    continue;
+                }
+                $amazonSheetChild = $amazonDatasheetsBySku[$skuUpper] ?? null;
+                $childPrice = ($amazonSheetChild && isset($amazonSheetChild->price) && (float)$amazonSheetChild->price > 0)
+                    ? (float)$amazonSheetChild->price
+                    : null;
+                if ($childPrice === null) {
+                    $values = $pm->Values;
+                    if (is_string($values)) {
+                        $values = json_decode($values, true) ?: [];
+                    } elseif (is_object($values)) {
+                        $values = (array) $values;
+                    } elseif (!is_array($values)) {
+                        $values = [];
+                    }
+                    $childPrice = isset($values['msrp']) && (float)$values['msrp'] > 0
+                        ? (float)$values['msrp']
+                        : (isset($values['map']) && (float)$values['map'] > 0 ? (float)$values['map'] : null);
+                }
+                if ($childPrice !== null && $childPrice > 0) {
+                    $normParent = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $p ?? ''))));
+                    $normParent = rtrim($normParent, '.');
+                    if (!isset($childPricesByParent[$normParent])) {
+                        $childPricesByParent[$normParent] = [];
+                    }
+                    $childPricesByParent[$normParent][] = $childPrice;
+                }
+            }
+            $avgPriceByParent = [];
+            foreach ($childPricesByParent as $p => $prices) {
+                $avgPriceByParent[$p] = count($prices) > 0 ? round(array_sum($prices) / count($prices), 2) : 0;
+            }
+
             $result = [];
 
             foreach ($productMasters as $pm) {
@@ -173,7 +217,14 @@ class AutoUpdateAmazonBgtHl extends Command
                 }
 
                 $row = [];
-                $row['price']  = $amazonSheet->price ?? 0;
+                $price = ($amazonSheet && isset($amazonSheet->price)) ? (float)$amazonSheet->price : 0;
+                // For PARENT rows (HL processes only parent SKUs): use avg price from children when direct price is 0
+                if (($price === 0 || $price === null) && stripos($sku, 'PARENT') !== false) {
+                    $normSku = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $sku))));
+                    $normParentKey = rtrim($normSku, '.');
+                    $price = $avgPriceByParent[$normSku] ?? $avgPriceByParent[$normParentKey] ?? $avgPriceByParent[$pm->parent ?? ''] ?? $avgPriceByParent[rtrim($pm->parent ?? '', '.')] ?? 0;
+                }
+                $row['price'] = $price;
                 $row['campaign_id'] = $matchedCampaignL30->campaign_id ?? '';
                 $row['campaign_name'] = $matchedCampaignL30->campaignName ?? '';
 
