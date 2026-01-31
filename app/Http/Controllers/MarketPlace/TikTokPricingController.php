@@ -467,8 +467,8 @@ class TikTokPricingController extends Controller
         ]);
 
         try {
-            // Truncate table (this auto-commits, so don't use transaction)
-            TikTokProduct::truncate();
+            // NOTE: Not truncating table - will update existing records or insert new ones
+            // TikTokProduct::truncate();
 
             $file = $request->file('csv_file');
             $handle = fopen($file->getPathname(), 'r');
@@ -477,6 +477,7 @@ class TikTokPricingController extends Controller
             $header = fgetcsv($handle);
             
             $imported = 0;
+            $updated = 0;
             $skipped = 0;
             $processedSkus = []; // Track SKUs we've already processed
             
@@ -507,7 +508,10 @@ class TikTokPricingController extends Controller
                         continue;
                     }
                     
-                    // Use updateOrCreate to handle any database duplicates
+                    // Check if record exists to track updates vs new inserts
+                    $existingRecord = TikTokProduct::where('sku', $sku)->first();
+                    
+                    // Update existing or create new record
                     TikTokProduct::updateOrCreate(
                         ['sku' => $sku],
                         [
@@ -518,15 +522,33 @@ class TikTokPricingController extends Controller
                     );
                     
                     $processedSkus[$sku] = true;
-                    $imported++;
+                    
+                    if ($existingRecord) {
+                        $updated++;
+                    } else {
+                        $imported++;
+                    }
                 }
             }
             
             fclose($handle);
 
-            $message = "Successfully imported $imported TikTok products!";
+            $total = $imported + $updated;
+            $message = "Successfully processed $total TikTok products!";
+            
+            $details = [];
+            if ($imported > 0) {
+                $details[] = "$imported new";
+            }
+            if ($updated > 0) {
+                $details[] = "$updated updated";
+            }
             if ($skipped > 0) {
-                $message .= " ($skipped duplicate SKUs skipped)";
+                $details[] = "$skipped duplicates skipped";
+            }
+            
+            if (!empty($details)) {
+                $message .= " (" . implode(', ', $details) . ")";
             }
 
             return back()->with('success', $message);

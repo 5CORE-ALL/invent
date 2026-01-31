@@ -147,7 +147,7 @@
                                 <i class="fas fa-download"></i> Download Sample
                             </a>
                         </div>
-                        <small class="text-muted">Upload CSV with columns: sku, price (will truncate existing data)</small>
+                        <small class="text-muted">Upload CSV with columns: sku, price, stock (updates existing SKUs or adds new ones)</small>
                     </form>
                 </div>
 
