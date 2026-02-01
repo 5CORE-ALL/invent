@@ -4104,7 +4104,7 @@ class AdsMasterController extends Controller
 
         /** START AMZON GRAPH DATA **/
 
-        $amazonDateArray = ADVMastersDailyData::where('channel', 'AMAZON')->orderBy('date', 'asc')->pluck('date')->toArray();
+        $amazonDateArray = ADVMastersDailyData::where('channel', 'AMAZON')->orderBy('date', 'asc')->pluck('date')->map(fn($d) => $d instanceof \DateTimeInterface ? $d->format('Y-m-d') : $d)->toArray();
         $amazonSpentArray = ADVMastersDailyData::where('channel', 'AMAZON')->orderBy('date', 'asc')->pluck('spent')->map(function ($value) {
         return $value ?? 0;
         })->toArray();
@@ -4129,7 +4129,7 @@ class AdsMasterController extends Controller
 
         /** START EBAY GRAPH DATA ***/
 
-        $ebayDateArray = ADVMastersDailyData::where('channel', 'EBAY')->orderBy('date', 'asc')->pluck('date')->toArray();
+        $ebayDateArray = ADVMastersDailyData::where('channel', 'EBAY')->orderBy('date', 'asc')->pluck('date')->map(fn($d) => $d instanceof \DateTimeInterface ? $d->format('Y-m-d') : $d)->toArray();
         $ebaySpentArray = ADVMastersDailyData::where('channel', 'EBAY')->orderBy('date', 'asc')->pluck('spent')->map(function ($value) {
         return $value ?? 0;
         })->toArray();
@@ -4247,7 +4247,11 @@ class AdsMasterController extends Controller
         $fromDate = $request->amazonFromDate;
         $toDate = $request->amazonToDate;
 
-        $amazonDateArray = ADVMastersDailyData::where('channel', 'AMAZON')->where('date', '>=', $fromDate)->where('date', '<=', $toDate)->orderBy('date', 'asc')->pluck('date')->toArray();
+        if (empty($fromDate) || empty($toDate)) {
+            return response()->json(['error' => 'From date and to date are required'], 400);
+        }
+
+        $amazonDateArray = ADVMastersDailyData::where('channel', 'AMAZON')->where('date', '>=', $fromDate)->where('date', '<=', $toDate)->orderBy('date', 'asc')->pluck('date')->map(fn($d) => $d instanceof \DateTimeInterface ? $d->format('Y-m-d') : $d)->toArray();
 
         $amazonSpentArray = ADVMastersDailyData::where('channel', 'AMAZON')->where('date', '>=', $fromDate)->where('date', '<=', $toDate)->orderBy('date', 'asc')->pluck('spent')->map(function ($value) {
         return $value ?? 0;
@@ -4289,7 +4293,11 @@ class AdsMasterController extends Controller
         $fromDate = $request->ebayFromDate;
         $toDate = $request->ebayToDate;
 
-        $ebayDateArray = ADVMastersDailyData::where('channel', 'EBAY')->where('date', '>=', $fromDate)->where('date', '<=', $toDate)->orderBy('date', 'asc')->pluck('date')->toArray();
+        if (empty($fromDate) || empty($toDate)) {
+            return response()->json(['error' => 'From date and to date are required'], 400);
+        }
+
+        $ebayDateArray = ADVMastersDailyData::where('channel', 'EBAY')->where('date', '>=', $fromDate)->where('date', '<=', $toDate)->orderBy('date', 'asc')->pluck('date')->map(fn($d) => $d instanceof \DateTimeInterface ? $d->format('Y-m-d') : $d)->toArray();
         $ebaySpentArray = ADVMastersDailyData::where('channel', 'EBAY')->where('date', '>=', $fromDate)->where('date', '<=', $toDate)->orderBy('date', 'asc')->pluck('spent')->map(function ($value) {
         return $value ?? 0;
         })->toArray();
@@ -4327,12 +4335,16 @@ class AdsMasterController extends Controller
         if (!in_array($channel, $validChannels)) {
             return response()->json(['error' => 'Invalid channel'], 400);
         }
+        if (empty($fromDate) || empty($toDate)) {
+            return response()->json(['error' => 'From date and to date are required'], 400);
+        }
 
         $dateArray = ADVMastersDailyData::where('channel', $channel)
             ->where('date', '>=', $fromDate)
             ->where('date', '<=', $toDate)
             ->orderBy('date', 'asc')
             ->pluck('date')
+            ->map(fn($d) => $d instanceof \DateTimeInterface ? $d->format('Y-m-d') : $d)
             ->toArray();
 
         $spentArray = ADVMastersDailyData::where('channel', $channel)

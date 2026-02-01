@@ -2931,7 +2931,7 @@
                         <div class="col-md-2">
                             <div class="shadow p-3 mb-1 bg-white rounded">
                                 <p class="title-label">Spend</p>
-                                <p style="display: flex; align-items: justify-content: center; center; gap: 6px; margin: 0;">
+                                <p style="display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0;">
                                     <span class="spend-color"></span>
                                     <b class="label-text">${{ $amazon_spent }}</b>
                                 </p>
@@ -2940,7 +2940,7 @@
                         <div class="col-md-2">
                             <div class="shadow p-3 mb-1 bg-white rounded">
                                 <p class="title-label">Clicks</p>
-                                <p style="display: flex; align-items: justify-content: center; center; gap: 6px; margin: 0;">
+                                <p style="display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0;">
                                     <span class="clicks-color"></span>
                                     <b class="label-text">{{ $amazon_clicks }}</b>
                                 </p>
@@ -2949,7 +2949,7 @@
                         <div class="col-md-2">
                             <div class="shadow p-3 mb-1 bg-white rounded">
                                 <p class="title-label">Ad-Sales</p>
-                                <p style="display: flex; align-items: justify-content: center; center; gap: 6px; margin: 0;">
+                                <p style="display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0;">
                                     <span class="adsales-color"></span>
                                     <b class="label-text">${{ $amazon_ad_sales }}</b>
                                 </p>
@@ -2958,7 +2958,7 @@
                         <div class="col-md-2">
                             <div class="shadow p-3 mb-1 bg-white rounded">
                                 <p class="title-label">Ad-Sold</p>
-                                <p style="display: flex; align-items: justify-content: center; center; gap: 6px; margin: 0;">
+                                <p style="display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0;">
                                     <span class="adsold-color"></span>
                                     <b class="label-text">${{ $amazon_ad_sold }}</b>
                                 </p>
@@ -2967,7 +2967,7 @@
                         <div class="col-md-2">
                             <div class="shadow p-3 mb-1 bg-white rounded">
                                 <p class="title-label">CPC</p>
-                                <p style="display: flex; align-items: justify-content: center; center; gap: 6px; margin: 0;">
+                                <p style="display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0;">
                                     <span class="cpc-color"></span>
                                     <b class="label-text"></b>
                                 </p>
@@ -2976,9 +2976,9 @@
                         <div class="col-md-2">
                             <div class="shadow p-3 mb-1 bg-white rounded">
                                 <p class="title-label">CVR</p>
-                                <p style="display: flex; align-items: justify-content: center; center; gap: 6px; margin: 0;">
+                                <p style="display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0;">
                                     <span class="cvr-color"></span>
-                                    <b class="label-text">{{ $amazon_cvr }} %</b>
+                                    <b class="label-text">{{ $amazon_cvr ?? 0 }} %</b>
                                 </p>
                             </div>
                         </div>
@@ -3026,7 +3026,7 @@
                         <div class="col-md-2">
                             <div class="shadow p-3 mb-1 bg-white rounded">
                                 <p class="title-label">Spend</p>
-                                <p style="display: flex; align-items: justify-content: center; center; gap: 6px; margin: 0;">
+                                <p style="display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0;">
                                     <span class="spend-color"></span>
                                     <b class="label-text">${{ $ebay_spent }}</b>
                                 </p>
@@ -3035,7 +3035,7 @@
                         <div class="col-md-2">
                             <div class="shadow p-3 mb-1 bg-white rounded">
                                 <p class="title-label">Clicks</p>
-                                <p style="display: flex; align-items: justify-content: center; center; gap: 6px; margin: 0;">
+                                <p style="display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0;">
                                     <span class="clicks-color"></span>
                                     <b class="label-text">{{ $ebay_clicks }}</b>
                                 </p>
@@ -3044,7 +3044,7 @@
                         <div class="col-md-2">
                             <div class="shadow p-3 mb-1 bg-white rounded">
                                 <p class="title-label">Ad-Sales</p>
-                                <p style="display: flex; align-items: justify-content: center; center; gap: 6px; margin: 0;">
+                                <p style="display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0;">
                                     <span class="adsales-color"></span>
                                     <b class="label-text">${{ $ebay_ad_sales }}</b>
                                 </p>
@@ -3053,7 +3053,7 @@
                         <div class="col-md-2">
                             <div class="shadow p-3 mb-1 bg-white rounded">
                                 <p class="title-label">Ad-Sold</p>
-                                <p style="display: flex; align-items: justify-content: center; center; gap: 6px; margin: 0;">
+                                <p style="display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0;">
                                     <span class="adsold-color"></span>
                                     <b class="label-text">${{ $ebay_ad_sold }}</b>
                                 </p>
@@ -3062,9 +3062,9 @@
                         <div class="col-md-2">
                             <div class="shadow p-3 mb-1 bg-white rounded">
                                 <p class="title-label">CVR</p>
-                                <p style="display: flex; align-items: justify-content: center; center; gap: 6px; margin: 0;">
+                                <p style="display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0;">
                                     <span class="cvr-color"></span>
-                                    <b class="label-text">{{ $ebay_cvr }} %</b>
+                                    <b class="label-text">{{ $ebay_cvr ?? 0 }} %</b>
                                 </p>
                             </div>
                         </div>
@@ -3793,8 +3793,8 @@ $(document).ready(function() {
     };
 
     $('#channelChartModal').on('show.bs.modal', function(e) {
-        var btn = $(e.relatedTarget);
-        channelChartCurrentChannel = btn.data('channel') || null;
+        var btn = e.relatedTarget ? $(e.relatedTarget) : $();
+        channelChartCurrentChannel = btn.length ? (btn.data('channel') || null) : null;
         if (channelChartCurrentChannel) {
             $('#channelChartModalTitle').text(channelChartCurrentChannel + ' Graph');
             var ch = window.advMasterChannelWiseTotals && window.advMasterChannelWiseTotals[channelChartCurrentChannel];
@@ -3845,7 +3845,10 @@ $(document).ready(function() {
                     options: chartOptionsCommon
                 });
             },
-            error: function() { alert('Failed to load chart data.'); }
+            error: function(xhr) {
+                var msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Failed to load chart data.';
+                alert(msg);
+            }
         });
     });
 
