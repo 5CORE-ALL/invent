@@ -52,6 +52,7 @@ use App\Models\WalmartCampaignReport;
 use App\Models\EbayTwoDataView;
 use App\Models\Ebay2GeneralReport;
 use App\Models\ADVMastersDailyData;
+use App\Models\MarketplaceDailyMetric;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
@@ -3614,6 +3615,25 @@ class AdsMasterController extends Controller
         $gshoping_l60_clicks = 0;
         $gshoping_l60_ad_sold = 0;
         $gshoping_l60_ad_sales = 0;
+
+        // Fetch MarketplaceDailyMetric for all channels (same source as all-marketplace-master - correct L30 sales, spend)
+        $amazonMetrics = MarketplaceDailyMetric::where('channel', 'Amazon')->latest('date')->first();
+        $ebayMetrics = MarketplaceDailyMetric::where('channel', 'eBay')->latest('date')->first();
+        $ebay2Metrics = MarketplaceDailyMetric::where('channel', 'eBay 2')->latest('date')->first();
+        $ebay3Metrics = MarketplaceDailyMetric::where('channel', 'eBay 3')->latest('date')->first();
+        $walmartMetrics = MarketplaceDailyMetric::where('channel', 'Walmart')->latest('date')->first();
+        $temuMetrics = MarketplaceDailyMetric::where('channel', 'Temu')->latest('date')->first();
+        $sheinMetrics = MarketplaceDailyMetric::where('channel', 'Shein')->latest('date')->first();
+        $tiktokMetrics = MarketplaceDailyMetric::where('channel', 'TikTok')->latest('date')->first();
+        $shopifyB2cMetrics = MarketplaceDailyMetric::where('channel', 'Shopify B2C')->latest('date')->first();
+        $shopifyB2bMetrics = MarketplaceDailyMetric::where('channel', 'Shopify B2B')->latest('date')->first();
+        $aliexpressMetrics = MarketplaceDailyMetric::where('channel', 'AliExpress')->latest('date')->first();
+        $mercariWsMetrics = MarketplaceDailyMetric::where('channel', 'Mercari With Ship')->latest('date')->first();
+        $mercariWosMetrics = MarketplaceDailyMetric::where('channel', 'Mercari Without Ship')->latest('date')->first();
+        $macysMetrics = MarketplaceDailyMetric::where('channel', 'Macys')->latest('date')->first();
+        $tiendamiaMetrics = MarketplaceDailyMetric::where('channel', 'Tiendamia')->latest('date')->first();
+        $bestbuyMetrics = MarketplaceDailyMetric::where('channel', 'Best Buy USA')->latest('date')->first();
+        $dobaMetrics = MarketplaceDailyMetric::where('channel', 'Doba')->latest('date')->first();
         
         foreach($advMasterDatas as $data)
         {
@@ -3623,13 +3643,17 @@ class AdsMasterController extends Controller
                 $amazon_l30_sales = $data->l30_sales ?? 0;
                 $amazon_spent = $data->spent ?? 0;
                 $amazon_clicks = $data->clicks ?? 0;
+                if ($amazonMetrics) {
+                    $amazon_l30_sales = (float) ($amazonMetrics->total_sales ?? $amazonMetrics->l30_sales ?? 0);
+                    $amazon_spent = (float) (($amazonMetrics->kw_spent ?? 0) + ($amazonMetrics->pmt_spent ?? 0) + ($amazonMetrics->hl_spent ?? 0));
+                }
                 $amazon_ad_sales = $data->ad_sales ?? 0;
                 $amazon_ad_sold = $data->ad_sold ?? 0;
                 $amazon_missing_ads = $data->missing_ads ?? 0;
 
             }else if($data->channel == 'AMZ KW'){
                 $amazonkw_l30_sales = $data->l30_sales ?? 0;
-                $amazonkw_spent = $data->spent ?? 0;
+                $amazonkw_spent = $amazonMetrics ? (float) ($amazonMetrics->kw_spent ?? 0) : ($data->spent ?? 0);
                 $amazonkw_clicks = $data->clicks ?? 0;
                 $amazonkw_ad_sales = $data->ad_sales ?? 0;
                 $amazonkw_ad_sold = $data->ad_sold ?? 0;
@@ -3637,7 +3661,7 @@ class AdsMasterController extends Controller
 
             }else if($data->channel == 'AMZ PT'){
                 $amazonpt_l30_sales = $data->l30_sales ?? 0;
-                $amazonpt_spent = $data->spent ?? 0;
+                $amazonpt_spent = $amazonMetrics ? (float) ($amazonMetrics->pmt_spent ?? 0) : ($data->spent ?? 0);
                 $amazonpt_clicks = $data->clicks ?? 0;
                 $amazonpt_ad_sales = $data->ad_sales ?? 0;
                 $amazonpt_ad_sold = $data->ad_sold ?? 0;
@@ -3645,7 +3669,7 @@ class AdsMasterController extends Controller
                 
             }else if($data->channel == 'AMZ HL'){
                 $amazonhl_l30_sales = $data->l30_sales ?? 0;
-                $amazonhl_spent = $data->spent ?? 0;
+                $amazonhl_spent = $amazonMetrics ? (float) ($amazonMetrics->hl_spent ?? 0) : ($data->spent ?? 0);
                 $amazonhl_clicks = $data->clicks ?? 0;
                 $amazonhl_ad_sales = $data->ad_sales ?? 0;
                 $amazonhl_ad_sold = $data->ad_sold ?? 0;
@@ -3655,13 +3679,17 @@ class AdsMasterController extends Controller
                 $ebay_l30_sales = $data->l30_sales ?? 0;
                 $ebay_spent = $data->spent ?? 0;
                 $ebay_clicks = $data->clicks ?? 0;
+                if ($ebayMetrics) {
+                    $ebay_l30_sales = (float) ($ebayMetrics->total_sales ?? $ebayMetrics->l30_sales ?? 0);
+                    $ebay_spent = (float) (($ebayMetrics->kw_spent ?? 0) + ($ebayMetrics->pmt_spent ?? 0) + ($ebayMetrics->hl_spent ?? 0));
+                }
                 $ebay_ad_sales = $data->ad_sales ?? 0;
                 $ebay_ad_sold = $data->ad_sold ?? 0;
                 $ebay_missing_ads = $data->missing_ads ?? 0;
                 
             }else if($data->channel == 'EB KW'){
                 $ebaykw_l30_sales = $data->l30_sales ?? 0;
-                $ebaykw_spent = $data->spent ?? 0;
+                $ebaykw_spent = $ebayMetrics ? (float) ($ebayMetrics->kw_spent ?? 0) : ($data->spent ?? 0);
                 $ebaykw_clicks = $data->clicks ?? 0;
                 $ebaykw_ad_sales = $data->ad_sales ?? 0;
                 $ebaykw_ad_sold = $data->ad_sold ?? 0;
@@ -3669,7 +3697,7 @@ class AdsMasterController extends Controller
                 
             }else if($data->channel == 'EB PMT'){
                 $ebaypmt_l30_sales = $data->l30_sales ?? 0;
-                $ebaypmt_spent = $data->spent ?? 0;
+                $ebaypmt_spent = $ebayMetrics ? (float) ($ebayMetrics->pmt_spent ?? 0) : ($data->spent ?? 0);
                 $ebaypmt_clicks = $data->clicks ?? 0;
                 $ebaypmt_ad_sales = $data->ad_sales ?? 0;
                 $ebaypmt_ad_sold = $data->ad_sold ?? 0;
@@ -3679,13 +3707,17 @@ class AdsMasterController extends Controller
                 $ebay2_l30_sales = $data->l30_sales ?? 0;
                 $ebay2_spent = $data->spent ?? 0;
                 $ebay2_clicks = $data->clicks ?? 0;
+                if ($ebay2Metrics) {
+                    $ebay2_l30_sales = (float) ($ebay2Metrics->total_sales ?? $ebay2Metrics->l30_sales ?? 0);
+                    $ebay2_spent = (float) (($ebay2Metrics->kw_spent ?? 0) + ($ebay2Metrics->pmt_spent ?? 0) + ($ebay2Metrics->hl_spent ?? 0));
+                }
                 $ebay2_ad_sales = $data->ad_sales ?? 0;
                 $ebay2_ad_sold = $data->ad_sold ?? 0;
                 $ebay2_missing_ads = $data->missing_ads ?? 0;
                 
             }else if($data->channel == 'EB PMT2'){
                 $ebay2pmt_l30_sales = $data->l30_sales ?? 0;
-                $ebay2pmt_spent = $data->spent ?? 0;
+                $ebay2pmt_spent = $ebay2Metrics ? (float) (($ebay2Metrics->kw_spent ?? 0) + ($ebay2Metrics->pmt_spent ?? 0)) : ($data->spent ?? 0);
                 $ebay2pmt_clicks = $data->clicks ?? 0;
                 $ebay2pmt_ad_sales = $data->ad_sales ?? 0;
                 $ebay2pmt_ad_sold = $data->ad_sold ?? 0;
@@ -3695,13 +3727,17 @@ class AdsMasterController extends Controller
                 $ebay3_l30_sales = $data->l30_sales ?? 0;
                 $ebay3_spent = $data->spent ?? 0;
                 $ebay3_clicks = $data->clicks ?? 0;
+                if ($ebay3Metrics) {
+                    $ebay3_l30_sales = (float) ($ebay3Metrics->total_sales ?? $ebay3Metrics->l30_sales ?? 0);
+                    $ebay3_spent = (float) (($ebay3Metrics->kw_spent ?? 0) + ($ebay3Metrics->pmt_spent ?? 0) + ($ebay3Metrics->hl_spent ?? 0));
+                }
                 $ebay3_ad_sales = $data->ad_sales ?? 0;
                 $ebay3_ad_sold = $data->ad_sold ?? 0;
                 $ebay3_missing_ads = $data->missing_ads ?? 0;
                 
             }else if($data->channel == 'EB KW3'){
                 $ebay3kw_l30_sales = $data->l30_sales ?? 0;
-                $ebay3kw_spent = $data->spent ?? 0;
+                $ebay3kw_spent = $ebay3Metrics ? (float) ($ebay3Metrics->kw_spent ?? 0) : ($data->spent ?? 0);
                 $ebay3kw_clicks = $data->clicks ?? 0;
                 $ebay3kw_ad_sales = $data->ad_sales ?? 0;
                 $ebay3kw_ad_sold = $data->ad_sold ?? 0;
@@ -3709,7 +3745,7 @@ class AdsMasterController extends Controller
                 
             }else if($data->channel == 'EB PMT3'){
                 $ebay3pmt_l30_sales = $data->l30_sales ?? 0;
-                $ebay3pmt_spent = $data->spent ?? 0;
+                $ebay3pmt_spent = $ebay3Metrics ? (float) ($ebay3Metrics->pmt_spent ?? 0) : ($data->spent ?? 0);
                 $ebay3pmt_clicks = $data->clicks ?? 0;
                 $ebay3pmt_ad_sales = $data->ad_sales ?? 0;
                 $ebay3pmt_ad_sold = $data->ad_sold ?? 0;
@@ -3719,6 +3755,10 @@ class AdsMasterController extends Controller
                 $walmart_l30_sales = $data->l30_sales ?? 0;
                 $walmart_spent = $data->spent ?? 0;
                 $walmart_clicks = $data->clicks ?? 0;
+                if ($walmartMetrics) {
+                    $walmart_l30_sales = (float) ($walmartMetrics->total_sales ?? $walmartMetrics->l30_sales ?? 0);
+                    $walmart_spent = (float) (($walmartMetrics->kw_spent ?? 0) + ($walmartMetrics->pmt_spent ?? 0) + ($walmartMetrics->hl_spent ?? 0));
+                }
                 $walmart_ad_sales = $data->ad_sales ?? 0;
                 $walmart_ad_sold = $data->ad_sold ?? 0;
                 $walmart_missing_ads = $data->missing_ads ?? 0;
@@ -4116,16 +4156,40 @@ class AdsMasterController extends Controller
             ->orderBy('channel', 'asc')
             ->get(['channel', 'type', 'sheet_link']);
         
-        // For each additional channel, try to get data from ADVMastersData
+        // Channel name => MarketplaceDailyMetric channel (for override - same source as all-marketplace-master)
+        $channelToMarketplaceMap = [
+            'TikTok Shop' => $tiktokMetrics ?? null,
+            'TikTok' => $tiktokMetrics ?? null,
+            'Temu' => $temuMetrics ?? null,
+            'Shein' => $sheinMetrics ?? null,
+            'Shopify B2C' => $shopifyB2cMetrics ?? null,
+            'Shopify B2B' => $shopifyB2bMetrics ?? null,
+            'AliExpress' => $aliexpressMetrics ?? null,
+            'Mercari With Ship' => $mercariWsMetrics ?? null,
+            'Mercari Without Ship' => $mercariWosMetrics ?? null,
+            'Macys' => $macysMetrics ?? null,
+            'Tiendamia' => $tiendamiaMetrics ?? null,
+            'Best Buy USA' => $bestbuyMetrics ?? null,
+            'Doba' => $dobaMetrics ?? null,
+        ];
+
+        // For each additional channel, try to get data from ADVMastersData, override with MarketplaceDailyMetric when available
         $additionalChannelsData = [];
         foreach ($additionalChannels as $ch) {
             $channelData = ADVMastersData::where('channel', $ch->channel)->first();
+            $l30Sales = $channelData ? ($channelData->l30_sales ?? 0) : 0;
+            $spent = $channelData ? ($channelData->spent ?? 0) : 0;
+            $metrics = $channelToMarketplaceMap[$ch->channel] ?? null;
+            if ($metrics) {
+                $l30Sales = (float) ($metrics->total_sales ?? $metrics->l30_sales ?? 0);
+                $spent = (float) (($metrics->kw_spent ?? 0) + ($metrics->pmt_spent ?? 0) + ($metrics->hl_spent ?? 0));
+            }
             $chData = [
                 'channel' => $ch->channel,
                 'type' => $ch->type ?? '',
                 'sheet_link' => $ch->sheet_link ?? '',
-                'l30_sales' => $channelData ? ($channelData->l30_sales ?? 0) : 0,
-                'spent' => $channelData ? ($channelData->spent ?? 0) : 0,
+                'l30_sales' => $l30Sales,
+                'spent' => $spent,
                 'l60_spent' => $channelData ? ($channelData->l60_spent ?? 0) : 0,
                 'clicks' => $channelData ? ($channelData->clicks ?? 0) : 0,
                 'l60_clicks' => $channelData ? ($channelData->l60_clicks ?? 0) : 0,
@@ -4251,6 +4315,74 @@ class AdsMasterController extends Controller
             'ebayCvrArray' => $ebayCvrArray
         ]);
 
+    }
+
+    public function getChannelAdvChartData(Request $request)
+    {
+        $channel = $request->channel; // EBAY 2, EBAY 3, WALMART, G SHOPPING
+        $fromDate = $request->fromDate;
+        $toDate = $request->toDate;
+
+        $validChannels = ['EBAY 2', 'EBAY 3', 'WALMART', 'G SHOPPING'];
+        if (!in_array($channel, $validChannels)) {
+            return response()->json(['error' => 'Invalid channel'], 400);
+        }
+
+        $dateArray = ADVMastersDailyData::where('channel', $channel)
+            ->where('date', '>=', $fromDate)
+            ->where('date', '<=', $toDate)
+            ->orderBy('date', 'asc')
+            ->pluck('date')
+            ->toArray();
+
+        $spentArray = ADVMastersDailyData::where('channel', $channel)
+            ->where('date', '>=', $fromDate)
+            ->where('date', '<=', $toDate)
+            ->orderBy('date', 'asc')
+            ->pluck('spent')
+            ->map(fn($v) => $v ?? 0)
+            ->toArray();
+
+        $clicksArray = ADVMastersDailyData::where('channel', $channel)
+            ->where('date', '>=', $fromDate)
+            ->where('date', '<=', $toDate)
+            ->orderBy('date', 'asc')
+            ->pluck('clicks')
+            ->map(fn($v) => $v ?? 0)
+            ->toArray();
+
+        $adSalesArray = ADVMastersDailyData::where('channel', $channel)
+            ->where('date', '>=', $fromDate)
+            ->where('date', '<=', $toDate)
+            ->orderBy('date', 'asc')
+            ->pluck('ad_sales')
+            ->map(fn($v) => $v ?? 0)
+            ->toArray();
+
+        $adSoldArray = ADVMastersDailyData::where('channel', $channel)
+            ->where('date', '>=', $fromDate)
+            ->where('date', '<=', $toDate)
+            ->orderBy('date', 'asc')
+            ->pluck('ad_sold')
+            ->map(fn($v) => $v ?? 0)
+            ->toArray();
+
+        $cvrArray = ADVMastersDailyData::where('channel', $channel)
+            ->where('date', '>=', $fromDate)
+            ->where('date', '<=', $toDate)
+            ->orderBy('date', 'asc')
+            ->pluck('cvr')
+            ->map(fn($v) => $v ?? 0)
+            ->toArray();
+
+        return response()->json([
+            'dateArray' => $dateArray,
+            'spentArray' => $spentArray,
+            'clicksArray' => $clicksArray,
+            'adSalesArray' => $adSalesArray,
+            'adSoldArray' => $adSoldArray,
+            'cvrArray' => $cvrArray,
+        ]);
     }
 
     public function getChannelAdvMasterAmazonCronData(Request $request)

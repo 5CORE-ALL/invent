@@ -39,6 +39,83 @@ class ADVMastersData extends Model
         'l30_sales'
     ];
 
+    /**
+     * Match campaign by SKU first, then fallback to PARENT_SKU (only for parent rows).
+     * PARENT_SKU fallback is ONLY for parent rows to avoid double-counting when parent
+     * campaign would match multiple children.
+     */
+    public static function matchKwCampaign($collection, string $sku, ?string $parent, bool $allowParentFallback = false): ?object
+    {
+        $cleanSku = strtoupper(trim(rtrim($sku, '.')));
+        $match = $collection->first(function ($item) use ($cleanSku) {
+            $cn = strtoupper(trim(rtrim($item->campaignName ?? '', '.')));
+            return $cn === $cleanSku;
+        });
+        if ($match) {
+            return $match;
+        }
+        if ($allowParentFallback && $parent) {
+            $cleanParent = strtoupper(trim(rtrim($parent, '.')));
+            return $collection->first(function ($item) use ($cleanParent) {
+                $cn = strtoupper(trim(rtrim($item->campaignName ?? '', '.')));
+                return $cn === $cleanParent;
+            }) ?: null;
+        }
+        return null;
+    }
+
+    /**
+     * Match PT campaign: try SKU first, then PARENT_SKU (only when allowParentFallback).
+     * @param bool $requireEnabled For missing-ads we check existence, for metrics we require ENABLED
+     * @param bool $allowParentFallback Only true for parent rows to avoid double-counting
+     */
+    public static function matchPtCampaign($collection, string $sku, ?string $parent, bool $requireEnabled = true, bool $allowParentFallback = false): ?object
+    {
+        $cleanSku = strtoupper(trim($sku));
+        $match = $collection->first(function ($item) use ($cleanSku, $requireEnabled) {
+            $cn = strtoupper(trim($item->campaignName ?? ''));
+            $ok = (str_ends_with($cn, $cleanSku . ' PT') || str_ends_with($cn, $cleanSku . ' PT.'));
+            return $ok && (!$requireEnabled || strtoupper($item->campaignStatus ?? '') === 'ENABLED');
+        });
+        if ($match) {
+            return $match;
+        }
+        if ($allowParentFallback && $parent) {
+            $cleanParent = strtoupper(trim($parent));
+            return $collection->first(function ($item) use ($cleanParent, $requireEnabled) {
+                $cn = strtoupper(trim($item->campaignName ?? ''));
+                $ok = (str_ends_with($cn, $cleanParent . ' PT') || str_ends_with($cn, $cleanParent . ' PT.'));
+                return $ok && (!$requireEnabled || strtoupper($item->campaignStatus ?? '') === 'ENABLED');
+            }) ?: null;
+        }
+        return null;
+    }
+
+    /**
+     * Match HL campaign: try SKU first, then PARENT_SKU (only when allowParentFallback).
+     */
+    public static function matchHlCampaign($collection, string $sku, ?string $parent, bool $allowParentFallback = false): ?object
+    {
+        $cleanSku = strtoupper(trim($sku));
+        $candidates = [$cleanSku, $cleanSku . ' HEAD'];
+        $match = $collection->first(function ($item) use ($candidates) {
+            $cn = strtoupper(trim($item->campaignName ?? ''));
+            return in_array($cn, $candidates) && strtoupper($item->campaignStatus ?? '') === 'ENABLED';
+        });
+        if ($match) {
+            return $match;
+        }
+        if ($allowParentFallback && $parent) {
+            $cleanParent = strtoupper(trim($parent));
+            $parentCandidates = [$cleanParent, $cleanParent . ' HEAD'];
+            return $collection->first(function ($item) use ($parentCandidates) {
+                $cn = strtoupper(trim($item->campaignName ?? ''));
+                return in_array($cn, $parentCandidates) && strtoupper($item->campaignStatus ?? '') === 'ENABLED';
+            }) ?: null;
+        }
+        return null;
+    }
+
 
     protected function getAmazonAdRunningSaveAdvMasterDataProceed($request)
     {
@@ -967,7 +1044,18 @@ class ADVMastersData extends Model
                 return strtoupper($item->sku);
             });
 
-            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            // Use normalized (uppercase) key for case-insensitive SKU lookup - prevents missed inventory
+            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(function ($item) {
+                return strtoupper(trim($item->sku));
+            });
+
+            // Inventory by parent: SUM(child inv) grouped by PARENT_SKU - for parent-level display
+            $inventoryByParent = [];
+            foreach ($productMasters->filter(fn($pm) => $pm->parent && !str_starts_with(strtoupper($pm->sku), 'PARENT')) as $child) {
+                $pKey = strtoupper(trim($child->parent));
+                $inv = (float) (($shopifyData[strtoupper(trim($child->sku))] ?? null)?->inv ?? 0);
+                $inventoryByParent[$pKey] = ($inventoryByParent[$pKey] ?? 0) + $inv;
+            }
 
             // Get KW campaigns with MAX(spend) per campaign (same logic as amazonKwAdsView)
             // Directly sum all KW campaigns without SKU filtering (exactly like amazonKwAdsView)
@@ -1096,30 +1184,28 @@ class ADVMastersData extends Model
             $parentHlSpendData = [];
             foreach ($productMasters as $pm) {
                 $sku = strtoupper($pm->sku);
-                $parent = trim($pm->parent);
+                $parent = trim($pm->parent ?? '');
+                if (str_starts_with($sku, 'PARENT') && !$parent) {
+                    $parent = $pm->sku; // Use full sku when parent column is empty for PARENT rows
+                }
 
-                $matchedCampaignHlL30 = $amazonHlL30->first(function ($item) use ($sku) {
-                    $cleanName = strtoupper(trim($item->campaignName));
-                    return in_array($cleanName, [$sku, $sku . ' HEAD']) && strtoupper($item->campaignStatus) === 'ENABLED';
-                });
-                $matchedCampaignHlL7 = $amazonHlL7->first(function ($item) use ($sku) {
-                    $cleanName = strtoupper(trim($item->campaignName));
-                    return in_array($cleanName, [$sku, $sku . ' HEAD']) && strtoupper($item->campaignStatus) === 'ENABLED';
-                });
+                $isParentRow = str_starts_with($sku, 'PARENT');
+                $matchedCampaignHlL30 = static::matchHlCampaign($amazonHlL30, $pm->sku, $parent ?: null, $isParentRow);
+                $matchedCampaignHlL7 = static::matchHlCampaign($amazonHlL7, $pm->sku, $parent ?: null, $isParentRow);
 
                 if (str_starts_with($sku, 'PARENT')) {
                     $childCount = $parentSkuCounts[$parent] ?? 0;
                     $parentHlSpendData[$parent] = [
-                        'total_L30' => $matchedCampaignHlL30->cost ?? 0,
-                        'total_L7'  => $matchedCampaignHlL7->cost ?? 0,
-                        'total_L30_sales' => $matchedCampaignHlL30->sales ?? 0,
-                        'total_L7_sales'  => $matchedCampaignHlL7->sales ?? 0,
-                        'total_L30_sold'  => $matchedCampaignHlL30->unitsSold ?? 0,
-                        'total_L7_sold'   => $matchedCampaignHlL7->unitsSold ?? 0,
-                        'total_L30_impr'  => $matchedCampaignHlL30->impressions ?? 0,
-                        'total_L7_impr'   => $matchedCampaignHlL7->impressions ?? 0,
-                        'total_L30_clicks'=> $matchedCampaignHlL30->clicks ?? 0,
-                        'total_L7_clicks' => $matchedCampaignHlL7->clicks ?? 0,
+                        'total_L30' => $matchedCampaignHlL30?->cost ?? 0,
+                        'total_L7'  => $matchedCampaignHlL7?->cost ?? 0,
+                        'total_L30_sales' => $matchedCampaignHlL30?->sales ?? 0,
+                        'total_L7_sales'  => $matchedCampaignHlL7?->sales ?? 0,
+                        'total_L30_sold'  => $matchedCampaignHlL30?->unitsSold ?? 0,
+                        'total_L7_sold'   => $matchedCampaignHlL7?->unitsSold ?? 0,
+                        'total_L30_impr'  => $matchedCampaignHlL30?->impressions ?? 0,
+                        'total_L7_impr'   => $matchedCampaignHlL7?->impressions ?? 0,
+                        'total_L30_clicks'=> $matchedCampaignHlL30?->clicks ?? 0,
+                        'total_L7_clicks' => $matchedCampaignHlL7?->clicks ?? 0,
                         'childCount'=> $childCount,
                     ];
                 }
@@ -1144,51 +1230,48 @@ class ADVMastersData extends Model
 
             foreach ($productMasters as $pm) {
                 $sku = strtoupper($pm->sku);
-                $parent = trim($pm->parent);
+                $parent = trim($pm->parent ?? '');
+                if (str_starts_with($sku, 'PARENT') && !$parent) {
+                    $parent = $pm->sku;
+                }
 
                 $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
-                $shopify = $shopifyData[$pm->sku] ?? null;
+                $shopify = $shopifyData[$sku] ?? null; // Normalized key lookup
 
-                $matchedCampaignKwL30 = $amazonKwL30->first(function ($item) use ($sku) {
-                    $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
-                    $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                    return $campaignName === $cleanSku;
-                });
-
-                $matchedCampaignPtL30 = $amazonPtL30->first(function ($item) use ($sku) {
-                    $cleanName = strtoupper(trim($item->campaignName));
-                    return (str_ends_with($cleanName, $sku . ' PT') || str_ends_with($cleanName, $sku . ' PT.'))
-                        && strtoupper($item->campaignStatus) === 'ENABLED';
-                });
-
-                $matchedCampaignHlL30 = $amazonHlL30->first(function ($item) use ($sku) {
-                    $cleanName = strtoupper(trim($item->campaignName));
-                    return in_array($cleanName, [$sku, $sku . ' HEAD']) && strtoupper($item->campaignStatus) === 'ENABLED';
-                });
+                // Campaign matching: SKU first, then PARENT_SKU fallback (only for parent rows)
+                $isParentRow = str_starts_with($sku, 'PARENT');
+                $matchedCampaignKwL30 = static::matchKwCampaign($amazonKwL30, $pm->sku, $parent ?: null, $isParentRow);
+                $matchedCampaignPtL30 = static::matchPtCampaign($amazonPtL30, $pm->sku, $parent ?: null, true, $isParentRow);
+                $matchedCampaignHlL30 = static::matchHlCampaign($amazonHlL30, $pm->sku, $parent ?: null, $isParentRow);
 
                 $row = [];
                 $row['parent'] = $parent;
                 $row['sku'] = $pm->sku;
-                $row['INV'] = $shopify->inv ?? 0;
-                $row['L30'] = $shopify->quantity ?? 0;
+                // Inventory: parent rows = SUM(children), child rows = own inv
+                if (str_starts_with($sku, 'PARENT')) {
+                    $row['INV'] = (float) ($inventoryByParent[strtoupper($parent)] ?? 0);
+                } else {
+                    $row['INV'] = (float) ($shopify?->inv ?? 0);
+                }
+                $row['L30'] = $shopify?->quantity ?? 0;
                 $row['fba'] = $pm->fba ?? null;
                 $row['A_L30'] = $amazonSheet->units_ordered_l30 ?? 0;
 
-                $row['kw_spend_L30']  = $matchedCampaignKwL30->spend ?? 0;
-                $row['kw_sold_L30']  = $matchedCampaignKwL30->unitsSoldSameSku30d ?? 0;
-                $row['kw_sales_L30']  = $matchedCampaignKwL30->sales30d ?? 0;
-                $row['kw_clicks_L30'] = $matchedCampaignKwL30->clicks ?? 0;
-                $row['pt_clicks_L30'] = $matchedCampaignPtL30->clicks ?? 0;
-                $row['pt_spend_L30']  = $matchedCampaignPtL30->spend ?? 0;
-                $row['hl_clicks_L30'] = $matchedCampaignHlL30->clicks ?? 0;
-                $row['pt_sales_L30']  = $matchedCampaignPtL30->sales30d ?? 0;
-                $row['hl_sales_L30']  = $matchedCampaignHlL30->sales ?? 0;
-                $row['hl_sold_L30']  = $matchedCampaignHlL30->unitsSold ?? 0;
-                $row['pt_sold_L30']  = $matchedCampaignPtL30->unitsSoldSameSku30d ?? 0;
+                $row['kw_spend_L30']  = $matchedCampaignKwL30?->spend ?? 0;
+                $row['kw_sold_L30']  = $matchedCampaignKwL30?->unitsSoldSameSku30d ?? 0;
+                $row['kw_sales_L30']  = $matchedCampaignKwL30?->sales30d ?? 0;
+                $row['kw_clicks_L30'] = $matchedCampaignKwL30?->clicks ?? 0;
+                $row['pt_clicks_L30'] = $matchedCampaignPtL30?->clicks ?? 0;
+                $row['pt_spend_L30']  = $matchedCampaignPtL30?->spend ?? 0;
+                $row['hl_clicks_L30'] = $matchedCampaignHlL30?->clicks ?? 0;
+                $row['pt_sales_L30']  = $matchedCampaignPtL30?->sales30d ?? 0;
+                $row['hl_sales_L30']  = $matchedCampaignHlL30?->sales ?? 0;
+                $row['hl_sold_L30']  = $matchedCampaignHlL30?->unitsSold ?? 0;
+                $row['pt_sold_L30']  = $matchedCampaignPtL30?->unitsSoldSameSku30d ?? 0;
 
                 if (str_starts_with($sku, 'PARENT')) {
 
-                    $row['hl_spend_L30'] = $matchedCampaignHlL30->cost ?? 0;
+                    $row['hl_spend_L30'] = $matchedCampaignHlL30?->cost ?? 0;
                     $row['hl_clicks_L30'] = $matchedCampaignHlL30->clicks ?? 0;
                     $row['hl_sales_L30']  = $matchedCampaignHlL30->sales ?? 0;
                     $row['hl_sold_L30']  = $matchedCampaignHlL30->unitsSold ?? 0;
@@ -1383,7 +1466,10 @@ class ADVMastersData extends Model
                 return strtoupper($item->sku);
             });
 
-            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+            // Normalized key for case-insensitive lookup
+            $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(function ($item) {
+                return strtoupper(trim($item->sku));
+            });
             $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
 
             $amazonKwCampaigns = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
@@ -1415,34 +1501,25 @@ class ADVMastersData extends Model
             $totalMissingAds2 = 0;
             foreach ($productMasters as $pm) {
                 $sku = strtoupper($pm->sku);
-                $parent = $pm->parent;
+                $parent = trim($pm->parent ?? '');
 
                 $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
-                $shopify = $shopifyData[$pm->sku] ?? null;
+                $shopify = $shopifyData[$sku] ?? null; // Normalized key
 
-                $matchedKwCampaign = $amazonKwCampaigns->first(function ($item) use ($sku) {
-                    $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
-                    $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                    return $campaignName === $cleanSku;
-                });
-
-                $matchedPtCampaign = $amazonPtCampaigns->first(function ($item) use ($sku) {
-                    $cleanName = strtoupper(trim($item->campaignName));
-
-                    return (
-                        (str_ends_with($cleanName, $sku . ' PT') || str_ends_with($cleanName, $sku . ' PT.'))
-                    );
-                });
+                // Campaign matching: SKU first, PARENT_SKU fallback only for parent rows
+                $isParentRow = str_starts_with($sku, 'PARENT');
+                $matchedKwCampaign = static::matchKwCampaign($amazonKwCampaigns, $pm->sku, $parent ?: null, $isParentRow);
+                $matchedPtCampaign = static::matchPtCampaign($amazonPtCampaigns, $pm->sku, $parent ?: null, false, $isParentRow);
 
                 $row = [
                     'parent' => $parent,
                     'sku' => $pm->sku,
-                    'INV' => $shopify->inv ?? 0,
-                    'L30' => $shopify->quantity ?? 0,
+                    'INV' => $shopify?->inv ?? 0,
+                    'L30' => $shopify?->quantity ?? 0,
                     'A_L30' => $amazonSheet->units_ordered_l30 ?? 0,
-                    'kw_campaign_name' => $matchedKwCampaign->campaignName ?? '',
-                    'pt_campaign_name' => $matchedPtCampaign->campaignName ?? '',
-                    'campaignStatus' => $matchedKwCampaign->campaignStatus ?? '',
+                    'kw_campaign_name' => $matchedKwCampaign?->campaignName ?? '',
+                    'pt_campaign_name' => $matchedPtCampaign?->campaignName ?? '',
+                    'campaignStatus' => $matchedKwCampaign?->campaignStatus ?? '',
                     'NRL' => '',
                     'NRA' => '',
                     'FBA' => '',

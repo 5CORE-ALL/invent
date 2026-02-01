@@ -456,6 +456,18 @@
                                                 <span style="font-size: 0.7rem; margin-right: 4px;">RA:</span>
                                                 <span class="fw-bold" id="ra-count" style="font-size: 1.1rem; color: black;">0</span>
                                             </span>
+                                            <span class="badge-count-item" style="background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">Total Spend L30:</span>
+                                                <span class="fw-bold" id="total-spend-l30" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item" style="background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">Total Sales L30:</span>
+                                                <span class="fw-bold" id="total-sales-l30" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
+                                            <span class="badge-count-item" style="background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); white-space: nowrap; font-size: 0.8125rem;">
+                                                <span style="font-size: 0.7rem; margin-right: 4px;">Total Ad Sold L30:</span>
+                                                <span class="fw-bold" id="total-ad-sold-l30" style="font-size: 1.1rem; color: black;">0</span>
+                                            </span>
                                             <span class="badge-count-item utilization-card" data-type="7ub" style="background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;">
                                                 <span style="font-size: 0.7rem; margin-right: 4px;">7UB:</span>
                                                 <span class="fw-bold" id="seven-ub-count" style="font-size: 1.1rem; color: black;">0</span>
@@ -657,6 +669,7 @@
             let totalACOSValue = 0;
             let totalL30Spend = 0;
             let totalL30Sales = 0;
+            let totalL30Purchases = 0;
             let totalSkuCountFromBackend = 0; // Store total parent SKU count from backend
 
             const getDilColor = (value) => {
@@ -2709,7 +2722,15 @@
                     totalACOSValue = parseFloat(response.total_acos) || 0;
                     totalL30Spend = parseFloat(response.total_l30_spend) || 0;
                     totalL30Sales = parseFloat(response.total_l30_sales) || 0;
+                    totalL30Purchases = parseInt(response.total_l30_purchases) || 0;
                     totalSkuCountFromBackend = parseFloat(response.total_sku_count) || 0;
+                    // Update Total Spend L30, Total Sales L30, Total Ad Sold L30 (from backend, L30 range)
+                    const totalSpendL30El = document.getElementById('total-spend-l30');
+                    if (totalSpendL30El) totalSpendL30El.textContent = typeof totalL30Spend !== 'undefined' ? Number(totalL30Spend).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '0';
+                    const totalSalesL30El = document.getElementById('total-sales-l30');
+                    if (totalSalesL30El) totalSalesL30El.textContent = typeof totalL30Sales !== 'undefined' ? Number(totalL30Sales).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '0';
+                    const totalAdSoldL30El = document.getElementById('total-ad-sold-l30');
+                    if (totalAdSoldL30El) totalAdSoldL30El.textContent = typeof totalL30Purchases !== 'undefined' ? Number(totalL30Purchases).toLocaleString() : '0';
                     // Update total count immediately when backend data is received
                     const totalSkuCountEl = document.getElementById('total-sku-count');
                     if (totalSkuCountEl && totalSkuCountFromBackend > 0) {
