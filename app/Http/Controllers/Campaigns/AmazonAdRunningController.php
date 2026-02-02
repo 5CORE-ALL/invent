@@ -37,8 +37,17 @@ class AmazonAdRunningController extends Controller
             return strtoupper($item->sku);
         });
 
-        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
+        // Normalized key for case-insensitive SKU lookup
+        $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy(fn($i) => strtoupper(trim($i->sku)));
         $nrValues = AmazonDataView::whereIn('sku', $skus)->pluck('value', 'sku');
+
+        // Inventory by parent: SUM(child inv) for parent-level display
+        $inventoryByParent = [];
+        foreach ($productMasters->filter(fn($pm) => $pm->parent && !str_starts_with(strtoupper($pm->sku), 'PARENT')) as $child) {
+            $pKey = strtoupper(trim($child->parent));
+            $inv = (float) (($shopifyData[strtoupper(trim($child->sku))] ?? null)?->inv ?? 0);
+            $inventoryByParent[$pKey] = ($inventoryByParent[$pKey] ?? 0) + $inv;
+        }
 
         $amazonKwL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L30')
@@ -97,30 +106,28 @@ class AmazonAdRunningController extends Controller
         
         foreach ($productMasters as $pm) {
             $sku = strtoupper($pm->sku);
-            $parent = trim($pm->parent);
+            $parent = trim($pm->parent ?? '');
+            if (str_starts_with($sku, 'PARENT') && !$parent) {
+                $parent = $pm->sku;
+            }
+            $isParentRow = str_starts_with($sku, 'PARENT');
 
-            $matchedCampaignHlL30 = $amazonHlL30->first(function ($item) use ($sku) {
-                $cleanName = strtoupper(trim($item->campaignName));
-                return in_array($cleanName, [$sku, $sku . ' HEAD']) && strtoupper($item->campaignStatus) === 'ENABLED';
-            });
-            $matchedCampaignHlL7 = $amazonHlL7->first(function ($item) use ($sku) {
-                $cleanName = strtoupper(trim($item->campaignName));
-                return in_array($cleanName, [$sku, $sku . ' HEAD']) && strtoupper($item->campaignStatus) === 'ENABLED';
-            });
+            $matchedCampaignHlL30 = ADVMastersData::matchHlCampaign($amazonHlL30, $pm->sku, $parent ?: null, $isParentRow);
+            $matchedCampaignHlL7 = ADVMastersData::matchHlCampaign($amazonHlL7, $pm->sku, $parent ?: null, $isParentRow);
 
             if (str_starts_with($sku, 'PARENT')) {
                 $childCount = $parentSkuCounts[$parent] ?? 0;
                 $parentHlSpendData[$parent] = [
-                    'total_L30' => $matchedCampaignHlL30->cost ?? 0,
-                    'total_L7'  => $matchedCampaignHlL7->cost ?? 0,
-                    'total_L30_sales' => $matchedCampaignHlL30->sales ?? 0,
-                    'total_L7_sales'  => $matchedCampaignHlL7->sales ?? 0,
-                    'total_L30_sold'  => $matchedCampaignHlL30->unitsSold ?? 0,
-                    'total_L7_sold'   => $matchedCampaignHlL7->unitsSold ?? 0,
-                    'total_L30_impr'  => $matchedCampaignHlL30->impressions ?? 0,
-                    'total_L7_impr'   => $matchedCampaignHlL7->impressions ?? 0,
-                    'total_L30_clicks'=> $matchedCampaignHlL30->clicks ?? 0,
-                    'total_L7_clicks' => $matchedCampaignHlL7->clicks ?? 0,
+                    'total_L30' => $matchedCampaignHlL30?->cost ?? 0,
+                    'total_L7'  => $matchedCampaignHlL7?->cost ?? 0,
+                    'total_L30_sales' => $matchedCampaignHlL30?->sales ?? 0,
+                    'total_L7_sales'  => $matchedCampaignHlL7?->sales ?? 0,
+                    'total_L30_sold'  => $matchedCampaignHlL30?->unitsSold ?? 0,
+                    'total_L7_sold'   => $matchedCampaignHlL7?->unitsSold ?? 0,
+                    'total_L30_impr'  => $matchedCampaignHlL30?->impressions ?? 0,
+                    'total_L7_impr'   => $matchedCampaignHlL7?->impressions ?? 0,
+                    'total_L30_clicks'=> $matchedCampaignHlL30?->clicks ?? 0,
+                    'total_L7_clicks' => $matchedCampaignHlL7?->clicks ?? 0,
                     'childCount'=> $childCount,
                 ];
             }
@@ -128,77 +135,70 @@ class AmazonAdRunningController extends Controller
 
         foreach ($productMasters as $pm) {
             $sku = strtoupper($pm->sku);
-            $parent = trim($pm->parent);
+            $parent = trim($pm->parent ?? '');
+            if (str_starts_with($sku, 'PARENT') && !$parent) {
+                $parent = $pm->sku;
+            }
+            $isParentRow = str_starts_with($sku, 'PARENT');
 
             $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
-            $shopify = $shopifyData[$pm->sku] ?? null;
+            $shopify = $shopifyData[$sku] ?? null; // Normalized key
 
-            $matchedCampaignKwL30 = $amazonKwL30->first(function ($item) use ($sku) {
-                $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
-                $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                return $campaignName === $cleanSku;
-            });
-
-            $matchedCampaignKwL7 = $amazonKwL7->first(function ($item) use ($sku) {
-                $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
-                $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-                return $campaignName === $cleanSku;
-            });
-
-            $matchedCampaignPtL30 = $amazonPtL30->first(function ($item) use ($sku) {
-                $cleanName = strtoupper(trim($item->campaignName));
-                return (str_ends_with($cleanName, $sku . ' PT') || str_ends_with($cleanName, $sku . ' PT.'))
-                    && strtoupper($item->campaignStatus) === 'ENABLED';
-            });
-            $matchedCampaignPtL7 = $amazonPtL7->first(function ($item) use ($sku) {
-                $cleanName = strtoupper(trim($item->campaignName));
-                return (str_ends_with($cleanName, $sku . ' PT') || str_ends_with($cleanName, $sku . ' PT.'))
-                    && strtoupper($item->campaignStatus) === 'ENABLED';
-            });
+            $matchedCampaignKwL30 = ADVMastersData::matchKwCampaign($amazonKwL30, $pm->sku, $parent ?: null, $isParentRow);
+            $matchedCampaignKwL7 = ADVMastersData::matchKwCampaign($amazonKwL7, $pm->sku, $parent ?: null, $isParentRow);
+            $matchedCampaignPtL30 = ADVMastersData::matchPtCampaign($amazonPtL30, $pm->sku, $parent ?: null, true, $isParentRow);
+            $matchedCampaignPtL7 = ADVMastersData::matchPtCampaign($amazonPtL7, $pm->sku, $parent ?: null, true, $isParentRow);
 
             $row = [];
             $row['parent'] = $parent;
             $row['sku'] = $pm->sku;
-            $row['INV'] = $shopify->inv ?? 0;
-            $row['L30'] = $shopify->quantity ?? 0;
+            // Inventory: parent = SUM(children), child = own inv
+            if (str_starts_with($sku, 'PARENT')) {
+                $row['INV'] = (float) ($inventoryByParent[strtoupper($parent)] ?? 0);
+            } else {
+                $row['INV'] = (float) ($shopify?->inv ?? 0);
+            }
+            $row['L30'] = $shopify?->quantity ?? 0;
             $row['fba'] = $pm->fba ?? null;
             $row['A_L30'] = $amazonSheet->units_ordered_l30 ?? 0;
 
             // --- KW ---
-            $row['kw_impr_L30'] = $matchedCampaignKwL30->impressions ?? 0;
-            $row['kw_impr_L7']  = $matchedCampaignKwL7->impressions ?? 0;
-            $row['kw_clicks_L30'] = $matchedCampaignKwL30->clicks ?? 0;
-            $row['kw_clicks_L7']  = $matchedCampaignKwL7->clicks ?? 0;
-            $row['kw_spend_L30']  = $matchedCampaignKwL30->spend ?? 0;
-            $row['kw_spend_L7']   = $matchedCampaignKwL7->spend ?? 0;
-            $row['kw_sales_L30']  = $matchedCampaignKwL30->sales30d ?? 0;
-            $row['kw_sales_L7']   = $matchedCampaignKwL7->sales7d ?? 0;
-            $row['kw_sold_L30']  = $matchedCampaignKwL30->unitsSoldSameSku30d ?? 0;
-            $row['kw_sold_L7']   = $matchedCampaignKwL7->unitsSoldSameSku7d ?? 0;
+            $row['kw_impr_L30'] = $matchedCampaignKwL30?->impressions ?? 0;
+            $row['kw_impr_L7']  = $matchedCampaignKwL7?->impressions ?? 0;
+            $row['kw_clicks_L30'] = $matchedCampaignKwL30?->clicks ?? 0;
+            $row['kw_clicks_L7']  = $matchedCampaignKwL7?->clicks ?? 0;
+            $row['kw_spend_L30']  = $matchedCampaignKwL30?->spend ?? 0;
+            $row['kw_spend_L7']   = $matchedCampaignKwL7?->spend ?? 0;
+            $row['kw_sales_L30']  = $matchedCampaignKwL30?->sales30d ?? 0;
+            $row['kw_sales_L7']   = $matchedCampaignKwL7?->sales7d ?? 0;
+            $row['kw_sold_L30']  = $matchedCampaignKwL30?->unitsSoldSameSku30d ?? 0;
+            $row['kw_sold_L7']   = $matchedCampaignKwL7?->unitsSoldSameSku7d ?? 0;
 
             // --- PT ---
-            $row['pt_impr_L30'] = $matchedCampaignPtL30->impressions ?? 0;
-            $row['pt_impr_L7']  = $matchedCampaignPtL7->impressions ?? 0;
-            $row['pt_clicks_L30'] = $matchedCampaignPtL30->clicks ?? 0;
-            $row['pt_clicks_L7']  = $matchedCampaignPtL7->clicks ?? 0;
-            $row['pt_spend_L30']  = $matchedCampaignPtL30->spend ?? 0;
-            $row['pt_spend_L7']   = $matchedCampaignPtL7->spend ?? 0;
-            $row['pt_sales_L30']  = $matchedCampaignPtL30->sales30d ?? 0;
-            $row['pt_sales_L7']   = $matchedCampaignPtL7->sales7d ?? 0;
-            $row['pt_sold_L30']  = $matchedCampaignPtL30->unitsSoldSameSku30d ?? 0;
-            $row['pt_sold_L7']   = $matchedCampaignPtL7->unitsSoldSameSku7d ?? 0;
+            $row['pt_impr_L30'] = $matchedCampaignPtL30?->impressions ?? 0;
+            $row['pt_impr_L7']  = $matchedCampaignPtL7?->impressions ?? 0;
+            $row['pt_clicks_L30'] = $matchedCampaignPtL30?->clicks ?? 0;
+            $row['pt_clicks_L7']  = $matchedCampaignPtL7?->clicks ?? 0;
+            $row['pt_spend_L30']  = $matchedCampaignPtL30?->spend ?? 0;
+            $row['pt_spend_L7']   = $matchedCampaignPtL7?->spend ?? 0;
+            $row['pt_sales_L30']  = $matchedCampaignPtL30?->sales30d ?? 0;
+            $row['pt_sales_L7']   = $matchedCampaignPtL7?->sales7d ?? 0;
+            $row['pt_sold_L30']  = $matchedCampaignPtL30?->unitsSoldSameSku30d ?? 0;
+            $row['pt_sold_L7']   = $matchedCampaignPtL7?->unitsSoldSameSku7d ?? 0;
 
-            // --- HL  ---
-            $row['hl_impr_L30'] = $matchedCampaignHlL30->impressions ?? 0;
-            $row['hl_impr_L7']  = $matchedCampaignHlL7->impressions ?? 0;
-            $row['hl_clicks_L30'] = $matchedCampaignHlL30->clicks ?? 0;
-            $row['hl_clicks_L7']  = $matchedCampaignHlL7->clicks ?? 0;
-            $row['hl_campaign_L30'] = $matchedCampaignHlL30->campaignName ?? null;
-            $row['hl_campaign_L7']  = $matchedCampaignHlL7->campaignName ?? null;
-            $row['hl_sales_L30']  = $matchedCampaignHlL30->sales ?? 0;
-            $row['hl_sales_L7']   = $matchedCampaignHlL7->sales ?? 0;
-            $row['hl_sold_L30']  = $matchedCampaignHlL30->unitsSold ?? 0;
-            $row['hl_sold_L7']   = $matchedCampaignHlL7->unitsSold ?? 0;
+            // --- HL ---
+            $matchedCampaignHlL30 = ADVMastersData::matchHlCampaign($amazonHlL30, $pm->sku, $parent ?: null, $isParentRow);
+            $matchedCampaignHlL7 = ADVMastersData::matchHlCampaign($amazonHlL7, $pm->sku, $parent ?: null, $isParentRow);
+            $row['hl_impr_L30'] = $matchedCampaignHlL30?->impressions ?? 0;
+            $row['hl_impr_L7']  = $matchedCampaignHlL7?->impressions ?? 0;
+            $row['hl_clicks_L30'] = $matchedCampaignHlL30?->clicks ?? 0;
+            $row['hl_clicks_L7']  = $matchedCampaignHlL7?->clicks ?? 0;
+            $row['hl_campaign_L30'] = $matchedCampaignHlL30?->campaignName ?? null;
+            $row['hl_campaign_L7']  = $matchedCampaignHlL7?->campaignName ?? null;
+            $row['hl_sales_L30']  = $matchedCampaignHlL30?->sales ?? 0;
+            $row['hl_sales_L7']   = $matchedCampaignHlL7?->sales ?? 0;
+            $row['hl_sold_L30']  = $matchedCampaignHlL30?->unitsSold ?? 0;
+            $row['hl_sold_L7']   = $matchedCampaignHlL7?->unitsSold ?? 0;
 
             if (str_starts_with($sku, 'PARENT')) {
                 $row['hl_spend_L30'] = $matchedCampaignHlL30->cost ?? 0;
@@ -239,11 +239,11 @@ class AmazonAdRunningController extends Controller
             $childCount = $parentSkuCounts[$parent] ?? 0;
             $childCount = max($childCount, 1);
 
-            $hl_share_L30 = ($matchedCampaignHlL30->impressions ?? 0) / $childCount;
-            $hl_share_L7  = ($matchedCampaignHlL7->impressions ?? 0) / $childCount;
+            $hl_share_L30 = ($matchedCampaignHlL30?->impressions ?? 0) / $childCount;
+            $hl_share_L7  = ($matchedCampaignHlL7?->impressions ?? 0) / $childCount;
 
-            $hl_share_clicks_L30 = ($matchedCampaignHlL30->impressions ?? 0) / $childCount;
-            $hl_share_clicks_L7  = ($matchedCampaignHlL7->impressions ?? 0) / $childCount;
+            $hl_share_clicks_L30 = ($matchedCampaignHlL30?->clicks ?? 0) / $childCount;
+            $hl_share_clicks_L7  = ($matchedCampaignHlL7?->clicks ?? 0) / $childCount;
 
             $row['IMP_L30'] = ($row['pt_impr_L30'] + $row['kw_impr_L30'] + $hl_share_L30);
             $row['IMP_L7']  = ($row['pt_impr_L7']  + $row['kw_impr_L7']  + $hl_share_L7);

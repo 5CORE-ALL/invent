@@ -518,6 +518,34 @@
         * {
             transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
         }
+
+        /* All main channels – soft blue (easy on eyes) */
+        .tabulator .tabulator-row.channel-main .tabulator-cell {
+            background-color: #93c5fd !important;
+            color: #1e3a5f;
+        }
+        .tabulator .tabulator-row.channel-main:hover .tabulator-cell {
+            background-color: #7dd3fc !important;
+            color: #1e3a5f;
+        }
+        .tabulator .tabulator-row.channel-main a,
+        .tabulator .tabulator-row.channel-main .text-primary {
+            color: #1e40af !important;
+        }
+
+        /* All child channels – very soft blue tint */
+        .tabulator .tabulator-row.channel-child .tabulator-cell {
+            background-color: #f0f9ff !important;
+            color: #334155;
+        }
+        .tabulator .tabulator-row.channel-child:hover .tabulator-cell {
+            background-color: #e0f2fe !important;
+            color: #334155;
+        }
+        .tabulator .tabulator-row.channel-child a {
+            color: #2563eb !important;
+            font-weight: 500;
+        }
     </style>
 @endsection
 
@@ -535,52 +563,6 @@
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <div>
                 <h3 class="mb-0" style="color: var(--text-primary); font-weight: 700;">ADV Masters Dashboard</h3>
-                    <div class="d-flex align-items-center gap-2 mt-2 flex-wrap">
-                        <span class="badge bg-primary" style="font-size: 13px; padding: 6px 12px; font-weight: 500;">
-                            L30 Ad Spend: $<span id="badge-l30-spend">{{ number_format($total_spent, 2) }}</span>
-                        </span>
-                        <span class="badge bg-info" style="font-size: 13px; padding: 6px 12px; font-weight: 500;">
-                            L60 Ad Spend: $<span id="badge-l60-spend">{{ number_format($total_l60_spent ?? 0, 2) }}</span>
-                        </span>
-                        <span class="badge bg-success" style="font-size: 13px; padding: 6px 12px; font-weight: 500;">
-                            @php
-                                $total_cvr = 0;
-                                $total_cvr_60_val = 0;
-                                if(($total_clicks ?? 0) > 0){
-                                    $total_cvr = (($total_ad_sold ?? 0) / ($total_clicks ?? 1)) * 100;
-                                }
-                                if(($total_l60_clicks ?? 0) > 0){
-                                    $total_cvr_60_val = (($total_l60_ad_sold ?? 0) / ($total_l60_clicks ?? 1)) * 100;
-                                }
-                                if($total_cvr_60_val > 0){
-                                    $total_grw_cvr = (($total_cvr - $total_cvr_60_val) / $total_cvr_60_val) * 100;
-                                }else{
-                                    $total_grw_cvr = 0;
-                                }
-                                $total_cvr = number_format($total_cvr, 2);
-                                $total_grw_cvr = number_format($total_grw_cvr, 0);
-                                $grw_cvr_color = ($total_grw_cvr >= 0) ? '#28a745' : '#dc3545';
-                            @endphp
-                            CVR: <span id="badge-cvr">{{ $total_cvr }}</span>% 
-                            <span id="badge-cvr-grw" style="color: {{ $grw_cvr_color }}; font-weight: 600;">
-                                (Grw: {{ $total_grw_cvr >= 0 ? '+' : '' }}{{ $total_grw_cvr }}%)
-                            </span>
-                        </span>
-                        <span class="badge bg-secondary" style="font-size: 13px; padding: 6px 12px; font-weight: 500;">
-                            @php
-                                $total_grw_clks = (($total_l60_clicks ?? 0) > 0) ? ($total_clicks / ($total_l60_clicks ?? 1)) * 100 : 0;
-                                $total_grw_clks = number_format($total_grw_clks, 0);
-                                $grw_clks_color = ($total_grw_clks >= 0) ? '#28a745' : '#dc3545';
-                            @endphp
-                            Clicks: <span id="badge-clicks">{{ number_format($total_clicks ?? 0, 0) }}</span>
-                            <span id="badge-clicks-grw" style="color: {{ $grw_clks_color }}; font-weight: 600;">
-                                (Grw: {{ $total_grw_clks >= 0 ? '+' : '' }}{{ $total_grw_clks }}%)
-                            </span>
-                        </span>
-                        <span class="badge bg-warning text-dark" style="font-size: 13px; padding: 6px 12px; font-weight: 500;">
-                            Missing Data: <span id="badge-missing">{{ number_format($total_missing ?? 0, 0) }}</span>
-                        </span>
-                    </div>
                 </div>
                 <div class="d-flex align-items-center gap-3 flex-wrap">
                     <div class="d-flex align-items-center gap-2">
@@ -627,101 +609,33 @@
                             <th class="text-center th-horizontal" style="width: 90px;">Ad Type</th>
                             <th class="text-center th-horizontal" style="width: 70px;">Tab</th>
                             <th class="text-center th-horizontal" style="width: 70px;">Graph</th>
-                            <th class="text-center th-horizontal">L30 SALES <br><hr> {{ $total_l30_sales}}</th>
-                            <th class="text-center th-horizontal">GPFT <br><hr> 0</th>
-                            <th class="text-center th-vertical">TPFT <br><hr> 0</th>
-                            <th class="text-center th-vertical">L30 SPENT <br><hr> {{ number_format($total_spent, 2) }}</th>
-                            <th class="text-center th-vertical">L60 SPENT <br><hr> {{ $total_l60_spent ?? 0}}</th>
-                            <th class="text-center th-vertical">GRW <br><hr> 
-                                @php
-                                    $total_grw = ($total_l60_spent > 0) ? ($total_spent / $total_l60_spent) * 100 : 0;
-                                    echo number_format($total_grw, 0) . '%';
-                                @endphp
-                            </th>
-                            <th class="text-center th-vertical">L30 CLKS <br><hr> {{ $total_clicks}}</th>
-                            <th class="text-center th-vertical">L60 CLICKS <br><hr> {{ $total_l60_clicks ?? 0}}</th>
-                            <th class="text-center th-vertical">GRW CLKS <br><hr>
-                                @php
-                                    $total_grw_clks = (($total_l60_clicks ?? 0) > 0) ? ($total_clicks / ($total_l60_clicks ?? 1)) * 100 : 0;
-                                    echo number_format($total_grw_clks, 0) . '%';
-                                @endphp
-                            </th>
-                            <th class="text-center th-vertical">CPC <br><hr>
-                                @php
-                                    $total_cpc = ($total_clicks > 0) ? ($total_spent / $total_clicks) : 0;
-                                    echo number_format($total_cpc, 2);
-                                @endphp
-                            </th>
-                            <th class="text-center th-vertical">CTR <br><hr>
-                                @php
-                                    $total_impressions = ($total_impressions ?? 0);
-                                    $total_ctr = ($total_impressions > 0) ? (($total_clicks / $total_impressions) * 100) : 0;
-                                    echo number_format($total_ctr, 2) . '%';
-                                @endphp
-                            </th>
-                            <th class="text-center th-vertical">CPS <br><hr>
-                                @php
-                                    $total_cps = ($total_ad_sold > 0) ? ($total_spent / $total_ad_sold) : 0;
-                                    echo number_format($total_cps, 2);
-                                @endphp
-                            </th>
-                            <th class="text-center th-vertical">AD SALES <br><hr> {{ $total_ad_sales}}</th>
-                            <th class="text-center th-vertical">L30 ACOS% <br><hr> 0</th>
-                            <th class="text-center th-vertical">L60 ACOS% <br><hr> 0</th>
-                            <th class="text-center th-vertical">Ctrl ACOS% <br><hr>
-                                @php
-                                    $total_l30_acos_val = ($total_ad_sales > 0) ? ($total_spent / $total_ad_sales) * 100 : 0;
-                                    $total_l60_acos_val = (($total_l60_ad_sales ?? 0) > 0) ? (($total_l60_spent ?? 0) / ($total_l60_ad_sales ?? 1)) * 100 : 0;
-                                    if($total_l60_acos_val > 0){
-                                        $total_ctrl_acos = (($total_l30_acos_val - $total_l60_acos_val) / $total_l60_acos_val) * 100;
-                                    }else{
-                                        $total_ctrl_acos = 0;
-                                    }
-                                    $total_ctrl_acos = number_format($total_ctrl_acos, 2);
-                                    $total_ctrl_color = ($total_ctrl_acos < 0) ? 'color: #006400;' : 'color: #8B0000;';
-                                @endphp
-                                <span style="{{ $total_ctrl_color }}">{{ $total_ctrl_acos.' %' }}</span>
-                            </th>
-                            <th class="text-center th-vertical">TACOS <br><hr> 0</th>     
-                            <th class="text-center th-vertical">AD SOLD <br><hr> {{ $total_ad_sold}}</th>        
-                            <th class="text-center th-vertical">CVR <br><hr> 0 </th>     
-                            <th class="text-center th-vertical">CVR 60 <br><hr>
-                                @php
-                                    if(($total_l60_clicks ?? 0) > 0){
-                                        $total_cvr_60 = (($total_l60_ad_sold ?? 0) / ($total_l60_clicks ?? 1)) * 100;
-                                        $total_cvr_60 = number_format($total_cvr_60, 2);
-                                    }else{
-                                        $total_cvr_60 = 0;
-                                    }
-                                    $total_cvr_60 = round($total_cvr_60, 1);
-                                @endphp
-                                {{ $total_cvr_60.' %' }}
-                            </th>
-                            <th class="text-center th-vertical">Grw CVR <br><hr>
-                                @php
-                                    $total_cvr = 0;
-                                    $total_cvr_60_val = 0;
-                                    if(($total_clicks ?? 0) > 0){
-                                        $total_cvr = (($total_ad_sold ?? 0) / ($total_clicks ?? 1)) * 100;
-                                    }
-                                    if(($total_l60_clicks ?? 0) > 0){
-                                        $total_cvr_60_val = (($total_l60_ad_sold ?? 0) / ($total_l60_clicks ?? 1)) * 100;
-                                    }
-                                    if($total_cvr_60_val > 0){
-                                        $total_grw_cvr = (($total_cvr - $total_cvr_60_val) / $total_cvr_60_val) * 100;
-                                    }else{
-                                        $total_grw_cvr = 0;
-                                    }
-                                    $total_grw_cvr = number_format($total_grw_cvr, 0);
-                                @endphp
-                                {{ $total_grw_cvr.' %' }}
-                            </th>
-                            <th class="text-center th-vertical">MISSING ADS <br><hr> {{ $total_missing}}</th>
+                            <th class="text-center th-horizontal">L30 SALES</th>
+                            <th class="text-center th-horizontal">GPFT</th>
+                            <th class="text-center th-vertical">TPFT</th>
+                            <th class="text-center th-vertical">L30 SPENT</th>
+                            <th class="text-center th-vertical">L60 SPENT</th>
+                            <th class="text-center th-vertical">GRW</th>
+                            <th class="text-center th-vertical">L30 CLKS</th>
+                            <th class="text-center th-vertical">L60 CLICKS</th>
+                            <th class="text-center th-vertical">GRW CLKS</th>
+                            <th class="text-center th-vertical">CPC</th>
+                            <th class="text-center th-vertical">CTR</th>
+                            <th class="text-center th-vertical">CPS</th>
+                            <th class="text-center th-vertical">AD SALES</th>
+                            <th class="text-center th-vertical">L30 ACOS%</th>
+                            <th class="text-center th-vertical">L60 ACOS%</th>
+                            <th class="text-center th-vertical">Ctrl ACOS%</th>
+                            <th class="text-center th-vertical">TACOS</th>     
+                            <th class="text-center th-vertical">AD SOLD</th>        
+                            <th class="text-center th-vertical">CVR</th>     
+                            <th class="text-center th-vertical">CVR 60</th>
+                            <th class="text-center th-vertical">Grw CVR</th>
+                            <th class="text-center th-vertical">MISSING ADS</th>
                             <th class="text-center th-vertical">ACTIONS</th>     
                         </tr>
                     </thead>
                     <tbody>
-                        <tr style="background-color:#cfe2f3;" class="accordion-header">
+                        <tr class="accordion-header">
                             <td class="text-center">
                                 <div class="d-flex align-items-center justify-content-center gap-2">
                                     <b>AMAZON</b>
@@ -874,7 +788,7 @@
                         </tr>
 
                         <tr class="accordion-body">
-                            <td class="text-center"><a href="{{ route('amazon.kw.ads') }}" target="_blank" style="text-decoration:none; color:#000000;">AMZ KW</a></td>
+                            <td class="text-center"><a href="{{ route('amazon.kw.ads') }}" target="_blank" style="text-decoration:none;">AMZ KW</a></td>
                             <td class="text-center"></td>
                             <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
                             <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
@@ -1005,7 +919,7 @@
                         </tr>
 
                          <tr class="accordion-body">
-                            <td class="text-center"><a href="{{ route('amazon.pt.ads') }}" target="_blank" style="text-decoration:none; color:#000000;">AMZ PT</a></td>
+                            <td class="text-center"><a href="{{ route('amazon.pt.ads') }}" target="_blank" style="text-decoration:none;">AMZ PT</a></td>
                             <td class="text-center"></td>
                             <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
                             <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
@@ -1136,7 +1050,7 @@
                         </tr>
 
                         <tr class="accordion-body">
-                            <td class="text-center"><a href="{{ route('amazon.hl.ads') }}" target="_blank" style="text-decoration:none; color:#000000;">AMZ HL</a></td>
+                            <td class="text-center"><a href="{{ route('amazon.hl.ads') }}" target="_blank" style="text-decoration:none;">AMZ HL</a></td>
                             <td class="text-center"></td>
                             <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
                             <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
@@ -1266,7 +1180,7 @@
                             </td>
                         </tr>
 
-                        <tr style="background-color:#cfe2f3;" class="accordion-header">
+                        <tr class="accordion-header">
                             <td class="text-center">
                                 <div class="d-flex align-items-center justify-content-center gap-2">
                                     <b>EBAY</b>
@@ -1419,7 +1333,7 @@
                         </tr>
 
                         <tr class="accordion-body">
-                            <td class="text-center"><a href="{{ route('ebay.keywords.ads') }}" target="_blank" style="text-decoration:none; color:#000000;">EB KW</a></td>
+                            <td class="text-center"><a href="{{ route('ebay.keywords.ads') }}" target="_blank" style="text-decoration:none;">EB KW</a></td>
                             <td class="text-center"></td>
                             <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
                             <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
@@ -1550,7 +1464,7 @@
                         </tr>
 
                         <tr class="accordion-body">
-                            <td class="text-center"><a href="{{ route('ebay.pmp.ads') }}" target="_blank" style="text-decoration:none; color:#000000;">EB PMT</a></td>
+                            <td class="text-center"><a href="{{ route('ebay.pmp.ads') }}" target="_blank" style="text-decoration:none;">EB PMT</a></td>
                             <td class="text-center"></td>
                             <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
                             <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
@@ -1680,8 +1594,17 @@
                             </td>
                         </tr>
 
-                        <tr style="background-color:#cfe2f3;" class="accordion-header">
-                            <td class="text-center"><b>EBAY 2</b></td>
+                        <tr class="accordion-header">
+                            <td class="text-center">
+                                <div class="d-flex align-items-center justify-content-center gap-2">
+                                    <b>EBAY 2</b>
+                                    <button type="button" class="btn btn-primary rounded-circle p-0 adv-channel-chart-btn" data-channel="EBAY 2" data-bs-toggle="modal" data-bs-target="#channelChartModal" title="View Graph">
+                                        <svg width="12" height="12" viewBox="0 0 12 12" fill="white">
+                                            <path d="M6 0L7.5 4.5L12 6L7.5 7.5L6 12L4.5 7.5L0 6L4.5 4.5L6 0Z"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center"></td>
                             <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
                             <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
@@ -1953,8 +1876,17 @@
                             </td>
                         </tr>
 
-                        <tr style="background-color:#cfe2f3;" class="accordion-header">
-                            <td class="text-center"><b>EBAY 3</b></td>
+                        <tr class="accordion-header">
+                            <td class="text-center">
+                                <div class="d-flex align-items-center justify-content-center gap-2">
+                                    <b>EBAY 3</b>
+                                    <button type="button" class="btn btn-primary rounded-circle p-0 adv-channel-chart-btn" data-channel="EBAY 3" data-bs-toggle="modal" data-bs-target="#channelChartModal" title="View Graph">
+                                        <svg width="12" height="12" viewBox="0 0 12 12" fill="white">
+                                            <path d="M6 0L7.5 4.5L12 6L7.5 7.5L6 12L4.5 7.5L0 6L4.5 4.5L6 0Z"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center"></td>
                             <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
                             <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
@@ -2357,8 +2289,17 @@
                             </td>
                         </tr>
 
-                        <tr style="background-color:#cfe2f3;" class="accordion-header">
-                            <td class="text-center"><b>WALMART</b></td>
+                        <tr class="accordion-header">
+                            <td class="text-center">
+                                <div class="d-flex align-items-center justify-content-center gap-2">
+                                    <b>WALMART</b>
+                                    <button type="button" class="btn btn-primary rounded-circle p-0 adv-channel-chart-btn" data-channel="WALMART" data-bs-toggle="modal" data-bs-target="#channelChartModal" title="View Graph">
+                                        <svg width="12" height="12" viewBox="0 0 12 12" fill="white">
+                                            <path d="M6 0L7.5 4.5L12 6L7.5 7.5L6 12L4.5 7.5L0 6L4.5 4.5L6 0Z"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center"></td>
                             <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
                             <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
@@ -2490,7 +2431,7 @@
                             </td>
                         </tr>
 
-                        <tr style="background-color:#cfe2f3;" class="accordion-header">
+                        <tr class="accordion-header">
                             <td class="text-center"><b>SHOPIFY</b></td>
                             <td class="text-center"></td>
                             <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
@@ -2522,7 +2463,16 @@
                         </tr>
 
                          <tr class="accordion-body">
-                            <td class="text-center">G SHOPPING</td>
+                            <td class="text-center">
+                                <div class="d-flex align-items-center justify-content-center gap-2">
+                                    G SHOPPING
+                                    <button type="button" class="btn btn-primary rounded-circle p-0 adv-channel-chart-btn" data-channel="G SHOPPING" data-bs-toggle="modal" data-bs-target="#channelChartModal" title="View Graph">
+                                        <svg width="12" height="12" viewBox="0 0 12 12" fill="white">
+                                            <path d="M6 0L7.5 4.5L12 6L7.5 7.5L6 12L4.5 7.5L0 6L4.5 4.5L6 0Z"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center"></td>
                             <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
                             <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
@@ -2842,7 +2792,7 @@
                             </td>
                         </tr>
 
-                        <tr style="background-color:#cfe2f3;" class="accordion-header">
+                        <tr class="accordion-header">
                             <td class="text-center"><b>TIKTOK</b></td>
                             <td class="text-center"></td>
                             <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
@@ -2885,7 +2835,7 @@
                                     $cvr_60 = ($chData['l60_clicks'] > 0) ? ($chData['l60_ad_sold'] / $chData['l60_clicks']) * 100 : 0;
                                     $grw_cvr = ($cvr_60 > 0) ? (($cvr - $cvr_60) / $cvr_60) * 100 : 0;
                                 @endphp
-                                <tr style="background-color:#cfe2f3;" class="accordion-header">
+                                <tr class="accordion-header">
                                     <td class="text-center"><b>{{ $ch }}</b></td>
                                     <td class="text-center"></td>
                                     <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
@@ -2981,7 +2931,7 @@
                         <div class="col-md-2">
                             <div class="shadow p-3 mb-1 bg-white rounded">
                                 <p class="title-label">Spend</p>
-                                <p style="display: flex; align-items: justify-content: center; center; gap: 6px; margin: 0;">
+                                <p style="display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0;">
                                     <span class="spend-color"></span>
                                     <b class="label-text">${{ $amazon_spent }}</b>
                                 </p>
@@ -2990,7 +2940,7 @@
                         <div class="col-md-2">
                             <div class="shadow p-3 mb-1 bg-white rounded">
                                 <p class="title-label">Clicks</p>
-                                <p style="display: flex; align-items: justify-content: center; center; gap: 6px; margin: 0;">
+                                <p style="display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0;">
                                     <span class="clicks-color"></span>
                                     <b class="label-text">{{ $amazon_clicks }}</b>
                                 </p>
@@ -2999,7 +2949,7 @@
                         <div class="col-md-2">
                             <div class="shadow p-3 mb-1 bg-white rounded">
                                 <p class="title-label">Ad-Sales</p>
-                                <p style="display: flex; align-items: justify-content: center; center; gap: 6px; margin: 0;">
+                                <p style="display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0;">
                                     <span class="adsales-color"></span>
                                     <b class="label-text">${{ $amazon_ad_sales }}</b>
                                 </p>
@@ -3008,7 +2958,7 @@
                         <div class="col-md-2">
                             <div class="shadow p-3 mb-1 bg-white rounded">
                                 <p class="title-label">Ad-Sold</p>
-                                <p style="display: flex; align-items: justify-content: center; center; gap: 6px; margin: 0;">
+                                <p style="display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0;">
                                     <span class="adsold-color"></span>
                                     <b class="label-text">${{ $amazon_ad_sold }}</b>
                                 </p>
@@ -3017,7 +2967,7 @@
                         <div class="col-md-2">
                             <div class="shadow p-3 mb-1 bg-white rounded">
                                 <p class="title-label">CPC</p>
-                                <p style="display: flex; align-items: justify-content: center; center; gap: 6px; margin: 0;">
+                                <p style="display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0;">
                                     <span class="cpc-color"></span>
                                     <b class="label-text"></b>
                                 </p>
@@ -3026,9 +2976,9 @@
                         <div class="col-md-2">
                             <div class="shadow p-3 mb-1 bg-white rounded">
                                 <p class="title-label">CVR</p>
-                                <p style="display: flex; align-items: justify-content: center; center; gap: 6px; margin: 0;">
+                                <p style="display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0;">
                                     <span class="cvr-color"></span>
-                                    <b class="label-text">{{ $amazon_cvr }} %</b>
+                                    <b class="label-text">{{ $amazon_cvr ?? 0 }} %</b>
                                 </p>
                             </div>
                         </div>
@@ -3076,7 +3026,7 @@
                         <div class="col-md-2">
                             <div class="shadow p-3 mb-1 bg-white rounded">
                                 <p class="title-label">Spend</p>
-                                <p style="display: flex; align-items: justify-content: center; center; gap: 6px; margin: 0;">
+                                <p style="display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0;">
                                     <span class="spend-color"></span>
                                     <b class="label-text">${{ $ebay_spent }}</b>
                                 </p>
@@ -3085,7 +3035,7 @@
                         <div class="col-md-2">
                             <div class="shadow p-3 mb-1 bg-white rounded">
                                 <p class="title-label">Clicks</p>
-                                <p style="display: flex; align-items: justify-content: center; center; gap: 6px; margin: 0;">
+                                <p style="display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0;">
                                     <span class="clicks-color"></span>
                                     <b class="label-text">{{ $ebay_clicks }}</b>
                                 </p>
@@ -3094,7 +3044,7 @@
                         <div class="col-md-2">
                             <div class="shadow p-3 mb-1 bg-white rounded">
                                 <p class="title-label">Ad-Sales</p>
-                                <p style="display: flex; align-items: justify-content: center; center; gap: 6px; margin: 0;">
+                                <p style="display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0;">
                                     <span class="adsales-color"></span>
                                     <b class="label-text">${{ $ebay_ad_sales }}</b>
                                 </p>
@@ -3103,7 +3053,7 @@
                         <div class="col-md-2">
                             <div class="shadow p-3 mb-1 bg-white rounded">
                                 <p class="title-label">Ad-Sold</p>
-                                <p style="display: flex; align-items: justify-content: center; center; gap: 6px; margin: 0;">
+                                <p style="display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0;">
                                     <span class="adsold-color"></span>
                                     <b class="label-text">${{ $ebay_ad_sold }}</b>
                                 </p>
@@ -3112,9 +3062,9 @@
                         <div class="col-md-2">
                             <div class="shadow p-3 mb-1 bg-white rounded">
                                 <p class="title-label">CVR</p>
-                                <p style="display: flex; align-items: justify-content: center; center; gap: 6px; margin: 0;">
+                                <p style="display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0;">
                                     <span class="cvr-color"></span>
-                                    <b class="label-text">{{ $ebay_cvr }} %</b>
+                                    <b class="label-text">{{ $ebay_cvr ?? 0 }} %</b>
                                 </p>
                             </div>
                         </div>
@@ -3125,6 +3075,91 @@
         </div>
     </div>
     <!-- END EBAY LARGE MODAL -->
+
+    <!-- Channel Chart Modal (EBAY 2, EBAY 3, WALMART, G SHOPPING) -->
+    <div class="modal fade" id="channelChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-fullscreen">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="channelChartModalTitle">Channel Graph</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-4">
+                        <div class="col-md-3">
+                            <div class="form-group">
+                                <label class="form-label text-muted small mb-2">From Date</label>
+                                <input type="date" class="form-control" id="channelChartFromDate" placeholder="Select from date" />
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-group">
+                                <label class="form-label text-muted small mb-2">To Date</label>
+                                <input type="date" class="form-control" id="channelChartToDate" placeholder="Select to date"/>
+                            </div>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button class="btn btn-success w-100" id="channelChartApplyBtn">
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" style="margin-right: 6px; vertical-align: middle;">
+                                    <path d="M8 0L10.5 6L16 8L10.5 10L8 16L5.5 10L0 8L5.5 6L8 0Z"/>
+                                </svg>
+                                Apply Filter
+                            </button>
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-2">
+                            <div class="shadow p-3 mb-1 bg-white rounded">
+                                <p class="title-label">Spend</p>
+                                <p style="display: flex; align-items: center; gap: 6px; margin: 0;">
+                                    <span class="spend-color"></span>
+                                    <b class="label-text" id="channelChartSpend">$0</b>
+                                </p>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="shadow p-3 mb-1 bg-white rounded">
+                                <p class="title-label">Clicks</p>
+                                <p style="display: flex; align-items: center; gap: 6px; margin: 0;">
+                                    <span class="clicks-color"></span>
+                                    <b class="label-text" id="channelChartClicks">0</b>
+                                </p>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="shadow p-3 mb-1 bg-white rounded">
+                                <p class="title-label">Ad-Sales</p>
+                                <p style="display: flex; align-items: center; gap: 6px; margin: 0;">
+                                    <span class="adsales-color"></span>
+                                    <b class="label-text" id="channelChartAdSales">$0</b>
+                                </p>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="shadow p-3 mb-1 bg-white rounded">
+                                <p class="title-label">Ad-Sold</p>
+                                <p style="display: flex; align-items: center; gap: 6px; margin: 0;">
+                                    <span class="adsold-color"></span>
+                                    <b class="label-text" id="channelChartAdSold">$0</b>
+                                </p>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="shadow p-3 mb-1 bg-white rounded">
+                                <p class="title-label">CVR</p>
+                                <p style="display: flex; align-items: center; gap: 6px; margin: 0;">
+                                    <span class="cvr-color"></span>
+                                    <b class="label-text" id="channelChartCvr">0 %</b>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <canvas id="channelChartCanvas" height="100"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- END Channel Chart Modal -->
 
     <!-- L60 Data Table Modal (stacked tabular) -->
     <div class="modal fade" id="adv-l60-tab-modal" tabindex="-1" aria-labelledby="adv-l60-tab-modal-label" aria-hidden="true">
@@ -3726,6 +3761,98 @@ $(document).ready(function() {
     });
  
     /** End Amazon Chart Ajax **/
+
+    /** Channel Chart Modal (EBAY 2, EBAY 3, WALMART, G SHOPPING) **/
+    var channelChartCurrentChannel = null;
+    var channelChartInstance = null;
+    var chartOptionsCommon = {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        stacked: false,
+        plugins: {
+            legend: { display: false },
+            tooltip: {
+                backgroundColor: 'rgba(30, 41, 59, 0.95)',
+                titleColor: '#facc15',
+                bodyColor: '#f8fafc',
+                borderColor: '#334155',
+                borderWidth: 1,
+                padding: 12,
+                cornerRadius: 10,
+                callbacks: { label: function(c) { return (c.dataset.label || '') + ' : ' + c.formattedValue; } }
+            }
+        },
+        scales: {
+            y: { type: 'linear', display: true, position: 'left', grid: { display: true, drawBorder: false, color: '#e5e7eb' }, ticks: { color: '#6c2bd9' } },
+            y1: { type: 'linear', display: true, position: 'left', grid: { display: false }, ticks: { color: '#00b894' } },
+            y2: { type: 'linear', display: true, position: 'left', grid: { display: false }, ticks: { color: '#ed0808fc' } },
+            y3: { type: 'linear', display: true, position: 'right', grid: { display: false }, ticks: { color: '#0984e3' } },
+            y4: { type: 'linear', display: true, position: 'right', grid: { display: false }, ticks: { color: '#f6da09ee' } },
+            x: { grid: { display: false }, ticks: { color: '#6b7280' } }
+        }
+    };
+
+    $('#channelChartModal').on('show.bs.modal', function(e) {
+        var btn = e.relatedTarget ? $(e.relatedTarget) : $();
+        channelChartCurrentChannel = btn.length ? (btn.data('channel') || null) : null;
+        if (channelChartCurrentChannel) {
+            $('#channelChartModalTitle').text(channelChartCurrentChannel + ' Graph');
+            var ch = window.advMasterChannelWiseTotals && window.advMasterChannelWiseTotals[channelChartCurrentChannel];
+            if (ch) {
+                $('#channelChartSpend').text('$' + parseFloat(ch.spent || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}));
+                $('#channelChartClicks').text(parseInt(ch.clicks || 0).toLocaleString('en-US'));
+                $('#channelChartAdSales').text('$' + parseFloat(ch.ad_sales || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}));
+                $('#channelChartAdSold').text(parseFloat(ch.ad_sold || 0).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}));
+                var cvr = parseFloat(ch.cvr || 0);
+                $('#channelChartCvr').text(cvr.toFixed(2) + ' %');
+            }
+            var today = new Date();
+            var d30 = new Date(today);
+            d30.setDate(d30.getDate() - 30);
+            $('#channelChartFromDate').val(d30.toISOString().slice(0, 10));
+            $('#channelChartToDate').val(today.toISOString().slice(0, 10));
+        }
+    });
+
+    $('#channelChartApplyBtn').on('click', function() {
+        if (!channelChartCurrentChannel) return;
+        var fromDate = $('#channelChartFromDate').val();
+        var toDate = $('#channelChartToDate').val();
+        if (!fromDate || !toDate) {
+            alert('Please Select Dates !');
+            return;
+        }
+        $.ajax({
+            url: "{{ route('channel.adv.chart.data') }}",
+            method: 'GET',
+            data: { channel: channelChartCurrentChannel, fromDate: fromDate, toDate: toDate },
+            success: function(response) {
+                if (channelChartInstance) channelChartInstance.destroy();
+                var ctx = document.getElementById('channelChartCanvas');
+                if (!ctx) return;
+                channelChartInstance = new Chart(ctx.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: response.dateArray || [],
+                        datasets: [
+                            { label: 'Spend', data: response.spentArray || [], borderColor: '#6c2bd9', backgroundColor: '#6c2bd9', tension: 0.4, yAxisID: 'y', borderWidth: 3, pointRadius: 4, pointHoverRadius: 6, pointStyle: 'circle' },
+                            { label: 'Clicks', data: response.clicksArray || [], borderColor: '#00b894', backgroundColor: '#00b894', tension: 0.4, yAxisID: 'y1', borderWidth: 3, pointRadius: 4, pointHoverRadius: 6, pointStyle: 'circle' },
+                            { label: 'Ad-Sales', data: response.adSalesArray || [], borderColor: '#ed0808fc', backgroundColor: '#ed0808fc', tension: 0.4, yAxisID: 'y2', borderWidth: 3, pointRadius: 4, pointHoverRadius: 6, pointStyle: 'circle' },
+                            { label: 'Ad-Sold', data: response.adSoldArray || [], borderColor: '#0984e3', backgroundColor: '#0984e3', tension: 0.4, yAxisID: 'y3', borderWidth: 3, pointRadius: 4, pointHoverRadius: 6, pointStyle: 'circle' },
+                            { label: 'CVR', data: response.cvrArray || [], borderColor: '#f6da09ee', backgroundColor: '#f6da09ee', tension: 0.4, yAxisID: 'y4', borderWidth: 3, pointRadius: 4, pointHoverRadius: 6, pointStyle: 'circle' }
+                        ]
+                    },
+                    options: chartOptionsCommon
+                });
+            },
+            error: function(xhr) {
+                var msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Failed to load chart data.';
+                alert(msg);
+            }
+        });
+    });
+
+    /** End Channel Chart Modal **/
 
     /** Start Ebay Graph Date **/
     const ctxEbay = document.getElementById('advEbayChart').getContext('2d');
@@ -4370,6 +4497,9 @@ $(document).ready(function() {
                         if (rowData._rowStyle && !rowData._isAccordionHeader) {
                             rowElement.setAttribute('style', rowData._rowStyle + '; ' + (rowElement.getAttribute('style') || ''));
                         }
+                        // Channel hierarchy styling (main = darker blue, child = lighter blue)
+                        if (rowData._isAccordionHeader) rowElement.classList.add('channel-main');
+                        if (rowData._isAccordionBody) rowElement.classList.add('channel-child');
                     }
                 });
                 window.advMasterTable = table;
@@ -4494,86 +4624,13 @@ $(document).ready(function() {
                     });
                 });
 
-                // View mode & Channel-wise: update badges + header totals
-                var channelWise = window.advMasterChannelWiseTotals || {};
-                function fmtNum(n) {
-                    if (n == null || n === undefined || n === '') return '0';
-                    return parseFloat(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                }
-                function fmtInt(n) {
-                    if (n == null || n === undefined || n === '') return '0';
-                    return parseInt(n, 10).toLocaleString('en-US');
-                }
-                function updateBadgesAndHeaders(key) {
-                    var t = channelWise[key];
-                    if (!t) return;
-                    $('#badge-l30-spend').text(fmtNum(t.spent || 0));
-                    $('#badge-l60-spend').text(fmtNum(t.l60_spent || 0));
-                    var cvrVal = parseFloat(t.cvr || 0);
-                    $('#badge-cvr').text(cvrVal.toFixed(2));
-                    var grwCvrVal = parseFloat(t.grw_cvr || 0);
-                    var grwSign = (grwCvrVal >= 0) ? '+' : '';
-                    var grwColor = (grwCvrVal >= 0) ? '#28a745' : '#dc3545';
-                    $('#badge-cvr-grw').html('(Grw: ' + grwSign + grwCvrVal.toFixed(2) + '%)').css('color', grwColor);
-                    $('#badge-clicks').text(fmtInt(t.clicks || 0));
-                    var grwClksVal = parseFloat(t.grw_clks || 0);
-                    var grwClksSign = (grwClksVal >= 0) ? '+' : '';
-                    var grwClksColor = (grwClksVal >= 0) ? '#28a745' : '#dc3545';
-                    $('#badge-clicks-grw').html('(Grw: ' + grwClksSign + grwClksVal.toFixed(2) + '%)').css('color', grwClksColor);
-                    $('#badge-missing').text(fmtInt(t.missing || 0));
-
-                    var headerMap = [
-                        null, // 0: CHANNELS
-                        null, // 1: Ad Type
-                        null, // 2: Tab
-                        null, // 3: Graph
-                        { label: 'L30 SALES <br><hr> ', key: 'l30_sales' }, // 4
-                        { label: 'GPFT <br><hr> ', val: '0' }, // 5
-                        { label: 'TPFT <br><hr> ', val: '0' }, // 6
-                        { label: 'L30 SPENT <br><hr> ', key: 'spent' }, // 7
-                        { label: 'L60 SPENT <br><hr> ', key: 'l60_spent' }, // 8
-                        { label: 'GRW <br><hr> ', key: 'grw', pct: true }, // 9
-                        { label: 'L30 CLKS <br><hr> ', key: 'clicks' }, // 10
-                        { label: 'L60 CLICKS <br><hr> ', key: 'l60_clicks' }, // 11
-                        { label: 'GRW CLKS <br><hr> ', key: 'grw_clks', pct: true }, // 12
-                        { label: 'AD SALES <br><hr> ', key: 'ad_sales' }, // 13
-                        { label: 'L30 ACOS% <br><hr> ', key: 'l30_acos', pct: true }, // 14
-                        { label: 'L60 ACOS% <br><hr> ', key: 'l60_acos', pct: true }, // 15
-                        { label: 'Ctrl ACOS% <br><hr> ', key: 'ctrl_acos', pct: true }, // 16
-                        { label: 'TACOS <br><hr> ', val: '0' }, // 17
-                        { label: 'AD SOLD <br><hr> ', key: 'ad_sold' }, // 18
-                        { label: 'CVR <br><hr> ', key: 'cvr', pct: true }, // 19
-                        { label: 'CVR 60 <br><hr> ', key: 'cvr_60', pct: true }, // 20
-                        { label: 'Grw CVR <br><hr> ', key: 'grw_cvr', pct: true }, // 21
-                        { label: 'MISSING ADS <br><hr> ', key: 'missing' }, // 22
-                        null // 23: ACTIONS
-                    ];
-                    headerMap.forEach(function(opts, i) {
-                        if (!opts) return;
-                        var v = opts.val != null ? opts.val : (opts.key ? t[opts.key] : '');
-                        if (opts.pct && v !== '' && v != null) v = v + ' %';
-                        else if (opts.key === 'missing') v = fmtInt(v);
-                        else if (opts.key && ['spent','l60_spent','l30_sales','clicks','l60_clicks','ad_sales','ad_sold'].indexOf(opts.key) >= 0) v = fmtNum(v);
-                        var title = opts.label + (v != null && v !== '' ? String(v) : '0');
-                        try { table.updateColumnDefinition('col' + i, { title: title }); } catch (e) {}
-                    });
-                }
-
+                // View mode & Channel-wise (badges removed)
                 $('#adv-view-mode').on('change', function() {
                     var isChannelWise = $(this).val() === 'channel-wise';
                     $('#adv-channel-select').toggle(isChannelWise);
                     if (!isChannelWise) {
                         $('#adv-channel-select').val('');
-                        updateBadgesAndHeaders('all');
-                    } else {
-                        var ch = $('#adv-channel-select').val();
-                        if (ch) updateBadgesAndHeaders(ch);
                     }
-                });
-
-                $('#adv-channel-select').on('change', function() {
-                    var ch = $(this).val();
-                    if (ch) updateBadgesAndHeaders(ch);
                 });
 
                 // L60 Tab: table handler

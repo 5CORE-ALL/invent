@@ -588,34 +588,37 @@
                                             placeholder="Enter value" step="0.01"
                                             style="border-color: #e2e8f0; font-size: 0.8rem;">
                                     </div>
-                                    <div class="col-md-2 d-flex gap-1 align-items-end">
-                                        <button id="apply-inc-dec-btn" class="btn btn-success btn-sm flex-fill" style="font-size: 0.75rem;">
+                                    <div class="col-md-2 d-flex gap-1 align-items-center">
+                                        <button id="apply-inc-dec-btn" class="btn btn-success btn-sm flex-fill" style="font-size: 0.75rem; min-height: 31px;">
                                             <i class="fa-solid fa-check me-1"></i>
                                             Apply
                                         </button>
-                                        <button id="clear-inc-dec-btn" class="btn btn-secondary btn-sm flex-fill" style="font-size: 0.75rem;">
+                                        <button id="clear-inc-dec-btn" class="btn btn-secondary btn-sm flex-fill" style="font-size: 0.75rem; min-height: 31px;">
                                             <i class="fa-solid fa-times me-1"></i>
                                             Clear
                                         </button>
                                     </div>
-                                    <div class="col-md-3 d-flex gap-2 align-items-end">
-                                        <button id="clear-sbid-m-btn" class="btn btn-danger btn-sm flex-fill" style="font-size: 0.75rem;">
+                                    <div class="col-md-3 d-flex gap-1 align-items-center flex-nowrap">
+                                        <button id="clear-sbid-m-btn" class="btn btn-danger btn-sm flex-fill" style="font-size: 0.75rem; min-height: 31px;">
                                             <i class="fa-solid fa-trash me-1"></i>
                                             <span class="d-none d-lg-inline">Clear SBID M</span>
                                             <span class="d-lg-none">Clear</span>
                                         </button>
-                                        <button id="acos-view-btn" class="btn btn-warning btn-sm flex-fill" style="min-width: 80px; font-size: 0.75rem;">
+                                        <button id="acos-view-btn" class="btn btn-warning btn-sm flex-fill" style="min-width: 80px; font-size: 0.75rem; min-height: 31px;">
                                             <i class="fa-solid fa-filter me-1"></i>
                                             ACOS
                                         </button>
+                                        <button type="button" id="export-csv-btn" class="btn btn-outline-success btn-sm flex-fill" style="min-width: 80px; font-size: 0.75rem; min-height: 31px;">
+                                            <i class="fa-solid fa-file-csv me-1"></i>Export CSV
+                                        </button>
                                     </div>
-                                    <div class="col-md-4 d-flex gap-1 align-items-end">
-                                        <button id="apr-all-sbid-btn" class="btn btn-info btn-sm flex-fill d-none" style="font-size: 0.75rem;">
+                                    <div class="col-md-4 d-flex gap-1 align-items-center">
+                                        <button id="apr-all-sbid-btn" class="btn btn-info btn-sm flex-fill d-none" style="font-size: 0.75rem; min-height: 31px;">
                                             <i class="fa-solid fa-check-double me-1"></i>
                                             <span class="d-none d-lg-inline">APR ALL SBID</span>
                                             <span class="d-lg-none">APR SBID</span>
                                         </button>
-                                        <button id="save-all-sbid-m-btn" class="btn btn-success btn-sm flex-fill d-none" style="font-size: 0.75rem;">
+                                        <button id="save-all-sbid-m-btn" class="btn btn-success btn-sm flex-fill d-none" style="font-size: 0.75rem; min-height: 31px;">
                                             <i class="fa-solid fa-save me-1"></i>
                                             <span class="d-none d-lg-inline">SAVE ALL SBID M</span>
                                             <span class="d-lg-none">SAVE SBID</span>
@@ -3075,6 +3078,17 @@
                     return response.data;
                 }
             });
+
+            // Export CSV button
+            const exportCsvBtn = document.getElementById('export-csv-btn');
+            if (exportCsvBtn) {
+                exportCsvBtn.addEventListener('click', function() {
+                    if (typeof table !== 'undefined' && table) {
+                        const filename = 'amazon-utilized-pt_' + new Date().toISOString().slice(0, 10) + '.csv';
+                        table.download('csv', filename, { downloadRowRange: 'all' });
+                    }
+                });
+            }
 
             // 7UB×1UB color zones: g=66-99 (green), p=>99 (pink), r=<66 (red) - same as google-utilized
             function ubZone(ub) {
