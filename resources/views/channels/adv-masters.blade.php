@@ -388,6 +388,174 @@
             background-color: #f6da09ee;
         }
 
+        /* L30 CLKS column: eye icon visible with value (no clip) */
+        #adv-master-table td.td-l30-clicks,
+        #tabulator-table .tabulator-cell:nth-child(11) {
+            overflow: visible;
+            white-space: nowrap;
+        }
+        #adv-master-table td.td-l30-clicks .clicks-cell-inner,
+        #tabulator-table .tabulator-cell:nth-child(11) .clicks-cell-inner {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .clicks-chart-btn {
+            color: transparent !important;
+            text-decoration: none !important;
+            opacity: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            vertical-align: middle;
+            padding: 0;
+            margin: 0;
+            border: none !important;
+            background: none !important;
+            box-shadow: none !important;
+            flex-shrink: 0;
+        }
+        .clicks-chart-btn:hover {
+            background: none !important;
+        }
+        .clicks-chart-btn svg {
+            width: 18px;
+            height: 18px;
+            fill: #00b894 !important;
+            display: block;
+            flex-shrink: 0;
+        }
+        .clicks-chart-btn:hover svg {
+            fill: #009975 !important;
+        }
+
+        /* L30 SPENT column: eye icon (same as L30 CLKS) */
+        #adv-master-table td.td-l30-spent,
+        #tabulator-table .tabulator-cell:nth-child(8) {
+            overflow: visible;
+            white-space: nowrap;
+        }
+        #adv-master-table td.td-l30-spent .spend-cell-inner,
+        #tabulator-table .tabulator-cell:nth-child(8) .spend-cell-inner {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .spend-chart-btn {
+            color: transparent !important;
+            text-decoration: none !important;
+            opacity: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            vertical-align: middle;
+            padding: 0;
+            margin: 0;
+            border: none !important;
+            background: none !important;
+            box-shadow: none !important;
+            flex-shrink: 0;
+        }
+        .spend-chart-btn:hover {
+            background: none !important;
+        }
+        .spend-chart-btn svg {
+            width: 18px;
+            height: 18px;
+            fill: #00b894 !important;
+            display: block;
+            flex-shrink: 0;
+        }
+        .spend-chart-btn:hover svg {
+            fill: #009975 !important;
+        }
+
+        /* AD SALES column: eye icon (same as L30 CLKS) */
+        #adv-master-table td.td-l30-adsales,
+        #tabulator-table .tabulator-cell:nth-child(17) {
+            overflow: visible;
+            white-space: nowrap;
+        }
+        #adv-master-table td.td-l30-adsales .adsales-cell-inner,
+        #tabulator-table .tabulator-cell:nth-child(17) .adsales-cell-inner {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .ad-sales-chart-btn {
+            color: transparent !important;
+            text-decoration: none !important;
+            opacity: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            vertical-align: middle;
+            padding: 0;
+            margin: 0;
+            border: none !important;
+            background: none !important;
+            box-shadow: none !important;
+            flex-shrink: 0;
+        }
+        .ad-sales-chart-btn:hover {
+            background: none !important;
+        }
+        .ad-sales-chart-btn svg {
+            width: 18px;
+            height: 18px;
+            fill: #00b894 !important;
+            display: block;
+            flex-shrink: 0;
+        }
+        .ad-sales-chart-btn:hover svg {
+            fill: #009975 !important;
+        }
+
+        /* L30 ACOS% column: eye icon (same as L30 CLKS) */
+        #adv-master-table td.td-l30-acos,
+        #tabulator-table .tabulator-cell:nth-child(18) {
+            overflow: visible;
+            white-space: nowrap;
+        }
+        #adv-master-table td.td-l30-acos .acos-cell-inner,
+        #tabulator-table .tabulator-cell:nth-child(18) .acos-cell-inner {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .acos-chart-btn {
+            color: transparent !important;
+            text-decoration: none !important;
+            opacity: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            vertical-align: middle;
+            padding: 0;
+            margin: 0;
+            border: none !important;
+            background: none !important;
+            box-shadow: none !important;
+            flex-shrink: 0;
+        }
+        .acos-chart-btn:hover {
+            background: none !important;
+        }
+        .acos-chart-btn svg {
+            width: 18px;
+            height: 18px;
+            fill: #00b894 !important;
+            display: block;
+            flex-shrink: 0;
+        }
+        .acos-chart-btn:hover svg {
+            fill: #009975 !important;
+        }
+
         .label-text {
             font-weight: 700;
             color: var(--text-primary);
@@ -652,7 +820,14 @@
                             <td class="text-center">{{ $amazon_l30_sales }}</td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
-                            <td class="text-center">{{ $amazon_spent }}</td>
+                            <td class="text-center td-l30-spent">
+                                <div class="spend-cell-inner">
+                                    <span>{{ $amazon_spent }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline spend-chart-btn" data-channel="AMAZON" data-bs-toggle="modal" data-bs-target="#dailySpendModal" title="View daily spend">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $amazon_l60_spent ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -660,7 +835,14 @@
                                     echo number_format($amazon_grw, 0) . '%';
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $amazon_clicks }}</td>
+                            <td class="text-center td-l30-clicks">
+                                <div class="clicks-cell-inner">
+                                    <span>{{ $amazon_clicks }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline clicks-chart-btn" data-channel="AMAZON" data-bs-toggle="modal" data-bs-target="#dailyClicksModal" title="View daily clicks">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $amazon_l60_clicks ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -684,21 +866,35 @@
                             <td class="text-center">
                                 @php
                                     $amazon_cps = ($amazon_ad_sold > 0) ? ($amazon_spent / $amazon_ad_sold) : 0;
-                                    echo number_format($amazon_cps, 2);
+                                    echo number_format($amazon_cps, 0);
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $amazon_ad_sales }}</td>
-                            <td class="text-center">
-                                @php
-                                    if($amazon_ad_sales > 0){
-                                        $acos = ($amazon_spent/$amazon_ad_sales)*100;
-                                        $acos = number_format($acos, 2);
-                                    }else{
-                                        $acos = 0;
-                                    }
-                                    $acos = round($acos);
-                                @endphp
-                                {{ $acos.' %'  }}
+                            <td class="text-center td-l30-adsales">
+                                <div class="adsales-cell-inner">
+                                    <span>{{ $amazon_ad_sales }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline ad-sales-chart-btn" data-channel="AMAZON" data-bs-toggle="modal" data-bs-target="#dailyAdSalesModal" title="View daily ad sales">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
+                            <td class="text-center td-l30-acos">
+                                <div class="acos-cell-inner">
+                                    <span>
+                                        @php
+                                            if($amazon_ad_sales > 0){
+                                                $acos = ($amazon_spent/$amazon_ad_sales)*100;
+                                                $acos = number_format($acos, 2);
+                                            }else{
+                                                $acos = 0;
+                                            }
+                                            $acos = round($acos);
+                                        @endphp
+                                        {{ $acos.' %'  }}
+                                    </span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline acos-chart-btn" data-channel="AMAZON" data-bs-toggle="modal" data-bs-target="#dailyAcosModal" title="View daily ACOS">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
                             </td>
                             <td class="text-center">
                                 @php
@@ -795,7 +991,14 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
-                            <td class="text-center">{{ $amazonkw_spent }}</td>
+                            <td class="text-center td-l30-spent">
+                                <div class="spend-cell-inner">
+                                    <span>{{ $amazonkw_spent }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline spend-chart-btn" data-channel="AMZ KW" data-bs-toggle="modal" data-bs-target="#dailySpendModal" title="View daily spend">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $amazonkw_l60_spent ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -803,7 +1006,14 @@
                                     echo number_format($amazonkw_grw, 0) . '%';
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $amazonkw_clicks }}</td>
+                            <td class="text-center td-l30-clicks">
+                                <div class="clicks-cell-inner">
+                                    <span>{{ $amazonkw_clicks }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline clicks-chart-btn" data-channel="AMZ KW" data-bs-toggle="modal" data-bs-target="#dailyClicksModal" title="View daily clicks">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $amazonkw_l60_clicks ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -827,21 +1037,35 @@
                             <td class="text-center">
                                 @php
                                     $amazonkw_cps = ($amazonkw_ad_sold > 0) ? ($amazonkw_spent / $amazonkw_ad_sold) : 0;
-                                    echo number_format($amazonkw_cps, 2);
+                                    echo number_format($amazonkw_cps, 0);
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $amazonkw_ad_sales }}</td>
-                            <td class="text-center">
-                                @php
-                                    if($amazonkw_ad_sales > 0){
-                                        $acos = ($amazonkw_spent/$amazonkw_ad_sales)*100;
-                                        $acos = number_format($acos, 2);
-                                    }else{
-                                        $acos = 0;
-                                    }
-                                    $acos = round($acos);
-                                @endphp
-                                {{ $acos.' %'  }}
+                            <td class="text-center td-l30-adsales">
+                                <div class="adsales-cell-inner">
+                                    <span>{{ $amazonkw_ad_sales }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline ad-sales-chart-btn" data-channel="AMZ KW" data-bs-toggle="modal" data-bs-target="#dailyAdSalesModal" title="View daily ad sales">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
+                            <td class="text-center td-l30-acos">
+                                <div class="acos-cell-inner">
+                                    <span>
+                                        @php
+                                            if($amazonkw_ad_sales > 0){
+                                                $acos = ($amazonkw_spent/$amazonkw_ad_sales)*100;
+                                                $acos = number_format($acos, 2);
+                                            }else{
+                                                $acos = 0;
+                                            }
+                                            $acos = round($acos);
+                                        @endphp
+                                        {{ $acos.' %'  }}
+                                    </span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline acos-chart-btn" data-channel="AMZ KW" data-bs-toggle="modal" data-bs-target="#dailyAcosModal" title="View daily ACOS">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
                             </td>
                             <td class="text-center">
                                 @php
@@ -926,7 +1150,14 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
-                            <td class="text-center">{{ $amazonpt_spent }}</td>
+                            <td class="text-center td-l30-spent">
+                                <div class="spend-cell-inner">
+                                    <span>{{ $amazonpt_spent }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline spend-chart-btn" data-channel="AMZ PT" data-bs-toggle="modal" data-bs-target="#dailySpendModal" title="View daily spend">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $amazonpt_l60_spent ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -934,7 +1165,14 @@
                                     echo number_format($amazonpt_grw, 0) . '%';
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $amazonpt_clicks }}</td>
+                            <td class="text-center td-l30-clicks">
+                                <div class="clicks-cell-inner">
+                                    <span>{{ $amazonpt_clicks }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline clicks-chart-btn" data-channel="AMZ PT" data-bs-toggle="modal" data-bs-target="#dailyClicksModal" title="View daily clicks">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $amazonpt_l60_clicks ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -958,21 +1196,35 @@
                             <td class="text-center">
                                 @php
                                     $amazonpt_cps = ($amazonpt_ad_sold > 0) ? ($amazonpt_spent / $amazonpt_ad_sold) : 0;
-                                    echo number_format($amazonpt_cps, 2);
+                                    echo number_format($amazonpt_cps, 0);
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $amazonpt_ad_sales }}</td>
-                            <td class="text-center">
-                                @php
-                                    if($amazonpt_ad_sales > 0){
-                                        $acos = ($amazonpt_spent/$amazonpt_ad_sales)*100;
-                                        $acos = number_format($acos, 2);
-                                    }else{
-                                        $acos = 0;
-                                    }
-                                    $acos = round($acos);
-                                @endphp
-                                {{ $acos.' %'  }}
+                            <td class="text-center td-l30-adsales">
+                                <div class="adsales-cell-inner">
+                                    <span>{{ $amazonpt_ad_sales }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline ad-sales-chart-btn" data-channel="AMZ PT" data-bs-toggle="modal" data-bs-target="#dailyAdSalesModal" title="View daily ad sales">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
+                            <td class="text-center td-l30-acos">
+                                <div class="acos-cell-inner">
+                                    <span>
+                                        @php
+                                            if($amazonpt_ad_sales > 0){
+                                                $acos = ($amazonpt_spent/$amazonpt_ad_sales)*100;
+                                                $acos = number_format($acos, 2);
+                                            }else{
+                                                $acos = 0;
+                                            }
+                                            $acos = round($acos);
+                                        @endphp
+                                        {{ $acos.' %'  }}
+                                    </span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline acos-chart-btn" data-channel="AMZ PT" data-bs-toggle="modal" data-bs-target="#dailyAcosModal" title="View daily ACOS">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
                             </td>
                             <td class="text-center">
                                 @php
@@ -1057,7 +1309,14 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
-                            <td class="text-center">{{ $amazonhl_spent }}</td>
+                            <td class="text-center td-l30-spent">
+                                <div class="spend-cell-inner">
+                                    <span>{{ $amazonhl_spent }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline spend-chart-btn" data-channel="AMZ HL" data-bs-toggle="modal" data-bs-target="#dailySpendModal" title="View daily spend">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $amazonhl_l60_spent ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -1065,7 +1324,14 @@
                                     echo number_format($amazonhl_grw, 0) . '%';
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $amazonhl_clicks }}</td>
+                            <td class="text-center td-l30-clicks">
+                                <div class="clicks-cell-inner">
+                                    <span>{{ $amazonhl_clicks }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline clicks-chart-btn" data-channel="AMZ HL" data-bs-toggle="modal" data-bs-target="#dailyClicksModal" title="View daily clicks">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $amazonhl_l60_clicks ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -1089,21 +1355,35 @@
                             <td class="text-center">
                                 @php
                                     $amazonhl_cps = ($amazonhl_ad_sold > 0) ? ($amazonhl_spent / $amazonhl_ad_sold) : 0;
-                                    echo number_format($amazonhl_cps, 2);
+                                    echo number_format($amazonhl_cps, 0);
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $amazonhl_ad_sales }}</td>
-                            <td class="text-center">
-                                @php
-                                    if($amazonhl_ad_sales > 0){
-                                        $acos = ($amazonhl_spent/$amazonhl_ad_sales)*100;
-                                        $acos = number_format($acos, 2);
-                                    }else{
-                                        $acos = 0;
-                                    }
-                                    $acos = round($acos);
-                                @endphp
-                                {{ $acos.' %'  }}
+                            <td class="text-center td-l30-adsales">
+                                <div class="adsales-cell-inner">
+                                    <span>{{ $amazonhl_ad_sales }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline ad-sales-chart-btn" data-channel="AMZ HL" data-bs-toggle="modal" data-bs-target="#dailyAdSalesModal" title="View daily ad sales">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
+                            <td class="text-center td-l30-acos">
+                                <div class="acos-cell-inner">
+                                    <span>
+                                        @php
+                                            if($amazonhl_ad_sales > 0){
+                                                $acos = ($amazonhl_spent/$amazonhl_ad_sales)*100;
+                                                $acos = number_format($acos, 2);
+                                            }else{
+                                                $acos = 0;
+                                            }
+                                            $acos = round($acos);
+                                        @endphp
+                                        {{ $acos.' %'  }}
+                                    </span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline acos-chart-btn" data-channel="AMZ HL" data-bs-toggle="modal" data-bs-target="#dailyAcosModal" title="View daily ACOS">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
                             </td>
                             <td class="text-center">
                                 @php
@@ -1197,7 +1477,14 @@
                             <td class="text-center">{{ $ebay_l30_sales }}</td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
-                            <td class="text-center">{{ $ebay_spent }}</td>
+                            <td class="text-center td-l30-spent">
+                                <div class="spend-cell-inner">
+                                    <span>{{ $ebay_spent }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline spend-chart-btn" data-channel="EBAY" data-bs-toggle="modal" data-bs-target="#dailySpendModal" title="View daily spend">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $ebay_l60_spent ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -1205,7 +1492,14 @@
                                     echo number_format($ebay_grw, 0) . '%';
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $ebay_clicks }}</td>
+                            <td class="text-center td-l30-clicks">
+                                <div class="clicks-cell-inner">
+                                    <span>{{ $ebay_clicks }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline clicks-chart-btn" data-channel="EBAY" data-bs-toggle="modal" data-bs-target="#dailyClicksModal" title="View daily clicks">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $ebay_l60_clicks ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -1229,21 +1523,35 @@
                             <td class="text-center">
                                 @php
                                     $ebay_cps = ($ebay_ad_sold > 0) ? ($ebay_spent / $ebay_ad_sold) : 0;
-                                    echo number_format($ebay_cps, 2);
+                                    echo number_format($ebay_cps, 0);
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $ebay_ad_sales }}</td>
-                            <td class="text-center">
-                                @php
-                                    if($ebay_ad_sales > 0){
-                                        $acos = ($ebay_spent/$ebay_ad_sales)*100;
-                                        $acos = number_format($acos, 2);
-                                    }else{
-                                        $acos = 0;
-                                    }
-                                    $acos = round($acos);
-                                @endphp
-                                {{ $acos.' %'  }}
+                            <td class="text-center td-l30-adsales">
+                                <div class="adsales-cell-inner">
+                                    <span>{{ $ebay_ad_sales }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline ad-sales-chart-btn" data-channel="EBAY" data-bs-toggle="modal" data-bs-target="#dailyAdSalesModal" title="View daily ad sales">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
+                            <td class="text-center td-l30-acos">
+                                <div class="acos-cell-inner">
+                                    <span>
+                                        @php
+                                            if($ebay_ad_sales > 0){
+                                                $acos = ($ebay_spent/$ebay_ad_sales)*100;
+                                                $acos = number_format($acos, 2);
+                                            }else{
+                                                $acos = 0;
+                                            }
+                                            $acos = round($acos);
+                                        @endphp
+                                        {{ $acos.' %'  }}
+                                    </span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline acos-chart-btn" data-channel="EBAY" data-bs-toggle="modal" data-bs-target="#dailyAcosModal" title="View daily ACOS">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
                             </td>
                             <td class="text-center">
                                 @php
@@ -1340,7 +1648,14 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
-                            <td class="text-center">{{ $ebaykw_spent }}</td>
+                            <td class="text-center td-l30-spent">
+                                <div class="spend-cell-inner">
+                                    <span>{{ $ebaykw_spent }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline spend-chart-btn" data-channel="EB KW" data-bs-toggle="modal" data-bs-target="#dailySpendModal" title="View daily spend">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $ebaykw_l60_spent ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -1348,7 +1663,14 @@
                                     echo number_format($ebaykw_grw, 0) . '%';
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $ebaykw_clicks }}</td>
+                            <td class="text-center td-l30-clicks">
+                                <div class="clicks-cell-inner">
+                                    <span>{{ $ebaykw_clicks }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline clicks-chart-btn" data-channel="EB KW" data-bs-toggle="modal" data-bs-target="#dailyClicksModal" title="View daily clicks">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $ebaykw_l60_clicks ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -1372,21 +1694,35 @@
                             <td class="text-center">
                                 @php
                                     $ebaykw_cps = ($ebaykw_ad_sold > 0) ? ($ebaykw_spent / $ebaykw_ad_sold) : 0;
-                                    echo number_format($ebaykw_cps, 2);
+                                    echo number_format($ebaykw_cps, 0);
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $ebaykw_ad_sales }}</td>
-                            <td class="text-center">
-                                @php
-                                    if($ebaykw_ad_sales > 0){
-                                        $acos = ($ebaykw_spent/$ebaykw_ad_sales)*100;
-                                        $acos = number_format($acos, 2);
-                                    }else{
-                                        $acos = 0;
-                                    }
-                                    $acos = round($acos);
-                                @endphp
-                                {{ $acos.' %'  }}
+                            <td class="text-center td-l30-adsales">
+                                <div class="adsales-cell-inner">
+                                    <span>{{ $ebaykw_ad_sales }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline ad-sales-chart-btn" data-channel="EB KW" data-bs-toggle="modal" data-bs-target="#dailyAdSalesModal" title="View daily ad sales">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
+                            <td class="text-center td-l30-acos">
+                                <div class="acos-cell-inner">
+                                    <span>
+                                        @php
+                                            if($ebaykw_ad_sales > 0){
+                                                $acos = ($ebaykw_spent/$ebaykw_ad_sales)*100;
+                                                $acos = number_format($acos, 2);
+                                            }else{
+                                                $acos = 0;
+                                            }
+                                            $acos = round($acos);
+                                        @endphp
+                                        {{ $acos.' %'  }}
+                                    </span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline acos-chart-btn" data-channel="EB KW" data-bs-toggle="modal" data-bs-target="#dailyAcosModal" title="View daily ACOS">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
                             </td>
                             <td class="text-center">
                                 @php
@@ -1471,7 +1807,14 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
-                            <td class="text-center">{{ $ebaypmt_spent }}</td>
+                            <td class="text-center td-l30-spent">
+                                <div class="spend-cell-inner">
+                                    <span>{{ $ebaypmt_spent }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline spend-chart-btn" data-channel="EB PMT" data-bs-toggle="modal" data-bs-target="#dailySpendModal" title="View daily spend">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $ebaypmt_l60_spent ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -1479,7 +1822,14 @@
                                     echo number_format($ebaypmt_grw, 0) . '%';
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $ebaypmt_clicks }}</td>
+                            <td class="text-center td-l30-clicks">
+                                <div class="clicks-cell-inner">
+                                    <span>{{ $ebaypmt_clicks }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline clicks-chart-btn" data-channel="EB PMT" data-bs-toggle="modal" data-bs-target="#dailyClicksModal" title="View daily clicks">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $ebaypmt_l60_clicks ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -1503,21 +1853,35 @@
                             <td class="text-center">
                                 @php
                                     $ebaypmt_cps = ($ebaypmt_ad_sold > 0) ? ($ebaypmt_spent / $ebaypmt_ad_sold) : 0;
-                                    echo number_format($ebaypmt_cps, 2);
+                                    echo number_format($ebaypmt_cps, 0);
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $ebaypmt_ad_sales }}</td>
-                            <td class="text-center">
-                                @php
-                                    if($ebaypmt_ad_sales > 0){
-                                        $acos = ($ebaypmt_spent/$ebaypmt_ad_sales)*100;
-                                        $acos = number_format($acos, 2);
-                                    }else{
-                                        $acos = 0;
-                                    }
-                                    $acos = round($acos);
-                                @endphp
-                                {{ $acos.' %'  }}
+                            <td class="text-center td-l30-adsales">
+                                <div class="adsales-cell-inner">
+                                    <span>{{ $ebaypmt_ad_sales }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline ad-sales-chart-btn" data-channel="EB PMT" data-bs-toggle="modal" data-bs-target="#dailyAdSalesModal" title="View daily ad sales">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
+                            <td class="text-center td-l30-acos">
+                                <div class="acos-cell-inner">
+                                    <span>
+                                        @php
+                                            if($ebaypmt_ad_sales > 0){
+                                                $acos = ($ebaypmt_spent/$ebaypmt_ad_sales)*100;
+                                                $acos = number_format($acos, 2);
+                                            }else{
+                                                $acos = 0;
+                                            }
+                                            $acos = round($acos);
+                                        @endphp
+                                        {{ $acos.' %'  }}
+                                    </span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline acos-chart-btn" data-channel="EB PMT" data-bs-toggle="modal" data-bs-target="#dailyAcosModal" title="View daily ACOS">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
                             </td>
                             <td class="text-center">
                                 @php
@@ -1611,7 +1975,14 @@
                             <td class="text-center">{{ $ebay2_l30_sales }}</td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
-                            <td class="text-center">{{ $ebay2_spent }}</td>
+                            <td class="text-center td-l30-spent">
+                                <div class="spend-cell-inner">
+                                    <span>{{ $ebay2_spent }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline spend-chart-btn" data-channel="EBAY 2" data-bs-toggle="modal" data-bs-target="#dailySpendModal" title="View daily spend">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $ebay2_l60_spent ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -1619,7 +1990,14 @@
                                     echo number_format($ebay2_grw, 0) . '%';
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $ebay2_clicks }}</td>
+                            <td class="text-center td-l30-clicks">
+                                <div class="clicks-cell-inner">
+                                    <span>{{ $ebay2_clicks }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline clicks-chart-btn" data-channel="EBAY 2" data-bs-toggle="modal" data-bs-target="#dailyClicksModal" title="View daily clicks">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $ebay2_l60_clicks ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -1643,21 +2021,35 @@
                             <td class="text-center">
                                 @php
                                     $ebay2_cps = ($ebay2_ad_sold > 0) ? ($ebay2_spent / $ebay2_ad_sold) : 0;
-                                    echo number_format($ebay2_cps, 2);
+                                    echo number_format($ebay2_cps, 0);
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $ebay2_ad_sales }}</td>
-                            <td class="text-center">
-                                @php
-                                    if($ebay2_ad_sales > 0){
-                                        $acos = ($ebay2_spent/$ebay2_ad_sales)*100;
-                                        $acos = number_format($acos, 2);
-                                    }else{
-                                        $acos = 0;
-                                    }
-                                    $acos = round($acos);
-                                @endphp
-                                {{ $acos.' %'  }}
+                            <td class="text-center td-l30-adsales">
+                                <div class="adsales-cell-inner">
+                                    <span>{{ $ebay2_ad_sales }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline ad-sales-chart-btn" data-channel="EBAY 2" data-bs-toggle="modal" data-bs-target="#dailyAdSalesModal" title="View daily ad sales">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
+                            <td class="text-center td-l30-acos">
+                                <div class="acos-cell-inner">
+                                    <span>
+                                        @php
+                                            if($ebay2_ad_sales > 0){
+                                                $acos = ($ebay2_spent/$ebay2_ad_sales)*100;
+                                                $acos = number_format($acos, 2);
+                                            }else{
+                                                $acos = 0;
+                                            }
+                                            $acos = round($acos);
+                                        @endphp
+                                        {{ $acos.' %'  }}
+                                    </span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline acos-chart-btn" data-channel="EBAY 2" data-bs-toggle="modal" data-bs-target="#dailyAcosModal" title="View daily ACOS">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
                             </td>
                             <td class="text-center">
                                 @php
@@ -1753,7 +2145,14 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
-                            <td class="text-center">{{ $ebay2pmt_spent }}</td>
+                            <td class="text-center td-l30-spent">
+                                <div class="spend-cell-inner">
+                                    <span>{{ $ebay2pmt_spent }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline spend-chart-btn" data-channel="EB PMT2" data-bs-toggle="modal" data-bs-target="#dailySpendModal" title="View daily spend">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $ebay2pmt_l60_spent ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -1761,7 +2160,14 @@
                                     echo number_format($grw, 0) . '%';
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $ebay2pmt_clicks }}</td>
+                            <td class="text-center td-l30-clicks">
+                                <div class="clicks-cell-inner">
+                                    <span>{{ $ebay2pmt_clicks }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline clicks-chart-btn" data-channel="EB PMT2" data-bs-toggle="modal" data-bs-target="#dailyClicksModal" title="View daily clicks">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $ebay2pmt_l60_clicks ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -1785,21 +2191,35 @@
                             <td class="text-center">
                                 @php
                                     $ebay2pmt_cps = ($ebay2pmt_ad_sold > 0) ? ($ebay2pmt_spent / $ebay2pmt_ad_sold) : 0;
-                                    echo number_format($ebay2pmt_cps, 2);
+                                    echo number_format($ebay2pmt_cps, 0);
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $ebay2pmt_ad_sales }}</td>
-                            <td class="text-center">
-                                @php
-                                    if($ebay2pmt_ad_sales > 0){
-                                        $acos = ($ebay2pmt_spent/$ebay2pmt_ad_sales)*100;
-                                        $acos = number_format($acos, 2);
-                                    }else{
-                                        $acos = 0;
-                                    }
-                                    $acos = round($acos);
-                                @endphp
-                                {{ $acos.' %'  }}
+                            <td class="text-center td-l30-adsales">
+                                <div class="adsales-cell-inner">
+                                    <span>{{ $ebay2pmt_ad_sales }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline ad-sales-chart-btn" data-channel="EB PMT2" data-bs-toggle="modal" data-bs-target="#dailyAdSalesModal" title="View daily ad sales">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
+                            <td class="text-center td-l30-acos">
+                                <div class="acos-cell-inner">
+                                    <span>
+                                        @php
+                                            if($ebay2pmt_ad_sales > 0){
+                                                $acos = ($ebay2pmt_spent/$ebay2pmt_ad_sales)*100;
+                                                $acos = number_format($acos, 2);
+                                            }else{
+                                                $acos = 0;
+                                            }
+                                            $acos = round($acos);
+                                        @endphp
+                                        {{ $acos.' %'  }}
+                                    </span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline acos-chart-btn" data-channel="EB PMT2" data-bs-toggle="modal" data-bs-target="#dailyAcosModal" title="View daily ACOS">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
                             </td>
                             <td class="text-center">
                                 @php
@@ -1893,7 +2313,14 @@
                             <td class="text-center">{{ $ebay3_l30_sales }}</td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
-                            <td class="text-center">{{ $ebay3_spent }}</td>
+                            <td class="text-center td-l30-spent">
+                                <div class="spend-cell-inner">
+                                    <span>{{ $ebay3_spent }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline spend-chart-btn" data-channel="EBAY 3" data-bs-toggle="modal" data-bs-target="#dailySpendModal" title="View daily spend">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $ebay3_l60_spent ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -1901,7 +2328,14 @@
                                     echo number_format($grw, 0) . '%';
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $ebay3_clicks }}</td>
+                            <td class="text-center td-l30-clicks">
+                                <div class="clicks-cell-inner">
+                                    <span>{{ $ebay3_clicks }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline clicks-chart-btn" data-channel="EBAY 3" data-bs-toggle="modal" data-bs-target="#dailyClicksModal" title="View daily clicks">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $ebay3_l60_clicks ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -1925,21 +2359,35 @@
                             <td class="text-center">
                                 @php
                                     $ebay3_cps = ($ebay3_ad_sold > 0) ? ($ebay3_spent / $ebay3_ad_sold) : 0;
-                                    echo number_format($ebay3_cps, 2);
+                                    echo number_format($ebay3_cps, 0);
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $ebay3_ad_sales }}</td>
-                            <td class="text-center">
-                                @php
-                                    if($ebay3_ad_sales > 0){
-                                        $acos = ($ebay3_spent/$ebay3_ad_sales)*100;
-                                        $acos = number_format($acos, 2);
-                                    }else{
-                                        $acos = 0;
-                                    }
-                                    $acos = round($acos);
-                                @endphp
-                                {{ $acos.' %'  }}
+                            <td class="text-center td-l30-adsales">
+                                <div class="adsales-cell-inner">
+                                    <span>{{ $ebay3_ad_sales }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline ad-sales-chart-btn" data-channel="EBAY 3" data-bs-toggle="modal" data-bs-target="#dailyAdSalesModal" title="View daily ad sales">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
+                            <td class="text-center td-l30-acos">
+                                <div class="acos-cell-inner">
+                                    <span>
+                                        @php
+                                            if($ebay3_ad_sales > 0){
+                                                $acos = ($ebay3_spent/$ebay3_ad_sales)*100;
+                                                $acos = number_format($acos, 2);
+                                            }else{
+                                                $acos = 0;
+                                            }
+                                            $acos = round($acos);
+                                        @endphp
+                                        {{ $acos.' %'  }}
+                                    </span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline acos-chart-btn" data-channel="EBAY 3" data-bs-toggle="modal" data-bs-target="#dailyAcosModal" title="View daily ACOS">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
                             </td>
                             <td class="text-center">
                                 @php
@@ -2035,7 +2483,14 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
-                            <td class="text-center">{{ $ebay3kw_spent }}</td>
+                            <td class="text-center td-l30-spent">
+                                <div class="spend-cell-inner">
+                                    <span>{{ $ebay3kw_spent }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline spend-chart-btn" data-channel="EB KW3" data-bs-toggle="modal" data-bs-target="#dailySpendModal" title="View daily spend">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $ebay3kw_l60_spent ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -2043,7 +2498,14 @@
                                     echo number_format($grw, 0) . '%';
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $ebay3kw_clicks }}</td>
+                            <td class="text-center td-l30-clicks">
+                                <div class="clicks-cell-inner">
+                                    <span>{{ $ebay3kw_clicks }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline clicks-chart-btn" data-channel="EB KW3" data-bs-toggle="modal" data-bs-target="#dailyClicksModal" title="View daily clicks">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $ebay3kw_l60_clicks ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -2067,21 +2529,35 @@
                             <td class="text-center">
                                 @php
                                     $ebay3kw_cps = ($ebay3kw_ad_sold > 0) ? ($ebay3kw_spent / $ebay3kw_ad_sold) : 0;
-                                    echo number_format($ebay3kw_cps, 2);
+                                    echo number_format($ebay3kw_cps, 0);
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $ebay3kw_ad_sales }}</td>
-                            <td class="text-center">
-                                @php
-                                    if($ebay3kw_ad_sales > 0){
-                                        $acos = ($ebay3kw_spent/$ebay3kw_ad_sales)*100;
-                                        $acos = number_format($acos, 2);
-                                    }else{
-                                        $acos = 0;
-                                    }
-                                    $acos = round($acos);
-                                @endphp
-                                {{ $acos.' %'  }}
+                            <td class="text-center td-l30-adsales">
+                                <div class="adsales-cell-inner">
+                                    <span>{{ $ebay3kw_ad_sales }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline ad-sales-chart-btn" data-channel="EB KW3" data-bs-toggle="modal" data-bs-target="#dailyAdSalesModal" title="View daily ad sales">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
+                            <td class="text-center td-l30-acos">
+                                <div class="acos-cell-inner">
+                                    <span>
+                                        @php
+                                            if($ebay3kw_ad_sales > 0){
+                                                $acos = ($ebay3kw_spent/$ebay3kw_ad_sales)*100;
+                                                $acos = number_format($acos, 2);
+                                            }else{
+                                                $acos = 0;
+                                            }
+                                            $acos = round($acos);
+                                        @endphp
+                                        {{ $acos.' %'  }}
+                                    </span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline acos-chart-btn" data-channel="EB KW3" data-bs-toggle="modal" data-bs-target="#dailyAcosModal" title="View daily ACOS">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
                             </td>
                             <td class="text-center">
                                 @php
@@ -2166,7 +2642,14 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
-                            <td class="text-center">{{ $ebay3pmt_spent }}</td>
+                            <td class="text-center td-l30-spent">
+                                <div class="spend-cell-inner">
+                                    <span>{{ $ebay3pmt_spent }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline spend-chart-btn" data-channel="EB PMT3" data-bs-toggle="modal" data-bs-target="#dailySpendModal" title="View daily spend">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $ebay3pmt_l60_spent ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -2174,7 +2657,14 @@
                                     echo number_format($grw, 0) . '%';
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $ebay3pmt_clicks }}</td>
+                            <td class="text-center td-l30-clicks">
+                                <div class="clicks-cell-inner">
+                                    <span>{{ $ebay3pmt_clicks }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline clicks-chart-btn" data-channel="EB PMT3" data-bs-toggle="modal" data-bs-target="#dailyClicksModal" title="View daily clicks">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $ebay3pmt_l60_clicks ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -2198,21 +2688,35 @@
                             <td class="text-center">
                                 @php
                                     $ebay3pmt_cps = ($ebay3pmt_ad_sold > 0) ? ($ebay3pmt_spent / $ebay3pmt_ad_sold) : 0;
-                                    echo number_format($ebay3pmt_cps, 2);
+                                    echo number_format($ebay3pmt_cps, 0);
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $ebay3pmt_ad_sales }}</td>
-                            <td class="text-center">
-                                @php
-                                    if($ebay3pmt_ad_sales > 0){
-                                        $acos = ($ebay3pmt_spent/$ebay3pmt_ad_sales)*100;
-                                        $acos = number_format($acos, 2);
-                                    }else{
-                                        $acos = 0;
-                                    }
-                                    $acos = round($acos);
-                                @endphp
-                                {{ $acos.' %'  }}
+                            <td class="text-center td-l30-adsales">
+                                <div class="adsales-cell-inner">
+                                    <span>{{ $ebay3pmt_ad_sales }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline ad-sales-chart-btn" data-channel="EB PMT3" data-bs-toggle="modal" data-bs-target="#dailyAdSalesModal" title="View daily ad sales">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
+                            <td class="text-center td-l30-acos">
+                                <div class="acos-cell-inner">
+                                    <span>
+                                        @php
+                                            if($ebay3pmt_ad_sales > 0){
+                                                $acos = ($ebay3pmt_spent/$ebay3pmt_ad_sales)*100;
+                                                $acos = number_format($acos, 2);
+                                            }else{
+                                                $acos = 0;
+                                            }
+                                            $acos = round($acos);
+                                        @endphp
+                                        {{ $acos.' %'  }}
+                                    </span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline acos-chart-btn" data-channel="EB PMT3" data-bs-toggle="modal" data-bs-target="#dailyAcosModal" title="View daily ACOS">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
                             </td>
                             <td class="text-center">
                                 @php
@@ -2306,7 +2810,14 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
-                            <td class="text-center">{{ $walmart_spent }}</td>
+                            <td class="text-center td-l30-spent">
+                                <div class="spend-cell-inner">
+                                    <span>{{ $walmart_spent }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline spend-chart-btn" data-channel="WALMART" data-bs-toggle="modal" data-bs-target="#dailySpendModal" title="View daily spend">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $walmart_l60_spent ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -2314,7 +2825,14 @@
                                     echo number_format($grw, 0) . '%';
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $walmart_clicks }}</td>
+                            <td class="text-center td-l30-clicks">
+                                <div class="clicks-cell-inner">
+                                    <span>{{ $walmart_clicks }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline clicks-chart-btn" data-channel="WALMART" data-bs-toggle="modal" data-bs-target="#dailyClicksModal" title="View daily clicks">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $walmart_l60_clicks ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -2338,21 +2856,35 @@
                             <td class="text-center">
                                 @php
                                     $walmart_cps = ($walmart_ad_sold > 0) ? ($walmart_spent / $walmart_ad_sold) : 0;
-                                    echo number_format($walmart_cps, 2);
+                                    echo number_format($walmart_cps, 0);
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $walmart_ad_sales }}</td>
-                            <td class="text-center">
-                                @php
-                                    if($walmart_ad_sales > 0){
-                                        $acos = ($walmart_spent/$walmart_ad_sales)*100;
-                                        $acos = number_format($acos, 2);
-                                    }else{
-                                        $acos = 0;
-                                    }
-                                    $acos = round($acos);
-                                @endphp
-                                {{ $acos.' %'  }}
+                            <td class="text-center td-l30-adsales">
+                                <div class="adsales-cell-inner">
+                                    <span>{{ $walmart_ad_sales }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline ad-sales-chart-btn" data-channel="WALMART" data-bs-toggle="modal" data-bs-target="#dailyAdSalesModal" title="View daily ad sales">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
+                            <td class="text-center td-l30-acos">
+                                <div class="acos-cell-inner">
+                                    <span>
+                                        @php
+                                            if($walmart_ad_sales > 0){
+                                                $acos = ($walmart_spent/$walmart_ad_sales)*100;
+                                                $acos = number_format($acos, 2);
+                                            }else{
+                                                $acos = 0;
+                                            }
+                                            $acos = round($acos);
+                                        @endphp
+                                        {{ $acos.' %'  }}
+                                    </span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline acos-chart-btn" data-channel="WALMART" data-bs-toggle="modal" data-bs-target="#dailyAcosModal" title="View daily ACOS">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
                             </td>
                             <td class="text-center">
                                 @php
@@ -2453,6 +2985,11 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
                             <td class="text-center">
                                 <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="SHOPIFY" data-type="" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -2479,7 +3016,14 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
-                            <td class="text-center">{{ $gshoping_spent }}</td>
+                            <td class="text-center td-l30-spent">
+                                <div class="spend-cell-inner">
+                                    <span>{{ $gshoping_spent }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline spend-chart-btn" data-channel="G SHOPPING" data-bs-toggle="modal" data-bs-target="#dailySpendModal" title="View daily spend">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $gshoping_l60_spent ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -2487,7 +3031,14 @@
                                     echo number_format($grw, 0) . '%';
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $gshoping_clicks }}</td>
+                            <td class="text-center td-l30-clicks">
+                                <div class="clicks-cell-inner">
+                                    <span>{{ $gshoping_clicks }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline clicks-chart-btn" data-channel="G SHOPPING" data-bs-toggle="modal" data-bs-target="#dailyClicksModal" title="View daily clicks">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
                             <td class="text-center">{{ $gshoping_l60_clicks ?? 0 }}</td>
                             <td class="text-center">
                                 @php
@@ -2495,18 +3046,51 @@
                                     echo number_format($grw_clks, 0) . '%';
                                 @endphp
                             </td>
-                            <td class="text-center">{{ $gshoping_ad_sales }}</td>
                             <td class="text-center">
                                 @php
-                                    if($gshoping_ad_sales > 0){
-                                        $acos = ($gshoping_spent/$gshoping_ad_sales)*100;
-                                        $acos = number_format($acos, 2);
-                                    }else{
-                                        $acos = 0;
-                                    }
-                                    $acos = round($acos);
+                                    $gshoping_cpc = ($gshoping_clicks > 0) ? ($gshoping_spent / $gshoping_clicks) : 0;
+                                    echo number_format($gshoping_cpc, 2);
                                 @endphp
-                                {{ $acos.' %'  }}
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $gshoping_impressions = ($gshoping_impressions ?? 0);
+                                    $gshoping_ctr = ($gshoping_impressions > 0) ? (($gshoping_clicks / $gshoping_impressions) * 100) : 0;
+                                    echo number_format($gshoping_ctr, 2) . '%';
+                                @endphp
+                            </td>
+                            <td class="text-center">
+                                @php
+                                    $gshoping_cps = ($gshoping_ad_sold > 0) ? ($gshoping_spent / $gshoping_ad_sold) : 0;
+                                    echo number_format($gshoping_cps, 0);
+                                @endphp
+                            </td>
+                            <td class="text-center td-l30-adsales">
+                                <div class="adsales-cell-inner">
+                                    <span>{{ $gshoping_ad_sales }}</span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline ad-sales-chart-btn" data-channel="G SHOPPING" data-bs-toggle="modal" data-bs-target="#dailyAdSalesModal" title="View daily ad sales">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
+                            </td>
+                            <td class="text-center td-l30-acos">
+                                <div class="acos-cell-inner">
+                                    <span>
+                                        @php
+                                            if($gshoping_ad_sales > 0){
+                                                $acos = ($gshoping_spent/$gshoping_ad_sales)*100;
+                                                $acos = number_format($acos, 2);
+                                            }else{
+                                                $acos = 0;
+                                            }
+                                            $acos = round($acos);
+                                        @endphp
+                                        {{ $acos.' %'  }}
+                                    </span>
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline acos-chart-btn" data-channel="G SHOPPING" data-bs-toggle="modal" data-bs-target="#dailyAcosModal" title="View daily ACOS">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                    </button>
+                                </div>
                             </td>
                             <td class="text-center">
                                 @php
@@ -2610,6 +3194,9 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
                             <td class="text-center">
                                 <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="G SERP" data-type="" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -2624,6 +3211,9 @@
                             <td class="text-center"></td>
                             <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
                             <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
@@ -2681,6 +3271,9 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
                             <td class="text-center">
                                 <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="FB VIDEO" data-type="" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -2695,6 +3288,9 @@
                             <td class="text-center"></td>
                             <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
                             <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
@@ -2749,6 +3345,9 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
                             <td class="text-center">
                                 <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="INSTA VIDEO" data-type="" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -2763,6 +3362,9 @@
                             <td class="text-center"></td>
                             <td class="text-center"><a href="#" class="adv-l60-tab-link text-primary" title="View L60 Data">L60</a></td>
                             <td class="text-center"><a href="#" class="adv-l60-graph-link text-success" title="View L60 Graph">📈</a></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
@@ -2813,6 +3415,10 @@
                             <td class="text-center"></td>
                             <td class="text-center"></td>
                             <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
+                            <td class="text-center"></td>
                             <td class="text-center">
                                 <button type="button" class="btn btn-sm btn-warning edit-channel-btn" data-channel="TIKTOK" data-type="" title="Edit Channel">
                                     <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -2843,10 +3449,24 @@
                                     <td class="text-center">{{ number_format($chData['l30_sales'], 0) }}</td>
                                     <td class="text-center"></td>
                                     <td class="text-center"></td>
-                                    <td class="text-center">{{ number_format($chData['spent'], 2) }}</td>
+                                    <td class="text-center td-l30-spent">
+                                        <div class="spend-cell-inner">
+                                            <span>{{ number_format($chData['spent'], 2) }}</span>
+                                            <button type="button" class="btn btn-link btn-sm p-0 align-baseline spend-chart-btn" data-channel="{{ $ch }}" data-bs-toggle="modal" data-bs-target="#dailySpendModal" title="View daily spend">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                            </button>
+                                        </div>
+                                    </td>
                                     <td class="text-center">{{ number_format($chData['l60_spent'], 2) }}</td>
                                     <td class="text-center">{{ number_format($grw, 0) }}%</td>
-                                    <td class="text-center">{{ number_format($chData['clicks'], 0) }}</td>
+                                    <td class="text-center td-l30-clicks">
+                                        <div class="clicks-cell-inner">
+                                            <span>{{ number_format($chData['clicks'], 0) }}</span>
+                                            <button type="button" class="btn btn-link btn-sm p-0 align-baseline clicks-chart-btn" data-channel="{{ $ch }}" data-bs-toggle="modal" data-bs-target="#dailyClicksModal" title="View daily clicks">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                            </button>
+                                        </div>
+                                    </td>
                                     <td class="text-center">{{ number_format($chData['l60_clicks'], 0) }}</td>
                                     <td class="text-center">{{ number_format($grw_clks, 0) }}%</td>
                                     <td class="text-center">
@@ -2865,11 +3485,25 @@
                                     <td class="text-center">
                                         @php
                                             $ch_cps = (($chData['ad_sold'] ?? 0) > 0) ? ($chData['spent'] / $chData['ad_sold']) : 0;
-                                            echo number_format($ch_cps, 2);
+                                            echo number_format($ch_cps, 0);
                                         @endphp
                                     </td>
-                                    <td class="text-center">{{ number_format($chData['ad_sales'], 2) }}</td>
-                                    <td class="text-center">{{ number_format($l30_acos, 2) }}%</td>
+                                    <td class="text-center td-l30-adsales">
+                                        <div class="adsales-cell-inner">
+                                            <span>{{ number_format($chData['ad_sales'], 2) }}</span>
+                                            <button type="button" class="btn btn-link btn-sm p-0 align-baseline ad-sales-chart-btn" data-channel="{{ $ch }}" data-bs-toggle="modal" data-bs-target="#dailyAdSalesModal" title="View daily ad sales">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                            </button>
+                                        </div>
+                                    </td>
+                                    <td class="text-center td-l30-acos">
+                                        <div class="acos-cell-inner">
+                                            <span>{{ number_format($l30_acos, 2) }}%</span>
+                                            <button type="button" class="btn btn-link btn-sm p-0 align-baseline acos-chart-btn" data-channel="{{ $ch }}" data-bs-toggle="modal" data-bs-target="#dailyAcosModal" title="View daily ACOS">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>
+                                            </button>
+                                        </div>
+                                    </td>
                                     <td class="text-center">{{ number_format($l60_acos, 2) }}%</td>
                                     <td class="text-center" style="color: {{ $ctrl_acos < 0 ? '#006400' : '#8B0000' }}">{{ number_format($ctrl_acos, 2) }}%</td>
                                     <td class="text-center">0</td>
@@ -3160,6 +3794,138 @@
         </div>
     </div>
     <!-- END Channel Chart Modal -->
+
+    <!-- Daily Clicks Chart Modal (eye icon on L30 CLKS column) -->
+    <div class="modal fade" id="dailyClicksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="dailyClicksModalTitle">Daily Clicks</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">Clicks data is saved and stored daily by the system. Use the eye icon on the L30 CLKS column to view this graph.</p>
+                    <div class="row mb-4">
+                        <div class="col-md-3">
+                            <label class="form-label text-muted small mb-2">From Date</label>
+                            <input type="date" class="form-control" id="dailyClicksFromDate" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label text-muted small mb-2">To Date</label>
+                            <input type="date" class="form-control" id="dailyClicksToDate" />
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button class="btn btn-success w-100" id="dailyClicksApplyBtn">Apply Filter</button>
+                        </div>
+                    </div>
+                    <div id="dailyClicksNoData" class="alert alert-info mb-0" style="display: none;">No daily clicks data for this period. Data is stored daily when the cron runs.</div>
+                    <div class="chart-wrapper">
+                        <canvas id="dailyClicksCanvas" height="80"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- END Daily Clicks Chart Modal -->
+
+    <!-- Daily Spend Chart Modal (eye icon on L30 SPENT column) -->
+    <div class="modal fade" id="dailySpendModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="dailySpendModalTitle">Daily Spend</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">Spend data is saved and stored daily by the system. Use the eye icon on the L30 SPENT column to view this graph.</p>
+                    <div class="row mb-4">
+                        <div class="col-md-3">
+                            <label class="form-label text-muted small mb-2">From Date</label>
+                            <input type="date" class="form-control" id="dailySpendFromDate" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label text-muted small mb-2">To Date</label>
+                            <input type="date" class="form-control" id="dailySpendToDate" />
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button class="btn btn-success w-100" id="dailySpendApplyBtn">Apply Filter</button>
+                        </div>
+                    </div>
+                    <div id="dailySpendNoData" class="alert alert-info mb-0" style="display: none;">No daily spend data for this period. Data is stored daily when the cron runs.</div>
+                    <div class="chart-wrapper">
+                        <canvas id="dailySpendCanvas" height="80"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- END Daily Spend Chart Modal -->
+
+    <!-- Daily Ad Sales Chart Modal (eye icon on AD SALES column) -->
+    <div class="modal fade" id="dailyAdSalesModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="dailyAdSalesModalTitle">Daily Ad Sales</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">Ad sales data is saved and stored daily by the system. Use the eye icon on the AD SALES column to view this graph.</p>
+                    <div class="row mb-4">
+                        <div class="col-md-3">
+                            <label class="form-label text-muted small mb-2">From Date</label>
+                            <input type="date" class="form-control" id="dailyAdSalesFromDate" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label text-muted small mb-2">To Date</label>
+                            <input type="date" class="form-control" id="dailyAdSalesToDate" />
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button class="btn btn-success w-100" id="dailyAdSalesApplyBtn">Apply Filter</button>
+                        </div>
+                    </div>
+                    <div id="dailyAdSalesNoData" class="alert alert-info mb-0" style="display: none;">No daily ad sales data for this period. Data is stored daily when the cron runs.</div>
+                    <div class="chart-wrapper">
+                        <canvas id="dailyAdSalesCanvas" height="80"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- END Daily Ad Sales Chart Modal -->
+
+    <!-- Daily ACOS Chart Modal (eye icon on L30 ACOS% column) -->
+    <div class="modal fade" id="dailyAcosModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="dailyAcosModalTitle">Daily ACOS</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small mb-3">ACOS data is saved and stored daily by the system. Use the eye icon on the L30 ACOS% column to view this graph.</p>
+                    <div class="row mb-4">
+                        <div class="col-md-3">
+                            <label class="form-label text-muted small mb-2">From Date</label>
+                            <input type="date" class="form-control" id="dailyAcosFromDate" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label text-muted small mb-2">To Date</label>
+                            <input type="date" class="form-control" id="dailyAcosToDate" />
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button class="btn btn-success w-100" id="dailyAcosApplyBtn">Apply Filter</button>
+                        </div>
+                    </div>
+                    <div id="dailyAcosNoData" class="alert alert-info mb-0" style="display: none;">No daily ACOS data for this period. Data is stored daily when the cron runs.</div>
+                    <div class="chart-wrapper">
+                        <canvas id="dailyAcosCanvas" height="80"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- END Daily ACOS Chart Modal -->
 
     <!-- L60 Data Table Modal (stacked tabular) -->
     <div class="modal fade" id="adv-l60-tab-modal" tabindex="-1" aria-labelledby="adv-l60-tab-modal-label" aria-hidden="true">
@@ -3854,6 +4620,335 @@ $(document).ready(function() {
 
     /** End Channel Chart Modal **/
 
+    /** Daily Clicks Chart Modal (eye icon on L30 CLKS) **/
+    var dailyClicksCurrentChannel = null;
+    var dailyClicksChartInstance = null;
+    // Store channel when eye icon is clicked (works for both static table and Tabulator)
+    $(document).on('click', '.clicks-chart-btn', function() {
+        dailyClicksCurrentChannel = $(this).data('channel') || null;
+    });
+    $('#dailyClicksModal').on('shown.bs.modal', function(e) {
+        var btn = e.relatedTarget ? $(e.relatedTarget) : $();
+        if (btn.length && btn.hasClass('clicks-chart-btn')) dailyClicksCurrentChannel = btn.data('channel') || dailyClicksCurrentChannel;
+        if (dailyClicksCurrentChannel) {
+            $('#dailyClicksModalTitle').text('Daily Clicks - ' + dailyClicksCurrentChannel);
+            var today = new Date();
+            var d30 = new Date(today);
+            d30.setDate(d30.getDate() - 30);
+            $('#dailyClicksFromDate').val(d30.toISOString().slice(0, 10));
+            $('#dailyClicksToDate').val(today.toISOString().slice(0, 10));
+            $('#dailyClicksApplyBtn').trigger('click');
+        }
+    });
+    $('#dailyClicksApplyBtn').on('click', function() {
+        if (!dailyClicksCurrentChannel) return;
+        var fromDate = $('#dailyClicksFromDate').val();
+        var toDate = $('#dailyClicksToDate').val();
+        if (!fromDate || !toDate) {
+            alert('Please select From Date and To Date.');
+            return;
+        }
+        $.ajax({
+            url: "{{ route('channel.adv.clicks.chart.data') }}",
+            method: 'GET',
+            data: { channel: dailyClicksCurrentChannel, fromDate: fromDate, toDate: toDate },
+            success: function(response) {
+                if (dailyClicksChartInstance) { dailyClicksChartInstance.destroy(); dailyClicksChartInstance = null; }
+                var ctx = document.getElementById('dailyClicksCanvas');
+                if (!ctx) return;
+                var dateArray = response.dateArray || [];
+                var clicksArray = response.clicksArray || [];
+                $('#dailyClicksNoData').toggle(!dateArray.length);
+                $('#dailyClicksCanvas').closest('.chart-wrapper').toggle(!!dateArray.length);
+                if (!dateArray.length) return;
+                dailyClicksChartInstance = new Chart(ctx.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: dateArray,
+                        datasets: [{
+                            label: 'Clicks',
+                            data: clicksArray,
+                            borderColor: '#00b894',
+                            backgroundColor: 'rgba(0, 184, 148, 0.1)',
+                            tension: 0.4,
+                            borderWidth: 2,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: { display: true, position: 'top' },
+                            tooltip: { callbacks: { label: function(c) { return 'Clicks: ' + c.formattedValue; } } }
+                        },
+                        scales: {
+                            x: { grid: { display: false }, ticks: { color: '#6b7280', maxRotation: 45 } },
+                            y: {
+                                beginAtZero: true,
+                                grid: { color: '#e5e7eb' },
+                                ticks: { color: '#00b894', callback: function(v) { return v >= 1000 ? (v/1000) + 'K' : v; } }
+                            }
+                        }
+                    }
+                });
+            },
+            error: function(xhr) {
+                var msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Failed to load daily clicks data.';
+                alert(msg);
+            }
+        });
+    });
+    /** End Daily Clicks Chart Modal **/
+
+    /** Daily Spend Chart Modal (eye icon on L30 SPENT) **/
+    var dailySpendCurrentChannel = null;
+    var dailySpendChartInstance = null;
+    $(document).on('click', '.spend-chart-btn', function() {
+        dailySpendCurrentChannel = $(this).data('channel') || null;
+    });
+    $('#dailySpendModal').on('shown.bs.modal', function(e) {
+        var btn = e.relatedTarget ? $(e.relatedTarget) : $();
+        if (btn.length && btn.hasClass('spend-chart-btn')) dailySpendCurrentChannel = btn.data('channel') || dailySpendCurrentChannel;
+        if (dailySpendCurrentChannel) {
+            $('#dailySpendModalTitle').text('Daily Spend - ' + dailySpendCurrentChannel);
+            var today = new Date();
+            var d30 = new Date(today);
+            d30.setDate(d30.getDate() - 30);
+            $('#dailySpendFromDate').val(d30.toISOString().slice(0, 10));
+            $('#dailySpendToDate').val(today.toISOString().slice(0, 10));
+            $('#dailySpendApplyBtn').trigger('click');
+        }
+    });
+    $('#dailySpendApplyBtn').on('click', function() {
+        if (!dailySpendCurrentChannel) return;
+        var fromDate = $('#dailySpendFromDate').val();
+        var toDate = $('#dailySpendToDate').val();
+        if (!fromDate || !toDate) {
+            alert('Please select From Date and To Date.');
+            return;
+        }
+        $.ajax({
+            url: "{{ route('channel.adv.spend.chart.data') }}",
+            method: 'GET',
+            data: { channel: dailySpendCurrentChannel, fromDate: fromDate, toDate: toDate },
+            success: function(response) {
+                if (dailySpendChartInstance) { dailySpendChartInstance.destroy(); dailySpendChartInstance = null; }
+                var ctx = document.getElementById('dailySpendCanvas');
+                if (!ctx) return;
+                var dateArray = response.dateArray || [];
+                var spentArray = response.spentArray || [];
+                $('#dailySpendNoData').toggle(!dateArray.length);
+                $('#dailySpendCanvas').closest('.chart-wrapper').toggle(!!dateArray.length);
+                if (!dateArray.length) return;
+                dailySpendChartInstance = new Chart(ctx.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: dateArray,
+                        datasets: [{
+                            label: 'Spend',
+                            data: spentArray,
+                            borderColor: '#6c2bd9',
+                            backgroundColor: 'rgba(108, 43, 217, 0.1)',
+                            tension: 0.4,
+                            borderWidth: 2,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: { display: true, position: 'top' },
+                            tooltip: { callbacks: { label: function(c) { return 'Spend: $' + parseFloat(c.raw).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); } } }
+                        },
+                        scales: {
+                            x: { grid: { display: false }, ticks: { color: '#6b7280', maxRotation: 45 } },
+                            y: {
+                                beginAtZero: true,
+                                grid: { color: '#e5e7eb' },
+                                ticks: { color: '#6c2bd9', callback: function(v) { return '$' + (v >= 1000 ? (v/1000).toFixed(1) + 'K' : v); } }
+                            }
+                        }
+                    }
+                });
+            },
+            error: function(xhr) {
+                var msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Failed to load daily spend data.';
+                alert(msg);
+            }
+        });
+    });
+    /** End Daily Spend Chart Modal **/
+
+    /** Daily Ad Sales Chart Modal (eye icon on AD SALES) **/
+    var dailyAdSalesCurrentChannel = null;
+    var dailyAdSalesChartInstance = null;
+    $(document).on('click', '.ad-sales-chart-btn', function() {
+        dailyAdSalesCurrentChannel = $(this).data('channel') || null;
+    });
+    $('#dailyAdSalesModal').on('shown.bs.modal', function(e) {
+        var btn = e.relatedTarget ? $(e.relatedTarget) : $();
+        if (btn.length && btn.hasClass('ad-sales-chart-btn')) dailyAdSalesCurrentChannel = btn.data('channel') || dailyAdSalesCurrentChannel;
+        if (dailyAdSalesCurrentChannel) {
+            $('#dailyAdSalesModalTitle').text('Daily Ad Sales - ' + dailyAdSalesCurrentChannel);
+            var today = new Date();
+            var d30 = new Date(today);
+            d30.setDate(d30.getDate() - 30);
+            $('#dailyAdSalesFromDate').val(d30.toISOString().slice(0, 10));
+            $('#dailyAdSalesToDate').val(today.toISOString().slice(0, 10));
+            $('#dailyAdSalesApplyBtn').trigger('click');
+        }
+    });
+    $('#dailyAdSalesApplyBtn').on('click', function() {
+        if (!dailyAdSalesCurrentChannel) return;
+        var fromDate = $('#dailyAdSalesFromDate').val();
+        var toDate = $('#dailyAdSalesToDate').val();
+        if (!fromDate || !toDate) {
+            alert('Please select From Date and To Date.');
+            return;
+        }
+        $.ajax({
+            url: "{{ route('channel.adv.adsales.chart.data') }}",
+            method: 'GET',
+            data: { channel: dailyAdSalesCurrentChannel, fromDate: fromDate, toDate: toDate },
+            success: function(response) {
+                if (dailyAdSalesChartInstance) { dailyAdSalesChartInstance.destroy(); dailyAdSalesChartInstance = null; }
+                var ctx = document.getElementById('dailyAdSalesCanvas');
+                if (!ctx) return;
+                var dateArray = response.dateArray || [];
+                var adSalesArray = response.adSalesArray || [];
+                $('#dailyAdSalesNoData').toggle(!dateArray.length);
+                $('#dailyAdSalesCanvas').closest('.chart-wrapper').toggle(!!dateArray.length);
+                if (!dateArray.length) return;
+                dailyAdSalesChartInstance = new Chart(ctx.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: dateArray,
+                        datasets: [{
+                            label: 'Ad Sales',
+                            data: adSalesArray,
+                            borderColor: '#ed0808fc',
+                            backgroundColor: 'rgba(237, 8, 8, 0.1)',
+                            tension: 0.4,
+                            borderWidth: 2,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: { display: true, position: 'top' },
+                            tooltip: { callbacks: { label: function(c) { return 'Ad Sales: $' + parseFloat(c.raw).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); } } }
+                        },
+                        scales: {
+                            x: { grid: { display: false }, ticks: { color: '#6b7280', maxRotation: 45 } },
+                            y: {
+                                beginAtZero: true,
+                                grid: { color: '#e5e7eb' },
+                                ticks: { color: '#ed0808fc', callback: function(v) { return '$' + (v >= 1000 ? (v/1000).toFixed(1) + 'K' : v); } }
+                            }
+                        }
+                    }
+                });
+            },
+            error: function(xhr) {
+                var msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Failed to load daily ad sales data.';
+                alert(msg);
+            }
+        });
+    });
+    /** End Daily Ad Sales Chart Modal **/
+
+    /** Daily ACOS Chart Modal (eye icon on L30 ACOS%) **/
+    var dailyAcosCurrentChannel = null;
+    var dailyAcosChartInstance = null;
+    $(document).on('click', '.acos-chart-btn', function() {
+        dailyAcosCurrentChannel = $(this).data('channel') || null;
+    });
+    $('#dailyAcosModal').on('shown.bs.modal', function(e) {
+        var btn = e.relatedTarget ? $(e.relatedTarget) : $();
+        if (btn.length && btn.hasClass('acos-chart-btn')) dailyAcosCurrentChannel = btn.data('channel') || dailyAcosCurrentChannel;
+        if (dailyAcosCurrentChannel) {
+            $('#dailyAcosModalTitle').text('Daily ACOS - ' + dailyAcosCurrentChannel);
+            var today = new Date();
+            var d30 = new Date(today);
+            d30.setDate(d30.getDate() - 30);
+            $('#dailyAcosFromDate').val(d30.toISOString().slice(0, 10));
+            $('#dailyAcosToDate').val(today.toISOString().slice(0, 10));
+            $('#dailyAcosApplyBtn').trigger('click');
+        }
+    });
+    $('#dailyAcosApplyBtn').on('click', function() {
+        if (!dailyAcosCurrentChannel) return;
+        var fromDate = $('#dailyAcosFromDate').val();
+        var toDate = $('#dailyAcosToDate').val();
+        if (!fromDate || !toDate) {
+            alert('Please select From Date and To Date.');
+            return;
+        }
+        $.ajax({
+            url: "{{ route('channel.adv.acos.chart.data') }}",
+            method: 'GET',
+            data: { channel: dailyAcosCurrentChannel, fromDate: fromDate, toDate: toDate },
+            success: function(response) {
+                if (dailyAcosChartInstance) { dailyAcosChartInstance.destroy(); dailyAcosChartInstance = null; }
+                var ctx = document.getElementById('dailyAcosCanvas');
+                if (!ctx) return;
+                var dateArray = response.dateArray || [];
+                var acosArray = response.acosArray || [];
+                $('#dailyAcosNoData').toggle(!dateArray.length);
+                $('#dailyAcosCanvas').closest('.chart-wrapper').toggle(!!dateArray.length);
+                if (!dateArray.length) return;
+                dailyAcosChartInstance = new Chart(ctx.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: dateArray,
+                        datasets: [{
+                            label: 'ACOS %',
+                            data: acosArray,
+                            borderColor: '#0984e3',
+                            backgroundColor: 'rgba(9, 132, 227, 0.1)',
+                            tension: 0.4,
+                            borderWidth: 2,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: { display: true, position: 'top' },
+                            tooltip: { callbacks: { label: function(c) { return 'ACOS: ' + parseFloat(c.raw).toFixed(2) + ' %'; } } }
+                        },
+                        scales: {
+                            x: { grid: { display: false }, ticks: { color: '#6b7280', maxRotation: 45 } },
+                            y: {
+                                beginAtZero: true,
+                                grid: { color: '#e5e7eb' },
+                                ticks: { color: '#0984e3', callback: function(v) { return v + ' %'; } }
+                            }
+                        }
+                    }
+                });
+            },
+            error: function(xhr) {
+                var msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Failed to load daily ACOS data.';
+                alert(msg);
+            }
+        });
+    });
+    /** End Daily ACOS Chart Modal **/
+
     /** Start Ebay Graph Date **/
     const ctxEbay = document.getElementById('advEbayChart').getContext('2d');
     performanceChartEbay = new Chart(ctxEbay, {
@@ -4435,12 +5530,67 @@ $(document).ready(function() {
                 var headerRow = tableElement.querySelector('thead tr');
                 var headerCells = headerRow.querySelectorAll('th');
                 
+                // L30 SPENT=7, L30 CLKS=10, AD SALES=16, L30 ACOS%=17
+                var l30SpentColIndex = 7;
+                var l30ClksColIndex = 10;
+                var l30AdSalesColIndex = 16;
+                var l30AcosColIndex = 17;
+                var eyeIconSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#00b894" viewBox="0 0 16 16"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/><path d="M8 3.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>';
+                function buildL30SpentCellHtml(val, row) {
+                    var num = (val != null && val !== '') ? stripHtml(String(val)).trim() : '';
+                    var channel = '';
+                    var valStr = String(val || '');
+                    var m = valStr.match(/data-channel=["']([^"']+)["']/);
+                    if (m) channel = m[1];
+                    if (!channel && row && row.getData) channel = stripHtml((row.getData().col0 || '')).trim();
+                    if (!channel) channel = 'AMAZON';
+                    var btn = '<button type="button" class="btn btn-link btn-sm p-0 align-baseline spend-chart-btn" data-channel="' + (channel.replace(/"/g, '&quot;')) + '" data-bs-toggle="modal" data-bs-target="#dailySpendModal" title="View daily spend">' + eyeIconSvg + '</button>';
+                    return '<div class="spend-cell-inner"><span>' + (num || '0') + '</span>' + btn + '</div>';
+                }
+                function buildL30ClksCellHtml(val, row) {
+                    var num = (val != null && val !== '') ? stripHtml(String(val)).trim() : '';
+                    var channel = '';
+                    var valStr = String(val || '');
+                    var m = valStr.match(/data-channel=["']([^"']+)["']/);
+                    if (m) channel = m[1];
+                    if (!channel && row && row.getData) channel = stripHtml((row.getData().col0 || '')).trim();
+                    if (!channel) channel = 'AMAZON';
+                    var btn = '<button type="button" class="btn btn-link btn-sm p-0 align-baseline clicks-chart-btn" data-channel="' + (channel.replace(/"/g, '&quot;')) + '" data-bs-toggle="modal" data-bs-target="#dailyClicksModal" title="View daily clicks">' + eyeIconSvg + '</button>';
+                    return '<div class="clicks-cell-inner"><span>' + (num || '0') + '</span>' + btn + '</div>';
+                }
+                function buildL30AdSalesCellHtml(val, row) {
+                    var num = (val != null && val !== '') ? stripHtml(String(val)).trim() : '';
+                    var channel = '';
+                    var valStr = String(val || '');
+                    var m = valStr.match(/data-channel=["']([^"']+)["']/);
+                    if (m) channel = m[1];
+                    if (!channel && row && row.getData) channel = stripHtml((row.getData().col0 || '')).trim();
+                    if (!channel) channel = 'AMAZON';
+                    var btn = '<button type="button" class="btn btn-link btn-sm p-0 align-baseline ad-sales-chart-btn" data-channel="' + (channel.replace(/"/g, '&quot;')) + '" data-bs-toggle="modal" data-bs-target="#dailyAdSalesModal" title="View daily ad sales">' + eyeIconSvg + '</button>';
+                    return '<div class="adsales-cell-inner"><span>' + (num || '0') + '</span>' + btn + '</div>';
+                }
+                function buildL30AcosCellHtml(val, row) {
+                    var num = (val != null && val !== '') ? stripHtml(String(val)).trim() : '';
+                    var channel = '';
+                    var valStr = String(val || '');
+                    var m = valStr.match(/data-channel=["']([^"']+)["']/);
+                    if (m) channel = m[1];
+                    if (!channel && row && row.getData) channel = stripHtml((row.getData().col0 || '')).trim();
+                    if (!channel) channel = 'AMAZON';
+                    var btn = '<button type="button" class="btn btn-link btn-sm p-0 align-baseline acos-chart-btn" data-channel="' + (channel.replace(/"/g, '&quot;')) + '" data-bs-toggle="modal" data-bs-target="#dailyAcosModal" title="View daily ACOS">' + eyeIconSvg + '</button>';
+                    return '<div class="acos-cell-inner"><span>' + (num || '0') + '</span>' + btn + '</div>';
+                }
                 headerCells.forEach(function(header, index) {
                     var headerHtml = header.innerHTML;
+                    var formatterFn = 'html';
+                    if (index === l30ClksColIndex) formatterFn = function(cell) { return buildL30ClksCellHtml(cell.getValue(), cell.getRow()); };
+                    else if (index === l30SpentColIndex) formatterFn = function(cell) { return buildL30SpentCellHtml(cell.getValue(), cell.getRow()); };
+                    else if (index === l30AdSalesColIndex) formatterFn = function(cell) { return buildL30AdSalesCellHtml(cell.getValue(), cell.getRow()); };
+                    else if (index === l30AcosColIndex) formatterFn = function(cell) { return buildL30AcosCellHtml(cell.getValue(), cell.getRow()); };
                     var colDef = {
                         title: headerHtml,
                         field: 'col' + index,
-                        formatter: 'html',
+                        formatter: formatterFn,
                         headerSort: true,
                         resizable: true,
                         width: index === 0 ? 110 : undefined,

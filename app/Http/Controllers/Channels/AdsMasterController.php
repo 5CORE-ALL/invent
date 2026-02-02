@@ -4397,6 +4397,122 @@ class AdsMasterController extends Controller
         ]);
     }
 
+    /**
+     * Return daily clicks for a channel (date range). Used by clicks column eye icon graph.
+     * Clicks data is stored daily in adv_masters_daily_datas.
+     */
+    public function getChannelClicksChartData(Request $request)
+    {
+        $channel = $request->query('channel');
+        $fromDate = $request->query('fromDate');
+        $toDate = $request->query('toDate');
+
+        if (empty($channel) || empty($fromDate) || empty($toDate)) {
+            return response()->json(['error' => 'Channel, from date and to date are required'], 400);
+        }
+
+        $rows = ADVMastersDailyData::where('channel', $channel)
+            ->where('date', '>=', $fromDate)
+            ->where('date', '<=', $toDate)
+            ->orderBy('date', 'asc')
+            ->get(['date', 'clicks']);
+
+        $dateArray = $rows->map(fn($r) => $r->date instanceof \DateTimeInterface ? $r->date->format('Y-m-d') : (string) $r->date)->toArray();
+        $clicksArray = $rows->map(fn($r) => (int) ($r->clicks ?? 0))->toArray();
+
+        return response()->json([
+            'dateArray' => $dateArray,
+            'clicksArray' => $clicksArray,
+        ]);
+    }
+
+    /**
+     * Return daily spend for a channel (date range). Used by L30 SPENT column eye icon graph.
+     * Spend data is stored daily in adv_masters_daily_datas.
+     */
+    public function getChannelSpendChartData(Request $request)
+    {
+        $channel = $request->query('channel');
+        $fromDate = $request->query('fromDate');
+        $toDate = $request->query('toDate');
+
+        if (empty($channel) || empty($fromDate) || empty($toDate)) {
+            return response()->json(['error' => 'Channel, from date and to date are required'], 400);
+        }
+
+        $rows = ADVMastersDailyData::where('channel', $channel)
+            ->where('date', '>=', $fromDate)
+            ->where('date', '<=', $toDate)
+            ->orderBy('date', 'asc')
+            ->get(['date', 'spent']);
+
+        $dateArray = $rows->map(fn($r) => $r->date instanceof \DateTimeInterface ? $r->date->format('Y-m-d') : (string) $r->date)->toArray();
+        $spentArray = $rows->map(fn($r) => (float) ($r->spent ?? 0))->toArray();
+
+        return response()->json([
+            'dateArray' => $dateArray,
+            'spentArray' => $spentArray,
+        ]);
+    }
+
+    /**
+     * Return daily ad sales for a channel (date range). Used by AD SALES column eye icon graph.
+     * Ad sales data is stored daily in adv_masters_daily_datas.
+     */
+    public function getChannelAdSalesChartData(Request $request)
+    {
+        $channel = $request->query('channel');
+        $fromDate = $request->query('fromDate');
+        $toDate = $request->query('toDate');
+
+        if (empty($channel) || empty($fromDate) || empty($toDate)) {
+            return response()->json(['error' => 'Channel, from date and to date are required'], 400);
+        }
+
+        $rows = ADVMastersDailyData::where('channel', $channel)
+            ->where('date', '>=', $fromDate)
+            ->where('date', '<=', $toDate)
+            ->orderBy('date', 'asc')
+            ->get(['date', 'ad_sales']);
+
+        $dateArray = $rows->map(fn($r) => $r->date instanceof \DateTimeInterface ? $r->date->format('Y-m-d') : (string) $r->date)->toArray();
+        $adSalesArray = $rows->map(fn($r) => (float) ($r->ad_sales ?? 0))->toArray();
+
+        return response()->json([
+            'dateArray' => $dateArray,
+            'adSalesArray' => $adSalesArray,
+        ]);
+    }
+
+    /**
+     * Return daily ACOS for a channel (date range). Used by L30 ACOS% column eye icon graph.
+     * ACOS data is stored daily in adv_masters_daily_datas.
+     */
+    public function getChannelAcosChartData(Request $request)
+    {
+        $channel = $request->query('channel');
+        $fromDate = $request->query('fromDate');
+        $toDate = $request->query('toDate');
+
+        if (empty($channel) || empty($fromDate) || empty($toDate)) {
+            return response()->json(['error' => 'Channel, from date and to date are required'], 400);
+        }
+
+        $rows = ADVMastersDailyData::where('channel', $channel)
+            ->where('date', '>=', $fromDate)
+            ->where('date', '<=', $toDate)
+            ->orderBy('date', 'asc')
+            ->get(['date', 'acos']);
+
+        $dateArray = $rows->map(fn($r) => $r->date instanceof \DateTimeInterface ? $r->date->format('Y-m-d') : (string) $r->date)->toArray();
+        $acosArray = $rows->map(fn($r) => (float) ($r->acos ?? 0))->toArray();
+
+        return response()->json([
+            'dateArray' => $dateArray,
+            'acosArray' => $acosArray,
+        ]);
+    }
+
     public function getChannelAdvMasterAmazonCronData(Request $request)
     {
         try {
