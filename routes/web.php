@@ -372,6 +372,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazon/adv/chart/data', [ChannelAdsMasterController::class, 'getAmazonAdvChartData'])->name('amazon.adv.chart.data');
     Route::get('/ebay/adv/chart/data', [ChannelAdsMasterController::class, 'getEbayAdvChartData'])->name('ebay.adv.chart.data');
     Route::get('/channel/adv/chart/data', [ChannelAdsMasterController::class, 'getChannelAdvChartData'])->name('channel.adv.chart.data');
+    Route::get('/channel/adv/clicks/chart/data', [ChannelAdsMasterController::class, 'getChannelClicksChartData'])->name('channel.adv.clicks.chart.data');
+    Route::get('/channel/adv/spend/chart/data', [ChannelAdsMasterController::class, 'getChannelSpendChartData'])->name('channel.adv.spend.chart.data');
+    Route::get('/channel/adv/adsales/chart/data', [ChannelAdsMasterController::class, 'getChannelAdSalesChartData'])->name('channel.adv.adsales.chart.data');
+    Route::get('/channel/adv/acos/chart/data', [ChannelAdsMasterController::class, 'getChannelAcosChartData'])->name('channel.adv.acos.chart.data');
 
 
 
