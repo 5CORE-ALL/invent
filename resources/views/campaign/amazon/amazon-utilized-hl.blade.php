@@ -517,7 +517,7 @@
                                 </div>
                                 
                                 <!-- INC/DEC SBID Section and Action Buttons -->
-                                <div class="row g-3 align-items-end pt-3 border-top">
+                                <div class="row g-2 align-items-end pt-3 border-top">
                                     <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
                                             <i class="fa-solid fa-calculator me-1" style="color: #64748b;"></i>INC/DEC SBID
@@ -525,7 +525,7 @@
                                         <div class="btn-group w-100" role="group">
                                             <button type="button" id="inc-dec-btn"
                                                 class="btn btn-warning btn-sm dropdown-toggle" data-bs-toggle="dropdown"
-                                                aria-expanded="false">
+                                                aria-expanded="false" style="font-size: 0.75rem;">
                                                 <i class="fa-solid fa-plus-minus me-1"></i>
                                                 INC/DEC (By Value)
                                             </button>
@@ -537,38 +537,42 @@
                                     </div>
                                     <div class="col-md-2">
                                         <label class="form-label fw-semibold mb-2" style="color: #475569; font-size: 0.8125rem;">
-                                            <span id="inc-dec-label">Value/Percentage</span>
+                                            <span id="inc-dec-label" style="font-size: 0.75rem;">Value/Percentage</span>
                                         </label>
-                                        <input type="number" id="inc-dec-input" class="form-control form-control-md"
+                                        <input type="number" id="inc-dec-input" class="form-control form-control-sm"
                                             placeholder="Enter value (e.g., +0.5 or -0.5)" step="0.01"
-                                            style="border-color: #e2e8f0;">
+                                            style="border-color: #e2e8f0; font-size: 0.8rem;">
                                     </div>
-                                    <div class="col-md-2 d-flex gap-2 align-items-end">
-                                        <button id="apply-inc-dec-btn" class="btn btn-success btn-sm flex-fill">
+                                    <div class="col-md-2 d-flex gap-1 align-items-center">
+                                        <button id="apply-inc-dec-btn" class="btn btn-success btn-sm flex-fill" style="font-size: 0.75rem; min-height: 31px;">
                                             <i class="fa-solid fa-check me-1"></i>
                                             Apply
                                         </button>
-                                        <button id="clear-inc-dec-btn" class="btn btn-secondary btn-sm flex-fill">
+                                        <button id="clear-inc-dec-btn" class="btn btn-secondary btn-sm flex-fill" style="font-size: 0.75rem; min-height: 31px;">
                                             <i class="fa-solid fa-times me-1"></i>
                                             Clear Input
                                         </button>
                                     </div>
-                                    <div class="col-md-3 d-flex gap-2 align-items-end">
-                                        <button id="clear-sbid-m-btn" class="btn btn-danger btn-sm flex-fill">
+                                    <div class="col-md-3 d-flex gap-1 align-items-center flex-nowrap">
+                                        <button id="clear-sbid-m-btn" class="btn btn-danger btn-sm flex-fill" style="font-size: 0.75rem; min-height: 31px;">
                                             <i class="fa-solid fa-trash me-1"></i>
-                                            Clear SBID M (Selected)
+                                            <span class="d-none d-lg-inline">Clear SBID M (Selected)</span>
+                                            <span class="d-lg-none">Clear</span>
                                         </button>
-                                        <button id="acos-view-btn" class="btn btn-warning btn-sm flex-fill" style="min-width: 80px;">
+                                        <button id="acos-view-btn" class="btn btn-warning btn-sm flex-fill" style="min-width: 80px; font-size: 0.75rem; min-height: 31px;">
                                             <i class="fa-solid fa-filter me-1"></i>
                                             ACOS
                                         </button>
+                                        <button type="button" id="export-csv-btn" class="btn btn-outline-success btn-sm flex-fill" style="min-width: 80px; font-size: 0.75rem; min-height: 31px;">
+                                            <i class="fa-solid fa-file-csv me-1"></i>Export CSV
+                                        </button>
                                     </div>
-                                    <div class="col-md-4 d-flex gap-2 align-items-end">
-                                        <button id="apr-all-sbid-btn" class="btn btn-info btn-sm flex-fill d-none">
+                                    <div class="col-md-4 d-flex gap-1 align-items-center">
+                                        <button id="apr-all-sbid-btn" class="btn btn-info btn-sm flex-fill d-none" style="font-size: 0.75rem; min-height: 31px;">
                                             <i class="fa-solid fa-check-double me-1"></i>
                                             APR ALL SBID
                                         </button>
-                                        <button id="save-all-sbid-m-btn" class="btn btn-success btn-sm flex-fill d-none">
+                                        <button id="save-all-sbid-m-btn" class="btn btn-success btn-sm flex-fill d-none" style="font-size: 0.75rem; min-height: 31px;">
                                             <i class="fa-solid fa-save me-1"></i>
                                             SAVE ALL SBID M
                                         </button>
@@ -2754,6 +2758,17 @@
                     return response.data;
                 }
             });
+
+            // Export CSV button
+            const exportCsvBtn = document.getElementById('export-csv-btn');
+            if (exportCsvBtn) {
+                exportCsvBtn.addEventListener('click', function() {
+                    if (typeof table !== 'undefined' && table) {
+                        const filename = 'amazon-utilized-hl_' + new Date().toISOString().slice(0, 10) + '.csv';
+                        table.download('csv', filename, { downloadRowRange: 'all' });
+                    }
+                });
+            }
 
             // Utilization type dropdown handler
             const utilizationTypeSelect = document.getElementById('utilization-type-select');
