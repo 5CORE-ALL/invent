@@ -402,7 +402,7 @@
 
     <!-- Clicks Breakdown Modal -->
     <div class="modal fade" id="clicksBreakdownModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-dialog modal-md modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header bg-info text-white">
                     <h5 class="modal-title">
@@ -417,30 +417,145 @@
                             <thead class="table-light">
                                 <tr>
                                     <th>Type</th>
-                                    <th class="text-end">Clicks</th>
-                                    <th class="text-end">Ad Sales</th>
-                                    <th class="text-end">ACOS</th>
-                                    <th class="text-end">TACOS</th>
-                                    <th class="text-end">Ad Sold</th>
-                                    <th class="text-end">CVR</th>
-                                    <th class="text-end">Missing Ads</th>
+                                    <th class="text-end">Ad Clicks</th>
                                 </tr>
                             </thead>
                             <tbody id="clicksBreakdownTableBody">
                                 <tr>
-                                    <td colspan="8" class="text-center">Loading...</td>
+                                    <td colspan="2" class="text-center">Loading...</td>
                                 </tr>
                             </tbody>
                             <tfoot class="table-secondary">
                                 <tr>
                                     <th>Total</th>
                                     <th class="text-end" id="clicksBreakdownTotalClicks">0</th>
-                                    <th class="text-end" id="clicksBreakdownTotalAdSales">$0</th>
-                                    <th class="text-end" id="clicksBreakdownTotalAcos">-</th>
-                                    <th class="text-end" id="clicksBreakdownTotalTacos">-</th>
-                                    <th class="text-end" id="clicksBreakdownTotalAdSold">0</th>
-                                    <th class="text-end" id="clicksBreakdownTotalCvr">-</th>
-                                    <th class="text-end" id="clicksBreakdownTotalMissingAds">0</th>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ad Sales Breakdown Modal -->
+    <div class="modal fade" id="adSalesBreakdownModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title">
+                        <i class="fas fa-dollar-sign me-2"></i> 
+                        <span id="salesModalChannelName">Channel</span> - Ad Sales Breakdown
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Type</th>
+                                    <th class="text-end">Ad Sales</th>
+                                    <th class="text-end">ACOS</th>
+                                    <th class="text-end">TACOS</th>
+                                </tr>
+                            </thead>
+                            <tbody id="adSalesBreakdownTableBody">
+                                <tr>
+                                    <td colspan="4" class="text-center">Loading...</td>
+                                </tr>
+                            </tbody>
+                            <tfoot class="table-secondary">
+                                <tr>
+                                    <th>Total</th>
+                                    <th class="text-end" id="adSalesBreakdownTotalSales">$0</th>
+                                    <th class="text-end" id="adSalesBreakdownTotalAcos">-</th>
+                                    <th class="text-end" id="adSalesBreakdownTotalTacos">-</th>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CVR Breakdown Modal -->
+    <div class="modal fade" id="cvrBreakdownModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-md modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="fas fa-chart-line me-2"></i> 
+                        <span id="cvrModalChannelName">Channel</span> - Ads CVR Breakdown
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Type</th>
+                                    <th class="text-end">Ads CVR</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cvrBreakdownTableBody">
+                                <tr>
+                                    <td colspan="2" class="text-center">Loading...</td>
+                                </tr>
+                            </tbody>
+                            <tfoot class="table-secondary">
+                                <tr>
+                                    <th>Total</th>
+                                    <th class="text-end" id="cvrBreakdownTotalCvr">-</th>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Missing Ads Breakdown Modal -->
+    <div class="modal fade" id="missingAdsBreakdownModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-md modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title">
+                        <i class="fas fa-exclamation-triangle me-2"></i> 
+                        <span id="missingModalChannelName">Channel</span> - L Missing Ads Breakdown
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Type</th>
+                                    <th class="text-end">L Missing Ads</th>
+                                </tr>
+                            </thead>
+                            <tbody id="missingAdsBreakdownTableBody">
+                                <tr>
+                                    <td colspan="2" class="text-center">Loading...</td>
+                                </tr>
+                            </tbody>
+                            <tfoot class="table-secondary">
+                                <tr>
+                                    <th>Total</th>
+                                    <th class="text-end" id="missingAdsBreakdownTotal">0</th>
                                 </tr>
                             </tfoot>
                         </table>
@@ -682,7 +797,7 @@
                         }
                     },
                     {
-                        title: "Clicks",
+                        title: "Ads Clicks",
                         field: "clicks",
                         hozAlign: "center",
                         sorter: "number",
@@ -712,6 +827,123 @@
                         bottomCalcFormatter: function(cell) {
                             const value = cell.getValue();
                             return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "Ad Sales",
+                        field: "Ad Sales",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 120,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
+                            
+                            if (!value || value === 0) return '-';
+                            
+                            // Add info icon for channels that might have PT/KW/HL breakdown
+                            const infoIcon = `<i class="fas fa-info-circle sales-info-icon ms-1" 
+                                data-channel="${channel}" 
+                                style="cursor:pointer;color:#17a2b8;font-size:12px;" 
+                                title="View Ad Sales Breakdown"></i>`;
+                            
+                            // Round to whole number, no decimals
+                            return `<span style="font-weight:600;">$${Math.round(value).toLocaleString('en-US')}</span>${infoIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('sales-info-icon')) {
+                                e.stopPropagation();
+                                const channelName = $(e.target).data('channel');
+                                showAdSalesBreakdown(channelName); // Show Ad Sales specific modal
+                            }
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            if (!value || value === 0) return '<strong>-</strong>';
+                            return `<strong>$${Math.round(parseNumber(value)).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "Ads CVR",
+                        field: "Ads CVR",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
+                            
+                            if (!value || value === 0) return '-';
+                            
+                            // Add info icon for channels that might have PT/KW/HL breakdown
+                            const infoIcon = `<i class="fas fa-info-circle cvr-info-icon ms-1" 
+                                data-channel="${channel}" 
+                                style="cursor:pointer;color:#17a2b8;font-size:12px;" 
+                                title="View Ads CVR Breakdown"></i>`;
+                            
+                            return `<span style="font-weight:600;">${Math.round(value)}%</span>${infoIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('cvr-info-icon')) {
+                                e.stopPropagation();
+                                const channelName = $(e.target).data('channel');
+                                showCvrBreakdown(channelName); // Show CVR specific modal
+                            }
+                        },
+                        bottomCalc: function(values, data, calcParams) {
+                            // Custom calculation for total CVR
+                            let totalAdSold = 0;
+                            let totalClicks = 0;
+                            
+                            data.forEach(row => {
+                                totalAdSold += parseNumber(row.ad_sold || 0);
+                                totalClicks += parseNumber(row.clicks || 0);
+                            });
+                            
+                            return totalClicks > 0 ? ((totalAdSold / totalClicks) * 100) : 0;
+                        },
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            if (!value || value === 0) return '<strong>-</strong>';
+                            return `<strong>${Math.round(value)}%</strong>`;
+                        }
+                    },
+                    {
+                        title: "L Missing Ads",
+                        field: "Missing Ads",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 110,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
+                            
+                            if (!value || value === 0) return '-';
+                            
+                            // Add info icon for channels that might have PT/KW/HL breakdown
+                            const infoIcon = `<i class="fas fa-info-circle missing-info-icon ms-1" 
+                                data-channel="${channel}" 
+                                style="cursor:pointer;color:#dc3545;font-size:12px;" 
+                                title="View L Missing Ads Breakdown"></i>`;
+                            
+                            return `<span style="font-weight:600;color:#dc3545;">${value.toLocaleString('en-US')}</span>${infoIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('missing-info-icon')) {
+                                e.stopPropagation();
+                                const channelName = $(e.target).data('channel');
+                                showMissingAdsBreakdown(channelName); // Show Missing Ads specific modal
+                            }
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            if (!value || value === 0) return '<strong>-</strong>';
+                            return `<strong style="color:#dc3545;">${parseNumber(value).toLocaleString('en-US')}</strong>`;
                         }
                     },
                     {
@@ -1350,16 +1582,10 @@
                 $('#clicksModalChannelName').text(channelName);
                 
                 // Show loading state
-                $('#clicksBreakdownTableBody').html('<tr><td colspan="8" class="text-center"><div class="spinner-border spinner-border-sm text-info" role="status"><span class="visually-hidden">Loading...</span></div> Loading...</td></tr>');
+                $('#clicksBreakdownTableBody').html('<tr><td colspan="2" class="text-center"><div class="spinner-border spinner-border-sm text-info" role="status"><span class="visually-hidden">Loading...</span></div> Loading...</td></tr>');
                 
                 // Reset totals
                 $('#clicksBreakdownTotalClicks').text('0');
-                $('#clicksBreakdownTotalAdSales').text('$0');
-                $('#clicksBreakdownTotalAcos').text('-');
-                $('#clicksBreakdownTotalTacos').text('-');
-                $('#clicksBreakdownTotalAdSold').text('0');
-                $('#clicksBreakdownTotalCvr').text('-');
-                $('#clicksBreakdownTotalMissingAds').text('0');
                 
                 // Show modal
                 const modal = new bootstrap.Modal(document.getElementById('clicksBreakdownModal'));
@@ -1376,9 +1602,6 @@
                         if (response.success && response.data && response.data.length > 0) {
                             let html = '';
                             let totalClicks = 0;
-                            let totalAdSales = 0;
-                            let totalAdSold = 0;
-                            let totalMissingAds = 0;
                             
                             // Sort by type (PT, KW, HL)
                             response.data.sort((a, b) => {
@@ -1388,28 +1611,12 @@
                             
                             response.data.forEach(item => {
                                 const clicks = parseInt(item.clicks) || 0;
-                                const adSales = parseFloat(item.ad_sales) || 0;
-                                const acos = parseFloat(item.acos) || 0;
-                                const tacos = parseFloat(item.tacos) || 0;
-                                const adSold = parseInt(item.ad_sold) || 0;
-                                const cvr = parseFloat(item.cvr) || 0;
-                                const missingAds = parseInt(item.missing_ads) || 0;
-                                
                                 totalClicks += clicks;
-                                totalAdSales += adSales;
-                                totalAdSold += adSold;
-                                totalMissingAds += missingAds;
                                 
                                 html += `
                                     <tr>
                                         <td><strong>${item.type}</strong> <small class="text-muted">(${item.channel})</small></td>
                                         <td class="text-end"><strong>${clicks > 0 ? clicks.toLocaleString('en-US') : '0'}</strong></td>
-                                        <td class="text-end">$${adSales > 0 ? adSales.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '0.00'}</td>
-                                        <td class="text-end">${acos > 0 ? acos.toFixed(2) + '%' : '-'}</td>
-                                        <td class="text-end">${tacos > 0 ? tacos.toFixed(2) + '%' : '-'}</td>
-                                        <td class="text-end">${adSold > 0 ? adSold.toLocaleString('en-US') : '0'}</td>
-                                        <td class="text-end">${cvr > 0 ? cvr.toFixed(2) + '%' : '-'}</td>
-                                        <td class="text-end">${missingAds > 0 ? missingAds.toLocaleString('en-US') : '0'}</td>
                                     </tr>
                                 `;
                             });
@@ -1418,16 +1625,226 @@
                             
                             // Update totals
                             $('#clicksBreakdownTotalClicks').text(totalClicks.toLocaleString('en-US'));
-                            $('#clicksBreakdownTotalAdSales').text('$' + totalAdSales.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}));
-                            $('#clicksBreakdownTotalAdSold').text(totalAdSold.toLocaleString('en-US'));
-                            $('#clicksBreakdownTotalMissingAds').text(totalMissingAds.toLocaleString('en-US'));
                         } else {
-                            $('#clicksBreakdownTableBody').html('<tr><td colspan="8" class="text-center text-muted">No PT/KW/HL breakdown available for this channel</td></tr>');
+                            $('#clicksBreakdownTableBody').html('<tr><td colspan="2" class="text-center text-muted">No PT/KW/HL breakdown available for this channel</td></tr>');
                         }
                     },
                     error: function(xhr) {
                         console.error('Error fetching clicks breakdown:', xhr);
-                        $('#clicksBreakdownTableBody').html('<tr><td colspan="8" class="text-center text-danger">Error loading data</td></tr>');
+                        $('#clicksBreakdownTableBody').html('<tr><td colspan="2" class="text-center text-danger">Error loading data</td></tr>');
+                    }
+                });
+            }
+
+            // Show Ad Sales Breakdown Modal (Ad Sales focused)
+            function showAdSalesBreakdown(channelName) {
+                console.log('Opening ad sales breakdown for:', channelName);
+                
+                // Set modal title
+                $('#salesModalChannelName').text(channelName);
+                
+                // Show loading state
+                $('#adSalesBreakdownTableBody').html('<tr><td colspan="4" class="text-center"><div class="spinner-border spinner-border-sm text-success" role="status"><span class="visually-hidden">Loading...</span></div> Loading...</td></tr>');
+                
+                // Reset totals
+                $('#adSalesBreakdownTotalSales').text('$0');
+                $('#adSalesBreakdownTotalAcos').text('-');
+                $('#adSalesBreakdownTotalTacos').text('-');
+                
+                // Show modal
+                const modal = new bootstrap.Modal(document.getElementById('adSalesBreakdownModal'));
+                modal.show();
+                
+                // Fetch breakdown data from backend
+                $.ajax({
+                    url: '/channel-clicks-breakdown',
+                    method: 'GET',
+                    data: { channel: channelName },
+                    success: function(response) {
+                        console.log('Ad sales breakdown response:', response);
+                        
+                        if (response.success && response.data && response.data.length > 0) {
+                            let html = '';
+                            let totalSpent = 0;
+                            let totalAdSales = 0;
+                            
+                            // Sort by type (PT, KW, HL)
+                            response.data.sort((a, b) => {
+                                const orderMap = { 'PT': 1, 'KW': 2, 'HL': 3 };
+                                return (orderMap[a.type] || 4) - (orderMap[b.type] || 4);
+                            });
+                            
+                            response.data.forEach(item => {
+                                const spent = parseFloat(item.spent) || 0;
+                                const adSales = parseFloat(item.ad_sales) || 0;
+                                const acos = parseFloat(item.acos) || 0;
+                                const tacos = parseFloat(item.tacos) || 0;
+                                
+                                totalSpent += spent;
+                                totalAdSales += adSales;
+                                
+                                html += `
+                                    <tr>
+                                        <td><strong>${item.type}</strong> <small class="text-muted">(${item.channel})</small></td>
+                                        <td class="text-end"><strong>$${adSales > 0 ? Math.round(adSales).toLocaleString('en-US') : '0'}</strong></td>
+                                        <td class="text-end">${acos > 0 ? acos.toFixed(2) + '%' : '-'}</td>
+                                        <td class="text-end">${tacos > 0 ? tacos.toFixed(2) + '%' : '-'}</td>
+                                    </tr>
+                                `;
+                            });
+                            
+                            $('#adSalesBreakdownTableBody').html(html);
+                            
+                            // Calculate totals using formulas:
+                            // ACOS = (spent / ad_sales) * 100
+                            const totalAcos = totalAdSales > 0 ? ((totalSpent / totalAdSales) * 100).toFixed(2) : 0;
+                            // TACOS = (spent / parent_l30_sales) * 100
+                            const parentL30Sales = parseFloat(response.parent_l30_sales) || 0;
+                            const totalTacos = parentL30Sales > 0 ? ((totalSpent / parentL30Sales) * 100).toFixed(2) : 0;
+                            
+                            // Update totals
+                            $('#adSalesBreakdownTotalSales').text('$' + Math.round(totalAdSales).toLocaleString('en-US'));
+                            $('#adSalesBreakdownTotalAcos').text(totalAcos > 0 ? totalAcos + '%' : '-');
+                            $('#adSalesBreakdownTotalTacos').text(totalTacos > 0 ? totalTacos + '%' : '-');
+                        } else {
+                            $('#adSalesBreakdownTableBody').html('<tr><td colspan="4" class="text-center text-muted">No PT/KW/HL breakdown available for this channel</td></tr>');
+                        }
+                    },
+                    error: function(xhr) {
+                        console.error('Error fetching ad sales breakdown:', xhr);
+                        $('#adSalesBreakdownTableBody').html('<tr><td colspan="4" class="text-center text-danger">Error loading data</td></tr>');
+                    }
+                });
+            }
+
+            // Show CVR Breakdown Modal (CVR only)
+            function showCvrBreakdown(channelName) {
+                console.log('Opening CVR breakdown for:', channelName);
+                
+                // Set modal title
+                $('#cvrModalChannelName').text(channelName);
+                
+                // Show loading state
+                $('#cvrBreakdownTableBody').html('<tr><td colspan="2" class="text-center"><div class="spinner-border spinner-border-sm text-primary" role="status"><span class="visually-hidden">Loading...</span></div> Loading...</td></tr>');
+                
+                // Reset totals
+                $('#cvrBreakdownTotalCvr').text('-');
+                
+                // Show modal
+                const modal = new bootstrap.Modal(document.getElementById('cvrBreakdownModal'));
+                modal.show();
+                
+                // Fetch breakdown data from backend
+                $.ajax({
+                    url: '/channel-clicks-breakdown',
+                    method: 'GET',
+                    data: { channel: channelName },
+                    success: function(response) {
+                        console.log('CVR breakdown response:', response);
+                        
+                        if (response.success && response.data && response.data.length > 0) {
+                            let html = '';
+                            let totalClicks = 0;
+                            let totalAdSold = 0;
+                            
+                            // Sort by type (PT, KW, HL)
+                            response.data.sort((a, b) => {
+                                const orderMap = { 'PT': 1, 'KW': 2, 'HL': 3 };
+                                return (orderMap[a.type] || 4) - (orderMap[b.type] || 4);
+                            });
+                            
+                            response.data.forEach(item => {
+                                const clicks = parseInt(item.clicks) || 0;
+                                const adSold = parseInt(item.ad_sold) || 0;
+                                const cvr = parseFloat(item.cvr) || 0;
+                                
+                                totalClicks += clicks;
+                                totalAdSold += adSold;
+                                
+                                html += `
+                                    <tr>
+                                        <td><strong>${item.type}</strong> <small class="text-muted">(${item.channel})</small></td>
+                                        <td class="text-end"><strong>${cvr > 0 ? Math.round(cvr) + '%' : '-'}</strong></td>
+                                    </tr>
+                                `;
+                            });
+                            
+                            $('#cvrBreakdownTableBody').html(html);
+                            
+                            // Calculate total CVR: (ads sold / clicks) * 100
+                            const totalCvr = totalClicks > 0 ? Math.round((totalAdSold / totalClicks) * 100) : 0;
+                            
+                            // Update totals
+                            $('#cvrBreakdownTotalCvr').text(totalCvr > 0 ? totalCvr + '%' : '-');
+                        } else {
+                            $('#cvrBreakdownTableBody').html('<tr><td colspan="2" class="text-center text-muted">No PT/KW/HL breakdown available for this channel</td></tr>');
+                        }
+                    },
+                    error: function(xhr) {
+                        console.error('Error fetching CVR breakdown:', xhr);
+                        $('#cvrBreakdownTableBody').html('<tr><td colspan="2" class="text-center text-danger">Error loading data</td></tr>');
+                    }
+                });
+            }
+
+            // Show Missing Ads Breakdown Modal (Missing Ads only)
+            function showMissingAdsBreakdown(channelName) {
+                console.log('Opening missing ads breakdown for:', channelName);
+                
+                // Set modal title
+                $('#missingModalChannelName').text(channelName);
+                
+                // Show loading state
+                $('#missingAdsBreakdownTableBody').html('<tr><td colspan="2" class="text-center"><div class="spinner-border spinner-border-sm text-danger" role="status"><span class="visually-hidden">Loading...</span></div> Loading...</td></tr>');
+                
+                // Reset totals
+                $('#missingAdsBreakdownTotal').text('0');
+                
+                // Show modal
+                const modal = new bootstrap.Modal(document.getElementById('missingAdsBreakdownModal'));
+                modal.show();
+                
+                // Fetch breakdown data from backend
+                $.ajax({
+                    url: '/channel-clicks-breakdown',
+                    method: 'GET',
+                    data: { channel: channelName },
+                    success: function(response) {
+                        console.log('Missing ads breakdown response:', response);
+                        
+                        if (response.success && response.data && response.data.length > 0) {
+                            let html = '';
+                            let totalMissingAds = 0;
+                            
+                            // Sort by type (PT, KW, HL)
+                            response.data.sort((a, b) => {
+                                const orderMap = { 'PT': 1, 'KW': 2, 'HL': 3 };
+                                return (orderMap[a.type] || 4) - (orderMap[b.type] || 4);
+                            });
+                            
+                            response.data.forEach(item => {
+                                const missingAds = parseInt(item.missing_ads) || 0;
+                                totalMissingAds += missingAds;
+                                
+                                html += `
+                                    <tr>
+                                        <td><strong>${item.type}</strong> <small class="text-muted">(${item.channel})</small></td>
+                                        <td class="text-end"><strong style="color:#dc3545;">${missingAds > 0 ? missingAds.toLocaleString('en-US') : '0'}</strong></td>
+                                    </tr>
+                                `;
+                            });
+                            
+                            $('#missingAdsBreakdownTableBody').html(html);
+                            
+                            // Update totals
+                            $('#missingAdsBreakdownTotal').text(totalMissingAds.toLocaleString('en-US'));
+                        } else {
+                            $('#missingAdsBreakdownTableBody').html('<tr><td colspan="2" class="text-center text-muted">No PT/KW/HL breakdown available for this channel</td></tr>');
+                        }
+                    },
+                    error: function(xhr) {
+                        console.error('Error fetching missing ads breakdown:', xhr);
+                        $('#missingAdsBreakdownTableBody').html('<tr><td colspan="2" class="text-center text-danger">Error loading data</td></tr>');
                     }
                 });
             }
