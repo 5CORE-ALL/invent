@@ -534,7 +534,7 @@
                 <div class="modal-header bg-danger text-white">
                     <h5 class="modal-title">
                         <i class="fas fa-exclamation-triangle me-2"></i> 
-                        <span id="missingModalChannelName">Channel</span> - Missing Ads Breakdown
+                        <span id="missingModalChannelName">Channel</span> - L Missing Ads Breakdown
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
@@ -544,7 +544,7 @@
                             <thead class="table-light">
                                 <tr>
                                     <th>Type</th>
-                                    <th class="text-end">Missing Ads</th>
+                                    <th class="text-end">L Missing Ads</th>
                                 </tr>
                             </thead>
                             <tbody id="missingAdsBreakdownTableBody">
@@ -912,7 +912,7 @@
                         }
                     },
                     {
-                        title: "Missing Ads",
+                        title: "L Missing Ads",
                         field: "Missing Ads",
                         hozAlign: "center",
                         sorter: "number",
@@ -928,7 +928,7 @@
                             const infoIcon = `<i class="fas fa-info-circle missing-info-icon ms-1" 
                                 data-channel="${channel}" 
                                 style="cursor:pointer;color:#dc3545;font-size:12px;" 
-                                title="View Missing Ads Breakdown"></i>`;
+                                title="View L Missing Ads Breakdown"></i>`;
                             
                             return `<span style="font-weight:600;color:#dc3545;">${value.toLocaleString('en-US')}</span>${infoIcon}`;
                         },
