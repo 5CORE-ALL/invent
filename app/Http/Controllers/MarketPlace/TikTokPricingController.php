@@ -549,6 +549,7 @@ class TikTokPricingController extends Controller
         $sumTSales = 0;
         $sumAdSold = 0;
         $sumAdClicks = 0;
+        $sumCogs = 0;
 
         foreach ($childRows as $r) {
             $sumInv += (float)($r['INV'] ?? 0);
@@ -562,12 +563,17 @@ class TikTokPricingController extends Controller
             $ttL30 = (float)($r['TT L30'] ?? 0);
             $ttPrice = (float)($r['TT Price'] ?? 0);
             $sumTSales += $ttL30 * $ttPrice;
+            $lp = (float)($r['LP_productmaster'] ?? 0);
+            $sumCogs += $ttL30 * $lp;
         }
 
         $dilPct = $sumInv > 0 ? round(($sumL30 / $sumInv) * 100, 2) : 0;
         $adCvrPct = $sumAdClicks > 0 ? round(($sumAdSold / $sumAdClicks) * 100, 2) : null;
         $acosPct = $sumAdSales > 0 ? round(($sumSpend / $sumAdSales) * 100, 2) : 0;
         $tacosPct = $sumTSales > 0 ? round(($sumSpend / $sumTSales) * 100, 2) : ($sumSpend > 0 ? 100 : 0);
+        $parentProfit = $sumTSales - $sumCogs;
+        $gpftPct = $sumTSales > 0 ? round(($parentProfit / $sumTSales) * 100, 2) : 0;
+        $roiPct = $sumCogs > 0 ? round(($parentProfit / $sumCogs) * 100, 2) : 0;
 
         $parentKey = 'PARENT ' . $parentName;
         $dash = '-';
@@ -575,6 +581,7 @@ class TikTokPricingController extends Controller
             'SL No.' => $dash,
             'Parent' => $parentKey,
             '(Child) sku' => $parentKey,
+            'Child_sku' => $parentKey,
             'is_parent' => true,
             'image_path' => $dash,
             'INV' => $sumInv,
@@ -600,9 +607,9 @@ class TikTokPricingController extends Controller
             'status' => $dash,
             'campaign_name' => $dash,
             'MAP' => $dash,
-            'GPFT%' => $dash,
+            'GPFT%' => $gpftPct,
             'TACOS%' => $tacosPct,
-            'PFT %' => $dash,
+            'PFT %' => $gpftPct,
             'Missing_count' => $dash,
             'LP_productmaster' => $dash,
             'Ship_productmaster' => $dash,
@@ -612,8 +619,9 @@ class TikTokPricingController extends Controller
             'SPFT' => $dash,
             'SROI' => $dash,
             'percentage' => $dash,
-            'Profit' => $dash,
+            'Profit' => $parentProfit,
             'Sales L30' => $sumTSales,
+            'ROI%' => $roiPct,
             'hasCampaign' => $dash,
             'has_custom_sprice' => false,
             'SPRICE_STATUS' => $dash,

@@ -346,7 +346,7 @@
     const COLUMN_VIS_KEY = "tiktok_tabulator_column_visibility";
     // Ads section columns: hidden by default, only show when "Show Ads Columns" btn is clicked
     const ADS_ONLY_COLUMN_FIELDS = ['hasCampaign', 'NR', 'ad_cvr_pct', 'ads_price', 'budget', 'spend', 'ad_sold', 'ad_clicks', 'acos', 'out_roas', 'in_roas', 'status', 'campaign_name'];
-    const ALWAYS_HIDDEN_COLUMNS = ['Parent']; // Parent column - never show
+    const ALWAYS_HIDDEN_COLUMNS = []; // Parent column visible like CVR/pricing master
     let table = null;
     let totalDistinctCampaigns = 0; // from API: COUNT(DISTINCT campaign_name) in tiktok_campaign_reports
     let decreaseModeActive = false;
@@ -479,7 +479,7 @@
         // Select all checkbox handler
         $(document).on('change', '#select-all-checkbox', function() {
             const isChecked = $(this).prop('checked');
-            const filteredData = table.getData('active').filter(row => !(row.Parent && row.Parent.startsWith('PARENT')));
+            const filteredData = table.getData('active').filter(row => !(row.Parent && row.Parent.startsWith('PARENT ')));
             
             filteredData.forEach(row => {
                 if (isChecked) {
@@ -627,7 +627,7 @@
         function updateSelectAllCheckbox() {
             if (!table) return;
             
-            const filteredData = table.getData('active').filter(row => !(row.Parent && row.Parent.startsWith('PARENT')));
+            const filteredData = table.getData('active').filter(row => !(row.Parent && row.Parent.startsWith('PARENT ')));
             
             if (filteredData.length === 0) {
                 $('#select-all-checkbox').prop('checked', false);
@@ -802,6 +802,21 @@
         // Initialize Tabulator
         table = new Tabulator("#tiktok-table", {
             ajaxURL: "/tiktok-data-json",
+            ajaxResponse: function(url, params, response) {
+                var data = Array.isArray(response) ? response : (response && response.data);
+                if (data && Array.isArray(data)) {
+                    data.forEach(function(row) {
+                        // Only backend-inserted parent summary rows have Parent = "PARENT {name}" (with space)
+                        if (row.Parent && String(row.Parent).startsWith('PARENT ')) {
+                            row.is_parent = true;
+                            if (!row['(Child) sku'] || row['(Child) sku'] === '') row['(Child) sku'] = row.Parent;
+                            if (!row.Child_sku || row.Child_sku === '') row.Child_sku = row.Parent;
+                        }
+                    });
+                    return data;
+                }
+                return response;
+            },
             ajaxSorting: false,
             layout: "fitDataStretch",
             pagination: true,
@@ -816,13 +831,11 @@
                     }
                 }
             },
-            initialSort: [{
-                column: "TT L30",
-                dir: "desc"
-            }],
+            // No initialSort so backend order is preserved: children then PARENT row after each group (parent SKU visible)
+            initialSort: [],
             rowFormatter: function(row) {
                 const d = row.getData();
-                if (d.is_parent === true || (d.Parent && String(d.Parent).startsWith('PARENT'))) {
+                if (d.is_parent === true || (d.Parent && String(d.Parent).startsWith('PARENT '))) {
                     row.getElement().style.backgroundColor = "rgba(69, 233, 255, 0.15)";
                 }
             },
@@ -832,7 +845,7 @@
                     field: "image_path",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        if (rowData.Parent && String(rowData.Parent).startsWith('PARENT')) return '<span style="color:#6c757d;">-</span>';
+                        if (rowData.Parent && String(rowData.Parent).startsWith('PARENT ')) return '<span style="color:#6c757d;">-</span>';
                         const value = cell.getValue();
                         if (value && value !== '-') {
                             const esc = (v) => String(v).replace(/"/g, '&quot;').replace(/</g, '&lt;');
@@ -848,11 +861,11 @@
                     field: "Parent",
                     headerFilter: "input",
                     headerFilterPlaceholder: "Search Parent...",
-                    cssClass: "text-primary",
+                    cssClass: "text-muted",
                     tooltip: true,
                     frozen: true,
                     width: 150,
-                    visible: false
+                    visible: true
                 },
                 {
                     title: "SKU",
@@ -861,19 +874,25 @@
                     headerFilterPlaceholder: "Search SKU...",
                     cssClass: "text-primary fw-bold",
                     tooltip: true,
-                    frozen: true,
                     width: 250,
                     formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const isParentRow = rowData.is_parent === true || (rowData.Parent && String(rowData.Parent).startsWith('PARENT'));
+                        const row = cell.getRow();
+                        const rowData = row.getData();
+                        const cellVal = cell.getValue();
+                        const isParentRow = rowData.is_parent === true
+                            || (rowData.Parent && String(rowData.Parent).startsWith('PARENT '))
+                            || (cellVal && String(cellVal).startsWith('PARENT '));
                         const safe = (s) => (s == null ? '' : String(s)).replace(/</g, '&lt;').replace(/"/g, '&quot;');
                         if (isParentRow) {
-                            const childSkuKey = '(Child) sku';
-                            const parentSkuText = (rowData[childSkuKey] != null && rowData[childSkuKey] !== '') ? rowData[childSkuKey] : (rowData.Parent || 'PARENT');
-                            const text = safe(parentSkuText) || safe(rowData.Parent) || 'PARENT';
-                            return '<span class="fw-bold" style="color:#0d6efd;font-size:14px;display:inline-block;padding:4px 8px;background:rgba(13,110,253,0.12);border-radius:4px;">' + text + '</span>';
+                            // Prefer Parent field so "PARENT X" always shows (backend sets Parent = "PARENT {name}")
+                            const text = (rowData.Parent != null && rowData.Parent !== '') ? String(rowData.Parent)
+                                : (cellVal && String(cellVal).startsWith('PARENT ')) ? String(cellVal)
+                                : (rowData['(Child) sku'] != null && rowData['(Child) sku'] !== '') ? String(rowData['(Child) sku'])
+                                : (rowData.Child_sku != null && rowData.Child_sku !== '') ? String(rowData.Child_sku)
+                                : 'PARENT';
+                            return '<span class="fw-bold" style="color:#0d6efd;font-size:14px;display:inline-block;padding:4px 8px;background:rgba(13,110,253,0.12);border-radius:4px;">' + safe(text) + '</span>';
                         }
-                        const sku = cell.getValue() ?? rowData['(Child) sku'] ?? '';
+                        const sku = cellVal ?? rowData['(Child) sku'] ?? rowData['Child_sku'] ?? '';
                         const displaySku = safe(sku);
                         return '<span class="fw-bold">' + displaySku + '</span> <i class="fa fa-copy text-secondary copy-sku-btn" style="cursor:pointer;margin-left:8px;font-size:14px;" data-sku="' + safe(sku) + '" title="Copy SKU"></i>';
                     }
@@ -899,19 +918,20 @@
                     sorter: "number",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
+                        const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                        const cellVal = cell.getValue();
+                        if (isParent && (cellVal === null || cellVal === undefined || cellVal === '' || cellVal === '-')) return '<span style="color:#6c757d;">-</span>';
                         const INV = parseFloat(rowData.INV) || 0;
                         const OVL30 = parseFloat(rowData['L30']) || 0;
-                        
-                        if (INV === 0) return '<span style="color: #6c757d;">0%</span>';
-                        
-                        const dil = (OVL30 / INV) * 100;
+                        const dilFromCell = parseFloat(cellVal);
+                        const dil = (isParent && !isNaN(dilFromCell)) ? dilFromCell : (INV === 0 ? 0 : (OVL30 / INV) * 100);
+                        if (isParent && INV === 0 && (cellVal === null || cellVal === undefined || cellVal === '')) return '<span style="color:#6c757d;">-</span>';
+                        if (INV === 0 && !isParent) return '<span style="color: #6c757d;">0%</span>';
                         let color = '';
-                        
                         if (dil < 16.66) color = '#a00211';
                         else if (dil >= 16.66 && dil < 25) color = '#ffc107';
                         else if (dil >= 25 && dil < 50) color = '#28a745';
                         else color = '#e83e8c';
-                        
                         return `<span style="color: ${color}; font-weight: 600;">${Math.round(dil)}%</span>`;
                     },
                     width: 50
@@ -932,7 +952,7 @@
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
                         const raw = cell.getValue();
-                        if (rowData.Parent && String(rowData.Parent).startsWith('PARENT') && (raw === '-' || raw === null || raw === undefined)) return '<span style="color:#6c757d;">-</span>';
+                        if (rowData.Parent && String(rowData.Parent).startsWith('PARENT ') && (raw === '-' || raw === null || raw === undefined)) return '<span style="color:#6c757d;">-</span>';
                         const value = parseFloat(raw || 0);
                         if (value === 0) {
                             return '<span style="color: #dc3545; font-weight: 600;">0</span>';
@@ -948,7 +968,7 @@
                     formatter: function(cell) {
                         const value = cell.getValue();
                         const rowData = cell.getRow().getData();
-                        if (rowData.Parent && String(rowData.Parent).startsWith('PARENT') && (value === '-' || value === null)) return '<span style="color:#6c757d;">-</span>';
+                        if (rowData.Parent && String(rowData.Parent).startsWith('PARENT ') && (value === '-' || value === null)) return '<span style="color:#6c757d;">-</span>';
                         if (value === 'M') {
                             return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
                         }
@@ -1005,10 +1025,11 @@
                     sorter: "number",
                     formatter: function(cell) {
                         const rowData = cell.getRow().getData();
-                        if (rowData.Parent && String(rowData.Parent).startsWith('PARENT')) return '<span style="color:#6c757d;">-</span>';
                         const value = cell.getValue();
-                        if (value === null || value === undefined || value === '') return '<span style="color:#999;">-</span>';
+                        const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                        if (value === null || value === undefined || value === '' || value === '-') return '<span style="color:#6c757d;">-</span>';
                         const pct = parseFloat(value);
+                        if (isNaN(pct)) return '<span style="color:#6c757d;">-</span>';
                         return '<span style="font-weight:600;">' + pct.toFixed(2) + '%</span>';
                     }
                 },
@@ -1146,7 +1167,9 @@
                     width: 90,
                     formatter: function(cell) {
                         const value = cell.getValue();
-                        
+                        const rowData = cell.getRow().getData();
+                        const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                        if (isParent && (!value || value === '-')) return '<span style="color:#6c757d;">-</span>';
                         if (value === 'Map') {
                             return '<span style="color: #28a745; font-weight: bold;">Map</span>';
                         } else if (value && value.startsWith('N Map|')) {
@@ -1156,7 +1179,7 @@
                             const diff = value.split('|')[1];
                             return `<span style="color: #ffc107; font-weight: bold;">${diff}<br>(INV > TT Stock)</span>`;
                         }
-                        return '';
+                        return isParent ? '<span style="color:#6c757d;">-</span>' : '';
                     }
                 },
                 {
@@ -1165,12 +1188,15 @@
                     hozAlign: "center",
                     sorter: "number",
                     formatter: function(cell) {
-                        const value = parseFloat(cell.getValue() || 0);
-                        
+                        const raw = cell.getValue();
+                        const rowData = cell.getRow().getData();
+                        const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                        if (isParent && (raw === null || raw === undefined || raw === '' || raw === '-')) return '<span style="color:#6c757d;">-</span>';
+                        const value = parseFloat(raw || 0);
+                        if (isParent && isNaN(value)) return '<span style="color:#6c757d;">-</span>';
                         if (value === 0) {
                             return `<span style="color: #a00211; font-weight: 600;">$0.00 <i class="fas fa-exclamation-triangle" style="margin-left: 4px;"></i></span>`;
                         }
-                        
                         return `$${value.toFixed(2)}`;
                     },
                     width: 70
@@ -1182,16 +1208,17 @@
                     sorter: "number",
                     formatter: function(cell) {
                         const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
+                        const rowData = cell.getRow().getData();
+                        const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                        if (value === null || value === undefined || value === '' || value === '-') return isParent ? '<span style="color:#6c757d;">-</span>' : '';
                         const percent = parseFloat(value);
+                        if (isNaN(percent)) return isParent ? '<span style="color:#6c757d;">-</span>' : '';
                         let color = '';
-                        
                         if (percent < 10) color = '#a00211';
                         else if (percent >= 10 && percent < 15) color = '#ffc107';
                         else if (percent >= 15 && percent < 20) color = '#3591dc';
                         else if (percent >= 20 && percent <= 40) color = '#28a745';
                         else color = '#e83e8c';
-                        
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
@@ -1203,8 +1230,11 @@
                     sorter: "number",
                     formatter: function(cell) {
                         const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
+                        const rowData = cell.getRow().getData();
+                        const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                        if (value === null || value === undefined || value === '' || value === '-') return isParent ? '<span style="color:#6c757d;">-</span>' : '';
                         const percent = parseFloat(value);
+                        if (isNaN(percent)) return isParent ? '<span style="color:#6c757d;">-</span>' : '';
                         let color = percent >= 40 ? '#a00211' : percent >= 20 ? '#ffc107' : percent >= 10 ? '#3591dc' : '#28a745';
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
@@ -1217,16 +1247,17 @@
                     sorter: "number",
                     formatter: function(cell) {
                         const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
+                        const rowData = cell.getRow().getData();
+                        const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                        if (value === null || value === undefined || value === '' || value === '-') return isParent ? '<span style="color:#6c757d;">-</span>' : '';
                         const percent = parseFloat(value);
+                        if (isNaN(percent)) return isParent ? '<span style="color:#6c757d;">-</span>' : '';
                         let color = '';
-                        
                         if (percent < 10) color = '#a00211';
                         else if (percent >= 10 && percent < 15) color = '#ffc107';
                         else if (percent >= 15 && percent < 20) color = '#3591dc';
                         else if (percent >= 20 && percent <= 40) color = '#28a745';
                         else color = '#e83e8c';
-                        
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
@@ -1238,15 +1269,16 @@
                     sorter: "number",
                     formatter: function(cell) {
                         const value = cell.getValue();
-                        if (value === null || value === undefined) return '';
+                        const rowData = cell.getRow().getData();
+                        const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                        if (value === null || value === undefined || value === '' || value === '-') return isParent ? '<span style="color:#6c757d;">-</span>' : '';
                         const percent = parseFloat(value);
+                        if (isNaN(percent)) return isParent ? '<span style="color:#6c757d;">-</span>' : '';
                         let color = '';
-                        
                         if (percent < 50) color = '#a00211';
                         else if (percent >= 50 && percent < 100) color = '#ffc107';
                         else if (percent >= 100 && percent < 150) color = '#28a745';
                         else color = '#e83e8c';
-                        
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     },
                     width: 50
@@ -1258,7 +1290,12 @@
                     sorter: "number",
                     visible: false,
                     formatter: function(cell) {
-                        const value = parseFloat(cell.getValue() || 0);
+                        const raw = cell.getValue();
+                        const rowData = cell.getRow().getData();
+                        const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                        if (isParent && (raw === null || raw === undefined || raw === '' || raw === '-')) return '<span style="color:#6c757d;">-</span>';
+                        const value = parseFloat(raw || 0);
+                        if (isParent && isNaN(value)) return '<span style="color:#6c757d;">-</span>';
                         let color = value >= 0 ? '#28a745' : '#a00211';
                         return `<span style="color: ${color}; font-weight: 600;">$${value.toFixed(2)}</span>`;
                     },
@@ -1271,7 +1308,12 @@
                     sorter: "number",
                     visible: false,
                     formatter: function(cell) {
-                        const value = parseFloat(cell.getValue() || 0);
+                        const raw = cell.getValue();
+                        const rowData = cell.getRow().getData();
+                        const isParent = rowData.Parent && String(rowData.Parent).startsWith('PARENT ');
+                        if (isParent && (raw === null || raw === undefined || raw === '' || raw === '-')) return '<span style="color:#6c757d;">-</span>';
+                        const value = parseFloat(raw || 0);
+                        if (isParent && isNaN(value)) return '<span style="color:#6c757d;">-</span>';
                         return `$${value.toFixed(2)}`;
                     },
                     width: 80
@@ -1413,7 +1455,7 @@
                     formatter: function(cell) {
                         const row = cell.getRow();
                         const rowData = row.getData();
-                        if (rowData.Parent && String(rowData.Parent).startsWith('PARENT')) return '<span style="color:#6c757d;">-</span>';
+                        if (rowData.Parent && String(rowData.Parent).startsWith('PARENT ')) return '<span style="color:#6c757d;">-</span>';
                         const sku = rowData['(Child) sku'];
                         const value = (cell.getValue()?.trim()) || 'Not Req';
                         const isReq = value === 'Req';
@@ -1436,7 +1478,7 @@
                     formatter: function(cell) {
                         const row = cell.getRow();
                         const rowData = row.getData();
-                        if (rowData.Parent && String(rowData.Parent).startsWith('PARENT')) return '<span style="color:#6c757d;">-</span>';
+                        if (rowData.Parent && String(rowData.Parent).startsWith('PARENT ')) return '<span style="color:#6c757d;">-</span>';
                         const sku = rowData['(Child) sku'];
                         const value = (cell.getValue()?.trim()) || 'Not Req';
                         const isReq = value === 'Req';
@@ -1459,7 +1501,7 @@
                     formatter: function(cell) {
                         const row = cell.getRow();
                         const rowData = row.getData();
-                        if (rowData.Parent && String(rowData.Parent).startsWith('PARENT')) return '<span style="color:#6c757d;">-</span>';
+                        if (rowData.Parent && String(rowData.Parent).startsWith('PARENT ')) return '<span style="color:#6c757d;">-</span>';
                         const sku = rowData['(Child) sku'];
                         const val = cell.getValue();
                         const checked = val === 1 || val === '1' || val === true;
@@ -1692,6 +1734,11 @@
             });
         });
 
+        // Helper: parent summary rows must never be hidden by filters
+        function isParentRow(data) {
+            return data && (data.is_parent === true || (data.Parent && String(data.Parent).startsWith('PARENT ')));
+        }
+
         // Apply filters
         function applyFilters() {
             const inventoryFilter = $('#inventory-filter').val();
@@ -1701,37 +1748,49 @@
 
             table.clearFilter();
 
-            // Inventory filter
+            // Inventory filter (parent rows always visible)
             if (inventoryFilter === 'zero') {
-                table.addFilter("INV", "=", 0);
+                table.addFilter(function(data) {
+                    if (isParentRow(data)) return true;
+                    return parseFloat(data.INV) === 0;
+                });
             } else if (inventoryFilter === 'more') {
-                table.addFilter("INV", ">", 0);
+                table.addFilter(function(data) {
+                    if (isParentRow(data)) return true;
+                    return parseFloat(data.INV) > 0;
+                });
             }
 
-            // TikTok Stock filter
+            // TikTok Stock filter (parent rows always visible)
             const tiktokStockFilter = $('#tiktok-stock-filter').val();
             if (tiktokStockFilter === 'zero') {
-                table.addFilter("TT Stock", "=", 0);
+                table.addFilter(function(data) {
+                    if (isParentRow(data)) return true;
+                    return parseFloat(data['TT Stock']) === 0;
+                });
             } else if (tiktokStockFilter === 'more') {
-                table.addFilter("TT Stock", ">", 0);
+                table.addFilter(function(data) {
+                    if (isParentRow(data)) return true;
+                    return parseFloat(data['TT Stock']) > 0;
+                });
             }
 
-            // GPFT filter
+            // GPFT filter (parent rows always visible)
             if (gpftFilter !== 'all') {
-                if (gpftFilter === 'negative') {
-                    table.addFilter("GPFT%", "<", 0);
-                } else if (gpftFilter === '60plus') {
-                    table.addFilter("GPFT%", ">=", 60);
-                } else {
+                table.addFilter(function(data) {
+                    if (isParentRow(data)) return true;
+                    const gpft = parseFloat(data['GPFT%']) || 0;
+                    if (gpftFilter === 'negative') return gpft < 0;
+                    if (gpftFilter === '60plus') return gpft >= 60;
                     const [min, max] = gpftFilter.split('-').map(Number);
-                    table.addFilter("GPFT%", ">=", min);
-                    table.addFilter("GPFT%", "<", max);
-                }
+                    return gpft >= min && gpft < max;
+                });
             }
 
-            // Ad Click filter (campaign exist + 0 clicks OR campaign exist + has clicks)
+            // Ad Click filter (parent rows always visible)
             if (adClickFilter !== 'all') {
                 table.addFilter(function(data) {
+                    if (isParentRow(data)) return true;
                     const hasCampaign = data.hasCampaign === true || data.hasCampaign === 'true' || data.hasCampaign === 1;
                     const clicks = parseInt(data.ad_clicks, 10) || 0;
                     if (!hasCampaign) return false;
@@ -1741,10 +1800,11 @@
                 });
             }
 
-            // T L30 filter (excludes 0 inventory items)
+            // T L30 filter (parent rows always visible; excludes 0 inventory items for child rows only)
             const tl30Filter = $('#tl30-filter').val();
             if (tl30Filter !== 'all') {
                 table.addFilter(function(data) {
+                    if (isParentRow(data)) return true;
                     const inv = parseFloat(data.INV) || 0;
                     if (inv <= 0) return false;
                     const ttL30 = parseFloat(data['TT L30']) || 0;
@@ -1755,9 +1815,10 @@
                 });
             }
 
-            // DIL filter
+            // DIL filter (parent rows always visible)
             if (dilFilter !== 'all') {
                 table.addFilter(function(data) {
+                    if (isParentRow(data)) return true;
                     const inv = parseFloat(data['INV']) || 0;
                     const l30 = parseFloat(data['L30']) || 0;
                     const dil = inv === 0 ? 0 : (l30 / inv) * 100;
@@ -1770,47 +1831,62 @@
                 });
             }
 
-            // 0 Sold filter
+            // 0 Sold filter (parent rows always visible)
             if (zeroSoldFilterActive) {
-                table.addFilter("TT L30", "=", 0);
+                table.addFilter(function(data) {
+                    if (isParentRow(data)) return true;
+                    return parseFloat(data['TT L30']) === 0;
+                });
             }
 
-            // > 0 Sold filter
+            // > 0 Sold filter (parent rows always visible)
             if (moreSoldFilterActive) {
-                table.addFilter("TT L30", ">", 0);
+                table.addFilter(function(data) {
+                    if (isParentRow(data)) return true;
+                    return parseFloat(data['TT L30']) > 0;
+                });
             }
 
-            // Missing filter
+            // Missing filter (parent rows always visible)
             if (missingFilterActive) {
-                table.addFilter("Missing", "=", "M");
+                table.addFilter(function(data) {
+                    if (isParentRow(data)) return true;
+                    return data.Missing === 'M';
+                });
             }
 
-            // Map filter
+            // Map filter (parent rows always visible)
             if (mapFilterActive) {
-                table.addFilter("MAP", "=", "Map");
+                table.addFilter(function(data) {
+                    if (isParentRow(data)) return true;
+                    return data.MAP === 'Map';
+                });
             }
 
-            // INV > TT Stock filter
+            // INV > TT Stock filter (parent rows always visible)
             if (invTTStockFilterActive) {
                 table.addFilter(function(data) {
+                    if (isParentRow(data)) return true;
                     const mapValue = data['MAP'];
                     return mapValue && mapValue.startsWith('Diff|');
                 });
             }
 
-            // Ads section badge filter (only when Show Ads Columns is on)
+            // Ads section badge filter (parent rows always visible)
             if (typeof utilizedColumnsVisible !== 'undefined' && utilizedColumnsVisible && adsBadgeFilter) {
                 switch (adsBadgeFilter) {
                     case 'all':
                         break;
                     case 'campaign':
                         table.addFilter(function(data) {
+                            if (isParentRow(data)) return true;
                             const hasCampaign = data.hasCampaign === true || data.hasCampaign === 'true' || data.hasCampaign === 1;
                             return hasCampaign;
                         });
                         break;
                     case 'ad-sku':
                         table.addFilter(function(data) {
+                            if (isParentRow(data)) return true;
                             const hasCampaign = data.hasCampaign === true || data.hasCampaign === 'true' || data.hasCampaign === 1;
                             const inv = parseFloat(data.INV) || 0;
                             return hasCampaign && inv > 0;
@@ -1818,6 +1894,7 @@
                         break;
                     case 'missing':
                         table.addFilter(function(data) {
+                            if (isParentRow(data)) return true;
                             const hasCampaign = data.hasCampaign === true || data.hasCampaign === 'true' || data.hasCampaign === 1;
                             const nr = (data.NR || '').trim();
                             const inv = parseFloat(data.INV) || 0;
@@ -1826,34 +1903,47 @@
                         break;
                     case 'nra-missing':
                         table.addFilter(function(data) {
+                            if (isParentRow(data)) return true;
                             const hasCampaign = data.hasCampaign === true || data.hasCampaign === 'true' || data.hasCampaign === 1;
                             const nr = (data.NR || '').trim();
                             return !hasCampaign && nr === 'NRA';
                         });
                         break;
                     case 'zero-inv':
-                        table.addFilter("INV", "<=", 0);
+                        table.addFilter(function(data) {
+                            if (isParentRow(data)) return true;
+                            return parseFloat(data.INV) <= 0;
+                        });
                         break;
                     case 'nra':
-                        table.addFilter(function(data) { return (data.NR || '').trim() === 'NRA'; });
+                        table.addFilter(function(data) {
+                            if (isParentRow(data)) return true;
+                            return (data.NR || '').trim() === 'NRA';
+                        });
                         break;
                     case 'ra':
-                        table.addFilter(function(data) { return (data.NR || '').trim() === 'RA'; });
+                        table.addFilter(function(data) {
+                            if (isParentRow(data)) return true;
+                            return (data.NR || '').trim() === 'RA';
+                        });
                         break;
                     case 'total-spend':
                         table.addFilter(function(data) {
+                            if (isParentRow(data)) return true;
                             const spend = parseFloat(data.spend) || 0;
                             return spend > 0;
                         });
                         break;
                     case 'budget':
                         table.addFilter(function(data) {
+                            if (isParentRow(data)) return true;
                             const b = data.budget;
                             return b !== null && b !== undefined && b !== '' && (parseFloat(b) || 0) > 0;
                         });
                         break;
                     case 'ad-clicks':
                         table.addFilter(function(data) {
+                            if (isParentRow(data)) return true;
                             const clicks = parseInt(data.ad_clicks, 10) || 0;
                             return clicks > 0;
                         });
@@ -1862,6 +1952,7 @@
                     case 'avg-acos':
                     case 'roas':
                         table.addFilter(function(data) {
+                            if (isParentRow(data)) return true;
                             const spend = parseFloat(data.spend) || 0;
                             const outRoas = parseFloat(data.out_roas) || 0;
                             return spend > 0 && outRoas > 0;
@@ -1870,12 +1961,14 @@
                 }
             }
 
-            // SKU search (apply last so it works with Ad Click and other filters; excludes missing campaign when Ad Click is on)
+            // SKU search (parent rows always visible; match by Parent / (Child) sku for parent rows)
             const skuSearchVal = $('#sku-search').val();
             if (skuSearchVal && skuSearchVal.trim() !== '') {
+                const term = skuSearchVal.trim().toLowerCase();
                 table.addFilter(function(data) {
+                    if (isParentRow(data)) return true;
                     const sku = (data['(Child) sku'] || '').toString().toLowerCase();
-                    return sku.indexOf(skuSearchVal.trim().toLowerCase()) !== -1;
+                    return sku.indexOf(term) !== -1;
                 });
             }
 
@@ -1889,7 +1982,7 @@
         // Update summary badges
         function updateSummary() {
             const data = table.getData('active').filter(row => {
-                return !(row.Parent && row.Parent.startsWith('PARENT'));
+                return !(row.Parent && row.Parent.startsWith('PARENT '));
             });
 
             let totalPft = 0, totalSales = 0, totalGpft = 0, totalPrice = 0, priceCount = 0;
@@ -1973,7 +2066,7 @@
             if (!table) return;
             const data = table.getData('all').filter(row => {
                 const sku = row['(Child) sku'] || '';
-                return sku && !String(row.Parent || '').startsWith('PARENT');
+                return sku && !String(row.Parent || '').startsWith('PARENT ');
             });
             const processedSkus = new Set();
             const zeroInvSkus = new Set();
