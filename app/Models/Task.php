@@ -40,6 +40,7 @@ class Task extends Model
         'link7',
         'link8',
         'link9',
+        'image',
         'automate_task_id',
         'task_type',
         'schedule_type',

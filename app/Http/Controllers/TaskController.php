@@ -145,6 +145,14 @@ class TaskController extends Controller
             $assigneeEmail = $assigneeUser ? $assigneeUser->email : null;
         }
         
+        // Handle image upload
+        $imageName = null;
+        if ($request->hasFile('image')) {
+            $image = $request->file('image');
+            $imageName = time() . '_' . $image->getClientOriginalName();
+            $image->move(public_path('uploads/tasks'), $imageName);
+        }
+        
         // Calculate completion_date = TID + 5 days for manual tasks
         $startDate = $validated['tid'] ?? now();
         $completionDate = \Carbon\Carbon::parse($startDate)->addDays(5);
@@ -179,6 +187,7 @@ class TaskController extends Controller
             'link7' => $validated['checklist_link'] ?? '',
             'link8' => $validated['pl'] ?? '',
             'link9' => $validated['process'] ?? '',
+            'image' => $imageName,
             'is_data_from' => 0, // Manual entry
             'is_automate_task' => 0, // Manual task
             'task_type' => 'manual',
@@ -307,6 +316,19 @@ class TaskController extends Controller
             }
         }
         
+        // Handle image upload
+        $imageName = $task->image;
+        if ($request->hasFile('image')) {
+            // Delete old image
+            if ($task->image && file_exists(public_path('uploads/tasks/' . $task->image))) {
+                unlink(public_path('uploads/tasks/' . $task->image));
+            }
+            
+            $image = $request->file('image');
+            $imageName = time() . '_' . $image->getClientOriginalName();
+            $image->move(public_path('uploads/tasks'), $imageName);
+        }
+        
         // Map new fields to old table columns
         $updateData = [
             'title' => $validated['title'],
@@ -327,6 +349,7 @@ class TaskController extends Controller
             'link7' => $validated['checklist_link'] ?? '',
             'link8' => $validated['pl'] ?? '',
             'link9' => $validated['process'] ?? '',
+            'image' => $imageName,
         ];
 
         $relevantChanged = $this->taskDetailsChanged($task, $updateData);

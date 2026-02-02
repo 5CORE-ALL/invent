@@ -1033,7 +1033,7 @@
                         });
                     }
                     
-                    // Column Order: GROUP, TASK, ASSIGNOR, ASSIGNEE, TID, ETC, ATC, C DAY, STATUS, PRIORITY, IMAGE, LINKS, ACTION
+                    // Column Order: GROUP, TASK, ASSIGNOR, ASSIGNEE, TID, ETC, ATC, STATUS, PRIORITY, IMAGE, LINKS, ACTION
                     
                     // GROUP
                     cols.push({
@@ -1074,25 +1074,33 @@
                         }
                     });
                     
-                    // ASSIGNOR (name from email)
+                    // ASSIGNOR (first name only)
                     cols.push({
                         title: "ASSIGNOR", 
                         field: "assignor_name", 
-                        minWidth: 140, 
+                        width: 100, 
                         formatter: function(cell) {
                             var value = cell.getValue();
-                            return value && value !== '-' ? '<strong>' + value + '</strong>' : '<span style="color: #adb5bd;">-</span>';
+                            if (value && value !== '-') {
+                                var firstName = value.trim().split(' ')[0];
+                                return '<strong>' + firstName + '</strong>';
+                            }
+                            return '<span style="color: #adb5bd;">-</span>';
                         }
                     });
                     
-                    // ASSIGNEE (name from email)
+                    // ASSIGNEE (first name only)
                     cols.push({
                         title: "ASSIGNEE", 
                         field: "assignee_name", 
-                        minWidth: 140, 
+                        width: 100, 
                         formatter: function(cell) {
                             var value = cell.getValue();
-                            return value && value !== '-' ? '<strong>' + value + '</strong>' : '<span style="color: #adb5bd;">-</span>';
+                            if (value && value !== '-') {
+                                var firstName = value.trim().split(' ')[0];
+                                return '<strong>' + firstName + '</strong>';
+                            }
+                            return '<span style="color: #adb5bd;">-</span>';
                         }
                     });
                     
@@ -1110,46 +1118,28 @@
                                 var day = String(date.getDate()).padStart(2, '0');
                                 var month = date.toLocaleString('default', { month: 'short' });
                                 
-                                // Check if automated task - check multiple ways to be sure
-                                var isAutomate = (rowData.is_automate_task == 1) || 
-                                               (rowData.is_automate_task == '1') || 
-                                               (rowData.is_automate_task === true) ||
-                                               (rowData.task_type === 'automate_task');
-                                
-                                if (isAutomate) {
-                                    // Yellow background badge for automated tasks
-                                    return '<div style="background: #fef3c7; padding: 6px 10px; border-radius: 8px; display: inline-block;"><span style="color: #0d6efd; font-weight: 600;">' + day + '-' + month + '</span></div>';
-                                } else {
-                                    // Plain blue text for manual tasks
-                                    return '<span style="color: #0d6efd; font-weight: 600;">' + day + '-' + month + '</span>';
-                                }
-                            }
-                            return '<span style="color: #adb5bd;">-</span>';
-                        }
-                    });
-                    
-                    // O DATE (Due Date) - Red=overdue, Orange=due soon, Green=future
-                    cols.push({
-                        title: "O DATE", 
-                        field: "due_date", 
-                        width: 120,
-                        formatter: function(cell) {
-                            var value = cell.getValue();
-                            if (value) {
-                                var dueDate = new Date(value);
-                                var day = String(dueDate.getDate()).padStart(2, '0');
-                                var month = dueDate.toLocaleString('default', { month: 'short' });
-                                
+                                // Calculate days from TID (Day 0 = issue date)
+                                var tidDate = new Date(value);
+                                tidDate.setHours(0, 0, 0, 0);
                                 var now = new Date();
                                 now.setHours(0, 0, 0, 0);
-                                var dueDateOnly = new Date(dueDate);
-                                dueDateOnly.setHours(0, 0, 0, 0);
+                                var daysSinceTID = Math.floor((now - tidDate) / (1000 * 60 * 60 * 24));
                                 
-                                var diffDays = Math.ceil((dueDateOnly - now) / (1000 * 60 * 60 * 24));
+                                var textColor = '#0d6efd'; // Default blue
                                 
-                                var color = diffDays < 0 ? '#dc3545' : (diffDays <= 1 ? '#fd7e14' : '#28a745');
+                                // Color logic based on task age (skip for Done/Archived)
+                                if (rowData.status !== 'Done' && rowData.status !== 'Archived') {
+                                    if (daysSinceTID >= 2) {
+                                        // Day 2+ = RED text
+                                        textColor = '#dc3545';
+                                    } else if (daysSinceTID === 1) {
+                                        // Day 1 = ORANGE text
+                                        textColor = '#fd7e14';
+                                    }
+                                    // Day 0 = Blue (default)
+                                }
                                 
-                                return '<span style="color: ' + color + '; font-weight: 600;">' + day + '-' + month + '</span>';
+                                return '<span style="color: ' + textColor + '; font-weight: 600;">' + day + '-' + month + '</span>';
                             }
                             return '<span style="color: #adb5bd;">-</span>';
                         }
@@ -1179,34 +1169,11 @@
                         }
                     });
                     
-                    // C DAY (Days since completion)
-                    cols.push({
-                        title: "C DAY", 
-                        field: "completion_day", 
-                        width: 90,
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            var rowData = cell.getRow().getData();
-                            var value = cell.getValue();
-                            if (rowData.status === 'Done' && rowData.completion_date) {
-                                try {
-                                    var completed = new Date(rowData.completion_date);
-                                    var now = new Date();
-                                    var diffDays = Math.ceil((now - completed) / (1000 * 60 * 60 * 24));
-                                    return '<strong style="color: #6610f2;">' + diffDays + '</strong>';
-                                } catch(e) {
-                                    return value ? '<strong style="color: #6610f2;">' + value + '</strong>' : '<span style="color: #adb5bd;">-</span>';
-                                }
-                            }
-                            return '<span style="color: #adb5bd;">-</span>';
-                        }
-                    });
-                    
                     // STATUS
                     cols.push({
                         title: "STATUS", 
                         field: "status", 
-                        width: 180,
+                        width: 100,
                         hozAlign: "center",
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
@@ -1219,28 +1186,28 @@
                             var canUpdateStatus = isAdmin || assignorId === currentUserId || assigneeId === currentUserId;
                             
                             var statuses = {
-                                'Todo': {color: '#0dcaf0'},
-                                'Working': {color: '#ffc107'},
-                                'Archived': {color: '#6c757d'},
-                                'Done': {color: '#28a745'},
-                                'Need Help': {color: '#fd7e14'},
-                                'Need Approval': {color: '#6610f2'},
-                                'Dependent': {color: '#d63384'},
-                                'Approved': {color: '#20c997'},
-                                'Hold': {color: '#495057'},
-                                'Rework': {color: '#f5576c'}
+                                'Todo': {bg: '#0dcaf0', text: '#000'},
+                                'Working': {bg: '#ffc107', text: '#000'},
+                                'Archived': {bg: '#6c757d', text: '#000'},
+                                'Done': {bg: '#28a745', text: '#000'},
+                                'Need Help': {bg: '#fd7e14', text: '#000'},
+                                'Need Approval': {bg: '#6610f2', text: '#fff'},
+                                'Dependent': {bg: '#d63384', text: '#fff'},
+                                'Approved': {bg: '#20c997', text: '#000'},
+                                'Hold': {bg: '#495057', text: '#fff'},
+                                'Rework': {bg: '#f5576c', text: '#fff'}
                             };
-                            var currentStatus = statuses[value] || {color: '#6c757d'};
+                            var currentStatus = statuses[value] || {bg: '#6c757d', text: '#000'};
                             
                             if (!canUpdateStatus) {
-                                return '<span style="background: ' + currentStatus.color + '20; color: ' + currentStatus.color + '; border: 1px solid ' + currentStatus.color + '; padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: 600;">' + value + '</span>';
+                                return '<span style="background: ' + currentStatus.bg + '; color: ' + currentStatus.text + '; padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; display: inline-block;">' + value + '</span>';
                             }
                             
                             return `
                                 <select class="form-select form-select-sm status-select" 
                                         data-task-id="${taskId}" 
                                         data-current-status="${value}"
-                                        style="border-color: ${currentStatus.color}; color: ${currentStatus.color}; font-weight: 600; font-size: 11px;">
+                                        style="background: ${currentStatus.bg}; color: ${currentStatus.text}; border: none; font-weight: 600; font-size: 11px; border-radius: 20px; padding: 6px 12px;">
                                     <option value="Todo" ${value === 'Todo' ? 'selected' : ''}>Todo</option>
                                     <option value="Working" ${value === 'Working' ? 'selected' : ''}>Working</option>
                                     <option value="Archived" ${value === 'Archived' ? 'selected' : ''}>Archived</option>
@@ -1276,20 +1243,20 @@
                         }
                     });
                     
-                    // IMAGE
+                    // IMG (Screenshot/Image)
                     cols.push({
-                        title: "IMAGE", 
+                        title: "IMG", 
                         field: "image", 
-                        width: 90,
+                        width: 60,
                         hozAlign: "center",
                         formatter: function(cell) {
                             var value = cell.getValue();
                             if (value) {
-                                return `<a href="/uploads/tasks/${value}" target="_blank" title="View Image">
-                                    <i class="mdi mdi-image text-info" style="font-size: 20px; cursor: pointer;"></i>
+                                return `<a href="/uploads/tasks/${value}" target="_blank" title="View Screenshot">
+                                    <i class="mdi mdi-camera text-primary" style="font-size: 18px; cursor: pointer;"></i>
                                 </a>`;
                             }
-                            return '<span style="color: #adb5bd;">-</span>';
+                            return '-';
                         }
                     });
                     
@@ -1302,15 +1269,16 @@
                         headerSort: false,
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
-                            var hasLinks = rowData.training_link || rowData.video_link || rowData.form_link || 
-                                          rowData.form_report_link || rowData.checklist_link || rowData.pl || rowData.process;
+                            // Check all link fields (link1-9)
+                            var hasLinks = rowData.link1 || rowData.link2 || rowData.link3 || rowData.link4 || 
+                                          rowData.link5 || rowData.link6 || rowData.link7 || rowData.link8 || rowData.link9;
                             
                             if (hasLinks) {
                                 return `<button class="btn btn-sm btn-link view-links" data-id="${cell.getValue()}" title="View Links">
-                                    <i class="mdi mdi-link-variant text-primary" style="font-size: 20px; cursor: pointer;"></i>
+                                    <i class="mdi mdi-link-variant text-primary" style="font-size: 18px; cursor: pointer;"></i>
                                 </button>`;
                             }
-                            return '<span style="color: #adb5bd;">-</span>';
+                            return '-';
                         }
                     });
                     
@@ -1812,60 +1780,34 @@
                     type: 'GET',
                     success: function(response) {
                         var html = '<div class="list-group">';
+                        var linkCount = 0;
                         
-                        if (response.training_link) {
-                            html += `
-                                <a href="${response.training_link}" target="_blank" class="list-group-item list-group-item-action">
-                                    <i class="mdi mdi-school text-primary me-2"></i>
-                                    <strong>Training Link:</strong> ${response.training_link}
-                                </a>`;
-                        }
-                        if (response.video_link) {
-                            html += `
-                                <a href="${response.video_link}" target="_blank" class="list-group-item list-group-item-action">
-                                    <i class="mdi mdi-video text-danger me-2"></i>
-                                    <strong>Video Link:</strong> ${response.video_link}
-                                </a>`;
-                        }
-                        if (response.form_link) {
-                            html += `
-                                <a href="${response.form_link}" target="_blank" class="list-group-item list-group-item-action">
-                                    <i class="mdi mdi-file-document text-success me-2"></i>
-                                    <strong>Form Link:</strong> ${response.form_link}
-                                </a>`;
-                        }
-                        if (response.form_report_link) {
-                            html += `
-                                <a href="${response.form_report_link}" target="_blank" class="list-group-item list-group-item-action">
-                                    <i class="mdi mdi-file-chart text-info me-2"></i>
-                                    <strong>Form Report Link:</strong> ${response.form_report_link}
-                                </a>`;
-                        }
-                        if (response.checklist_link) {
-                            html += `
-                                <a href="${response.checklist_link}" target="_blank" class="list-group-item list-group-item-action">
-                                    <i class="mdi mdi-checkbox-marked-outline text-warning me-2"></i>
-                                    <strong>Checklist Link:</strong> ${response.checklist_link}
-                                </a>`;
-                        }
-                        if (response.pl) {
-                            html += `
-                                <div class="list-group-item">
-                                    <i class="mdi mdi-folder text-secondary me-2"></i>
-                                    <strong>PL:</strong> ${response.pl}
-                                </div>`;
-                        }
-                        if (response.process) {
-                            html += `
-                                <div class="list-group-item">
-                                    <i class="mdi mdi-cog text-dark me-2"></i>
-                                    <strong>Process:</strong> ${response.process}
-                                </div>`;
+                        // Show all links (link1-9)
+                        for (var i = 1; i <= 9; i++) {
+                            var linkField = 'link' + i;
+                            if (response[linkField] && response[linkField] !== '') {
+                                linkCount++;
+                                var isUrl = response[linkField].startsWith('http');
+                                
+                                if (isUrl) {
+                                    html += `
+                                        <a href="${response[linkField]}" target="_blank" class="list-group-item list-group-item-action">
+                                            <i class="mdi mdi-link text-primary me-2"></i>
+                                            <strong>Link ${i}:</strong> ${response[linkField]}
+                                        </a>`;
+                                } else {
+                                    html += `
+                                        <div class="list-group-item">
+                                            <i class="mdi mdi-text text-secondary me-2"></i>
+                                            <strong>Link ${i}:</strong> ${response[linkField]}
+                                        </div>`;
+                                }
+                            }
                         }
                         
                         html += '</div>';
                         
-                        if (html === '<div class="list-group"></div>') {
+                        if (linkCount === 0) {
                             html = '<p class="text-muted">No links available for this task.</p>';
                         }
                         

@@ -628,16 +628,16 @@
                                 <label class="form-label fw-bold">Status</label>
                                 <select id="filter-status" class="form-select form-select-sm">
                                     <option value="">All</option>
-                                    <option value="pending">Todo</option>
-                                    <option value="in_progress">Working</option>
-                                    <option value="archived">Archived</option>
-                                    <option value="completed">Done</option>
-                                    <option value="need_help">Need Help</option>
-                                    <option value="need_approval">Need Approval</option>
-                                    <option value="dependent">Dependent</option>
-                                    <option value="approved">Approved</option>
-                                    <option value="hold">Hold</option>
-                                    <option value="cancelled">Cancelled</option>
+                                    <option value="Todo">Todo</option>
+                                    <option value="Working">Working</option>
+                                    <option value="Archived">Archived</option>
+                                    <option value="Done">Done</option>
+                                    <option value="Need Help">Need Help</option>
+                                    <option value="Need Approval">Need Approval</option>
+                                    <option value="Dependent">Dependent</option>
+                                    <option value="Approved">Approved</option>
+                                    <option value="Hold">Hold</option>
+                                    <option value="Rework">Rework</option>
                                 </select>
                             </div>
                             <div class="col-md-1 mb-2">
@@ -996,25 +996,33 @@
                         }
                     });
                     
-                    // ASSIGNER
+                    // ASSIGNER (first name only)
                     cols.push({
                         title: "ASSIGNER", 
                         field: "assignor_name", 
-                        width: 150, 
+                        width: 90, 
                         formatter: function(cell) {
                             var value = cell.getValue();
-                            return value && value !== '-' ? '<strong>' + value + '</strong>' : '<span style="color: #adb5bd;">-</span>';
+                            if (value && value !== '-') {
+                                var firstName = value.trim().split(' ')[0];
+                                return '<strong>' + firstName + '</strong>';
+                            }
+                            return '<span style="color: #adb5bd;">-</span>';
                         }
                     });
                     
-                    // ASSIGNEE
+                    // ASSIGNEE (first name only)
                     cols.push({
                         title: "ASSIGNEE", 
                         field: "assignee_name", 
-                        width: 150, 
+                        width: 90, 
                         formatter: function(cell) {
                             var value = cell.getValue();
-                            return value && value !== '-' ? '<strong>' + value + '</strong>' : '<span style="color: #adb5bd;">-</span>';
+                            if (value && value !== '-') {
+                                var firstName = value.trim().split(' ')[0];
+                                return '<strong>' + firstName + '</strong>';
+                            }
+                            return '<span style="color: #adb5bd;">-</span>';
                         }
                     });
                     
@@ -1125,7 +1133,7 @@
                     cols.push({
                         title: "STATUS", 
                         field: "status", 
-                        width: 180,
+                        width: 100,
                         hozAlign: "center",
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
@@ -1327,6 +1335,31 @@
                 })(),
             });
 
+            // Update statistics based on filtered data
+            function updateStatistics() {
+                var filteredData = table.getData("active");
+                
+                var total = filteredData.length;
+                var daily = filteredData.filter(t => t.schedule_type === 'daily').length;
+                var weekly = filteredData.filter(t => t.schedule_type === 'weekly').length;
+                var monthly = filteredData.filter(t => t.schedule_type === 'monthly').length;
+                var active = filteredData.filter(t => t.status === 'Todo').length;
+                
+                // Update stat cards
+                $('.stat-card').each(function() {
+                    var label = $(this).find('.stat-label').text().trim();
+                    var valueEl = $(this).find('.stat-value');
+                    
+                    switch(label) {
+                        case 'TOTAL': valueEl.text(total); break;
+                        case 'DAILY': valueEl.text(daily); break;
+                        case 'WEEKLY': valueEl.text(weekly); break;
+                        case 'MONTHLY': valueEl.text(monthly); break;
+                        case 'ACTIVE': valueEl.text(active); break;
+                    }
+                });
+            }
+
             // Combined filter function (proper AND logic)
             function applyFilters() {
                 table.clearFilter();
@@ -1366,6 +1399,11 @@
                 if (filters.length > 0) {
                     table.setFilter(filters);
                 }
+                
+                // Update statistics after filtering
+                setTimeout(function() {
+                    updateStatistics();
+                }, 100);
             }
 
             // Filter functionality
