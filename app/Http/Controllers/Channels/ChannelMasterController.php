@@ -335,9 +335,25 @@ class ChannelMasterController extends Controller
             
             if (isset($advMastersData[$advKey])) {
                 $advData = $advMastersData[$advKey];
-                $row['clicks'] = $advData->clicks ?? 0;
+                $clicks = $advData->clicks ?? 0;
+                $adSold = $advData->ad_sold ?? 0;
+                $adSales = $advData->ad_sales ?? 0;
+                $missingAds = $advData->missing_ads ?? 0;
+                
+                // Calculate Ads CVR: (ad_sold / clicks) * 100
+                $cvr = $clicks > 0 ? round(($adSold / $clicks) * 100, 2) : 0;
+                
+                $row['clicks'] = $clicks;
+                $row['ad_sold'] = $adSold;
+                $row['Ad Sales'] = $adSales;
+                $row['Ads CVR'] = $cvr;
+                $row['Missing Ads'] = $missingAds;
             } else {
                 $row['clicks'] = 0;
+                $row['ad_sold'] = 0;
+                $row['Ad Sales'] = 0;
+                $row['Ads CVR'] = 0;
+                $row['Missing Ads'] = 0;
             }
 
             $finalData[] = $row;
@@ -5423,6 +5439,15 @@ class ChannelMasterController extends Controller
             
             \Log::info("Searching for patterns", ['patterns' => $suffixPatterns]);
             
+            // Get parent channel's L30 sales for TACOS calculation
+            $parentChannel = \App\Models\ADVMastersData::where('channel', $channelUpper)->first();
+            $parentL30Sales = $parentChannel ? ($parentChannel->l30_sales ?? 0) : 0;
+            
+            \Log::info("Parent channel L30 sales", [
+                'channel' => $channelUpper,
+                'l30_sales' => $parentL30Sales
+            ]);
+            
             // Find all related channels from adv_masters_datas table
             $breakdown = [];
             $total = 0;
@@ -5450,18 +5475,36 @@ class ChannelMasterController extends Controller
                         $type = str_replace(['AMZ ', 'AMZ'], '', $pattern);
                     }
                     
+                    // Get values from database
+                    $clicks = $relatedChannel->clicks ?? 0;
+                    $adSold = $relatedChannel->ad_sold ?? 0;
+                    $adSales = $relatedChannel->ad_sales ?? 0;
+                    $spent = $relatedChannel->spent ?? 0;
+                    
+                    // Calculate metrics using formulas:
+                    // CVR = (ads sold / clicks) * 100
+                    $cvr = $clicks > 0 ? round(($adSold / $clicks) * 100, 2) : 0;
+                    
+                    // ACOS = (spent / ad_sales) * 100
+                    $acos = $adSales > 0 ? round(($spent / $adSales) * 100, 2) : 0;
+                    
+                    // TACOS = (spent / parent_total_sales) * 100
+                    // Use parent channel's L30 sales for all sub-channels
+                    $tacos = $parentL30Sales > 0 ? round(($spent / $parentL30Sales) * 100, 2) : 0;
+                    
                     $breakdown[] = [
                         'type' => $type,
                         'channel' => $relatedChannel->channel,
-                        'clicks' => $relatedChannel->clicks ?? 0,
-                        'ad_sales' => $relatedChannel->ad_sales ?? 0,
-                        'acos' => $relatedChannel->acos ?? 0,
-                        'tacos' => $relatedChannel->tacos ?? 0,
-                        'ad_sold' => $relatedChannel->ad_sold ?? 0,
-                        'cvr' => $relatedChannel->cvr ?? 0,
+                        'spent' => $spent,
+                        'clicks' => $clicks,
+                        'ad_sales' => $adSales,
+                        'acos' => $acos,
+                        'tacos' => $tacos,
+                        'ad_sold' => $adSold,
+                        'cvr' => $cvr,
                         'missing_ads' => $relatedChannel->missing_ads ?? 0
                     ];
-                    $total += $relatedChannel->clicks ?? 0;
+                    $total += $clicks;
                 }
             }
             
@@ -5474,7 +5517,8 @@ class ChannelMasterController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => $breakdown,
-                'total' => $total
+                'total' => $total,
+                'parent_l30_sales' => $parentL30Sales
             ]);
             
         } catch (\Exception $e) {
