@@ -89,7 +89,7 @@ class TikTokPricingController extends Controller
     /**
      * Get TikTok Tabular Data (similar to Reverb)
      */
-    public function getViewTikTokTabularData(Request $request)
+    public function  getViewTikTokTabularData(Request $request)
     {
         // Get percentage from MarketplacePercentage table (consistent with other marketplaces)
         $marketplaceData = MarketplacePercentage::where('marketplace', 'TikTok')->first();
@@ -352,12 +352,25 @@ class TikTokPricingController extends Controller
                     $nrVal = $tiktokValArr['NR'];
                     $processedItem["NR"] = is_bool($nrVal) ? ($nrVal ? 'RA' : 'NRA') : (string) $nrVal;
                 }
+                if (array_key_exists('variation_req', $tiktokValArr)) {
+                    $processedItem["variation_req"] = (string) $tiktokValArr['variation_req'];
+                }
+                if (array_key_exists('video_req', $tiktokValArr)) {
+                    $processedItem["video_req"] = (string) $tiktokValArr['video_req'];
+                }
+                if (array_key_exists('video_uploaded', $tiktokValArr)) {
+                    $v = $tiktokValArr['video_uploaded'];
+                    $processedItem["video_uploaded"] = ($v === true || $v === 1 || $v === '1') ? 1 : 0;
+                }
             }
             if (!isset($processedItem["NR"]) && isset($reverbViewData[$sku])) {
                 $valuesArr = $reverbViewData[$sku]->values ?: [];
                 $processedItem["NR"] = $valuesArr["NR"] ?? 'RA';
             }
             if (!isset($processedItem["NR"])) $processedItem["NR"] = 'RA';
+            if (!isset($processedItem["variation_req"])) $processedItem["variation_req"] = 'Not Req';
+            if (!isset($processedItem["video_req"])) $processedItem["video_req"] = 'Not Req';
+            if (!isset($processedItem["video_uploaded"])) $processedItem["video_uploaded"] = 0;
 
             if (!isset($tiktokShopDataView[$sku]) && isset($reverbViewData[$sku])) {
                 $viewData = $reverbViewData[$sku];
@@ -442,6 +455,9 @@ class TikTokPricingController extends Controller
             $processedItem["SPFT"] = round($processedItem["SGPFT"] - $processedItem["TACOS%"], 2);
             $processedItem["ad_sold"] = (int)($metrics['sku_orders'] ?? 0);
             $processedItem["ad_clicks"] = (int)($metrics['clicks'] ?? 0);
+            $adSold = $processedItem["ad_sold"];
+            $adClicks = $processedItem["ad_clicks"];
+            $processedItem["ad_cvr_pct"] = $adClicks > 0 ? round(($adSold / $adClicks) * 100, 2) : null;
             $processedItem["acos"] = $outRoas > 0 ? round(100 / $outRoas) : 0;
             $processedItem["out_roas"] = round($outRoas, 2);
             $processedItem["in_roas"] = round($inRoas, 2);
@@ -450,11 +466,158 @@ class TikTokPricingController extends Controller
             $processedData[] = $processedItem;
         }
 
+        // Sort by Parent (null/empty last) so same-parent rows are consecutive for grouping
+        usort($processedData, function ($a, $b) {
+            $pa = $a['Parent'] ?? '';
+            $pb = $b['Parent'] ?? '';
+            $pa = ($pa !== null && $pa !== '') ? (string) $pa : '';
+            $pb = ($pb !== null && $pb !== '') ? (string) $pb : '';
+            if ($pa === '' && $pb === '') return 0;
+            if ($pa === '') return 1;
+            if ($pb === '') return -1;
+            $cmp = strcmp($pa, $pb);
+            if ($cmp !== 0) return $cmp;
+            return strcmp($a['(Child) sku'] ?? '', $b['(Child) sku'] ?? '');
+        });
+
+        // Insert parent summary rows after each group of children with the same Parent
+        $processedData = $this->insertTikTokParentRows($processedData);
+
         return response()->json([
             "message" => "Data fetched successfully",
             "data" => $processedData,
             "status" => 200,
         ]);
+    }
+
+    /**
+     * Build parent summary rows: group by Parent, insert one row per group after its children.
+     * Parent row: sum INV, sum L30, Dil% = L30 sum/Inv sum, sum Ad Spend, Acos% = (sum spend/sum ad sales)*100, Avg TACOS% = (sum spend/sum T sales)*100.
+     */
+    private function insertTikTokParentRows(array $rows): array
+    {
+        $result = [];
+        $group = [];
+        $currentParent = null;
+
+        foreach ($rows as $row) {
+            $p = $row['Parent'] ?? null;
+            $p = ($p !== null && $p !== '') ? (string) $p : null;
+
+            if ($p === null) {
+                if (!empty($group)) {
+                    foreach ($group as $r) {
+                        $result[] = $r;
+                    }
+                    $result[] = $this->buildTikTokParentRow($currentParent, $group);
+                    $group = [];
+                    $currentParent = null;
+                }
+                $result[] = $row;
+                continue;
+            }
+
+            if ($p !== $currentParent) {
+                if (!empty($group)) {
+                    foreach ($group as $r) {
+                        $result[] = $r;
+                    }
+                    $result[] = $this->buildTikTokParentRow($currentParent, $group);
+                    $group = [];
+                }
+                $currentParent = $p;
+            }
+            $group[] = $row;
+        }
+
+        if (!empty($group)) {
+            foreach ($group as $r) {
+                $result[] = $r;
+            }
+            $result[] = $this->buildTikTokParentRow($currentParent, $group);
+        }
+
+        return $result;
+    }
+
+    private function buildTikTokParentRow(string $parentName, array $childRows): array
+    {
+        $sumInv = 0;
+        $sumL30 = 0;
+        $sumSpend = 0;
+        $sumAdSales = 0;
+        $sumTSales = 0;
+        $sumAdSold = 0;
+        $sumAdClicks = 0;
+
+        foreach ($childRows as $r) {
+            $sumInv += (float)($r['INV'] ?? 0);
+            $sumL30 += (float)($r['L30'] ?? 0);
+            $spend = (float)($r['spend'] ?? 0);
+            $sumSpend += $spend;
+            $sumAdSold += (int)($r['ad_sold'] ?? 0);
+            $sumAdClicks += (int)($r['ad_clicks'] ?? 0);
+            $outRoas = (float)($r['out_roas'] ?? 0);
+            $sumAdSales += $outRoas > 0 ? ($spend * $outRoas) : 0;
+            $ttL30 = (float)($r['TT L30'] ?? 0);
+            $ttPrice = (float)($r['TT Price'] ?? 0);
+            $sumTSales += $ttL30 * $ttPrice;
+        }
+
+        $dilPct = $sumInv > 0 ? round(($sumL30 / $sumInv) * 100, 2) : 0;
+        $adCvrPct = $sumAdClicks > 0 ? round(($sumAdSold / $sumAdClicks) * 100, 2) : null;
+        $acosPct = $sumAdSales > 0 ? round(($sumSpend / $sumAdSales) * 100, 2) : 0;
+        $tacosPct = $sumTSales > 0 ? round(($sumSpend / $sumTSales) * 100, 2) : ($sumSpend > 0 ? 100 : 0);
+
+        $parentKey = 'PARENT ' . $parentName;
+        $dash = '-';
+        return [
+            'SL No.' => $dash,
+            'Parent' => $parentKey,
+            '(Child) sku' => $parentKey,
+            'is_parent' => true,
+            'image_path' => $dash,
+            'INV' => $sumInv,
+            'L30' => $sumL30,
+            'TT Dil%' => $dilPct,
+            'TT L30' => $dash,
+            'TT Stock' => $dash,
+            'TT Price' => $dash,
+            'Missing' => $dash,
+            'NR' => $dash,
+            'variation_req' => $dash,
+            'video_req' => $dash,
+            'video_uploaded' => $dash,
+            'ad_cvr_pct' => $adCvrPct,
+            'ads_price' => $dash,
+            'budget' => $dash,
+            'spend' => $sumSpend,
+            'ad_sold' => $dash,
+            'ad_clicks' => $dash,
+            'acos' => $acosPct,
+            'out_roas' => $dash,
+            'in_roas' => $dash,
+            'status' => $dash,
+            'campaign_name' => $dash,
+            'MAP' => $dash,
+            'GPFT%' => $dash,
+            'TACOS%' => $tacosPct,
+            'PFT %' => $dash,
+            'Missing_count' => $dash,
+            'LP_productmaster' => $dash,
+            'Ship_productmaster' => $dash,
+            '_select' => $dash,
+            'SPRICE' => $dash,
+            'SGPFT' => $dash,
+            'SPFT' => $dash,
+            'SROI' => $dash,
+            'percentage' => $dash,
+            'Profit' => $dash,
+            'Sales L30' => $sumTSales,
+            'hasCampaign' => $dash,
+            'has_custom_sprice' => false,
+            'SPRICE_STATUS' => $dash,
+        ];
     }
 
     /**

@@ -199,6 +199,13 @@
                         <option value="has">Has Clicks</option>
                     </select>
 
+                    <select id="tl30-filter" class="form-select form-select-sm" style="width: 130px;" title="Excludes 0 inventory items">
+                        <option value="all">T L30</option>
+                        <option value="0">0</option>
+                        <option value="0-10">0-10</option>
+                        <option value="10+">10+</option>
+                    </select>
+
                     <!-- DIL Filter -->
                     <div class="dropdown manual-dropdown-container">
                         <button class="btn btn-light dropdown-toggle" type="button" id="dilFilterDropdown">
@@ -337,6 +344,9 @@
 @section('script-bottom')
 <script>
     const COLUMN_VIS_KEY = "tiktok_tabulator_column_visibility";
+    // Ads section columns: hidden by default, only show when "Show Ads Columns" btn is clicked
+    const ADS_ONLY_COLUMN_FIELDS = ['hasCampaign', 'NR', 'ad_cvr_pct', 'ads_price', 'budget', 'spend', 'ad_sold', 'ad_clicks', 'acos', 'out_roas', 'in_roas', 'status', 'campaign_name'];
+    const ALWAYS_HIDDEN_COLUMNS = ['Parent']; // Parent column - never show
     let table = null;
     let totalDistinctCampaigns = 0; // from API: COUNT(DISTINCT campaign_name) in tiktok_campaign_reports
     let decreaseModeActive = false;
@@ -415,7 +425,7 @@
         // Toggle Utilized Columns - Show only columns that match tiktok/utilized page (like temu-decrease Show Ads Columns)
         let utilizedColumnsVisible = false;
         let originalColumnVisibilityUtilized = {};
-        const utilizedColumnFields = ['(Child) sku', 'hasCampaign', 'INV', 'L30', 'TT Dil%', 'TT L30', 'NR', 'ads_price', 'budget', 'spend', 'ad_sold', 'ad_clicks', 'acos', 'out_roas', 'in_roas', 'status', 'campaign_name'];
+        const utilizedColumnFields = ['(Child) sku', 'hasCampaign', 'INV', 'L30', 'TT Dil%', 'TT L30', 'NR', 'variation_req', 'video_req', 'video_uploaded', 'ad_cvr_pct', 'ads_price', 'budget', 'spend', 'ad_sold', 'ad_clicks', 'acos', 'out_roas', 'in_roas', 'status', 'campaign_name'];
 
         $('#toggle-utilized-columns-btn').on('click', function() {
             utilizedColumnsVisible = !utilizedColumnsVisible;
@@ -811,11 +821,28 @@
                 dir: "desc"
             }],
             rowFormatter: function(row) {
-                if (row.getData().Parent && row.getData().Parent.startsWith('PARENT')) {
-                    row.getElement().style.backgroundColor = "rgba(69, 233, 255, 0.1)";
+                const d = row.getData();
+                if (d.is_parent === true || (d.Parent && String(d.Parent).startsWith('PARENT'))) {
+                    row.getElement().style.backgroundColor = "rgba(69, 233, 255, 0.15)";
                 }
             },
             columns: [
+                {
+                    title: "Image",
+                    field: "image_path",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (rowData.Parent && String(rowData.Parent).startsWith('PARENT')) return '<span style="color:#6c757d;">-</span>';
+                        const value = cell.getValue();
+                        if (value && value !== '-') {
+                            const esc = (v) => String(v).replace(/"/g, '&quot;').replace(/</g, '&lt;');
+                            return `<img src="${esc(value)}" alt="Product" style="width: 50px; height: 50px; object-fit: cover;" onerror="this.onerror=null; this.style.display='none'; this.nextElementSibling && (this.nextElementSibling.style.display='inline');"><span style="display:none; font-size:10px; color:#999;">No image</span>`;
+                        }
+                        return '';
+                    },
+                    headerSort: false,
+                    width: 80
+                },
                 {
                     title: "Parent",
                     field: "Parent",
@@ -828,20 +855,6 @@
                     visible: false
                 },
                 {
-                    title: "Image",
-                    field: "image_path",
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        if (value) {
-                            const esc = (v) => String(v).replace(/"/g, '&quot;').replace(/</g, '&lt;');
-                            return `<img src="${esc(value)}" alt="Product" style="width: 50px; height: 50px; object-fit: cover;" onerror="this.onerror=null; this.style.display='none'; this.nextElementSibling && (this.nextElementSibling.style.display='inline');"><span style="display:none; font-size:10px; color:#999;">No image</span>`;
-                        }
-                        return '';
-                    },
-                    headerSort: false,
-                    width: 80
-                },
-                {
                     title: "SKU",
                     field: "(Child) sku",
                     headerFilter: "input",
@@ -851,15 +864,18 @@
                     frozen: true,
                     width: 250,
                     formatter: function(cell) {
-                        const sku = cell.getValue();
-                        let html = `<span>${sku}</span>`;
-                        
-                        html += `<i class="fa fa-copy text-secondary copy-sku-btn" 
-                                   style="cursor: pointer; margin-left: 8px; font-size: 14px;" 
-                                   data-sku="${sku}"
-                                   title="Copy SKU"></i>`;
-                        
-                        return html;
+                        const rowData = cell.getRow().getData();
+                        const isParentRow = rowData.is_parent === true || (rowData.Parent && String(rowData.Parent).startsWith('PARENT'));
+                        const safe = (s) => (s == null ? '' : String(s)).replace(/</g, '&lt;').replace(/"/g, '&quot;');
+                        if (isParentRow) {
+                            const childSkuKey = '(Child) sku';
+                            const parentSkuText = (rowData[childSkuKey] != null && rowData[childSkuKey] !== '') ? rowData[childSkuKey] : (rowData.Parent || 'PARENT');
+                            const text = safe(parentSkuText) || safe(rowData.Parent) || 'PARENT';
+                            return '<span class="fw-bold" style="color:#0d6efd;font-size:14px;display:inline-block;padding:4px 8px;background:rgba(13,110,253,0.12);border-radius:4px;">' + text + '</span>';
+                        }
+                        const sku = cell.getValue() ?? rowData['(Child) sku'] ?? '';
+                        const displaySku = safe(sku);
+                        return '<span class="fw-bold">' + displaySku + '</span> <i class="fa fa-copy text-secondary copy-sku-btn" style="cursor:pointer;margin-left:8px;font-size:14px;" data-sku="' + safe(sku) + '" title="Copy SKU"></i>';
                     }
                 },
                 {
@@ -914,7 +930,10 @@
                     width: 60,
                     sorter: "number",
                     formatter: function(cell) {
-                        const value = parseFloat(cell.getValue() || 0);
+                        const rowData = cell.getRow().getData();
+                        const raw = cell.getValue();
+                        if (rowData.Parent && String(rowData.Parent).startsWith('PARENT') && (raw === '-' || raw === null || raw === undefined)) return '<span style="color:#6c757d;">-</span>';
+                        const value = parseFloat(raw || 0);
                         if (value === 0) {
                             return '<span style="color: #dc3545; font-weight: 600;">0</span>';
                         }
@@ -928,6 +947,8 @@
                     width: 70,
                     formatter: function(cell) {
                         const value = cell.getValue();
+                        const rowData = cell.getRow().getData();
+                        if (rowData.Parent && String(rowData.Parent).startsWith('PARENT') && (value === '-' || value === null)) return '<span style="color:#6c757d;">-</span>';
                         if (value === 'M') {
                             return '<span style="color: #dc3545; font-weight: bold; background-color: #ffe6e6; padding: 2px 6px; border-radius: 3px;">M</span>';
                         }
@@ -973,6 +994,22 @@
                                 <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>🟡</option>
                             </select>
                         `;
+                    }
+                },
+                {
+                    title: "Ad CVR %",
+                    field: "ad_cvr_pct",
+                    hozAlign: "right",
+                    width: 90,
+                    visible: false,
+                    sorter: "number",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        if (rowData.Parent && String(rowData.Parent).startsWith('PARENT')) return '<span style="color:#6c757d;">-</span>';
+                        const value = cell.getValue();
+                        if (value === null || value === undefined || value === '') return '<span style="color:#999;">-</span>';
+                        const pct = parseFloat(value);
+                        return '<span style="font-weight:600;">' + pct.toFixed(2) + '%</span>';
                     }
                 },
                 {
@@ -1366,6 +1403,68 @@
                         
                         return `<span style="color: ${color}; font-weight: 600;">${percent.toFixed(0)}%</span>`;
                     }
+                },
+                {
+                    title: "Variation Req",
+                    field: "variation_req",
+                    hozAlign: "center",
+                    width: 120,
+                    minWidth: 120,
+                    formatter: function(cell) {
+                        const row = cell.getRow();
+                        const rowData = row.getData();
+                        if (rowData.Parent && String(rowData.Parent).startsWith('PARENT')) return '<span style="color:#6c757d;">-</span>';
+                        const sku = rowData['(Child) sku'];
+                        const value = (cell.getValue()?.trim()) || 'Not Req';
+                        const isReq = value === 'Req';
+                        const textColor = isReq ? '#28a745' : '#dc3545';
+                        return `
+                            <select class="form-select form-select-sm editable-select variation-req-select" data-sku="${sku}" data-field="variation_req"
+                                style="width: 100%; min-width: 90px; border: 1px solid #dee2e6; padding: 2px 4px; font-size: 12px; font-weight: 600; color: ${textColor};">
+                                <option value="Req" ${value === 'Req' ? 'selected' : ''} style="color: #28a745;">Req</option>
+                                <option value="Not Req" ${value === 'Not Req' ? 'selected' : ''} style="color: #dc3545;">Not Req</option>
+                            </select>
+                        `;
+                    }
+                },
+                {
+                    title: "Video Req",
+                    field: "video_req",
+                    hozAlign: "center",
+                    width: 120,
+                    minWidth: 120,
+                    formatter: function(cell) {
+                        const row = cell.getRow();
+                        const rowData = row.getData();
+                        if (rowData.Parent && String(rowData.Parent).startsWith('PARENT')) return '<span style="color:#6c757d;">-</span>';
+                        const sku = rowData['(Child) sku'];
+                        const value = (cell.getValue()?.trim()) || 'Not Req';
+                        const isReq = value === 'Req';
+                        const textColor = isReq ? '#28a745' : '#dc3545';
+                        return `
+                            <select class="form-select form-select-sm editable-select" data-sku="${sku}" data-field="video_req"
+                                style="width: 100%; min-width: 90px; border: 1px solid #dee2e6; padding: 2px 4px; font-size: 12px; font-weight: 600; color: ${textColor};">
+                                <option value="Req" ${value === 'Req' ? 'selected' : ''} style="color: #28a745;">Req</option>
+                                <option value="Not Req" ${value === 'Not Req' ? 'selected' : ''} style="color: #dc3545;">Not Req</option>
+                            </select>
+                        `;
+                    }
+                },
+                {
+                    title: "Video Uploaded",
+                    field: "video_uploaded",
+                    hozAlign: "center",
+                    width: 110,
+                    minWidth: 110,
+                    formatter: function(cell) {
+                        const row = cell.getRow();
+                        const rowData = row.getData();
+                        if (rowData.Parent && String(rowData.Parent).startsWith('PARENT')) return '<span style="color:#6c757d;">-</span>';
+                        const sku = rowData['(Child) sku'];
+                        const val = cell.getValue();
+                        const checked = val === 1 || val === '1' || val === true;
+                        return '<input type="checkbox" class="form-check-input video-uploaded-checkbox" data-sku="' + (sku || '').replace(/"/g, '&quot;') + '" data-field="video_uploaded" ' + (checked ? 'checked' : '') + '>';
+                    }
                 }
             ]
         });
@@ -1480,7 +1579,7 @@
                 data: JSON.stringify({ sku: sku, field: field, value: value }),
                 success: function(response) {
                     if (response && response.success) {
-                        showToast(field === 'NR' ? 'NRA updated' : 'Status updated', 'success');
+                        showToast(field === 'NR' ? 'NRA updated' : (field === 'variation_req' ? 'Variation Req updated' : (field === 'video_req' ? 'Video Req updated' : 'Status updated')), 'success');
                     }
                 },
                 error: function(xhr, status, error) {
@@ -1489,6 +1588,47 @@
                         rowData[field] = oldValue;
                         row.update(rowData);
                         $select.val(oldValue);
+                    }
+                    const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : ('Failed to update: ' + (xhr.statusText || error));
+                    showToast(msg, 'error');
+                }
+            });
+        });
+
+        // Video Uploaded checkbox - save to tiktok.utilized.update
+        $(document).on('change', '.video-uploaded-checkbox', function() {
+            const sku = $(this).data('sku');
+            const field = $(this).data('field');
+            const value = $(this).prop('checked') ? '1' : '0';
+            if (!sku || !field) return;
+            const rows = table.searchRows("(Child) sku", "=", sku);
+            const row = rows && rows.length ? rows[0] : null;
+            const oldValue = row ? row.getData()[field] : null;
+            if (row) {
+                const rowData = row.getData();
+                rowData[field] = value === '1' ? 1 : 0;
+                row.update(rowData);
+            }
+            const $cb = $(this);
+            $.ajax({
+                url: '{{ route("tiktok.utilized.update") }}',
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                data: JSON.stringify({ sku: sku, field: field, value: value }),
+                success: function(response) {
+                    if (response && response.success) {
+                        showToast('Video Uploaded updated', 'success');
+                    }
+                },
+                error: function(xhr, status, error) {
+                    if (row && oldValue !== null && oldValue !== undefined) {
+                        const rowData = row.getData();
+                        rowData[field] = oldValue;
+                        row.update(rowData);
+                        $cb.prop('checked', oldValue === 1 || oldValue === '1');
                     }
                     const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : ('Failed to update: ' + (xhr.statusText || error));
                     showToast(msg, 'error');
@@ -1597,6 +1737,20 @@
                     if (!hasCampaign) return false;
                     if (adClickFilter === 'zero') return clicks === 0;
                     if (adClickFilter === 'has') return clicks > 0;
+                    return true;
+                });
+            }
+
+            // T L30 filter (excludes 0 inventory items)
+            const tl30Filter = $('#tl30-filter').val();
+            if (tl30Filter !== 'all') {
+                table.addFilter(function(data) {
+                    const inv = parseFloat(data.INV) || 0;
+                    if (inv <= 0) return false;
+                    const ttL30 = parseFloat(data['TT L30']) || 0;
+                    if (tl30Filter === '0') return ttL30 === 0;
+                    if (tl30Filter === '0-10') return ttL30 > 0 && ttL30 <= 10;
+                    if (tl30Filter === '10+') return ttL30 > 10;
                     return true;
                 });
             }
@@ -1728,7 +1882,7 @@
             updateSummary();
         }
 
-        $('#inventory-filter, #gpft-filter, #tiktok-stock-filter, #ad-click-filter').on('change', function() {
+        $('#inventory-filter, #gpft-filter, #tiktok-stock-filter, #ad-click-filter, #tl30-filter').on('change', function() {
             applyFilters();
         });
 
@@ -1912,7 +2066,8 @@
             table.getColumns().forEach(col => {
                 const field = col.getField();
                 if (field && field !== '_select') {
-                    visibility[field] = col.isVisible();
+                    // Never persist ads columns or Parent as visible
+                    visibility[field] = (ADS_ONLY_COLUMN_FIELDS.includes(field) || ALWAYS_HIDDEN_COLUMNS.includes(field)) ? false : col.isVisible();
                 }
             });
             
@@ -1933,6 +2088,7 @@
                 success: function(visibility) {
                     if (visibility && Object.keys(visibility).length > 0) {
                         Object.keys(visibility).forEach(field => {
+                            if (ADS_ONLY_COLUMN_FIELDS.includes(field) || ALWAYS_HIDDEN_COLUMNS.includes(field)) return; // never show ads or Parent from server
                             const col = table.getColumn(field);
                             if (col) {
                                 if (visibility[field]) {
@@ -1942,8 +2098,15 @@
                                 }
                             }
                         });
-                        buildColumnDropdown();
                     }
+                    // Force ads columns and Parent hidden by default
+                    [...ADS_ONLY_COLUMN_FIELDS, ...ALWAYS_HIDDEN_COLUMNS].forEach(field => {
+                        try {
+                            const col = table.getColumn(field);
+                            if (col) col.hide();
+                        } catch (e) {}
+                    });
+                    buildColumnDropdown();
                 }
             });
         }
@@ -1996,12 +2159,17 @@
             }
         });
 
-        // Show All Columns button
+        // Show All Columns button (non-ads columns only; ads columns stay hidden until Show Ads Columns is clicked)
         document.getElementById("show-all-columns-btn").addEventListener("click", function() {
             table.getColumns().forEach(col => {
-                if (col.getField() !== '_select') {
-                    col.show();
-                }
+                const field = col.getField();
+                    if (field && field !== '_select') {
+                        if (ADS_ONLY_COLUMN_FIELDS.includes(field) || ALWAYS_HIDDEN_COLUMNS.includes(field)) {
+                            col.hide();
+                        } else {
+                            col.show();
+                        }
+                    }
             });
             buildColumnDropdown();
             saveColumnVisibilityToServer();

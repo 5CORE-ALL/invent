@@ -602,6 +602,63 @@ class TiktokAdsController extends Controller
             ]);
         }
 
+        if ($field === 'variation_req') {
+            $validValues = ['Req', 'Not Req'];
+            if (!in_array($value, $validValues)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid value. Must be one of: ' . implode(', ', $validValues)
+                ], 400);
+            }
+
+            $view = TiktokShopDataView::firstOrNew(['sku' => $sku]);
+            $values = is_array($view->value) ? $view->value : (json_decode($view->value, true) ?: []);
+            $values['variation_req'] = $value;
+            $view->value = $values;
+            $view->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Variation Req updated successfully'
+            ]);
+        }
+
+        if ($field === 'video_req') {
+            $validValues = ['Req', 'Not Req'];
+            if (!in_array($value, $validValues)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid value. Must be one of: ' . implode(', ', $validValues)
+                ], 400);
+            }
+
+            $view = TiktokShopDataView::firstOrNew(['sku' => $sku]);
+            $values = is_array($view->value) ? $view->value : (json_decode($view->value, true) ?: []);
+            $values['video_req'] = $value;
+            $view->value = $values;
+            $view->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Video Req updated successfully'
+            ]);
+        }
+
+        if ($field === 'video_uploaded') {
+            $value = ($value === true || $value === 1 || $value === '1') ? 1 : 0;
+
+            $view = TiktokShopDataView::firstOrNew(['sku' => $sku]);
+            $values = is_array($view->value) ? $view->value : (json_decode($view->value, true) ?: []);
+            $values['video_uploaded'] = $value;
+            $view->value = $values;
+            $view->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Video Uploaded updated successfully'
+            ]);
+        }
+
         // Handle Status update (saves to custom_status column)
         if ($field === 'status') {
             $skuUpper = strtoupper(trim($sku));
