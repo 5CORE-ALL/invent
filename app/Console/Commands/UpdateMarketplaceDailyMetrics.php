@@ -87,10 +87,8 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateAmazonMetrics($date)
     {
-        // 30 days: Get latest Amazon order date from ShipHub and calculate 30-day range
-        $latestDate = DB::connection('shiphub')
-            ->table('orders')
-            ->where('marketplace', '=', 'amazon')
+        // 30 days: Get latest Amazon order date from inventory database and calculate 30-day range
+        $latestDate = DB::table('amazon_orders')
             ->max('order_date');
 
         if (!$latestDate) {
@@ -100,31 +98,25 @@ class UpdateMarketplaceDailyMetrics extends Command
         $latestDateCarbon = Carbon::parse($latestDate);
         $startDate = $latestDateCarbon->copy()->subDays(29)->startOfDay(); // 30 days total (matches AmazonSalesController)
 
-        // Get order items from ShipHub (matching AmazonSalesController exactly)
-        $orderItems = DB::connection('shiphub')
-            ->table('orders as o')
-            ->join('order_items as i', 'o.id', '=', 'i.order_id')
+        // Get order items from inventory database (matching AmazonSalesController exactly)
+        $orderItems = DB::table('amazon_orders as o')
+            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
             ->whereBetween('o.order_date', [$startDate, $latestDateCarbon->endOfDay()])
-            ->where('o.marketplace', '=', 'amazon')
             ->where(function($query) {
-                $query->where('o.order_status', '!=', 'Canceled')
-                      ->where('o.order_status', '!=', 'Cancelled')
-                      ->where('o.order_status', '!=', 'canceled')
-                      ->where('o.order_status', '!=', 'cancelled')
-                      ->orWhereNull('o.order_status');
+                $query->where('o.status', '!=', 'Canceled')
+                      ->orWhereNull('o.status');
             })
             ->select([
-                'o.marketplace_order_id as order_id',
-                'o.order_number',
+                'o.amazon_order_id as order_id',
                 'o.order_date',
-                'o.order_status as status',
-                'o.order_total as total_amount',
+                'o.status',
+                'o.total_amount',
                 'i.sku',
-                'i.product_name as title',
-                'i.quantity_ordered as quantity',
-                'i.unit_price as price', // This is TOTAL price for item line in ShipHub
+                'i.title',
+                'i.quantity',
+                'i.price',
                 'i.asin',
-                'i.currency',
+                DB::raw("COALESCE(i.currency, o.currency) as currency"),
             ])
             ->get();
 
@@ -150,12 +142,12 @@ class UpdateMarketplaceDailyMetrics extends Command
         $adUpdates = $marketplaceData ? $marketplaceData->ad_updates : 0;
         $margin = ($percentage - $adUpdates) / 100;
 
-        // Process order items from ShipHub (matching AmazonSalesController)
+        // Process order items from inventory database (matching AmazonSalesController)
         foreach ($orderItems as $item) {
             $totalOrders++;
             
             $quantity = (int) ($item->quantity ?? 1);
-            // IMPORTANT: unit_price in ShipHub is TOTAL price for the line (not per unit)
+            // Price in inventory database is per-unit price
             $totalPrice = (float) ($item->price ?? 0);
             $unitPrice = $quantity > 0 ? $totalPrice / $quantity : 0;
             

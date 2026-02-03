@@ -62,170 +62,171 @@ class AmazonSalesController extends Controller
     public function getData(Request $request)
     {
         // ============================================================
-        // DATA SOURCE: ShipHub Database (Amazon Marketplace Only)
+        // LAST 31 DAYS FROM TODAY (FIXED)
+        // Example: today Feb 4 → Jan 5 to Feb 4
         // ============================================================
-        // This fetches last 30 days data from ShipHub centralized database
-        // Example: If latest date is Jan 15, 2026, it will fetch Dec 17, 2025 to Jan 15, 2026 (30 days)
-        // Filter: marketplace = 'amazon' AND order_status != 'Canceled'
+    
+        $endDateCarbon = now()->endOfDay();
+        $startDateCarbon = now()->subDays(30)->startOfDay(); // 31 days total
+    
+        $startDateStr = $startDateCarbon->format('Y-m-d');
+        $endDateStr   = $endDateCarbon->format('Y-m-d');
+    
         // ============================================================
-        
-        // Get latest order date from ShipHub (Amazon marketplace only)
-        $latestDate = DB::connection('shiphub')
-            ->table('orders')
-            ->where('marketplace', '=', 'amazon')
-            ->max('order_date');
-        
-        if (!$latestDate) {
-            return response()->json([]);
-        }
-        
-        // Calculate date range: Latest date minus 29 days = 30 days total
-        $latestDateCarbon = \Carbon\Carbon::parse($latestDate);
-        $startDate = $latestDateCarbon->copy()->subDays(29)->startOfDay(); // 30 days total
-        $startDateStr = $startDate->format('Y-m-d');
-        $endDateStr = $latestDateCarbon->format('Y-m-d');
-
-        // QUERY 1: Get all order items with JOIN from ShipHub (Amazon marketplace only)
-        $orderItems = DB::connection('shiphub')
-            ->table('orders as o')
-            ->join('order_items as i', 'o.id', '=', 'i.order_id')
-            ->whereBetween('o.order_date', [$startDate, $latestDateCarbon->endOfDay()])
-            ->where('o.marketplace', '=', 'amazon')
-            ->where(function($query) {
-                $query->where('o.order_status', '!=', 'Canceled')
-                      ->where('o.order_status', '!=', 'Cancelled')
-                      ->where('o.order_status', '!=', 'canceled')
-                      ->where('o.order_status', '!=', 'cancelled')
-                      ->orWhereNull('o.order_status');
+        // QUERY 1: Inventory Database - Amazon Orders + Items
+        // ============================================================
+    
+        $orderItems = DB::table('amazon_orders as o')
+            ->join('amazon_order_items as i', 'o.id', '=', 'i.amazon_order_id')
+            ->whereBetween('o.order_date', [$startDateCarbon, $endDateCarbon])
+            ->where(function ($query) {
+                $query->where('o.status', '!=', 'Canceled')
+                    ->orWhereNull('o.status');
             })
             ->select([
-                DB::raw("COALESCE(o.marketplace_order_id, o.order_number, CONCAT('SH-', o.id)) as order_id"),
+                'o.amazon_order_id as order_id',
                 'o.order_date',
-                'o.order_status as status',
-                'o.order_total as total_amount',
-                'i.currency',
+                'o.status',
+                'o.total_amount',
+                DB::raw("COALESCE(i.currency, o.currency) as currency"),
                 DB::raw("'L30' as period"),
                 'i.asin',
                 'i.sku',
-                'i.product_name as title',
-                'i.quantity_ordered as quantity',
-                'i.unit_price as price'
+                'i.title',
+                'i.quantity',
+                'i.price'
             ])
             ->orderBy('o.order_date', 'desc')
             ->get();
-
-        // Get unique SKUs
-        $skus = $orderItems->pluck('sku')->filter()->unique()->values()->toArray();
-        
-        if (empty($skus)) {
+    
+        if ($orderItems->isEmpty()) {
             return response()->json([]);
         }
-
-        // QUERY 2: ProductMaster in single query
+    
+        // ============================================================
+        // PRODUCT MASTER
+        // ============================================================
+    
+        $skus = $orderItems->pluck('sku')->filter()->unique()->values()->toArray();
+    
         $productMasters = ProductMaster::whereIn('sku', $skus)
             ->select(['sku', 'Values'])
             ->get()
             ->keyBy('sku');
-
-        // QUERY 3: KW Spent - single query with GROUP BY (using ShipHub date range)
+    
+        // ============================================================
+        // KW SPEND
+        // ============================================================
+    
         $kwSpentData = DB::table('amazon_sp_campaign_reports')
-            ->whereNotNull('report_date_range')
             ->whereDate('report_date_range', '>=', $startDateStr)
             ->whereDate('report_date_range', '<=', $endDateStr)
             ->whereNotIn('report_date_range', ['L60','L30','L15','L7','L1'])
             ->where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('campaignStatus', '!=', 'ARCHIVED')
-            ->whereNotNull('campaignName')
-            ->where('campaignName', '!=', '')
             ->whereRaw("campaignName NOT LIKE '%PT'")
             ->whereRaw("campaignName NOT LIKE '%PT.'")
             ->selectRaw('UPPER(TRIM(campaignName)) as sku_key, SUM(spend) as total_spend')
             ->groupByRaw('UPPER(TRIM(campaignName))')
             ->pluck('total_spend', 'sku_key')
             ->toArray();
-
-        // QUERY 4: PT Spent - single query with GROUP BY (using ShipHub date range)
+    
+        // ============================================================
+        // PT SPEND
+        // ============================================================
+    
         $ptSpentData = DB::table('amazon_sp_campaign_reports')
-            ->whereNotNull('report_date_range')
             ->whereDate('report_date_range', '>=', $startDateStr)
             ->whereDate('report_date_range', '<=', $endDateStr)
             ->whereNotIn('report_date_range', ['L60','L30','L15','L7','L1'])
             ->where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('campaignStatus', '!=', 'ARCHIVED')
-            ->whereNotNull('campaignName')
-            ->where('campaignName', '!=', '')
-            ->where(function($q) {
+            ->where(function ($q) {
                 $q->whereRaw("campaignName LIKE '%PT'")
                   ->orWhereRaw("campaignName LIKE '%PT.'");
             })
-            ->selectRaw('UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(campaignName, " PT.", ""), " PT", ""), "PT.", ""), "PT", ""))) as sku_key, SUM(spend) as total_spend')
-            ->groupByRaw('UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(campaignName, " PT.", ""), " PT", ""), "PT.", ""), "PT", "")))')
+            ->selectRaw('
+                UPPER(TRIM(
+                    REPLACE(REPLACE(REPLACE(REPLACE(campaignName, " PT.", ""), " PT", ""), "PT.", ""), "PT", "")
+                )) as sku_key,
+                SUM(spend) as total_spend
+            ')
+            ->groupByRaw('
+                UPPER(TRIM(
+                    REPLACE(REPLACE(REPLACE(REPLACE(campaignName, " PT.", ""), " PT", ""), "PT.", ""), "PT", "")
+                ))
+            ')
             ->pluck('total_spend', 'sku_key')
             ->toArray();
-
-        // Build lookup maps
+    
+        // ============================================================
+        // MAP SPENDS
+        // ============================================================
+    
         $kwSpentBySku = [];
         $ptSpentBySku = [];
+    
         foreach ($skus as $sku) {
             $skuUpper = strtoupper(trim($sku));
             $kwSpentBySku[$sku] = $kwSpentData[$skuUpper] ?? 0;
             $ptSpentBySku[$sku] = $ptSpentData[$skuUpper] ?? 0;
         }
-
-        // Process data (in-memory, fast)
+    
+        // ============================================================
+        // PROCESS DATA
+        // ============================================================
+    
         $data = [];
+    
         foreach ($orderItems as $item) {
+    
             $pm = $productMasters[$item->sku] ?? null;
-
+    
             $lp = 0;
             $ship = 0;
             $weightAct = 0;
+    
             if ($pm) {
-                $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-                foreach ($values as $k => $v) {
-                    if (strtolower($k) === "lp") {
-                        $lp = floatval($v);
-                        break;
-                    }
-                }
-                $ship = isset($values["ship"]) ? floatval($values["ship"]) : 0;
-                $weightAct = isset($values["wt_act"]) ? floatval($values["wt_act"]) : 0;
+                $values = is_array($pm->Values)
+                    ? $pm->Values
+                    : json_decode($pm->Values, true);
+    
+                $lp = floatval($values['lp'] ?? 0);
+                $ship = floatval($values['ship'] ?? 0);
+                $weightAct = floatval($values['wt_act'] ?? 0);
             }
-
-            $quantity = floatval($item->quantity);
-            // NOTE: ShipHub's "unit_price" is misleading - it's actually TOTAL price for the item
-            // So we DON'T multiply by quantity (that would be double counting)
-            $totalPrice = floatval($item->price); // This is already the total sale amount
-            $unitPrice = $quantity > 0 ? $totalPrice / $quantity : 0; // Calculate actual per-unit price
-            $tWeight = $weightAct * $quantity;
-
-            if ($quantity == 1) {
-                $shipCost = $ship;
-            } elseif ($quantity > 1 && $tWeight < 20) {
-                $shipCost = $ship / $quantity;
-            } else {
-                $shipCost = $ship;
-            }
-
-            $cogs = $lp * $quantity;
+    
+            $qty = floatval($item->quantity);
+    
+            $totalPrice = floatval($item->price);
+            $unitPrice = $qty > 0 ? $totalPrice / $qty : 0;
+    
+            $tWeight = $weightAct * $qty;
+    
+            $shipCost = ($qty == 1 || $tWeight >= 20)
+                ? $ship
+                : ($ship / max($qty, 1));
+    
+            $cogs = $lp * $qty;
+    
             $pftEach = ($unitPrice * 0.80) - $lp - $shipCost;
             $pftEachPct = $unitPrice > 0 ? ($pftEach / $unitPrice) * 100 : 0;
-            $pft = $pftEach * $quantity;
+            $pft = $pftEach * $qty;
             $roi = $lp > 0 ? ($pftEach / $lp) * 100 : 0;
-
+    
             $data[] = [
                 'order_id' => $item->order_id,
                 'asin' => $item->asin,
                 'sku' => $item->sku,
                 'title' => $item->title,
-                'quantity' => $item->quantity,
-                'sale_amount' => round($totalPrice, 2), // Total price (don't multiply again)
-                'price' => round($unitPrice, 2), // Per-unit price
+                'quantity' => $qty,
+                'sale_amount' => round($totalPrice, 2),
+                'price' => round($unitPrice, 2),
                 'total_amount' => $item->total_amount,
                 'currency' => $item->currency,
                 'order_date' => $item->order_date,
                 'status' => $item->status,
-                'period' => $item->period,
+                'period' => 'L31',
                 'lp' => round($lp, 2),
                 'ship' => round($ship, 2),
                 't_weight' => round($tWeight, 2),
@@ -239,9 +240,10 @@ class AmazonSalesController extends Controller
                 'pt_spent' => round($ptSpentBySku[$item->sku] ?? 0, 2),
             ];
         }
-
+    
         return response()->json($data);
     }
+    
 
     public function getColumnVisibility(Request $request)
     {
