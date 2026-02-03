@@ -165,8 +165,12 @@ class UpdateSBIDCronCommand extends Command
             $matched = null;
             foreach ($campaignMetrics as $m) {
                 $campaign = strtoupper(trim($m['campaign_name']));
-                $parts = array_map('trim', explode(',', $campaign));
-                $exactMatch = in_array($sku, $parts) || $campaign === $sku;
+                // Normalize like google-shopping-utilized: strip trailing dot so "SKU." matches "SKU"
+                $campaignCleaned = rtrim($campaign, '.');
+                $parts = array_map(function ($p) {
+                    return rtrim(trim($p), '.');
+                }, explode(',', $campaign));
+                $exactMatch = in_array($sku, $parts) || $campaignCleaned === $sku || $campaign === $sku;
                 if ($exactMatch && $m['campaign_status'] === 'ENABLED') {
                     $matched = $m;
                     break;
