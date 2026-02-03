@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Task;
 use App\Models\User;
+use App\Models\DeletedTask;
 use App\Services\TaskWhatsAppNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -76,15 +77,19 @@ class TaskController extends Controller
             if ($task->assignor) {
                 $assignorUser = User::where('email', $task->assignor)->first();
                 $task->assignor_name = $assignorUser ? $assignorUser->name : $task->assignor;
+                $task->assignor_id = $assignorUser ? $assignorUser->id : null;
             } else {
                 $task->assignor_name = '-';
+                $task->assignor_id = null;
             }
             
             if ($task->assign_to) {
                 $assigneeUser = User::where('email', $task->assign_to)->first();
                 $task->assignee_name = $assigneeUser ? $assigneeUser->name : $task->assign_to;
+                $task->assignee_id = $assigneeUser ? $assigneeUser->id : null;
             } else {
                 $task->assignee_name = '-';
+                $task->assignee_id = null;
             }
             
             // For permission checks
@@ -374,6 +379,9 @@ class TaskController extends Controller
         // Check if user can delete this task
         $this->authorize('delete', $task);
         
+        // Save task to deleted_tasks before deletion
+        $this->saveDeletedTask($task);
+        
         $task->delete();
 
         return response()->json(['success' => true, 'message' => 'Task deleted successfully!']);
@@ -438,16 +446,8 @@ class TaskController extends Controller
 
     public function bulkUpdate(Request $request)
     {
-        // Check if user is admin (only admin can perform bulk operations)
         $user = Auth::user();
         $isAdmin = strtolower($user->role ?? '') === 'admin';
-        
-        if (!$isAdmin) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Unauthorized. Only administrators can perform bulk operations.'
-            ], 403);
-        }
 
         $validated = $request->validate([
             'action' => 'required|in:delete,priority,tid,assignee,etc',
@@ -461,43 +461,85 @@ class TaskController extends Controller
 
         $taskIds = $validated['task_ids'];
         $action = $validated['action'];
-        $count = count($taskIds);
 
         switch ($action) {
             case 'delete':
-                Task::whereIn('id', $taskIds)->delete();
+                // Only allow deletion of tasks where user is the assignor
+                $tasksToDelete = Task::whereIn('id', $taskIds)
+                    ->where('assignor', $user->email)
+                    ->get();
+                
+                $deletedCount = $tasksToDelete->count();
+                $requestedCount = count($taskIds);
+                
+                if ($deletedCount === 0) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'You can only delete tasks you created. None of the selected tasks belong to you.'
+                    ], 403);
+                }
+                
+                // Save all tasks to deleted_tasks before deletion
+                foreach ($tasksToDelete as $task) {
+                    $this->saveDeletedTask($task);
+                }
+                
+                Task::whereIn('id', $tasksToDelete->pluck('id'))->delete();
+                
+                $message = "$deletedCount task(s) deleted successfully!";
+                if ($deletedCount < $requestedCount) {
+                    $skipped = $requestedCount - $deletedCount;
+                    $message .= " ($skipped task(s) skipped - you can only delete tasks you created)";
+                }
+                
                 return response()->json([
                     'success' => true,
-                    'message' => "$count task(s) deleted successfully!"
+                    'message' => $message
                 ]);
 
             case 'priority':
-                Task::whereIn('id', $taskIds)->update(['priority' => $validated['priority']]);
-                return response()->json([
-                    'success' => true,
-                    'message' => "$count task(s) priority updated to " . $validated['priority'] . "!"
-                ]);
-
             case 'tid':
-                Task::whereIn('id', $taskIds)->update(['tid' => $validated['tid']]);
-                return response()->json([
-                    'success' => true,
-                    'message' => "$count task(s) TID date updated!"
-                ]);
-
             case 'assignee':
-                Task::whereIn('id', $taskIds)->update(['assignee_id' => $validated['assignee_id']]);
-                return response()->json([
-                    'success' => true,
-                    'message' => "$count task(s) assignee updated!"
-                ]);
-
             case 'etc':
-                Task::whereIn('id', $taskIds)->update(['etc_minutes' => $validated['etc_minutes']]);
-                return response()->json([
-                    'success' => true,
-                    'message' => "$count task(s) ETC updated!"
-                ]);
+                // Other bulk operations require admin privileges
+                if (!$isAdmin) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Unauthorized. Only administrators can perform bulk updates.'
+                    ], 403);
+                }
+                
+                $count = count($taskIds);
+                
+                if ($action === 'priority') {
+                    Task::whereIn('id', $taskIds)->update(['priority' => $validated['priority']]);
+                    return response()->json([
+                        'success' => true,
+                        'message' => "$count task(s) priority updated to " . $validated['priority'] . "!"
+                    ]);
+                } elseif ($action === 'tid') {
+                    Task::whereIn('id', $taskIds)->update(['start_date' => $validated['tid']]);
+                    return response()->json([
+                        'success' => true,
+                        'message' => "$count task(s) TID date updated!"
+                    ]);
+                } elseif ($action === 'assignee') {
+                    $assigneeUser = User::find($validated['assignee_id']);
+                    if ($assigneeUser) {
+                        Task::whereIn('id', $taskIds)->update(['assign_to' => $assigneeUser->email]);
+                    }
+                    return response()->json([
+                        'success' => true,
+                        'message' => "$count task(s) assignee updated!"
+                    ]);
+                } elseif ($action === 'etc') {
+                    Task::whereIn('id', $taskIds)->update(['eta_time' => $validated['etc_minutes']]);
+                    return response()->json([
+                        'success' => true,
+                        'message' => "$count task(s) ETC updated!"
+                    ]);
+                }
+                break;
 
             default:
                 return response()->json([
@@ -869,5 +911,104 @@ class TaskController extends Controller
         \DB::table('tasks')->where('automate_task_id', $id)->delete();
 
         return response()->json(['success' => true, 'message' => 'Automated task and all its instances deleted!']);
+    }
+
+    /**
+     * Save task to deleted_tasks table before deletion
+     */
+    private function saveDeletedTask(Task $task)
+    {
+        $user = Auth::user();
+        
+        // Get assignor and assignee names
+        $assignorUser = User::where('email', $task->assignor)->first();
+        $assigneeUser = User::where('email', $task->assign_to)->first();
+        
+        DeletedTask::create([
+            'original_task_id' => $task->id,
+            'title' => $task->title,
+            'description' => $task->description,
+            'group' => $task->group,
+            'priority' => $task->priority,
+            'status' => $task->status,
+            'assignor' => $task->assignor,
+            'assign_to' => $task->assign_to,
+            'assignor_name' => $assignorUser ? $assignorUser->name : $task->assignor,
+            'assignee_name' => $assigneeUser ? $assigneeUser->name : $task->assign_to,
+            'eta_time' => $task->eta_time,
+            'etc_done' => $task->etc_done,
+            'start_date' => $task->start_date,
+            'completion_date' => $task->completion_date,
+            'completion_day' => $task->completion_day,
+            'split_tasks' => $task->split_tasks,
+            'is_missed' => $task->is_missed,
+            'is_missed_track' => $task->is_missed_track,
+            'link1' => $task->link1,
+            'link2' => $task->link2,
+            'link3' => $task->link3,
+            'link4' => $task->link4,
+            'link5' => $task->link5,
+            'link6' => $task->link6,
+            'link7' => $task->link7,
+            'link8' => $task->link8,
+            'link9' => $task->link9,
+            'image' => $task->image,
+            'task_type' => $task->task_type,
+            'rework_reason' => $task->rework_reason,
+            'deleted_by_email' => $user->email,
+            'deleted_by_name' => $user->name,
+            'deleted_at' => now(),
+        ]);
+    }
+
+    /**
+     * Display deleted tasks page
+     */
+    public function deletedIndex()
+    {
+        $user = Auth::user();
+        $isAdmin = strtolower($user->role ?? '') === 'admin';
+
+        // Calculate statistics for deleted tasks
+        $deletedQuery = DeletedTask::query();
+        
+        if (!$isAdmin) {
+            // Non-admin users can only see deleted tasks they created or were assigned to
+            $deletedQuery->where(function($query) use ($user) {
+                $query->where('assignor', $user->email)
+                      ->orWhere('assign_to', $user->email);
+            });
+        }
+
+        $stats = [
+            'total' => (clone $deletedQuery)->count(),
+            'this_month' => (clone $deletedQuery)->whereMonth('deleted_at', now()->month)->count(),
+            'this_week' => (clone $deletedQuery)->whereBetween('deleted_at', [now()->startOfWeek(), now()->endOfWeek()])->count(),
+            'today' => (clone $deletedQuery)->whereDate('deleted_at', today())->count(),
+        ];
+
+        return view('tasks.deleted', compact('stats', 'isAdmin'));
+    }
+
+    /**
+     * Get deleted tasks data for table
+     */
+    public function deletedData()
+    {
+        $user = Auth::user();
+        $isAdmin = strtolower($user->role ?? '') === 'admin';
+
+        $query = DeletedTask::query();
+        
+        if (!$isAdmin) {
+            $query->where(function($q) use ($user) {
+                $q->where('assignor', $user->email)
+                  ->orWhere('assign_to', $user->email);
+            });
+        }
+
+        $deletedTasks = $query->orderBy('deleted_at', 'desc')->get();
+
+        return response()->json($deletedTasks);
     }
 }
