@@ -1168,6 +1168,12 @@
                         title: "SKU",
                         field: "sku",
                         hozAlign: "left",
+                        cellClick: function(e, cell) {
+                            // Allow copy: prevent row selection when clicking on SKU text (not on toggle/button)
+                            if (e.target.closest('.campaign-toggle-switch') || e.target.closest('.campaign-chart-btn')) return;
+                            e.stopPropagation();
+                            e.preventDefault();
+                        },
                         formatter: function(cell) {
                             let row = cell.getRow().getData();
                             let sku = cell.getValue();
@@ -1938,6 +1944,10 @@
                         field: "campaignName",
                         hozAlign: "left",
                         sorter: "string",
+                        cellClick: function(e, cell) {
+                            e.stopPropagation();
+                            e.preventDefault();
+                        },
                         formatter: function(cell) {
                             var v = cell.getValue();
                             return v != null && v !== "" ? v : "—";
@@ -2581,6 +2591,22 @@
 
             table.on("tableBuilt", function() {
                 table.setFilter(combinedFilter);
+
+                // Row selection ONLY when clicking checkbox column; any other cell must not select row
+                var tableEl = document.getElementById("budget-under-table");
+                if (tableEl) {
+                    function onlyCheckboxSelect(e) {
+                        var cell = e.target.closest(".tabulator-cell");
+                        if (!cell) return;
+                        var row = cell.closest(".tabulator-row");
+                        if (!row) return;
+                        var firstCell = row.querySelector(".tabulator-cell");
+                        if (cell === firstCell) return; // checkbox column – allow
+                        e.stopPropagation();
+                    }
+                    tableEl.addEventListener("mousedown", onlyCheckboxSelect, true);
+                    tableEl.addEventListener("click", onlyCheckboxSelect, true);
+                }
 
                 let filterTimeout = null;
                 table.on("dataFiltered", function() {

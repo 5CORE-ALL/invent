@@ -1961,14 +1961,17 @@
                 }
             }
 
-            // SKU search (parent rows always visible; match by Parent / (Child) sku for parent rows)
+            // SKU search: show only rows where (Child) sku or Parent contains the term (parent rows must match too)
             const skuSearchVal = $('#sku-search').val();
             if (skuSearchVal && skuSearchVal.trim() !== '') {
                 const term = skuSearchVal.trim().toLowerCase();
                 table.addFilter(function(data) {
-                    if (isParentRow(data)) return true;
                     const sku = (data['(Child) sku'] || '').toString().toLowerCase();
-                    return sku.indexOf(term) !== -1;
+                    const parent = (data.Parent || '').toString().toLowerCase();
+                    const matchSku = sku.indexOf(term) !== -1;
+                    const matchParent = parent.indexOf(term) !== -1;
+                    if (isParentRow(data)) return matchSku || matchParent;
+                    return matchSku;
                 });
             }
 
