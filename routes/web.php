@@ -2487,6 +2487,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/amazon/utilized/pt/ads/data', 'getAmazonUtilizedPtAdsData');
         Route::get('/amazon/get-utilization-counts', 'getAmazonUtilizationCounts');
         Route::get('/amazon/get-utilization-chart-data', 'getAmazonUtilizationChartData');
+        Route::get('/amazon/utilized/chart/filter', 'filterAmazonUtilizedChart')->name('amazon.utilized.chart.filter');
         
         // ACOS Action History Routes
         Route::post('/amazon/save-acos-action-history', 'saveAcosActionHistory');

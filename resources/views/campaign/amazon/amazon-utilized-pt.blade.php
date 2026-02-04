@@ -2,6 +2,7 @@
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ asset('assets/css/styles.css') }}">
     <style>
@@ -331,6 +332,8 @@
         /* Keep header positioned so horizontal scroll can include it */
         .tabulator .tabulator-header { position: relative !important; }
         #budget-under-table .tabulator .tabulator-tableHolder { overflow-x: auto !important; }
+        #campaignChart { height: 500px !important; }
+        #chartContainer { max-height: 500px; }
     </style>
 @endsection
 @section('content')
@@ -339,6 +342,65 @@
         'sub_title' => 'Amazon PT - Utilized',
     ])
     <div class="row">
+        <div class="col-12">
+            <div class="card shadow-sm border-0">
+                <div class="card-body">
+                    <div class="mb-3">
+                        <button id="daterange-btn" class="btn btn-outline-dark">
+                            <span>Date range: Select</span> <i class="fa-solid fa-chevron-down ms-1"></i>
+                        </button>
+                    </div>
+                    <div class="row text-center mb-4">
+                        <div class="col-md-2 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Clicks</div>
+                                <div class="h3 mb-0 fw-bold text-primary card-clicks">0</div>
+                            </div>
+                        </div>
+                        <div class="col-md-2 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Spend</div>
+                                <div class="h3 mb-0 fw-bold text-success card-spend">$0</div>
+                            </div>
+                        </div>
+                        <div class="col-md-2 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Sales</div>
+                                <div class="h3 mb-0 fw-bold text-info card-sales">$0</div>
+                            </div>
+                        </div>
+                        <div class="col-md-2 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">Orders</div>
+                                <div class="h3 mb-0 fw-bold text-danger card-orders">0</div>
+                            </div>
+                        </div>
+                        <div class="col-md-2 mb-3 mb-md-0">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="text-muted small">ACOS</div>
+                                <div class="h3 mb-0 fw-bold text-warning card-acos">0%</div>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="p-3 border rounded bg-light h-100">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <div class="text-muted small">CVR</div>
+                                        <div class="h3 mb-0 fw-bold text-danger card-cvr">0%</div>
+                                    </div>
+                                    <button id="toggleChartBtn" class="btn btn-sm btn-info ms-2">
+                                        <i id="chartArrow" class="fa-solid fa-chevron-down"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="chartContainer" style="display: none;">
+                        <canvas id="campaignChart" height="120"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
         <div class="col-12">
             <div class="card shadow-sm" style="border: 1px solid rgba(0, 0, 0, 0.05);">
                 <div class="card-body py-4">
@@ -490,18 +552,6 @@
                                             <span class="badge-count-item ra-card" id="ra-card" style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;">
                                                 <span style="font-size: 0.7rem; margin-right: 4px;">RA:</span>
                                                 <span class="fw-bold" id="ra-count" style="font-size: 1.1rem; color: black;">0</span>
-                                            </span>
-                                            <span class="badge-count-item" style="background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); white-space: nowrap; font-size: 0.8125rem;">
-                                                <span style="font-size: 0.7rem; margin-right: 4px;">Total Spend L30:</span>
-                                                <span class="fw-bold" id="total-spend-l30" style="font-size: 1.1rem; color: black;">0</span>
-                                            </span>
-                                            <span class="badge-count-item" style="background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); white-space: nowrap; font-size: 0.8125rem;">
-                                                <span style="font-size: 0.7rem; margin-right: 4px;">Total Sales L30:</span>
-                                                <span class="fw-bold" id="total-sales-l30" style="font-size: 1.1rem; color: black;">0</span>
-                                            </span>
-                                            <span class="badge-count-item" style="background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); white-space: nowrap; font-size: 0.8125rem;">
-                                                <span style="font-size: 0.7rem; margin-right: 4px;">Total Ad Sold L30:</span>
-                                                <span class="fw-bold" id="total-ad-sold-l30" style="font-size: 1.1rem; color: black;">0</span>
                                             </span>
                                             <span class="badge-count-item paused-campaigns-card" id="paused-campaigns-card" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 4px 10px; border-radius: 6px; color:#000000; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer; transition: all 0.2s; white-space: nowrap; font-size: 0.8125rem;" title="Click to view paused campaigns">
                                                 <span style="font-size: 0.7rem; margin-right: 4px;">PINK DIL PAUSED:</span>
@@ -704,6 +754,8 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
     <script>
         document.addEventListener("DOMContentLoaded", function() {
             let currentUtilizationType = 'all'; // Default to all
@@ -1080,14 +1132,6 @@
                 if (parentSkuCountEl) {
                     parentSkuCountEl.textContent = totalParentSkuCount;
                 }
-                // Update Total Spend L30, Total Sales L30, Total Ad Sold L30 (from backend, L30 range)
-                const totalSpendL30El = document.getElementById('total-spend-l30');
-                if (totalSpendL30El) totalSpendL30El.textContent = typeof totalL30Spend !== 'undefined' ? Number(totalL30Spend).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '0';
-                const totalSalesL30El = document.getElementById('total-sales-l30');
-                if (totalSalesL30El) totalSalesL30El.textContent = typeof totalL30Sales !== 'undefined' ? Number(totalL30Sales).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '0';
-                const totalAdSoldL30El = document.getElementById('total-ad-sold-l30');
-                if (totalAdSoldL30El) totalAdSoldL30El.textContent = typeof totalL30Purchases !== 'undefined' ? Number(totalL30Purchases).toLocaleString() : '0';
-                
                 // Update NRA count
                 const nraCountEl = document.getElementById('nra-count');
                 if (nraCountEl) {
@@ -4613,5 +4657,108 @@
             setTimeout(() => toast.remove(), 3000);
         }
 
+    </script>
+    <script>
+        (function() {
+            const chartType = 'PT';
+            const ctx = document.getElementById('campaignChart');
+            if (!ctx) return;
+            const chart = new Chart(ctx.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        { label: 'Clicks', data: [], borderColor: 'purple', backgroundColor: 'rgba(128, 0, 128, 0.1)', yAxisID: 'y1', tension: 0.4, pointRadius: 4, pointHoverRadius: 6, fill: false },
+                        { label: 'Spend (USD)', data: [], borderColor: 'teal', backgroundColor: 'rgba(0, 128, 128, 0.1)', yAxisID: 'y2', tension: 0.4, pointRadius: 4, pointHoverRadius: 6, fill: false },
+                        { label: 'Orders', data: [], borderColor: 'magenta', backgroundColor: 'rgba(255, 0, 255, 0.1)', yAxisID: 'y1', tension: 0.4, pointRadius: 4, pointHoverRadius: 6, fill: false },
+                        { label: 'Sales (USD)', data: [], borderColor: 'blue', backgroundColor: 'rgba(0, 0, 255, 0.1)', yAxisID: 'y2', tension: 0.4, pointRadius: 4, pointHoverRadius: 6, fill: false }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false, axis: 'x' },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(ctx) {
+                                    const v = ctx.raw;
+                                    if (ctx.dataset.label.includes('Spend') || ctx.dataset.label.includes('Sales')) return ctx.dataset.label + ': $' + Number(v).toFixed(2);
+                                    return ctx.dataset.label + ': ' + v;
+                                }
+                            }
+                        },
+                        legend: { position: 'top' }
+                    },
+                    scales: {
+                        x: { offset: false },
+                        y1: { type: 'linear', position: 'left', beginAtZero: true, title: { display: true, text: 'Clicks / Orders' } },
+                        y2: { type: 'linear', position: 'right', beginAtZero: true, title: { display: true, text: 'Spend / Sales (USD)' }, grid: { drawOnChartArea: false } }
+                    }
+                }
+            });
+            function fetchChartData(startDate, endDate) {
+                if (!startDate || !endDate) {
+                    endDate = moment().subtract(2, 'days').format('YYYY-MM-DD');
+                    startDate = moment().subtract(31, 'days').format('YYYY-MM-DD');
+                }
+                $.ajax({
+                    url: "{{ route('amazon.utilized.chart.filter') }}",
+                    type: "GET",
+                    data: { startDate, endDate, type: chartType },
+                    success: function(response) {
+                        chart.data.labels = response.dates.map(d => moment(d).format('MMM DD'));
+                        chart.data.datasets[0].data = response.clicks;
+                        chart.data.datasets[1].data = response.spend;
+                        chart.data.datasets[2].data = response.orders;
+                        chart.data.datasets[3].data = response.sales;
+                        chart.update();
+                        $('.card-clicks').text(response.totals.clicks);
+                        $('.card-spend').text('$' + Math.round(response.totals.spend));
+                        $('.card-orders').text(response.totals.orders);
+                        $('.card-sales').text('$' + Math.round(response.totals.sales));
+                        const ts = response.totals.spend || 0, tsl = response.totals.sales || 0;
+                        const acos = tsl >= 1 ? (ts / tsl) * 100 : (ts > 0 ? 100 : 0);
+                        $('.card-acos').text(acos.toFixed(0) + '%');
+                        const tc = response.totals.clicks || 0, to = response.totals.orders || 0;
+                        $('.card-cvr').text((tc > 0 ? (to / tc) * 100 : 0).toFixed(2) + '%');
+                    }
+                });
+            }
+            document.getElementById('toggleChartBtn')?.addEventListener('click', function() {
+                const c = document.getElementById('chartContainer');
+                const a = document.getElementById('chartArrow');
+                if (c.style.display === 'none') {
+                    c.style.display = 'block';
+                    a.classList.replace('fa-chevron-down', 'fa-chevron-up');
+                } else {
+                    c.style.display = 'none';
+                    a.classList.replace('fa-chevron-up', 'fa-chevron-down');
+                }
+            });
+            $(function() {
+                $('#daterange-btn').daterangepicker({
+                    opens: 'right', autoUpdateInput: false, alwaysShowCalendars: true,
+                    locale: { format: "D MMM YYYY", cancelLabel: 'Clear' },
+                    ranges: {
+                        'Today': [moment(), moment()],
+                        'Yesterday': [moment().subtract(1, 'days'), moment().subtract(1, 'days')],
+                        'Last 7 Days': [moment().subtract(6, 'days'), moment()],
+                        'Last 30 Days': [moment().subtract(29, 'days'), moment()],
+                        'This Month': [moment().startOf('month'), moment().endOf('month')],
+                        'Last Month': [moment().subtract(1, 'month').startOf('month'), moment().subtract(1, 'month').endOf('month')]
+                    }
+                }, function(s, e) {
+                    const sd = s.format('YYYY-MM-DD'), ed = e.format('YYYY-MM-DD');
+                    $('#daterange-btn span').html('Date range: ' + sd + ' - ' + ed);
+                    fetchChartData(sd, ed);
+                });
+                $('#daterange-btn').on('cancel.daterangepicker', function() {
+                    $(this).find('span').html('Date range: Select');
+                    fetchChartData();
+                });
+                fetchChartData();
+            });
+        })();
     </script>
 @endsection

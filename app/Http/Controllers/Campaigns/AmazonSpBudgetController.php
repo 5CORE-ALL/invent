@@ -1236,6 +1236,172 @@ class AmazonSpBudgetController extends Controller
         ]);
     }
 
+    /**
+     * Filter chart data for Amazon utilized views (KW, PT, HL).
+     * Returns daily clicks, spend, orders, sales for the selected date range.
+     */
+    public function filterAmazonUtilizedChart(Request $request)
+    {
+        $type = strtoupper($request->get('type', 'KW'));
+        $start = $request->get('startDate');
+        $end = $request->get('endDate');
+
+        if (!$start || !$end) {
+            $end = \Carbon\Carbon::now()->subDays(2)->format('Y-m-d');
+            $start = \Carbon\Carbon::now()->subDays(31)->format('Y-m-d');
+        }
+
+        if ($type === 'HL') {
+            return $this->filterAmazonUtilizedChartHl($start, $end);
+        }
+        if ($type === 'PT') {
+            return $this->filterAmazonUtilizedChartPt($start, $end);
+        }
+        return $this->filterAmazonUtilizedChartKw($start, $end);
+    }
+
+    private function filterAmazonUtilizedChartKw($start, $end)
+    {
+        $rawData = DB::table('amazon_sp_campaign_reports')
+            ->selectRaw('
+                report_date_range as report_date,
+                campaignName,
+                SUM(spend) as sum_spend,
+                SUM(clicks) as clicks,
+                SUM(purchases1d) as orders,
+                SUM(sales30d) as sales
+            ')
+            ->whereNotNull('report_date_range')
+            ->whereRaw("report_date_range >= ?", [$start])
+            ->whereRaw("report_date_range <= ?", [$end])
+            ->whereNotIn('report_date_range', ['L60','L30','L15','L7','L1'])
+            ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
+            ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'")
+            ->groupBy('report_date_range', 'campaignName')
+            ->get();
+
+        return $this->buildUtilizedChartResponse($rawData, $start, $end, 'spend', 'sum_spend');
+    }
+
+    private function filterAmazonUtilizedChartPt($start, $end)
+    {
+        $rawData = DB::table('amazon_sp_campaign_reports')
+            ->selectRaw('
+                report_date_range as report_date,
+                campaignName,
+                SUM(spend) as sum_spend,
+                SUM(clicks) as clicks,
+                SUM(purchases1d) as orders,
+                SUM(sales30d) as sales
+            ')
+            ->whereNotNull('report_date_range')
+            ->whereRaw("report_date_range >= ?", [$start])
+            ->whereRaw("report_date_range <= ?", [$end])
+            ->whereNotIn('report_date_range', ['L60','L30','L15','L7','L1'])
+            ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
+            ->where(function ($query) {
+                $query->whereRaw("campaignName LIKE '%PT'")
+                    ->orWhereRaw("campaignName LIKE '%PT.'");
+            })
+            ->whereRaw("campaignName NOT LIKE '%FBA PT%'")
+            ->whereRaw("campaignName NOT LIKE '%FBA PT.%'")
+            ->groupBy('report_date_range', 'campaignName')
+            ->get();
+
+        return $this->buildUtilizedChartResponse($rawData, $start, $end, 'spend', 'sum_spend');
+    }
+
+    private function filterAmazonUtilizedChartHl($start, $end)
+    {
+        $rawData = DB::table('amazon_sb_campaign_reports')
+            ->selectRaw('
+                report_date_range as report_date,
+                campaignName,
+                SUM(cost) as sum_cost,
+                SUM(clicks) as clicks,
+                SUM(purchases) as orders,
+                SUM(sales) as sales
+            ')
+            ->whereNotNull('report_date_range')
+            ->whereRaw("report_date_range >= ?", [$start])
+            ->whereRaw("report_date_range <= ?", [$end])
+            ->whereNotIn('report_date_range', ['L60','L30','L15','L7','L1'])
+            ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
+            ->groupBy('report_date_range', 'campaignName')
+            ->get();
+
+        $data = $rawData->groupBy('report_date')->map(function ($dateGroup) {
+            return (object) [
+                'report_date' => $dateGroup->first()->report_date,
+                'clicks' => $dateGroup->sum('clicks'),
+                'spend' => $dateGroup->sum('sum_cost'),
+                'orders' => $dateGroup->sum('orders'),
+                'sales' => $dateGroup->sum('sales'),
+            ];
+        });
+
+        return $this->buildUtilizedChartResponseFromMap($data, $start, $end);
+    }
+
+    private function buildUtilizedChartResponse($rawData, $start, $end, $spendKey, $sumKey)
+    {
+        $data = $rawData->groupBy('report_date')->map(function ($dateGroup) use ($sumKey) {
+            return (object) [
+                'report_date' => $dateGroup->first()->report_date,
+                'clicks' => $dateGroup->sum('clicks'),
+                'spend' => $dateGroup->sum($sumKey),
+                'orders' => $dateGroup->sum('orders'),
+                'sales' => $dateGroup->sum('sales'),
+            ];
+        });
+
+        return $this->buildUtilizedChartResponseFromMap($data, $start, $end);
+    }
+
+    private function buildUtilizedChartResponseFromMap($data, $start, $end)
+    {
+        $totals = [
+            'clicks' => (int) $data->sum('clicks'),
+            'spend' => (float) $data->sum('spend'),
+            'orders' => (int) $data->sum('orders'),
+            'sales' => (float) $data->sum('sales'),
+        ];
+
+        $startCarbon = \Carbon\Carbon::parse($start);
+        $endCarbon = \Carbon\Carbon::parse($end);
+        $dates = [];
+        $clicks = [];
+        $spend = [];
+        $orders = [];
+        $sales = [];
+
+        for ($d = $startCarbon->copy(); $d->lte($endCarbon); $d->addDay()) {
+            $dateStr = $d->format('Y-m-d');
+            $dates[] = $dateStr;
+            if (isset($data[$dateStr])) {
+                $row = $data[$dateStr];
+                $clicks[] = (int) $row->clicks;
+                $spend[] = (float) $row->spend;
+                $orders[] = (int) $row->orders;
+                $sales[] = (float) $row->sales;
+            } else {
+                $clicks[] = 0;
+                $spend[] = 0.0;
+                $orders[] = 0;
+                $sales[] = 0.0;
+            }
+        }
+
+        return response()->json([
+            'dates' => $dates,
+            'clicks' => $clicks,
+            'spend' => $spend,
+            'orders' => $orders,
+            'sales' => $sales,
+            'totals' => $totals,
+        ]);
+    }
+
     function getAmzUtilizedBgtKw()
     {
         $productMasters = ProductMaster::orderBy('parent', 'asc')
