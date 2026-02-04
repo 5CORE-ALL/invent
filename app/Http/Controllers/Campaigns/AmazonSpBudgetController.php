@@ -2358,8 +2358,10 @@ class AmazonSpBudgetController extends Controller
             }
         }
 
-        // For PARENT rows: INV = sum of child SKUs' INV (so "PARENT 10 FR" shows total INV of its children)
+        // For PARENT rows: INV, OV L30, AL 30 = sum of child SKUs' values (so "PARENT 10 FR" shows total of its children)
         $childInvSumByParent = [];
+        $childL30SumByParent = [];
+        $childAL30SumByParent = [];
         foreach ($productMasters as $pm) {
             $norm = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $pm->sku);
             $norm = preg_replace('/\s+/', ' ', $norm);
@@ -2372,11 +2374,22 @@ class AmazonSpBudgetController extends Controller
                 continue;
             }
             $shopify = $shopifyData[$pm->sku] ?? null;
+            $amazonSheetChild = $amazonDatasheetsBySku[$skuUpper] ?? null;
             $inv = ($shopify && isset($shopify->inv)) ? (int) $shopify->inv : 0;
+            $l30 = ($shopify && isset($shopify->quantity)) ? (int) $shopify->quantity : 0;
+            $al30 = ($amazonSheetChild && isset($amazonSheetChild->units_ordered_l30)) ? (int) $amazonSheetChild->units_ordered_l30 : 0;
             if (!isset($childInvSumByParent[$p])) {
                 $childInvSumByParent[$p] = 0;
             }
             $childInvSumByParent[$p] += $inv;
+            if (!isset($childL30SumByParent[$p])) {
+                $childL30SumByParent[$p] = 0;
+            }
+            $childL30SumByParent[$p] += $l30;
+            if (!isset($childAL30SumByParent[$p])) {
+                $childAL30SumByParent[$p] = 0;
+            }
+            $childAL30SumByParent[$p] += $al30;
         }
 
         // For PARENT rows: avg price = average of child SKUs' prices (from amazon datashheet, or ProductMaster Values as fallback)
@@ -2898,8 +2911,8 @@ class AmazonSpBudgetController extends Controller
                     'pink_dil_paused_at' => ($matchedCampaignL30 ? $matchedCampaignL30->pink_dil_paused_at : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->pink_dil_paused_at : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->pink_dil_paused_at : null) ?? null)),
                     'INV' => (stripos($sku, 'PARENT') !== false) ? (int)($childInvSumByParent[$parent] ?? 0) : (($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0),
                     'FBA_INV' => isset($fbaData[$baseSku]) ? ($fbaData[$baseSku]->quantity_available ?? 0) : 0,
-                    'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
-                    'A_L30' => ($amazonSheet && isset($amazonSheet->units_ordered_l30)) ? (int)$amazonSheet->units_ordered_l30 : 0,
+                    'L30' => (stripos($sku, 'PARENT') !== false) ? (int)($childL30SumByParent[$parent] ?? 0) : (($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0),
+                    'A_L30' => (stripos($sku, 'PARENT') !== false) ? (int)($childAL30SumByParent[$parent] ?? 0) : (($amazonSheet && isset($amazonSheet->units_ordered_l30)) ? (int)$amazonSheet->units_ordered_l30 : 0),
                     'price' => $price,
                     'ratings' => $junglescoutData[$sku] ?? null,
                     'reviews' => $junglescoutReviews[$sku] ?? null,
@@ -3555,8 +3568,8 @@ class AmazonSpBudgetController extends Controller
                     'pink_dil_paused_at' => ($matchedCampaignL30 ? $matchedCampaignL30->pink_dil_paused_at : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->pink_dil_paused_at : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->pink_dil_paused_at : null) ?? null)),
                     'INV' => (int)($childInvSumByParent[$pm->parent ?? ''] ?? 0),
                     'FBA_INV' => isset($fbaData[$baseSku]) ? ($fbaData[$baseSku]->quantity_available ?? 0) : 0,
-                    'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
-                    'A_L30' => ($amazonSheet && isset($amazonSheet->units_ordered_l30)) ? (int)$amazonSheet->units_ordered_l30 : 0,
+                    'L30' => (int)($childL30SumByParent[$pm->parent ?? ''] ?? 0),
+                    'A_L30' => (int)($childAL30SumByParent[$pm->parent ?? ''] ?? 0),
                     'l7_spend' => $l7Spend,
                     'l7_cpc' => $l7Cpc,
                     'l1_spend' => $l1Spend,
@@ -4031,8 +4044,8 @@ class AmazonSpBudgetController extends Controller
                 'pink_dil_paused_at' => ($matchedCampaignL30 ? $matchedCampaignL30->pink_dil_paused_at : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->pink_dil_paused_at : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->pink_dil_paused_at : null) ?? null)),
                 'INV' => (stripos($sku, 'PARENT') !== false) ? (int)($childInvSumByParent[$pm->parent ?? ''] ?? 0) : (($shopify && isset($shopify->inv)) ? (int)$shopify->inv : 0),
                 'FBA_INV' => isset($fbaData[$baseSku]) ? ($fbaData[$baseSku]->quantity_available ?? 0) : 0,
-                'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
-                'A_L30' => ($amazonSheet && isset($amazonSheet->units_ordered_l30)) ? (int)$amazonSheet->units_ordered_l30 : 0,
+                'L30' => (stripos($sku, 'PARENT') !== false) ? (int)($childL30SumByParent[$pm->parent ?? ''] ?? 0) : (($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0),
+                'A_L30' => (stripos($sku, 'PARENT') !== false) ? (int)($childAL30SumByParent[$pm->parent ?? ''] ?? 0) : (($amazonSheet && isset($amazonSheet->units_ordered_l30)) ? (int)$amazonSheet->units_ordered_l30 : 0),
                 'l7_spend' => $l7Spend,
                 'l7_cpc' => $l7Cpc,
                 'l1_spend' => $l1Spend,
@@ -4446,8 +4459,8 @@ class AmazonSpBudgetController extends Controller
                     'pink_dil_paused_at' => ($matchedCampaignL30 ? $matchedCampaignL30->pink_dil_paused_at : null) ?? (($matchedCampaignL7 ? $matchedCampaignL7->pink_dil_paused_at : null) ?? (($matchedCampaignL1 ? $matchedCampaignL1->pink_dil_paused_at : null) ?? null)),
                     'INV' => (int)($childInvSumByParent[$pm->parent ?? ''] ?? 0),
                     'FBA_INV' => isset($fbaData[$baseSku]) ? ($fbaData[$baseSku]->quantity_available ?? 0) : 0,
-                    'L30' => ($shopify && isset($shopify->quantity)) ? (int)$shopify->quantity : 0,
-                    'A_L30' => ($amazonSheet && isset($amazonSheet->units_ordered_l30)) ? (int)$amazonSheet->units_ordered_l30 : 0,
+                    'L30' => (int)($childL30SumByParent[$pm->parent ?? ''] ?? 0),
+                    'A_L30' => (int)($childAL30SumByParent[$pm->parent ?? ''] ?? 0),
                     'l7_spend' => $l7Spend,
                     'l7_cpc' => $l7Cpc,
                     'l1_spend' => $l1Spend,
