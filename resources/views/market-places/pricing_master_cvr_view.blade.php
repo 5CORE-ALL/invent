@@ -138,6 +138,37 @@
         .parent-toggle-icon:hover {
             color: #0d6efd;
         }
+
+        /* Push price button styling */
+        .push-price-btn {
+            font-size: 14px;
+            padding: 4px 10px;
+            white-space: nowrap;
+            min-width: 36px;
+        }
+        
+        .push-price-btn i {
+            font-size: 12px;
+        }
+        
+        .push-price-btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        
+        /* Pushed By column styling */
+        .pushed-by-info {
+            font-size: 11px;
+        }
+        
+        .pushed-by-info strong {
+            display: block;
+            color: #28a745;
+        }
+        
+        .pushed-by-info .text-muted {
+            font-size: 10px;
+        }
     </style>
 @endsection
 
@@ -151,7 +182,7 @@
         'page_title' => 'Pricing Master CVR',
         'sub_title' => 'Pricing Master CVR Data with Editable SPRICE',
     ])
-    <div class="toast-container"></div>
+    <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
     
     <!-- Remark History Modal -->
     <div class="modal fade" id="remarkHistoryModal" tabindex="-1" aria-hidden="true">
@@ -220,6 +251,8 @@
                                     <th class="text-end">SGPFT%</th>
                                     <th class="text-end">SPFT%</th>
                                     <th class="text-end">SROI%</th>
+                                    <th class="text-center">Push</th>
+                                    <th class="text-center">Pushed By</th>
                                 </tr>
                             </thead>
                             <tbody id="ovl30DetailsTableBody">
@@ -243,6 +276,8 @@
                                     <th class="text-end" id="modal-avg-sgpft">0%</th>
                                     <th class="text-end" id="modal-avg-spft">0%</th>
                                     <th class="text-end" id="modal-avg-sroi">0%</th>
+                                    <th></th>
+                                    <th></th>
                                 </tr>
                             </tfoot>
                         </table>
@@ -494,7 +529,7 @@
                     sroi = lp > 0 ? ((sprice * margin - lp - ship) / lp) * 100 : 0;
                 }
                 
-                const isEditable = ['amazon', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'doba', 'walmart', 'tiktok', 'bestbuy', 'macy', 'reverb', 'tiendamia', 'sb2c', 'shopifyb2c', 'sb2b', 'shopifyb2b'].includes((item.marketplace || '').toLowerCase());
+                const isEditable = ['amazon', 'doba', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'walmart', 'tiktok', 'bestbuy', 'macy', 'reverb', 'tiendamia', 'sb2c', 'shopifyb2c', 'sb2b', 'shopifyb2b'].includes((item.marketplace || '').toLowerCase());
                 
                 // Color coding for CVR%
                 let cvrColor = '';
@@ -566,6 +601,9 @@
                     }
                 }
                 
+                // Determine if upload button should be shown (Amazon, Doba, and Walmart)
+                const canPushPrice = ['amazon', 'doba', 'walmart'].includes((item.marketplace || '').toLowerCase()) && isListed;
+                
                 html += `
                     <tr class="${rowClass}" data-marketplace="${item.marketplace}" data-sku="${item.sku}" 
                         data-lp="${lp}" data-ship="${ship}" data-ad="${ad}" data-margin="${margin}" data-l30="${l30}">
@@ -591,6 +629,21 @@
                         </td>
                         <td class="text-end ${textClass}">
                             <span class="calculated-sroi">${Math.round(sroi)}%</span>
+                        </td>
+                        <td class="text-center ${textClass}">
+                            ${canPushPrice ? 
+                                '<button class="btn btn-sm btn-primary push-price-btn" ' +
+                                'data-sku="' + item.sku + '" ' +
+                                'data-marketplace="' + item.marketplace + '" ' +
+                                'title="Push price to ' + item.marketplace + '">' +
+                                '<i class="fas fa-upload"></i></button>' 
+                                : '-'}
+                        </td>
+                        <td class="text-center ${textClass}">
+                            ${item.pushed_by ? 
+                                '<div class="pushed-by-info"><strong>' + item.pushed_by + '</strong>' +
+                                '<div class="text-muted">' + item.pushed_at + '</div></div>'
+                                : '<span class="text-muted">-</span>'}
                         </td>
                     </tr>
                 `;
@@ -947,6 +1000,79 @@
                 error: function() {
                     input.css('border-color', '#dc3545');
                     showToast('Failed to save', 'error');
+                }
+            });
+        });
+        
+        // ==================== PRICE PUSH TO AMAZON ====================
+        
+        // Push price button click handler
+        $(document).on('click', '.push-price-btn', function(e) {
+            e.stopPropagation();
+            const btn = $(this);
+            const row = btn.closest('tr');
+            const sku = btn.data('sku');
+            const marketplace = btn.data('marketplace');
+            const priceInput = row.find('.editable-sprice');
+            const price = parseFloat(priceInput.val()) || 0;
+            
+            if (price <= 0) {
+                showToast('Please enter a valid price greater than 0', 'error');
+                priceInput.focus();
+                return;
+            }
+            
+            // Confirm before pushing
+            if (!confirm(`Push price $${price.toFixed(2)} to ${marketplace.toUpperCase()} for SKU: ${sku}?`)) {
+                return;
+            }
+            
+            // Disable button and show loading state
+            const originalHtml = btn.html();
+            btn.prop('disabled', true);
+            btn.html('<i class="fas fa-spinner fa-spin"></i>');
+            
+            $.ajax({
+                url: '/cvr-master-push-price',
+                method: 'POST',
+                data: {
+                    sku: sku,
+                    price: price,
+                    marketplace: marketplace,
+                    _token: '{{ csrf_token() }}'
+                },
+                success: function(response) {
+                    if (response.success) {
+                        showToast(response.message, 'success');
+                        btn.html('<i class="fas fa-check"></i>');
+                        btn.removeClass('btn-primary').addClass('btn-success');
+                        
+                        // Reload modal data to show pushed_by info
+                        setTimeout(() => {
+                            const currentSku = $('#modalSkuName').text();
+                            loadMarketplaceBreakdown(currentSku);
+                        }, 1500);
+                    } else {
+                        showToast(response.message || 'Failed to push price', 'error');
+                        btn.html(originalHtml);
+                        btn.prop('disabled', false);
+                    }
+                },
+                error: function(xhr) {
+                    console.error('Price push failed:', {
+                        sku: sku,
+                        marketplace: marketplace,
+                        status: xhr.status,
+                        error: xhr.responseJSON
+                    });
+                    
+                    let errorMsg = 'Failed to push price';
+                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMsg = xhr.responseJSON.message;
+                    }
+                    showToast(errorMsg, 'error');
+                    btn.html(originalHtml);
+                    btn.prop('disabled', false);
                 }
             });
         });

@@ -52,6 +52,9 @@ use App\Models\MarketplacePercentage;
 use App\Models\AmazonSpCampaignReport;
 use App\Models\CvrRemark;
 use Carbon\Carbon;
+use App\Services\AmazonSpApiService;
+use App\Services\DobaApiService;
+use App\Services\WalmartService;
 
 class CvrMasterController extends Controller
 {
@@ -926,6 +929,8 @@ class CvrMasterController extends Controller
             // Get Amazon suggested data from amazon_data_view
             $amazonDataView = AmazonDataView::where('sku', $fullSku)->first();
             $amazonSuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            $amazonPushedBy = null;
+            $amazonPushedAt = null;
             if ($amazonDataView) {
                 $val = is_array($amazonDataView->value) ? $amazonDataView->value : 
                        (is_string($amazonDataView->value) ? json_decode($amazonDataView->value, true) : []);
@@ -936,6 +941,17 @@ class CvrMasterController extends Controller
                         'sroi' => $val['SROI'] ?? 0,
                         'spft' => $val['SPFT'] ?? 0,
                     ];
+                    // Get pushed by information
+                    $amazonPushedBy = $val['SPRICE_PUSHED_BY'] ?? null;
+                    $amazonPushedAt = $val['SPRICE_PUSHED_AT'] ?? null;
+                    // Format pushed at timestamp
+                    if ($amazonPushedAt) {
+                        try {
+                            $amazonPushedAt = Carbon::parse($amazonPushedAt)->format('M d, Y h:i A');
+                        } catch (\Exception $e) {
+                            $amazonPushedAt = null;
+                        }
+                    }
                 }
             }
             
@@ -956,6 +972,8 @@ class CvrMasterController extends Controller
                 'lp' => $lp,
                 'ship' => $ship,
                 'margin' => 0.80,
+                'pushed_by' => $amazonPushedBy,
+                'pushed_at' => $amazonPushedAt,
             ];
 
             // Get parent SKU for eBay 3 campaigns
@@ -1009,6 +1027,8 @@ class CvrMasterController extends Controller
                 'lp' => $lp,
                 'ship' => $ship,
                 'margin' => $ebay1Margin,
+                'pushed_by' => null,
+                'pushed_at' => null,
             ];
 
             // Fetch eBay 2 data from Ebay2Metric model (using full SKU)
@@ -1059,6 +1079,8 @@ class CvrMasterController extends Controller
                 'lp' => $lp,
                 'ship' => $ebay2Ship,
                 'margin' => $ebay2Margin,
+                'pushed_by' => null,
+                'pushed_at' => null,
             ];
 
             // eBay 3
@@ -1107,6 +1129,8 @@ class CvrMasterController extends Controller
                 'lp' => $lp,
                 'ship' => $ship,
                 'margin' => $ebay3Margin,
+                'pushed_by' => null,
+                'pushed_at' => null,
             ];
 
             // Fetch Temu data (with SKU normalization matching TemuController)
@@ -1245,11 +1269,24 @@ class CvrMasterController extends Controller
             // Get Doba suggested data from doba_data_view
             $dobaDataView = DobaDataView::where('sku', $fullSku)->first();
             $dobaSuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            $dobaPushedBy = null;
+            $dobaPushedAt = null;
             if ($dobaDataView) {
                 $val = is_array($dobaDataView->value) ? $dobaDataView->value : json_decode($dobaDataView->value, true);
                 if (is_array($val)) {
                     $dobaSuggested = ['sprice' => floatval($val['SPRICE'] ?? 0), 'sgpft' => floatval($val['SGPFT'] ?? 0),
                                       'sroi' => floatval($val['SROI'] ?? 0), 'spft' => floatval($val['SPFT'] ?? 0)];
+                    // Get pushed by information
+                    $dobaPushedBy = $val['SPRICE_PUSHED_BY'] ?? null;
+                    $dobaPushedAt = $val['SPRICE_PUSHED_AT'] ?? null;
+                    // Format pushed at timestamp
+                    if ($dobaPushedAt) {
+                        try {
+                            $dobaPushedAt = Carbon::parse($dobaPushedAt)->format('M d, Y h:i A');
+                        } catch (\Exception $e) {
+                            $dobaPushedAt = null;
+                        }
+                    }
                 }
             }
             
@@ -1270,6 +1307,8 @@ class CvrMasterController extends Controller
                 'lp' => $lp,
                 'ship' => $ship,
                 'margin' => $dobaPercentage,
+                'pushed_by' => $dobaPushedBy,
+                'pushed_at' => $dobaPushedAt,
             ];
 
             // Fetch Walmart data (matching WalmartSheetUploadController)
@@ -1326,6 +1365,8 @@ class CvrMasterController extends Controller
             
             // Get Walmart suggested data from walmart_data_view (uses lowercase 'sprice')
             $walmartSuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            $walmartPushedBy = null;
+            $walmartPushedAt = null;
             if ($walmartDataViewItem) {
                 $val = is_array($walmartDataViewItem->value) ? $walmartDataViewItem->value : 
                        json_decode($walmartDataViewItem->value, true);
@@ -1337,6 +1378,17 @@ class CvrMasterController extends Controller
                         'sroi' => floatval($val['SROI'] ?? 0),
                         'spft' => floatval($val['SPFT'] ?? 0)
                     ];
+                    // Get pushed by information
+                    $walmartPushedBy = $val['SPRICE_PUSHED_BY'] ?? null;
+                    $walmartPushedAt = $val['SPRICE_PUSHED_AT'] ?? null;
+                    // Format pushed at timestamp
+                    if ($walmartPushedAt) {
+                        try {
+                            $walmartPushedAt = Carbon::parse($walmartPushedAt)->format('M d, Y h:i A');
+                        } catch (\Exception $e) {
+                            $walmartPushedAt = null;
+                        }
+                    }
                 }
             }
             
@@ -1359,6 +1411,8 @@ class CvrMasterController extends Controller
                 'lp' => $lp,
                 'ship' => $ship,
                 'margin' => $walmartMargin,
+                'pushed_by' => $walmartPushedBy,
+                'pushed_at' => $walmartPushedAt,
             ];
 
             // Fetch TikTok data (matching TikTokPricingController)
@@ -1438,6 +1492,8 @@ class CvrMasterController extends Controller
                 'lp' => $lp,
                 'ship' => $ship,
                 'margin' => $tiktokPercentage,
+                'pushed_by' => null,
+                'pushed_at' => null,
             ];
 
             // Fetch BestBuy data (matching BestBuyPricingController)
@@ -1503,6 +1559,8 @@ class CvrMasterController extends Controller
                 'lp' => $lp,
                 'ship' => $ship,
                 'margin' => $sb2cPercentage,
+                'pushed_by' => null,
+                'pushed_at' => null,
             ];
 
             // Add Shopify B2B - Same logic as B2C
@@ -1542,6 +1600,8 @@ class CvrMasterController extends Controller
                 'lp' => $lp,
                 'ship' => $ship,
                 'margin' => $sb2bMargin,
+                'pushed_by' => null,
+                'pushed_at' => null,
             ];
 
             // Fetch Macy data from macy_products table (using full SKU)
@@ -1590,6 +1650,8 @@ class CvrMasterController extends Controller
                 'lp' => $lp,
                 'ship' => $ship,
                 'margin' => $macyPercentage,
+                'pushed_by' => null,
+                'pushed_at' => null,
             ];
 
             // Fetch Reverb data from reverb_products table (using full SKU)
@@ -1644,6 +1706,8 @@ class CvrMasterController extends Controller
                 'lp' => $lp,
                 'ship' => $ship,
                 'margin' => $reverbPercentage,
+                'pushed_by' => null,
+                'pushed_at' => null,
             ];
 
             // Add Temu
@@ -1687,6 +1751,8 @@ class CvrMasterController extends Controller
                 'lp' => $lp,
                 'ship' => $temuShip,
                 'margin' => $temuMargin,
+                'pushed_by' => null,
+                'pushed_at' => null,
             ];
 
             // NOTE: Macy is added earlier as 'MACY' with enhanced suggested data (line ~1500)
@@ -1727,6 +1793,8 @@ class CvrMasterController extends Controller
                 'lp' => $lp,
                 'ship' => $ship,
                 'margin' => $bestbuyMargin,
+                'pushed_by' => null,
+                'pushed_at' => null,
             ];
 
             // Add Tiendamia
@@ -1766,6 +1834,8 @@ class CvrMasterController extends Controller
                 'lp' => $lp,
                 'ship' => $ship,
                 'margin' => $tiendamiaMargin,
+                'pushed_by' => null,
+                'pushed_at' => null,
             ];
 
             Log::info('Total marketplaces: ' . count($breakdownData));
@@ -1967,6 +2037,383 @@ class CvrMasterController extends Controller
         } catch (\Exception $e) {
             Log::error('Error saving suggested data: ' . $e->getMessage());
             return response()->json(['error' => 'Failed to save'], 500);
+        }
+    }
+
+    /**
+     * Push price to marketplace (Amazon or Doba) for a specific SKU
+     * Similar to OverallAmazonController::applyAmazonPrice
+     */
+    public function pushPriceToAmazon(Request $request)
+    {
+        try {
+            // Log incoming request for debugging
+            Log::info('CVR Master - Push price request received', [
+                'sku' => $request->input('sku'),
+                'price' => $request->input('price'),
+                'marketplace' => $request->input('marketplace'),
+                'all_input' => $request->all()
+            ]);
+
+            // Validate request
+            $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+                'sku' => 'required|string',
+                'price' => 'required|numeric|min:0.01|max:999999.99',
+                'marketplace' => 'required|string'
+            ]);
+
+            if ($validator->fails()) {
+                Log::warning('CVR Master - Validation failed', [
+                    'errors' => $validator->errors()->toArray()
+                ]);
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed: ' . $validator->errors()->first(),
+                    'errors' => $validator->errors()->toArray()
+                ], 400);
+            }
+
+            $sku = strtoupper(trim($request->input('sku')));
+            $price = round(floatval($request->input('price')), 2);
+            $marketplace = strtolower($request->input('marketplace'));
+
+            // Validate price
+            if ($price <= 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Price must be greater than 0.'
+                ], 400);
+            }
+
+            // Handle different marketplaces
+            if ($marketplace === 'amazon') {
+                return $this->pushToAmazon($sku, $price);
+            } elseif ($marketplace === 'doba') {
+                return $this->pushToDoba($sku, $price);
+            } elseif ($marketplace === 'walmart') {
+                return $this->pushToWalmart($sku, $price);
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Price push is only supported for Amazon, Doba, and Walmart. Received: $marketplace"
+                ], 400);
+            }
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::error('CVR Master - Validation exception', [
+                'errors' => $e->errors()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error: ' . $e->getMessage(),
+                'errors' => $e->errors()
+            ], 400);
+            
+        } catch (\Exception $e) {
+            Log::error('CVR Master - Exception in pushPriceToAmazon', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Push price to Amazon
+     */
+    private function pushToAmazon($sku, $price)
+    {
+        try {
+            // Push to Amazon using SP API
+            $service = new AmazonSpApiService();
+            $result = $service->updateAmazonPriceUS($sku, $price);
+
+            // Check if the response indicates errors
+            if (isset($result['errors']) && !empty($result['errors'])) {
+                // Save error status to amazon_data_view
+                $this->savePricePushStatus($sku, 'amazon', 'error', $price);
+                
+                Log::error('CVR Master - Amazon price push failed', [
+                    'sku' => $sku,
+                    'price' => $price,
+                    'errors' => $result['errors']
+                ]);
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to push price to Amazon.',
+                    'errors' => $result['errors']
+                ], 400);
+            }
+
+            // Save success status
+            $this->savePricePushStatus($sku, 'amazon', 'pushed', $price);
+            
+            Log::info('CVR Master - Amazon price push successful', [
+                'sku' => $sku,
+                'price' => $price
+            ]);
+            
+            return response()->json([
+                'success' => true,
+                'message' => "Price $" . number_format($price, 2) . " pushed to Amazon for SKU: $sku",
+                'result' => $result
+            ]);
+
+        } catch (\Exception $e) {
+            $this->savePricePushStatus($sku, 'amazon', 'error', $price);
+            
+            Log::error('CVR Master - Amazon push exception', [
+                'sku' => $sku,
+                'error' => $e->getMessage()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Amazon API error: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Push price to Doba
+     * Matches DobaController::pushPriceToDoba implementation
+     */
+    private function pushToDoba($sku, $price)
+    {
+        try {
+            // Get item_id from doba_metrics table
+            $dobaMetric = DobaMetric::where('sku', $sku)->first();
+            
+            if (!$dobaMetric || !$dobaMetric->item_id) {
+                $this->savePricePushStatus($sku, 'doba', 'error', $price);
+                
+                Log::warning('CVR Master - Doba SKU not found', [
+                    'sku' => $sku,
+                    'price' => $price
+                ]);
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => "Item ID not found for SKU: $sku. Please run Doba metrics fetch first.",
+                    'errors' => [['message' => 'Item ID not found for this SKU']]
+                ], 404);
+            }
+
+            $itemId = $dobaMetric->item_id;
+            $selfPickPrice = $dobaMetric->self_pick_price ?? null; // Get self_pick_price from metric
+            
+            // Push to Doba using API (matching DobaController implementation)
+            $dobaApiService = new DobaApiService();
+            $priceResult = $dobaApiService->updateItemPrice($itemId, $price, $selfPickPrice);
+
+            // Check if the response indicates errors
+            if (isset($priceResult['errors'])) {
+                // Save error status to doba_data_view
+                $this->savePricePushStatus($sku, 'doba', 'error', $price);
+                
+                Log::warning('CVR Master - Doba price push failed', [
+                    'sku' => $sku,
+                    'item_id' => $itemId,
+                    'price' => $price,
+                    'self_pick_price' => $selfPickPrice,
+                    'error' => $priceResult['errors']
+                ]);
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Price update failed: ' . $priceResult['errors'],
+                    'errors' => [['message' => 'Price update: ' . $priceResult['errors']]]
+                ], 400);
+            }
+
+            // Success - update the anticipated_income in DobaMetric as well
+            $dobaMetric->anticipated_income = $price;
+            if ($selfPickPrice !== null) {
+                $dobaMetric->self_pick_price = $selfPickPrice;
+            }
+            $dobaMetric->save();
+
+            // Save success status
+            $this->savePricePushStatus($sku, 'doba', 'pushed', $price);
+            
+            Log::info('CVR Master - Doba price push successful', [
+                'sku' => $sku,
+                'item_id' => $itemId,
+                'price' => $price,
+                'self_pick_price' => $selfPickPrice
+            ]);
+            
+            return response()->json([
+                'success' => true,
+                'message' => "Price $" . number_format($price, 2) . " pushed to Doba successfully for SKU: $sku",
+                'data' => [
+                    'price_update' => $priceResult
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            $this->savePricePushStatus($sku, 'doba', 'error', $price);
+            
+            Log::error('CVR Master - Doba push exception', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'API Exception: ' . $e->getMessage(),
+                'errors' => [['message' => 'API Exception: ' . $e->getMessage()]]
+            ], 500);
+        }
+    }
+
+    /**
+     * Push price to Walmart
+     * Matches PricingMasterViewsController::pushPricewalmart implementation
+     */
+    private function pushToWalmart($sku, $price)
+    {
+        try {
+            // Walmart uses SKU directly (no need to lookup item_id)
+            // Verify SKU exists in walmart_api_data table
+            $walmartSku = DB::connection('apicentral')
+                ->table('walmart_api_data')
+                ->where('sku', $sku)
+                ->value('sku');
+            
+            if (!$walmartSku) {
+                $this->savePricePushStatus($sku, 'walmart', 'error', $price);
+                
+                Log::warning('CVR Master - Walmart SKU not found', [
+                    'sku' => $sku,
+                    'price' => $price
+                ]);
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => "SKU: $sku not found in Walmart API data.",
+                    'errors' => [['message' => 'SKU not found in Walmart listings']]
+                ], 404);
+            }
+            
+            // Push to Walmart using API (matching PricingMasterViewsController)
+            $walmartService = new WalmartService();
+            $result = $walmartService->updatePrice($sku, $price);
+
+            // Check if the response indicates errors
+            if (isset($result['errors']) && !empty($result['errors'])) {
+                // Save error status to walmart_data_view
+                $this->savePricePushStatus($sku, 'walmart', 'error', $price);
+                
+                $reason = is_array($result['errors']) ? json_encode($result['errors']) : $result['errors'];
+                
+                Log::error('CVR Master - Walmart price push failed', [
+                    'sku' => $sku,
+                    'price' => $price,
+                    'error' => $reason
+                ]);
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Price update failed: ' . $reason,
+                    'errors' => [['message' => 'Price update: ' . $reason]]
+                ], 400);
+            }
+
+            // Save success status
+            $this->savePricePushStatus($sku, 'walmart', 'pushed', $price);
+            
+            Log::info('CVR Master - Walmart price push successful', [
+                'sku' => $sku,
+                'price' => $price
+            ]);
+            
+            return response()->json([
+                'success' => true,
+                'message' => "Price $" . number_format($price, 2) . " pushed to Walmart successfully for SKU: $sku",
+                'data' => $result
+            ]);
+
+        } catch (\Exception $e) {
+            $this->savePricePushStatus($sku, 'walmart', 'error', $price);
+            
+            Log::error('CVR Master - Walmart push exception', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Walmart API error: ' . $e->getMessage(),
+                'errors' => [['message' => 'API Exception: ' . $e->getMessage()]]
+            ], 500);
+        }
+    }
+
+    /**
+     * Save price push status to the appropriate data_view table
+     */
+    private function savePricePushStatus($sku, $marketplace, $status, $pushedPrice = null)
+    {
+        try {
+            $dataView = null;
+            
+            if ($marketplace === 'amazon') {
+                $dataView = AmazonDataView::firstOrNew(['sku' => $sku]);
+            } elseif ($marketplace === 'doba') {
+                $dataView = DobaDataView::firstOrNew(['sku' => $sku]);
+            } elseif ($marketplace === 'walmart') {
+                $dataView = WalmartDataView::firstOrNew(['sku' => $sku]);
+            }
+            
+            if ($dataView) {
+                // Decode value column safely
+                $existing = is_array($dataView->value)
+                    ? $dataView->value
+                    : (json_decode($dataView->value ?? '{}', true) ?? []);
+                
+                // Save status
+                $existing['SPRICE_STATUS'] = $status;
+                $existing['SPRICE_STATUS_UPDATED_AT'] = now()->toDateTimeString();
+                
+                // Save pushed by information
+                if (auth()->check()) {
+                    $existing['SPRICE_PUSHED_BY'] = auth()->user()->name ?? auth()->user()->email;
+                    $existing['SPRICE_PUSHED_BY_ID'] = auth()->id();
+                }
+                $existing['SPRICE_PUSHED_AT'] = now()->toDateTimeString();
+                
+                // Save the pushed price
+                if ($pushedPrice !== null) {
+                    $existing['SPRICE_PUSHED_VALUE'] = $pushedPrice;
+                }
+                
+                $dataView->value = $existing;
+                $dataView->save();
+            }
+            
+            Log::info('CVR Master - Price push status saved', [
+                'sku' => $sku,
+                'marketplace' => $marketplace,
+                'status' => $status,
+                'pushed_by' => auth()->check() ? auth()->user()->name : 'Unknown'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('CVR Master - Failed to save price push status', [
+                'sku' => $sku,
+                'marketplace' => $marketplace,
+                'status' => $status,
+                'error' => $e->getMessage()
+            ]);
         }
     }
 }
