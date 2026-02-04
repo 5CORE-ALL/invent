@@ -10,6 +10,7 @@ use App\Models\ADVMastersData;
 use App\Models\Shopifyb2cDataView;
 use Illuminate\Http\Request;
 use App\Services\GoogleAdsSbidService;
+use App\Services\GA4ApiService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -131,45 +132,82 @@ class GoogleAdsController extends Controller
     }
 
     public function googleShoppingUtilizedView(){
-        $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30)->format('Y-m-d');
-        $today = \Carbon\Carbon::now()->format('Y-m-d');
+        // Match Google Ads/GA4 range: last 30 days ending 2 days ago (e.g. Jan 5 – Feb 3) so we have complete data
+        $endDate = \Carbon\Carbon::now()->subDays(2)->format('Y-m-d');
+        $startDate = \Carbon\Carbon::now()->subDays(31)->format('Y-m-d');
 
-        $data = DB::table('google_ads_campaigns')
+        // Spend & Clicks: ENABLED SHOPPING only (matches Google Ads overview Cost which reflects active campaigns)
+        $dataSpend = DB::table('google_ads_campaigns')
             ->selectRaw('
                 date,
-                SUM(metrics_clicks) as clicks, 
-                SUM(metrics_cost_micros) / 1000000 as spend, 
-                SUM(ga4_sold_units) as orders, 
-                SUM(ga4_ad_sales) as sales
+                SUM(metrics_clicks) as clicks,
+                SUM(metrics_cost_micros) / 1000000 as spend
             ')
             ->where('advertising_channel_type', 'SHOPPING')
-            ->whereDate('date', '>=', $thirtyDaysAgo)
+            ->where('campaign_status', 'ENABLED')
+            ->whereBetween('date', [$startDate, $endDate])
             ->groupBy('date')
             ->orderBy('date', 'asc')
             ->get()
             ->keyBy('date');
 
-        // Fill in missing dates with zeros
+        // Sales & Orders: all SHOPPING. Prefer GA4 actual (match GA4 report); fallback to Google Ads only when no GA4 data in range
+        $dataSales = DB::table('google_ads_campaigns')
+            ->selectRaw('
+                date,
+                SUM(ga4_actual_revenue) as ga4_sales,
+                SUM(ga4_actual_sold_units) as ga4_orders,
+                SUM(ga4_ad_sales) as ad_sales,
+                SUM(ga4_sold_units) as ad_orders
+            ')
+            ->where('advertising_channel_type', 'SHOPPING')
+            ->whereBetween('date', [$startDate, $endDate])
+            ->groupBy('date')
+            ->orderBy('date', 'asc')
+            ->get()
+            ->keyBy('date');
+
+        $useGA4 = $dataSales->sum('ga4_sales') > 0 || $dataSales->sum('ga4_orders') > 0;
+
         $dates = [];
         $clicks = [];
         $spend = [];
         $orders = [];
         $sales = [];
 
-        for ($i = 30; $i >= 0; $i--) {
-            $date = \Carbon\Carbon::now()->subDays($i)->format('Y-m-d');
+        $start = \Carbon\Carbon::parse($startDate);
+        $end = \Carbon\Carbon::parse($endDate);
+        for ($d = $start->copy(); $d->lte($end); $d->addDay()) {
+            $date = $d->format('Y-m-d');
             $dates[] = $date;
-            
-            if (isset($data[$date])) {
-                $clicks[] = (int) $data[$date]->clicks;
-                $spend[] = (float) $data[$date]->spend;
-                $orders[] = (int) $data[$date]->orders;
-                $sales[] = (float) $data[$date]->sales;
+
+            $rowSpend = $dataSpend[$date] ?? null;
+            $rowSales = $dataSales[$date] ?? null;
+
+            $clicks[] = $rowSpend ? (int) $rowSpend->clicks : 0;
+            $spend[] = $rowSpend ? (float) $rowSpend->spend : 0.0;
+
+            if ($rowSales) {
+                $orders[] = (int) ($useGA4 ? $rowSales->ga4_orders : $rowSales->ad_orders);
+                $sales[] = (float) ($useGA4 ? $rowSales->ga4_sales : $rowSales->ad_sales);
             } else {
-                $clicks[] = 0;
-                $spend[] = 0.0;
                 $orders[] = 0;
                 $sales[] = 0.0;
+            }
+        }
+
+        // If GA4 total is available for this range, scale sales/orders so card matches GA4 report
+        $ga4Total = app(GA4ApiService::class)->getTotalPurchaseMetrics($startDate, $endDate);
+        if ($ga4Total && ($ga4Total['revenue'] > 0 || $ga4Total['purchases'] > 0)) {
+            $salesSum = array_sum($sales);
+            $ordersSum = array_sum($orders);
+            if ($salesSum > 0 && $ga4Total['revenue'] > 0) {
+                $ratio = $ga4Total['revenue'] / $salesSum;
+                $sales = array_map(fn($v) => round($v * $ratio, 2), $sales);
+            }
+            if ($ordersSum > 0 && $ga4Total['purchases'] > 0) {
+                $ratio = $ga4Total['purchases'] / $ordersSum;
+                $orders = array_map(fn($v) => (int) round($v * $ratio), $orders);
             }
         }
 
@@ -1212,7 +1250,24 @@ class GoogleAdsController extends Controller
     // Chart filter methods
     public function filterGoogleShoppingChart(Request $request)
     {
-        return $this->getChartData($request, ['advertising_channel_type' => 'SHOPPING']);
+        // Spend & Clicks: ENABLED SHOPPING only (match Google Ads Cost). Sales & Orders: all SHOPPING (match GA4).
+        $responseSpend = $this->getChartData($request, ['advertising_channel_type' => 'SHOPPING', 'campaign_status' => 'ENABLED']);
+        $responseSales = $this->getChartData($request, ['advertising_channel_type' => 'SHOPPING']);
+        $dataSpend = json_decode($responseSpend->getContent(), true);
+        $dataSales = json_decode($responseSales->getContent(), true);
+        return response()->json([
+            'dates' => $dataSpend['dates'],
+            'clicks' => $dataSpend['clicks'],
+            'spend' => $dataSpend['spend'],
+            'orders' => $dataSales['orders'],
+            'sales' => $dataSales['sales'],
+            'totals' => [
+                'clicks' => $dataSpend['totals']['clicks'],
+                'spend' => $dataSpend['totals']['spend'],
+                'orders' => $dataSales['totals']['orders'],
+                'sales' => $dataSales['totals']['sales'],
+            ]
+        ]);
     }
 
     public function filterGoogleShoppingRunningChart(Request $request)
@@ -1245,20 +1300,21 @@ class GoogleAdsController extends Controller
         $startDate = $request->input('startDate');
         $endDate = $request->input('endDate');
 
+        // Default: last 30 days ending 2 days ago (match Google Jan 5 – Feb 3, data complete)
         if (!$startDate || !$endDate) {
-            $endDate = \Carbon\Carbon::now()->format('Y-m-d');
-            $startDate = \Carbon\Carbon::now()->subDays(30)->format('Y-m-d');
+            $endDate = \Carbon\Carbon::now()->subDays(2)->format('Y-m-d');
+            $startDate = \Carbon\Carbon::now()->subDays(31)->format('Y-m-d');
         }
 
         $query = DB::table('google_ads_campaigns')
             ->selectRaw('
                 date,
-                SUM(metrics_clicks) as clicks, 
+                SUM(metrics_clicks) as clicks,
                 SUM(metrics_cost_micros) / 1000000 as spend,
-                SUM(ga4_actual_sold_units) as ga4_actual_orders,
-                SUM(ga4_actual_revenue) as ga4_actual_sales,
-                SUM(ga4_sold_units) as ga4_orders, 
-                SUM(ga4_ad_sales) as ga4_sales
+                SUM(ga4_actual_revenue) as ga4_sales,
+                SUM(ga4_actual_sold_units) as ga4_orders,
+                SUM(ga4_ad_sales) as ad_sales,
+                SUM(ga4_sold_units) as ad_orders
             ')
             ->whereDate('date', '>=', $startDate)
             ->whereDate('date', '<=', $endDate);
@@ -1272,21 +1328,7 @@ class GoogleAdsController extends Controller
             ->get()
             ->keyBy('date');
 
-        // Check if GA4 actual data exists for any day in the range
-        $totalGA4ActualSales = $data->sum('ga4_actual_sales');
-        $totalGA4ActualOrders = $data->sum('ga4_actual_orders');
-        $useGA4Actual = ($totalGA4ActualSales > 0 || $totalGA4ActualOrders > 0);
-
-        // Process data: Use GA4 actual data if available for ANY day, otherwise fallback to Google Ads data
-        $data = $data->map(function($item) use ($useGA4Actual) {
-            return (object) [
-                'date' => $item->date,
-                'clicks' => $item->clicks,
-                'spend' => $item->spend,
-                'orders' => $useGA4Actual ? $item->ga4_actual_orders : $item->ga4_orders,
-                'sales' => $useGA4Actual ? $item->ga4_actual_sales : $item->ga4_sales,
-            ];
-        })->keyBy('date');
+        $useGA4 = $data->sum('ga4_sales') > 0 || $data->sum('ga4_orders') > 0;
 
         $dates = [];
         $clicks = [];
@@ -1302,15 +1344,31 @@ class GoogleAdsController extends Controller
             $dates[] = $dateStr;
             
             if (isset($data[$dateStr])) {
-                $clicks[] = (int) $data[$dateStr]->clicks;
-                $spend[] = (float) $data[$dateStr]->spend;
-                $orders[] = (int) $data[$dateStr]->orders;
-                $sales[] = (float) $data[$dateStr]->sales;
+                $row = $data[$dateStr];
+                $clicks[] = (int) $row->clicks;
+                $spend[] = (float) $row->spend;
+                $orders[] = (int) ($useGA4 ? $row->ga4_orders : $row->ad_orders);
+                $sales[] = (float) ($useGA4 ? $row->ga4_sales : $row->ad_sales);
             } else {
                 $clicks[] = 0;
                 $spend[] = 0.0;
                 $orders[] = 0;
                 $sales[] = 0.0;
+            }
+        }
+
+        // If GA4 total is available, scale sales/orders so totals match GA4 report
+        $ga4Total = app(GA4ApiService::class)->getTotalPurchaseMetrics($startDate, $endDate);
+        if ($ga4Total && ($ga4Total['revenue'] > 0 || $ga4Total['purchases'] > 0)) {
+            $salesSum = array_sum($sales);
+            $ordersSum = array_sum($orders);
+            if ($salesSum > 0 && $ga4Total['revenue'] > 0) {
+                $ratio = $ga4Total['revenue'] / $salesSum;
+                $sales = array_map(fn($v) => round($v * $ratio, 2), $sales);
+            }
+            if ($ordersSum > 0 && $ga4Total['purchases'] > 0) {
+                $ratio = $ga4Total['purchases'] / $ordersSum;
+                $orders = array_map(fn($v) => (int) round($v * $ratio), $orders);
             }
         }
 

@@ -3756,7 +3756,8 @@
                 type: "GET",
                 data: {
                     startDate,
-                    endDate
+                    endDate,
+                    enabled_only: 1
                 },
                 success: function(response) {
                     const formattedDates = response.dates.map(d => moment(d).format('MMM DD'));

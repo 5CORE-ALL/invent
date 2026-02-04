@@ -166,6 +166,68 @@ class GA4ApiService
     }
 
     /**
+     * Fetch total purchase revenue and count from GA4 for a date range (Google Ads attributed only).
+     * Excludes "(not set)" so we match GA4 report "Total revenue" when filtered by Google Ads / campaign.
+     *
+     * @param string $startDate YYYY-MM-DD
+     * @param string $endDate YYYY-MM-DD
+     * @return array|null ['revenue' => float, 'purchases' => int] or null if not configured/fails
+     */
+    public function getTotalPurchaseMetrics($startDate, $endDate)
+    {
+        if (!$this->accessToken || !$this->propertyId) {
+            return null;
+        }
+
+        try {
+            $url = "https://analyticsdata.googleapis.com/v1beta/properties/{$this->propertyId}:runReport";
+            // Include sessionGoogleAdsCampaignName so we can exclude "(not set)" and sum only Google Ads attributed
+            $requestBody = [
+                'dateRanges' => [['startDate' => $startDate, 'endDate' => $endDate]],
+                'dimensions' => [
+                    ['name' => 'sessionGoogleAdsCampaignName'],
+                    ['name' => 'eventName'],
+                ],
+                'metrics' => [
+                    ['name' => 'purchaseRevenue'],
+                    ['name' => 'eventCount'],
+                ],
+                'dimensionFilter' => [
+                    'filter' => [
+                        'fieldName' => 'eventName',
+                        'stringFilter' => ['matchType' => 'EXACT', 'value' => 'purchase'],
+                    ]
+                ],
+            ];
+
+            $response = Http::timeout(30)
+                ->withToken($this->accessToken)
+                ->withHeaders(['Content-Type' => 'application/json'])
+                ->post($url, $requestBody);
+
+            if (!$response->successful() || !isset($response->json()['rows'])) {
+                return null;
+            }
+
+            $revenue = 0;
+            $purchases = 0;
+            foreach ($response->json()['rows'] as $row) {
+                $campaignName = $row['dimensionValues'][0]['value'] ?? '';
+                if ($campaignName === '(not set)' || $campaignName === '') {
+                    continue;
+                }
+                $revenue += floatval($row['metricValues'][0]['value'] ?? 0);
+                $purchases += (int) ($row['metricValues'][1]['value'] ?? 0);
+            }
+
+            return ['revenue' => $revenue, 'purchases' => $purchases];
+        } catch (\Exception $e) {
+            Log::error('GA4 getTotalPurchaseMetrics failed: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
      * Fetch campaign revenue and purchases from GA4 (aggregated)
      * 
      * @param string $startDate YYYY-MM-DD
