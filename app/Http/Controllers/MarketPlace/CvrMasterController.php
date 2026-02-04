@@ -1534,11 +1534,24 @@ class CvrMasterController extends Controller
             // Get suggested data
             $sb2cDataView = Shopifyb2cDataView::where('sku', $fullSku)->first();
             $sb2cSuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            $sb2cPushedBy = null;
+            $sb2cPushedAt = null;
             if ($sb2cDataView) {
                 $val = is_array($sb2cDataView->value) ? $sb2cDataView->value : json_decode($sb2cDataView->value, true);
                 if (is_array($val)) {
                     $sb2cSuggested = ['sprice' => floatval($val['SPRICE'] ?? 0), 'sgpft' => floatval($val['SGPFT'] ?? 0),
                                       'sroi' => floatval($val['SROI'] ?? 0), 'spft' => floatval($val['SPFT'] ?? 0)];
+                    // Get pushed by information
+                    $sb2cPushedBy = $val['SPRICE_PUSHED_BY'] ?? null;
+                    $sb2cPushedAt = $val['SPRICE_PUSHED_AT'] ?? null;
+                    // Format pushed at timestamp
+                    if ($sb2cPushedAt) {
+                        try {
+                            $sb2cPushedAt = Carbon::parse($sb2cPushedAt)->format('M d, Y h:i A');
+                        } catch (\Exception $e) {
+                            $sb2cPushedAt = null;
+                        }
+                    }
                 }
             }
             
@@ -1559,8 +1572,8 @@ class CvrMasterController extends Controller
                 'lp' => $lp,
                 'ship' => $ship,
                 'margin' => $sb2cPercentage,
-                'pushed_by' => null,
-                'pushed_at' => null,
+                'pushed_by' => $sb2cPushedBy,
+                'pushed_at' => $sb2cPushedAt,
             ];
 
             // Add Shopify B2B - Same logic as B2C
@@ -1575,11 +1588,24 @@ class CvrMasterController extends Controller
             
             $sb2bDataView = ShopifyB2BDataView::where('sku', $fullSku)->first();
             $sb2bSuggested = ['sprice' => 0, 'sgpft' => 0, 'sroi' => 0, 'spft' => 0];
+            $sb2bPushedBy = null;
+            $sb2bPushedAt = null;
             if ($sb2bDataView) {
                 $val = is_array($sb2bDataView->value) ? $sb2bDataView->value : json_decode($sb2bDataView->value, true);
                 if (is_array($val)) {
                     $sb2bSuggested = ['sprice' => floatval($val['SPRICE'] ?? 0), 'sgpft' => floatval($val['SGPFT'] ?? 0),
                                       'sroi' => floatval($val['SROI'] ?? 0), 'spft' => floatval($val['SPFT'] ?? 0)];
+                    // Get pushed by information
+                    $sb2bPushedBy = $val['SPRICE_PUSHED_BY'] ?? null;
+                    $sb2bPushedAt = $val['SPRICE_PUSHED_AT'] ?? null;
+                    // Format pushed at timestamp
+                    if ($sb2bPushedAt) {
+                        try {
+                            $sb2bPushedAt = Carbon::parse($sb2bPushedAt)->format('M d, Y h:i A');
+                        } catch (\Exception $e) {
+                            $sb2bPushedAt = null;
+                        }
+                    }
                 }
             }
             
@@ -1600,8 +1626,8 @@ class CvrMasterController extends Controller
                 'lp' => $lp,
                 'ship' => $ship,
                 'margin' => $sb2bMargin,
-                'pushed_by' => null,
-                'pushed_at' => null,
+                'pushed_by' => $sb2bPushedBy,
+                'pushed_at' => $sb2bPushedAt,
             ];
 
             // Fetch Macy data from macy_products table (using full SKU)
@@ -2093,10 +2119,14 @@ class CvrMasterController extends Controller
                 return $this->pushToDoba($sku, $price);
             } elseif ($marketplace === 'walmart') {
                 return $this->pushToWalmart($sku, $price);
+            } elseif ($marketplace === 'sb2c' || $marketplace === 'shopifyb2c') {
+                return $this->pushToShopifyB2C($sku, $price);
+            } elseif ($marketplace === 'sb2b' || $marketplace === 'shopifyb2b') {
+                return $this->pushToShopifyB2B($sku, $price);
             } else {
                 return response()->json([
                     'success' => false,
-                    'message' => "Price push is only supported for Amazon, Doba, and Walmart. Received: $marketplace"
+                    'message' => "Price push is only supported for Amazon, Doba, Walmart, Shopify B2C, and Shopify B2B. Received: $marketplace"
                 ], 400);
             }
 
@@ -2360,6 +2390,218 @@ class CvrMasterController extends Controller
     }
 
     /**
+     * Push price to Shopify B2C
+     * Matches PricingMasterViewsController Shopify implementation
+     */
+    private function pushToShopifyB2C($sku, $price)
+    {
+        try {
+            // Get variant_id from shopify_skus table
+            $shopifyRecord = ShopifySku::where('sku', $sku)->first();
+            
+            if (!$shopifyRecord) {
+                $this->savePricePushStatus($sku, 'shopifyb2c', 'error', $price);
+                
+                Log::error('CVR Master - Shopify B2C SKU not found', [
+                    'sku' => $sku
+                ]);
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => "SKU: $sku not found in Shopify.",
+                    'errors' => [['message' => 'SKU not found in Shopify listings']]
+                ], 404);
+            }
+
+            $variantId = $shopifyRecord->variant_id;
+            
+            if (!$variantId) {
+                $this->savePricePushStatus($sku, 'shopifyb2c', 'error', $price);
+                
+                Log::error('CVR Master - Shopify B2C Variant ID is null', [
+                    'sku' => $sku,
+                    'shopify_record' => $shopifyRecord
+                ]);
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => "Variant ID not found for SKU: $sku",
+                    'errors' => [['message' => 'Variant ID is null']]
+                ], 404);
+            }
+            
+            Log::info('CVR Master - Calling Shopify API to update B2C price', [
+                'sku' => $sku,
+                'variant_id' => $variantId,
+                'price' => $price
+            ]);
+
+            // Push to Shopify using API
+            $result = \App\Http\Controllers\UpdatePriceApiController::updateShopifyVariantPrice($variantId, $price);
+
+            if ($result['status'] === 'success') {
+                // Update local database after successful API push
+                try {
+                    DB::beginTransaction();
+                    
+                    $verifiedPrice = $result['verified_price'] ?? $price;
+                    $shopifyRecord->price = $verifiedPrice;
+                    $shopifyRecord->price_updated_manually_at = now();
+                    $shopifyRecord->save();
+                    
+                    DB::commit();
+                    
+                    // Save success status
+                    $this->savePricePushStatus($sku, 'shopifyb2c', 'pushed', $verifiedPrice);
+                    
+                    Log::info('CVR Master - Shopify B2C price push successful', [
+                        'sku' => $sku,
+                        'variant_id' => $variantId,
+                        'price' => $verifiedPrice
+                    ]);
+                    
+                    return response()->json([
+                        'success' => true,
+                        'message' => "Price $" . number_format($verifiedPrice, 2) . " pushed to Shopify B2C successfully for SKU: $sku",
+                        'data' => $result
+                    ]);
+                    
+                } catch (\Exception $e) {
+                    DB::rollBack();
+                    Log::error('CVR Master - Shopify B2C local DB update failed', [
+                        'sku' => $sku,
+                        'error' => $e->getMessage()
+                    ]);
+                    // Still return success since API worked
+                    $this->savePricePushStatus($sku, 'shopifyb2c', 'pushed', $price);
+                    
+                    return response()->json([
+                        'success' => true,
+                        'message' => "Price pushed to Shopify but local update failed",
+                        'data' => $result
+                    ]);
+                }
+            } else {
+                $reason = $result['message'] ?? 'API error';
+                
+                $this->savePricePushStatus($sku, 'shopifyb2c', 'error', $price);
+                
+                Log::error('CVR Master - Shopify B2C price push failed', [
+                    'sku' => $sku,
+                    'variant_id' => $variantId,
+                    'price' => $price,
+                    'reason' => $reason,
+                    'result' => $result
+                ]);
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Shopify B2C price update failed: ' . $reason,
+                    'errors' => [['message' => $reason]]
+                ], 400);
+            }
+
+        } catch (\Exception $e) {
+            $this->savePricePushStatus($sku, 'shopifyb2c', 'error', $price);
+            
+            Log::error('CVR Master - Shopify B2C push exception', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Shopify B2C API error: ' . $e->getMessage(),
+                'errors' => [['message' => 'API Exception: ' . $e->getMessage()]]
+            ], 500);
+        }
+    }
+
+    /**
+     * Push price to Shopify B2B
+     * Note: Shopify B2B pricing may require catalog-specific API (Shopify Plus)
+     * For now, updates local b2b_price field
+     */
+    private function pushToShopifyB2B($sku, $price)
+    {
+        try {
+            // Get record from shopify_skus table
+            $shopifyRecord = ShopifySku::where('sku', $sku)->first();
+            
+            if (!$shopifyRecord) {
+                $this->savePricePushStatus($sku, 'shopifyb2b', 'error', $price);
+                
+                Log::error('CVR Master - Shopify B2B SKU not found', [
+                    'sku' => $sku
+                ]);
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => "SKU: $sku not found in Shopify.",
+                    'errors' => [['message' => 'SKU not found in Shopify listings']]
+                ], 404);
+            }
+            
+            // Update local b2b_price field
+            // Note: Full B2B catalog API integration requires Shopify Plus
+            try {
+                DB::beginTransaction();
+                
+                $shopifyRecord->b2b_price = $price;
+                $shopifyRecord->save();
+                
+                DB::commit();
+                
+                // Save success status
+                $this->savePricePushStatus($sku, 'shopifyb2b', 'pushed', $price);
+                
+                Log::info('CVR Master - Shopify B2B price updated (local)', [
+                    'sku' => $sku,
+                    'b2b_price' => $price
+                ]);
+                
+                return response()->json([
+                    'success' => true,
+                    'message' => "B2B Price $" . number_format($price, 2) . " updated locally for SKU: $sku",
+                    'note' => 'B2B price stored locally. Catalog API push requires Shopify Plus.'
+                ]);
+                
+            } catch (\Exception $e) {
+                DB::rollBack();
+                
+                $this->savePricePushStatus($sku, 'shopifyb2b', 'error', $price);
+                
+                Log::error('CVR Master - Shopify B2B local DB update failed', [
+                    'sku' => $sku,
+                    'error' => $e->getMessage()
+                ]);
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to update B2B price: ' . $e->getMessage(),
+                    'errors' => [['message' => 'DB update failed']]
+                ], 500);
+            }
+
+        } catch (\Exception $e) {
+            $this->savePricePushStatus($sku, 'shopifyb2b', 'error', $price);
+            
+            Log::error('CVR Master - Shopify B2B push exception', [
+                'sku' => $sku,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'success' => false,
+                'message' => 'Shopify B2B error: ' . $e->getMessage(),
+                'errors' => [['message' => 'Exception: ' . $e->getMessage()]]
+            ], 500);
+        }
+    }
+
+    /**
      * Save price push status to the appropriate data_view table
      */
     private function savePricePushStatus($sku, $marketplace, $status, $pushedPrice = null)
@@ -2373,6 +2615,10 @@ class CvrMasterController extends Controller
                 $dataView = DobaDataView::firstOrNew(['sku' => $sku]);
             } elseif ($marketplace === 'walmart') {
                 $dataView = WalmartDataView::firstOrNew(['sku' => $sku]);
+            } elseif ($marketplace === 'shopifyb2c' || $marketplace === 'sb2c') {
+                $dataView = Shopifyb2cDataView::firstOrNew(['sku' => $sku]);
+            } elseif ($marketplace === 'shopifyb2b' || $marketplace === 'sb2b') {
+                $dataView = ShopifyB2BDataView::firstOrNew(['sku' => $sku]);
             }
             
             if ($dataView) {
