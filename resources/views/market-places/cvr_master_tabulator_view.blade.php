@@ -522,7 +522,7 @@
                 html += `
                     <tr class="${rowClass}">
                         <td class="${textClass}">${item.marketplace || '-'}</td>
-                        <td class="${textClass}">${item.sku || '-'}</td>
+                        <td style="width: 250px;" class="${textClass}">${item.sku || '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? '$' + parseFloat(item.price || 0).toFixed(2) : '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? views.toLocaleString() : '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? l30 : '-'}</td>
