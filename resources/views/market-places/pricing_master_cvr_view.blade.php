@@ -169,6 +169,18 @@
         .pushed-by-info .text-muted {
             font-size: 10px;
         }
+
+        /* Modal width - 95% of screen */
+        .modal-xxl {
+            max-width: 90% !important;
+        }
+
+        /* SKU column - prevent wrapping */
+        #ovl30DetailsModal table td:nth-child(2),
+        #ovl30DetailsModal table th:nth-child(2) {
+            white-space: nowrap !important;
+            min-width: 280px !important;
+        }
     </style>
 @endsection
 
@@ -224,7 +236,7 @@
 
     <!-- OV L30 Details Modal -->
     <div class="modal fade" id="ovl30DetailsModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-dialog modal-xxl modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header" style="background-color: #17a2b8;">
                     <h5 class="modal-title text-white">
@@ -601,14 +613,14 @@
                     }
                 }
                 
-                // Determine if upload button should be shown (Amazon, Doba, and Walmart)
-                const canPushPrice = ['amazon', 'doba', 'walmart'].includes((item.marketplace || '').toLowerCase()) && isListed;
+                // Determine if upload button should be shown (Amazon, Doba, Walmart, Shopify B2C, Shopify B2B)
+                const canPushPrice = ['amazon', 'doba', 'walmart', 'sb2c', 'sb2b'].includes((item.marketplace || '').toLowerCase()) && isListed;
                 
                 html += `
                     <tr class="${rowClass}" data-marketplace="${item.marketplace}" data-sku="${item.sku}" 
                         data-lp="${lp}" data-ship="${ship}" data-ad="${ad}" data-margin="${margin}" data-l30="${l30}">
                         <td class="${textClass}">${item.marketplace || '-'}</td>
-                        <td class="${textClass}">${item.sku || '-'}</td>
+                        <td class="${textClass}" style="white-space: nowrap; min-width: 250px;">${item.sku || '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? '$' + parseFloat(item.price || 0).toFixed(2) : '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? views.toLocaleString() : '-'}</td>
                         <td class="text-end ${textClass}">${isListed ? l30 : '-'}</td>
