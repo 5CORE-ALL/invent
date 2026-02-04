@@ -109,7 +109,8 @@ class UpdateShoppingBudgetCronCommand extends Command
                 'budget_amount_micros',
                 'date',
                 'metrics_cost_micros',
-                'ga4_ad_sales'
+                'ga4_ad_sales',
+                'ga4_actual_revenue'
             )
             ->where('advertising_channel_type', 'SHOPPING')
             ->where('campaign_status', '!=', 'ARCHIVED')
@@ -240,7 +241,9 @@ class UpdateShoppingBudgetCronCommand extends Command
             });
 
             $totalSpend = $campaignRanges->sum('metrics_cost_micros') / 1000000; // Convert to dollars
-            $totalSales = $campaignRanges->sum('ga4_ad_sales'); // Already in dollars
+            // Use same L30 sales as frontend (aggregateMetricsByRange): prefer GA4 actual revenue when available
+            $totalGA4ActualSales = $campaignRanges->sum('ga4_actual_revenue');
+            $totalSales = ($totalGA4ActualSales > 0) ? $totalGA4ActualSales : $campaignRanges->sum('ga4_ad_sales');
             
             // Calculate ACOS: (Spend / Sales) * 100
             // If sales = 0 but spend > 0, ACOS should be 100% (matching frontend logic)
