@@ -90,6 +90,11 @@
                                 <i class="ri-task-line me-2"></i>Task Manager
                             </a>
                         </li>
+                        <li>
+                            <a href="{{ url('tasks/deleted') }}">
+                                <i class="ri-delete-bin-line me-2"></i>Deleted Tasks
+                            </a>
+                        </li>
                     </ul>
                 </div>
             </li>

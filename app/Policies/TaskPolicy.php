@@ -81,12 +81,7 @@ class TaskPolicy
      */
     public function delete(User $user, Task $task): bool
     {
-        // Admin can delete all tasks
-        if ($this->isAdmin($user)) {
-            return true;
-        }
-
-        // User can delete only if they are the assignor (task creator) - old table uses emails
+        // Only the assignor (task creator) can delete - even admins cannot delete unless they are the assignor
         return $task->assignor === $user->email;
     }
 

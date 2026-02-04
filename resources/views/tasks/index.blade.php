@@ -626,11 +626,13 @@
                                         <i class="mdi mdi-robot me-2"></i> Automated Tasks
                                     </a>
                                     
-                                    @if($isAdmin)
+                                    <a href="{{ route('tasks.deleted') }}" class="btn btn-secondary ms-2">
+                                        <i class="mdi mdi-delete-forever me-2"></i> Deletion Record
+                                    </a>
+                                    
                                     <button type="button" class="btn btn-info ms-2" id="bulk-actions-btn">
                                         <i class="mdi mdi-format-list-checks me-2"></i> Bulk Actions
                                     </button>
-                                    @endif
                                 </div>
                                 
                                 <div>
@@ -869,7 +871,9 @@
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-delete-btn">
                         <i class="mdi mdi-delete text-danger me-2"></i>
                         <strong>Delete Selected Tasks</strong>
+                        <small class="d-block text-muted">You can only delete tasks you created</small>
                     </a>
+                    @if($isAdmin)
                     <a href="#" class="list-group-item list-group-item-action" id="bulk-priority-btn">
                         <i class="mdi mdi-flag text-warning me-2"></i>
                         <strong>Change Priority</strong>
@@ -886,6 +890,7 @@
                         <i class="mdi mdi-clock-outline text-primary me-2"></i>
                         <strong>Update ETC</strong>
                     </a>
+                    @endif
                 </div>
             </div>
             <div class="modal-footer">
@@ -982,7 +987,7 @@
 
             // Initialize Tabulator
             var table = new Tabulator("#tasks-table", {
-                selectable: isAdmin,
+                selectable: true, // All users can select rows for bulk actions
                 ajaxURL: "{{ route('tasks.data') }}",
                 ajaxParams: {},
                 ajaxContentType: "json",
@@ -1019,19 +1024,17 @@
                 columns: (function() {
                     var cols = [];
                     
-                    // Add checkbox column only for admin
-                    if (isAdmin) {
-                        cols.push({
-                            formatter: "rowSelection", 
-                            titleFormatter: "rowSelection", 
-                            hozAlign: "center", 
-                            headerSort: false, 
-                            width: 60,
-                            cellClick: function(e, cell) {
-                                cell.getRow().toggleSelect();
-                            }
-                        });
-                    }
+                    // Add checkbox column for all users (for bulk delete of own tasks)
+                    cols.push({
+                        formatter: "rowSelection", 
+                        titleFormatter: "rowSelection", 
+                        hozAlign: "center", 
+                        headerSort: false, 
+                        width: 60,
+                        cellClick: function(e, cell) {
+                            cell.getRow().toggleSelect();
+                        }
+                    });
                     
                     // Column Order: GROUP, TASK, ASSIGNOR, ASSIGNEE, TID, ETC, ATC, STATUS, PRIORITY, IMAGE, LINKS, ACTION
                     
@@ -1297,7 +1300,7 @@
                             
                             // Determine permissions
                             var canEdit = isAdmin || assignorId === currentUserId;
-                            var canDelete = isAdmin || assignorId === currentUserId;
+                            var canDelete = assignorId === currentUserId; // Only assignor can delete, not even admin
                             var canView = isAdmin || assignorId === currentUserId || assigneeId === currentUserId;
                             
                             var buttons = '';
