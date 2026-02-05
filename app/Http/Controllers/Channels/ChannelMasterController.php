@@ -6341,4 +6341,316 @@ class ChannelMasterController extends Controller
         }
     }
 
+    /**
+     * Get daily ad metrics chart data for breakdown columns (KW, PT, HL, PMT, SHOPPING, SERP)
+     * Returns last 30 days of daily data for the specified channel and metric type.
+     * Daily data is only available for: Amazon, eBay 1/2/3, Google Ads (Shopify B2C)
+     */
+    public function getAdBreakdownChartData(Request $request)
+    {
+        try {
+            $channel = strtolower(trim($request->input('channel', '')));
+            $adType = strtolower(trim($request->input('ad_type', ''))); // kw, pt, hl, pmt, shopping, serp
+            $metric = strtolower(trim($request->input('metric', 'spend'))); // spend, clicks, sales, sold
+
+            if (!$channel || !$adType) {
+                return response()->json(['success' => false, 'message' => 'Channel and ad_type are required'], 400);
+            }
+
+            // Get date filter from request or use defaults
+            $inputStartDate = $request->input('start_date');
+            $inputEndDate = $request->input('end_date');
+            
+            // Rolling 30-day calculation: For each date, show sum of last 30 days
+            if ($inputStartDate && $inputEndDate) {
+                $chartStartDate = Carbon::parse($inputStartDate);
+                $chartEndDate = Carbon::parse($inputEndDate);
+            } else {
+                $chartEndDate = Carbon::today()->subDays(2);   // Last date on chart (e.g., Feb 4 if today is Feb 6)
+                $chartStartDate = Carbon::today()->subDays(31); // First date on chart (e.g., Jan 6 for 30 days)
+            }
+            // Need data from 30 days before chart start for rolling calc
+            $dataStartDate = $chartStartDate->copy()->subDays(30);
+            
+            // Fetch ALL daily data for extended range
+            $dailyData = [];
+            
+            // Determine column to sum based on metric
+            $spendCol = 'spend';
+            $clicksCol = 'clicks';
+            $salesCol = 'sales30d';
+            $soldCol = 'purchases1d';
+
+            // Fetch daily data based on channel and ad type
+            if ($channel === 'amazon' || $channel === 'amazonfba') {
+                $isFba = $channel === 'amazonfba';
+                
+                if ($adType === 'kw') {
+                    $query = DB::table('amazon_sp_campaign_reports')
+                        ->whereNotNull('report_date_range')
+                        ->whereBetween('report_date_range', [$dataStartDate->format('Y-m-d'), $chartEndDate->format('Y-m-d')])
+                        ->whereNotIn('report_date_range', ['L60', 'L30', 'L15', 'L7', 'L1'])
+                        ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')");
+                    
+                    if ($isFba) {
+                        $query->whereRaw("campaignName LIKE '%FBA'")->whereRaw("campaignName NOT LIKE '%FBA PT%'")->whereRaw("campaignName NOT LIKE '%FBA PT.%'");
+                    } else {
+                        $query->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'");
+                    }
+                    
+                    $valueCol = match($metric) { 'clicks' => $clicksCol, 'sales' => $salesCol, 'sold' => $soldCol, default => $spendCol };
+                    $rows = $query->selectRaw("report_date_range as date, SUM({$valueCol}) as val")->groupBy('report_date_range')->get();
+                    
+                } elseif ($adType === 'pt') {
+                    $query = DB::table('amazon_sp_campaign_reports')
+                        ->whereNotNull('report_date_range')
+                        ->whereBetween('report_date_range', [$dataStartDate->format('Y-m-d'), $chartEndDate->format('Y-m-d')])
+                        ->whereNotIn('report_date_range', ['L60', 'L30', 'L15', 'L7', 'L1'])
+                        ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')");
+                    
+                    if ($isFba) {
+                        $query->where(fn($q) => $q->whereRaw("campaignName LIKE '%FBA PT'")->orWhereRaw("campaignName LIKE '%FBA PT.'"));
+                    } else {
+                        $query->where(fn($q) => $q->whereRaw("campaignName LIKE '%PT'")->orWhereRaw("campaignName LIKE '%PT.'"))
+                              ->whereRaw("campaignName NOT LIKE '%FBA PT%'")->whereRaw("campaignName NOT LIKE '%FBA PT.%'");
+                    }
+                    
+                    $valueCol = match($metric) { 'clicks' => $clicksCol, 'sales' => $salesCol, 'sold' => $soldCol, default => $spendCol };
+                    $rows = $query->selectRaw("report_date_range as date, SUM({$valueCol}) as val")->groupBy('report_date_range')->get();
+                    
+                } elseif ($adType === 'hl' && !$isFba) {
+                    $valueCol = match($metric) { 'clicks' => 'clicks', 'sales' => 'sales', 'sold' => 'purchases', default => 'cost' };
+                    $rows = DB::table('amazon_sb_campaign_reports')
+                        ->whereNotNull('report_date_range')
+                        ->whereBetween('report_date_range', [$dataStartDate->format('Y-m-d'), $chartEndDate->format('Y-m-d')])
+                        ->whereNotIn('report_date_range', ['L60', 'L30', 'L15', 'L7', 'L1'])
+                        ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
+                        ->selectRaw("report_date_range as date, SUM({$valueCol}) as val")
+                        ->groupBy('report_date_range')
+                        ->get();
+                } else {
+                    $rows = collect();
+                }
+                
+            } elseif (in_array($channel, ['ebay', 'ebaytwo', 'ebaythree'])) {
+                $kwTable = match ($channel) { 'ebay' => 'ebay_priority_reports', 'ebaytwo' => 'ebay_2_priority_reports', 'ebaythree' => 'ebay_3_priority_reports', default => null };
+                $pmtTable = match ($channel) { 'ebay' => 'ebay_general_reports', 'ebaytwo' => 'ebay_2_general_reports', 'ebaythree' => 'ebay_3_general_reports', default => null };
+                
+                $excludeRanges = ['L90', 'L60', 'L30', 'L15', 'L7', 'L1'];
+                
+                if ($adType === 'kw' && $kwTable) {
+                    $valueCol = match($metric) {
+                        'clicks' => 'cpc_clicks',
+                        'sales' => 'REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")',
+                        'sold' => 'cpc_attributed_sales',
+                        default => 'REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")'
+                    };
+                    $rows = DB::table($kwTable)
+                        ->whereBetween('report_range', [$dataStartDate->format('Y-m-d'), $chartEndDate->format('Y-m-d')])
+                        ->whereNotIn('report_range', $excludeRanges)
+                        ->selectRaw("report_range as date, SUM({$valueCol}) as val")
+                        ->groupBy('report_range')
+                        ->get();
+                } elseif ($adType === 'pmt' && $pmtTable) {
+                    $valueCol = match($metric) {
+                        'clicks' => 'clicks',
+                        'sales' => 'REPLACE(REPLACE(sale_amount, "USD ", ""), ",", "")',
+                        'sold' => 'sales',
+                        default => 'REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")'
+                    };
+                    $rows = DB::table($pmtTable)
+                        ->whereBetween('report_range', [$dataStartDate->format('Y-m-d'), $chartEndDate->format('Y-m-d')])
+                        ->whereNotIn('report_range', $excludeRanges)
+                        ->selectRaw("report_range as date, SUM({$valueCol}) as val")
+                        ->groupBy('report_range')
+                        ->get();
+                } else {
+                    $rows = collect();
+                }
+                
+            } elseif ($channel === 'shopifyb2c' && in_array($adType, ['shopping', 'serp'])) {
+                $channelType = $adType === 'shopping' ? 'SHOPPING' : 'SEARCH';
+                $statusFilter = $adType === 'shopping' ? ['ENABLED'] : ['ENABLED', 'PAUSED'];
+                
+                $valueCol = match($metric) {
+                    'clicks' => 'metrics_clicks',
+                    'sales' => 'ga4_ad_sales',
+                    'sold' => 'ga4_sold_units',
+                    default => 'metrics_cost_micros'
+                };
+                
+                $rows = DB::table('google_ads_campaigns')
+                    ->whereDate('date', '>=', $dataStartDate->format('Y-m-d'))
+                    ->whereDate('date', '<=', $chartEndDate->format('Y-m-d'))
+                    ->where('advertising_channel_type', $channelType)
+                    ->whereIn('campaign_status', $statusFilter)
+                    ->selectRaw("date, SUM({$valueCol}) as val")
+                    ->groupBy('date')
+                    ->get();
+                
+                // Convert micros to dollars for spend
+                if ($metric === 'spend') {
+                    $rows = $rows->map(function($row) {
+                        $row->val = $row->val / 1000000;
+                        return $row;
+                    });
+                }
+            } else {
+                $rows = collect();
+            }
+
+            // Build daily data lookup
+            foreach ($rows as $row) {
+                $dateKey = Carbon::parse($row->date)->format('Y-m-d');
+                $dailyData[$dateKey] = (float) $row->val;
+            }
+
+            // For ACOS and CVR, we need additional data
+            $dailyData2 = [];
+            if (in_array($metric, ['acos', 'cvr'])) {
+                // ACOS needs spend and sales, CVR needs sold and clicks
+                // We already have one metric, fetch the other
+                $metric2 = $metric === 'acos' ? 'sales' : 'clicks';
+                $rows2 = collect();
+                
+                // Re-fetch with the second metric
+                if ($channel === 'amazon' || $channel === 'amazonfba') {
+                    $isFba = $channel === 'amazonfba';
+                    $valueCol2 = $metric === 'acos' ? $salesCol : $clicksCol;
+                    
+                    if ($adType === 'kw') {
+                        $query2 = DB::table('amazon_sp_campaign_reports')
+                            ->whereNotNull('report_date_range')
+                            ->whereBetween('report_date_range', [$dataStartDate->format('Y-m-d'), $chartEndDate->format('Y-m-d')])
+                            ->whereNotIn('report_date_range', ['L60', 'L30', 'L15', 'L7', 'L1'])
+                            ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')");
+                        if ($isFba) {
+                            $query2->whereRaw("campaignName LIKE '%FBA'")->whereRaw("campaignName NOT LIKE '%FBA PT%'");
+                        } else {
+                            $query2->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'");
+                        }
+                        $rows2 = $query2->selectRaw("report_date_range as date, SUM({$valueCol2}) as val")->groupBy('report_date_range')->get();
+                    } elseif ($adType === 'pt') {
+                        $query2 = DB::table('amazon_sp_campaign_reports')
+                            ->whereNotNull('report_date_range')
+                            ->whereBetween('report_date_range', [$dataStartDate->format('Y-m-d'), $chartEndDate->format('Y-m-d')])
+                            ->whereNotIn('report_date_range', ['L60', 'L30', 'L15', 'L7', 'L1'])
+                            ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')");
+                        if ($isFba) {
+                            $query2->where(fn($q) => $q->whereRaw("campaignName LIKE '%FBA PT'")->orWhereRaw("campaignName LIKE '%FBA PT.'"));
+                        } else {
+                            $query2->where(fn($q) => $q->whereRaw("campaignName LIKE '%PT'")->orWhereRaw("campaignName LIKE '%PT.'"))
+                                  ->whereRaw("campaignName NOT LIKE '%FBA PT%'");
+                        }
+                        $rows2 = $query2->selectRaw("report_date_range as date, SUM({$valueCol2}) as val")->groupBy('report_date_range')->get();
+                    } elseif ($adType === 'hl' && !$isFba) {
+                        $valueCol2 = $metric === 'acos' ? 'sales' : 'clicks';
+                        $rows2 = DB::table('amazon_sb_campaign_reports')
+                            ->whereNotNull('report_date_range')
+                            ->whereBetween('report_date_range', [$dataStartDate->format('Y-m-d'), $chartEndDate->format('Y-m-d')])
+                            ->whereNotIn('report_date_range', ['L60', 'L30', 'L15', 'L7', 'L1'])
+                            ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
+                            ->selectRaw("report_date_range as date, SUM({$valueCol2}) as val")
+                            ->groupBy('report_date_range')
+                            ->get();
+                    }
+                } elseif (in_array($channel, ['ebay', 'ebaytwo', 'ebaythree'])) {
+                    $kwTable = match ($channel) { 'ebay' => 'ebay_priority_reports', 'ebaytwo' => 'ebay_2_priority_reports', 'ebaythree' => 'ebay_3_priority_reports', default => null };
+                    $pmtTable = match ($channel) { 'ebay' => 'ebay_general_reports', 'ebaytwo' => 'ebay_2_general_reports', 'ebaythree' => 'ebay_3_general_reports', default => null };
+                    $excludeRanges = ['L90', 'L60', 'L30', 'L15', 'L7', 'L1'];
+                    
+                    if ($adType === 'kw' && $kwTable) {
+                        $valueCol2 = $metric === 'acos' 
+                            ? 'REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")' 
+                            : 'cpc_clicks';
+                        $rows2 = DB::table($kwTable)
+                            ->whereBetween('report_range', [$dataStartDate->format('Y-m-d'), $chartEndDate->format('Y-m-d')])
+                            ->whereNotIn('report_range', $excludeRanges)
+                            ->selectRaw("report_range as date, SUM({$valueCol2}) as val")
+                            ->groupBy('report_range')
+                            ->get();
+                    } elseif ($adType === 'pmt' && $pmtTable) {
+                        $valueCol2 = $metric === 'acos' 
+                            ? 'REPLACE(REPLACE(sale_amount, "USD ", ""), ",", "")' 
+                            : 'clicks';
+                        $rows2 = DB::table($pmtTable)
+                            ->whereBetween('report_range', [$dataStartDate->format('Y-m-d'), $chartEndDate->format('Y-m-d')])
+                            ->whereNotIn('report_range', $excludeRanges)
+                            ->selectRaw("report_range as date, SUM({$valueCol2}) as val")
+                            ->groupBy('report_range')
+                            ->get();
+                    }
+                } elseif ($channel === 'shopifyb2c' && in_array($adType, ['shopping', 'serp'])) {
+                    $channelType = $adType === 'shopping' ? 'SHOPPING' : 'SEARCH';
+                    $statusFilter = $adType === 'shopping' ? ['ENABLED'] : ['ENABLED', 'PAUSED'];
+                    $valueCol2 = $metric === 'acos' ? 'ga4_ad_sales' : 'metrics_clicks';
+                    
+                    $rows2 = DB::table('google_ads_campaigns')
+                        ->whereDate('date', '>=', $dataStartDate->format('Y-m-d'))
+                        ->whereDate('date', '<=', $chartEndDate->format('Y-m-d'))
+                        ->where('advertising_channel_type', $channelType)
+                        ->whereIn('campaign_status', $statusFilter)
+                        ->selectRaw("date, SUM({$valueCol2}) as val")
+                        ->groupBy('date')
+                        ->get();
+                }
+                
+                foreach ($rows2 as $row) {
+                    $dateKey = Carbon::parse($row->date)->format('Y-m-d');
+                    $dailyData2[$dateKey] = (float) $row->val;
+                }
+            }
+
+            // Calculate rolling 30-day values for each chart date
+            $chartData = [];
+            $currentDate = $chartStartDate->copy();
+            while ($currentDate <= $chartEndDate) {
+                $rolling30Sum = 0;
+                $rolling30Sum2 = 0;
+                
+                // Sum last 30 days including current date
+                for ($i = 0; $i < 30; $i++) {
+                    $lookupDate = $currentDate->copy()->subDays($i)->format('Y-m-d');
+                    if (isset($dailyData[$lookupDate])) {
+                        $rolling30Sum += $dailyData[$lookupDate];
+                    }
+                    if (isset($dailyData2[$lookupDate])) {
+                        $rolling30Sum2 += $dailyData2[$lookupDate];
+                    }
+                }
+                
+                // Calculate final value based on metric type
+                if ($metric === 'acos') {
+                    // ACOS = (Spend / Sales) * 100
+                    // dailyData has spend, dailyData2 has sales
+                    $value = $rolling30Sum2 > 0 ? round(($rolling30Sum / $rolling30Sum2) * 100, 1) : 0;
+                } elseif ($metric === 'cvr') {
+                    // CVR = (Sold / Clicks) * 100
+                    // dailyData has sold, dailyData2 has clicks
+                    $value = $rolling30Sum2 > 0 ? round(($rolling30Sum / $rolling30Sum2) * 100, 1) : 0;
+                } else {
+                    $value = round($rolling30Sum, 2);
+                }
+                
+                $chartData[] = [
+                    'date' => $currentDate->format('M d'),
+                    'value' => $value
+                ];
+                $currentDate->addDay();
+            }
+
+            return response()->json([
+                'success' => true,
+                'channel' => $channel,
+                'ad_type' => $adType,
+                'metric' => $metric,
+                'data' => $chartData
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('getAdBreakdownChartData error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Error fetching chart data'], 500);
+        }
+    }
+
 }

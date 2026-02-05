@@ -527,10 +527,58 @@
         </div>
     </div>
 
+    <!-- Ad Breakdown Chart Modal -->
+    <div class="modal fade" id="adBreakdownChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered shadow-none">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title">
+                        <i class="fas fa-chart-area me-2"></i> 
+                        <span id="adChartModalTitle">Ad Breakdown - Rolling L30</span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted mb-1">Start Date</label>
+                            <input type="date" id="adChartStartDate" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small text-muted mb-1">End Date</label>
+                            <input type="date" id="adChartEndDate" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end">
+                            <button type="button" class="btn btn-info btn-sm w-100" id="adChartFilterBtn">
+                                <i class="fas fa-filter me-1"></i> Apply Filter
+                            </button>
+                        </div>
+                    </div>
+                    <div id="adBreakdownChartContainer" style="height: 400px;">
+                        <canvas id="adBreakdownChart"></canvas>
+                    </div>
+                    <div id="adChartLoading" class="text-center py-5" style="display: none;">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p class="mt-2 text-muted">Loading chart data...</p>
+                    </div>
+                    <div id="adChartNoData" class="text-center py-5" style="display: none;">
+                        <i class="fas fa-exclamation-circle text-warning fa-3x mb-3"></i>
+                        <p class="text-muted">Daily data is not available for this channel/ad type.</p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Missing Ads Breakdown Modal -->
     <div class="modal fade" id="missingAdsBreakdownModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-md modal-dialog-centered">
-            <div class="modal-content">
+        <div class="modal-dialog modal-md modal-dialog-centered shadow-none">
+            <div class="modal-content shadow-none">
                 <div class="modal-header bg-danger text-white">
                     <h5 class="modal-title">
                         <i class="fas fa-exclamation-triangle me-2"></i> 
@@ -538,7 +586,7 @@
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body">
+                <div class="modal-body ">
                     <div class="table-responsive">
                         <table class="table table-bordered table-hover mb-0">
                             <thead class="table-light">
@@ -573,6 +621,7 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/tabulator-tables@6.3.1/dist/js/tabulator.min.js"></script>
     <script src="https://www.gstatic.com/charts/loader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 @endsection
 
 @section('script-bottom')
@@ -916,8 +965,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#198754;">$${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#198754;">$${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), 'spend');
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -932,8 +990,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#0d6efd;">$${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#0d6efd;">$${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), 'spend');
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -948,8 +1015,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#dc3545;">$${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#dc3545;">$${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), 'spend');
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -964,8 +1040,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#ffc107;">$${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#ffc107;">$${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), 'spend');
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -980,8 +1065,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#4285f4;">$${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#4285f4;">$${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), 'spend');
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -996,8 +1090,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#6f42c1;">$${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#6f42c1;">$${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), 'spend');
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -1036,8 +1139,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#198754;">${value.toLocaleString('en-US')}</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" data-metric="clicks" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#198754;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -1051,8 +1163,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#0d6efd;">${value.toLocaleString('en-US')}</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" data-metric="clicks" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#0d6efd;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -1066,8 +1187,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#dc3545;">${value.toLocaleString('en-US')}</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" data-metric="clicks" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#dc3545;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -1081,8 +1211,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#ffc107;">${value.toLocaleString('en-US')}</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" data-metric="clicks" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#ffc107;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -1096,8 +1235,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#4285f4;">${value.toLocaleString('en-US')}</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" data-metric="clicks" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#4285f4;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -1111,8 +1259,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#6f42c1;">${value.toLocaleString('en-US')}</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" data-metric="clicks" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#6f42c1;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -1152,8 +1309,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#198754;">$${Math.round(value).toLocaleString('en-US')}</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" data-metric="sales" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#198754;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -1167,8 +1333,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#0d6efd;">$${Math.round(value).toLocaleString('en-US')}</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" data-metric="sales" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#0d6efd;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -1182,8 +1357,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#dc3545;">$${Math.round(value).toLocaleString('en-US')}</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" data-metric="sales" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#dc3545;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -1197,8 +1381,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#ffc107;">$${Math.round(value).toLocaleString('en-US')}</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" data-metric="sales" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#ffc107;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -1212,8 +1405,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#4285f4;">$${Math.round(value).toLocaleString('en-US')}</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" data-metric="sales" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#4285f4;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -1227,8 +1429,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#6f42c1;">$${Math.round(value).toLocaleString('en-US')}</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" data-metric="sales" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#6f42c1;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -1267,8 +1478,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#198754;">${value.toLocaleString('en-US')}</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" data-metric="sold" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#198754;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -1282,8 +1502,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#0d6efd;">${value.toLocaleString('en-US')}</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" data-metric="sold" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#0d6efd;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -1297,8 +1526,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#dc3545;">${value.toLocaleString('en-US')}</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" data-metric="sold" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#dc3545;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -1312,8 +1550,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#ffc107;">${value.toLocaleString('en-US')}</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" data-metric="sold" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#ffc107;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -1327,8 +1574,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#4285f4;">${value.toLocaleString('en-US')}</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" data-metric="sold" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#4285f4;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -1342,8 +1598,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#6f42c1;">${value.toLocaleString('en-US')}</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" data-metric="sold" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                            return `<span style="font-weight:600;color:#6f42c1;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -1390,8 +1655,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#198754;">${value.toFixed(1)}%</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" data-metric="acos" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View ACOS Chart"></i>`;
+                            return `<span style="font-weight:600;color:#198754;">${value.toFixed(1)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         }
                     },
                     {
@@ -1401,8 +1675,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#0d6efd;">${value.toFixed(1)}%</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" data-metric="acos" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View ACOS Chart"></i>`;
+                            return `<span style="font-weight:600;color:#0d6efd;">${value.toFixed(1)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         }
                     },
                     {
@@ -1412,8 +1695,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#dc3545;">${value.toFixed(1)}%</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" data-metric="acos" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View ACOS Chart"></i>`;
+                            return `<span style="font-weight:600;color:#dc3545;">${value.toFixed(1)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         }
                     },
                     {
@@ -1423,8 +1715,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#ffc107;">${value.toFixed(1)}%</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" data-metric="acos" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View ACOS Chart"></i>`;
+                            return `<span style="font-weight:600;color:#ffc107;">${value.toFixed(1)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         }
                     },
                     {
@@ -1434,8 +1735,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#4285f4;">${value.toFixed(1)}%</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" data-metric="acos" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View ACOS Chart"></i>`;
+                            return `<span style="font-weight:600;color:#4285f4;">${value.toFixed(1)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         }
                     },
                     {
@@ -1445,8 +1755,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#6f42c1;">${value.toFixed(1)}%</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" data-metric="acos" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View ACOS Chart"></i>`;
+                            return `<span style="font-weight:600;color:#6f42c1;">${value.toFixed(1)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         }
                     },
                     {
@@ -1490,8 +1809,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#198754;">${value.toFixed(1)}%</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" data-metric="cvr" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View CVR Chart"></i>`;
+                            return `<span style="font-weight:600;color:#198754;">${value.toFixed(1)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         }
                     },
                     {
@@ -1501,8 +1829,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#0d6efd;">${value.toFixed(1)}%</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" data-metric="cvr" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View CVR Chart"></i>`;
+                            return `<span style="font-weight:600;color:#0d6efd;">${value.toFixed(1)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         }
                     },
                     {
@@ -1512,8 +1849,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#dc3545;">${value.toFixed(1)}%</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" data-metric="cvr" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View CVR Chart"></i>`;
+                            return `<span style="font-weight:600;color:#dc3545;">${value.toFixed(1)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         }
                     },
                     {
@@ -1523,8 +1869,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#ffc107;">${value.toFixed(1)}%</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" data-metric="cvr" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View CVR Chart"></i>`;
+                            return `<span style="font-weight:600;color:#ffc107;">${value.toFixed(1)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         }
                     },
                     {
@@ -1534,8 +1889,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#4285f4;">${value.toFixed(1)}%</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" data-metric="cvr" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View CVR Chart"></i>`;
+                            return `<span style="font-weight:600;color:#4285f4;">${value.toFixed(1)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         }
                     },
                     {
@@ -1545,8 +1909,17 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
-                            return `<span style="font-weight:600;color:#6f42c1;">${value.toFixed(1)}%</span>`;
+                            const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" data-metric="cvr" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View CVR Chart"></i>`;
+                            return `<span style="font-weight:600;color:#6f42c1;">${value.toFixed(1)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-chart-icon')) {
+                                e.stopPropagation();
+                                showAdBreakdownChart($(e.target).data('channel'), $(e.target).data('adtype'), $(e.target).data('metric'));
+                            }
                         }
                     },
                     {
@@ -2327,6 +2700,202 @@
                     error: function(xhr) {
                         console.error('Error fetching missing ads breakdown:', xhr);
                         $('#missingAdsBreakdownTableBody').html('<tr><td colspan="2" class="text-center text-danger">Error loading data</td></tr>');
+                    }
+                });
+            }
+
+            // Ad Breakdown Chart variables
+            let adBreakdownChartInstance = null;
+            let currentChartChannel = '';
+            let currentChartAdType = '';
+            let currentChartMetric = 'spend';
+
+            // Show Ad Breakdown Chart Modal
+            function showAdBreakdownChart(channel, adType, metricType = 'spend') {
+                currentChartChannel = channel.toLowerCase().replace(/[^a-z0-9]/g, '');
+                currentChartAdType = adType.toLowerCase();
+                currentChartMetric = metricType;
+
+                // Channels with daily data (daily date in report_range or date column)
+                const channelsWithDailyData = ['amazon', 'amazonfba', 'ebay', 'ebaytwo', 'ebaythree', 'shopifyb2c'];
+                const adTypesForChannel = {
+                    'amazon': ['kw', 'pt', 'hl'],
+                    'amazonfba': ['kw', 'pt'],
+                    'ebay': ['kw', 'pmt'],
+                    'ebaytwo': ['kw', 'pmt'],
+                    'ebaythree': ['kw', 'pmt'],
+                    'shopifyb2c': ['shopping', 'serp']
+                };
+
+                // Check if daily data is available
+                const hasData = channelsWithDailyData.includes(currentChartChannel) && 
+                               (adTypesForChannel[currentChartChannel] || []).includes(currentChartAdType);
+
+                // Set default dates (last 30 days ending 2 days ago)
+                // Use local date formatting to avoid timezone issues
+                const today = new Date();
+                const endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 2);
+                const startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 31);
+                
+                // Format as YYYY-MM-DD using local time (not UTC)
+                const formatDate = (d) => {
+                    const year = d.getFullYear();
+                    const month = String(d.getMonth() + 1).padStart(2, '0');
+                    const day = String(d.getDate()).padStart(2, '0');
+                    return `${year}-${month}-${day}`;
+                };
+                
+                $('#adChartStartDate').val(formatDate(startDate));
+                $('#adChartEndDate').val(formatDate(endDate));
+
+                // Set modal title
+                const adTypeLabel = currentChartAdType.toUpperCase();
+                const channelLabel = channel;
+                // Handle special metric labels
+                let metricLabel;
+                if (metricType === 'acos') {
+                    metricLabel = 'ACOS %';
+                } else if (metricType === 'cvr') {
+                    metricLabel = 'CVR %';
+                } else {
+                    metricLabel = metricType.charAt(0).toUpperCase() + metricType.slice(1);
+                }
+                $('#adChartModalTitle').text(`${channelLabel} - ${adTypeLabel} ${metricLabel} (Rolling L30)`);
+
+                // Show modal
+                const modal = new bootstrap.Modal(document.getElementById('adBreakdownChartModal'));
+                modal.show();
+
+                if (!hasData) {
+                    $('#adBreakdownChartContainer').hide();
+                    $('#adChartLoading').hide();
+                    $('#adChartNoData').show();
+                    return;
+                }
+
+                loadAdBreakdownChart();
+            }
+
+            // Load chart data
+            function loadAdBreakdownChart() {
+                $('#adChartNoData').hide();
+                $('#adBreakdownChartContainer').hide();
+                $('#adChartLoading').show();
+
+                const startDate = $('#adChartStartDate').val();
+                const endDate = $('#adChartEndDate').val();
+
+                $.ajax({
+                    url: '/ad-breakdown-chart-data',
+                    method: 'GET',
+                    data: {
+                        channel: currentChartChannel,
+                        ad_type: currentChartAdType,
+                        metric: currentChartMetric,
+                        start_date: startDate,
+                        end_date: endDate
+                    },
+                    success: function(response) {
+                        $('#adChartLoading').hide();
+                        
+                        if (response.success && response.data && response.data.length > 0) {
+                            $('#adBreakdownChartContainer').show();
+                            renderAdBreakdownChart(response.data);
+                        } else {
+                            $('#adChartNoData').show();
+                        }
+                    },
+                    error: function(xhr) {
+                        console.error('Error fetching chart data:', xhr);
+                        $('#adChartLoading').hide();
+                        $('#adChartNoData').show();
+                    }
+                });
+            }
+
+            // Filter button click handler
+            $(document).on('click', '#adChartFilterBtn', function() {
+                loadAdBreakdownChart();
+            });
+
+            // Render chart
+            function renderAdBreakdownChart(data) {
+                const ctx = document.getElementById('adBreakdownChart').getContext('2d');
+                
+                // Destroy existing chart
+                if (adBreakdownChartInstance) {
+                    adBreakdownChartInstance.destroy();
+                }
+
+                const labels = data.map(d => d.date);
+                const values = data.map(d => d.value);
+
+                // Colors matching the column colors for each ad type
+                const adTypeColors = {
+                    'kw': { bg: 'rgba(25, 135, 84, 0.2)', border: 'rgb(25, 135, 84)' },       // Green
+                    'pt': { bg: 'rgba(13, 110, 253, 0.2)', border: 'rgb(13, 110, 253)' },     // Blue
+                    'hl': { bg: 'rgba(220, 53, 69, 0.2)', border: 'rgb(220, 53, 69)' },       // Red
+                    'pmt': { bg: 'rgba(255, 193, 7, 0.2)', border: 'rgb(255, 193, 7)' },      // Yellow
+                    'shopping': { bg: 'rgba(66, 133, 244, 0.2)', border: 'rgb(66, 133, 244)' }, // Google Blue
+                    'serp': { bg: 'rgba(111, 66, 193, 0.2)', border: 'rgb(111, 66, 193)' }    // Purple
+                };
+
+                const color = adTypeColors[currentChartAdType] || { bg: 'rgba(220, 53, 69, 0.2)', border: 'rgb(220, 53, 69)' };
+
+                adBreakdownChartInstance = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: currentChartMetric.charAt(0).toUpperCase() + currentChartMetric.slice(1),
+                            data: values,
+                            backgroundColor: color.bg,
+                            borderColor: color.border,
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 3,
+                            pointHoverRadius: 5
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        let val = context.raw;
+                                        if (currentChartMetric === 'spend' || currentChartMetric === 'sales') {
+                                            return '$' + val.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                                        }
+                                        return val.toLocaleString('en-US');
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    callback: function(value) {
+                                        if (currentChartMetric === 'spend' || currentChartMetric === 'sales') {
+                                            return '$' + value.toLocaleString('en-US');
+                                        }
+                                        return value.toLocaleString('en-US');
+                                    }
+                                }
+                            },
+                            x: {
+                                ticks: { 
+                                    maxRotation: 45, 
+                                    minRotation: 45,
+                                    autoSkip: false,
+                                    font: { size: 10 }
+                                }
+                            }
+                        }
                     }
                 });
             }
