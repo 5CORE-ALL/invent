@@ -99,20 +99,13 @@
                 </div>
             </li>
 
-            <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#sidebarPages22" aria-expanded="false" aria-controls="sidebarPages22"
-                    class="side-nav-link">
-                    <i class="ri-user-line"></i>
-                    <span>Product Marketing</span>
-                    <span class="menu-arrow"></span>
-                </a>
-                <div class="collapse" id="sidebarPages22">
-                    <ul class="side-nav-second-level">
+          <li class="side-nav-item">
+    <a href="{{ url('/pricing-master-cvr') }}" class="side-nav-link">
+        <i class="ri-user-line"></i>
+        <span>Pricing  Master</span>
+    </a>
+</li>
 
-                    </ul>
-                </div>
-
-            </li>
 
 
 
@@ -251,20 +244,7 @@
             </li>
 
 
-            <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#sidebarPages22" aria-expanded="false"
-                    aria-controls="sidebarPages22" class="side-nav-link">
-                    <i class="fa fa-comments"></i>
-                    <span>Channels Reviews </span>
-                    <span class="menu-arrow"></span>
-                </a>
-                <div class="collapse" id="sidebarPages22">
-                    <ul class="side-nav-second-level">
-
-                    </ul>
-                </div>
-
-            </li>
+        
 
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#sidebarPagess" aria-expanded="false"
@@ -321,6 +301,7 @@
                         <li>
                             <a href="{{ route('target.products.master') }}">Target Products Master</a>
                         </li>
+                        
                         <li>
                             <a href="{{ route('tag.lines.master') }}">Tag lines Masters</a>
                         </li>
