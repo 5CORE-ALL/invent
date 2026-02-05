@@ -770,6 +770,8 @@
             let totalL30Spend = 0;
             let totalL30Sales = 0;
             let totalL30Purchases = 0;
+            let totalL30Clicks = 0;
+            let totalL30Orders = 0;
             let totalSkuCountFromBackend = 0; // Store total SKU count from backend
 
             const getDilColor = (value) => {
@@ -3113,7 +3115,20 @@
                     totalL30Spend = parseFloat(response.total_l30_spend) || 0;
                     totalL30Sales = parseFloat(response.total_l30_sales) || 0;
                     totalL30Purchases = parseInt(response.total_l30_purchases) || 0;
+                    totalL30Clicks = parseInt(response.total_l30_clicks) || 0;
+                    totalL30Orders = parseInt(response.total_l30_orders) || 0;
                     totalSkuCountFromBackend = parseInt(response.total_sku_count) || 0;
+                    
+                    // Update summary cards with totals from table data (includes all rows including paused ads)
+                    $('.card-clicks').text(totalL30Clicks.toLocaleString());
+                    $('.card-spend').text('$' + Math.round(totalL30Spend).toLocaleString());
+                    $('.card-orders').text(totalL30Orders.toLocaleString());
+                    $('.card-sales').text('$' + Math.round(totalL30Sales).toLocaleString());
+                    const acos = totalL30Sales >= 1 ? (totalL30Spend / totalL30Sales) * 100 : (totalL30Spend > 0 ? 100 : 0);
+                    $('.card-acos').text(acos.toFixed(0) + '%');
+                    const cvr = totalL30Clicks > 0 ? (totalL30Orders / totalL30Clicks) * 100 : 0;
+                    $('.card-cvr').text(cvr.toFixed(2) + '%');
+                    
                     // Update pagination and filter-based counts (including Total SKU) after data is loaded
                     setTimeout(function() {
                         if (typeof updateButtonCounts === 'function') updateButtonCounts();
@@ -4713,15 +4728,7 @@
                         chart.data.datasets[2].data = response.orders;
                         chart.data.datasets[3].data = response.sales;
                         chart.update();
-                        $('.card-clicks').text(response.totals.clicks);
-                        $('.card-spend').text('$' + Math.round(response.totals.spend));
-                        $('.card-orders').text(response.totals.orders);
-                        $('.card-sales').text('$' + Math.round(response.totals.sales));
-                        const ts = response.totals.spend || 0, tsl = response.totals.sales || 0;
-                        const acos = tsl >= 1 ? (ts / tsl) * 100 : (ts > 0 ? 100 : 0);
-                        $('.card-acos').text(acos.toFixed(0) + '%');
-                        const tc = response.totals.clicks || 0, to = response.totals.orders || 0;
-                        $('.card-cvr').text((tc > 0 ? (to / tc) * 100 : 0).toFixed(2) + '%');
+                        // Summary cards are updated from table data (ajaxResponse) to include all rows including paused ads
                     }
                 });
             }
