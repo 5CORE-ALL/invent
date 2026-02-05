@@ -6,7 +6,6 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ApiController;
 use App\Http\Controllers\ProductMaster\ProductMasterController;
 use App\Http\Controllers\PurchaseMaster\SupplierRFQController;
-use App\Http\Controllers\MarketingMaster\ZeroVisibilityMasterController;
 use App\Http\Controllers\Channels\ChannelMasterController;
 
 /*
@@ -82,13 +81,6 @@ Route::prefix('rfq-form')->group(function() {
 
 // api for task manager
 Route::get('/l30-total-sales', [ChannelMasterController::class, 'getViewChannelData1']);
-
-// Channel chart data for live pending trends
-Route::get('/channel-chart-data', [ZeroVisibilityMasterController::class, 'getChannelChartData']);
-Route::get('/all-channels-chart-data', [ZeroVisibilityMasterController::class, 'getAllChannelsChartData']);
-Route::post('/save-channel-action', [ZeroVisibilityMasterController::class, 'saveChannelAction']);
-Route::get('/test-channel-data', [ZeroVisibilityMasterController::class, 'testChannelData']);
-
 
 // TikTok Shop Webhook
 // Route::post('/webhooks/tiktok/orders', [App\Http\Controllers\Api\TiktokWebhookController::class, 'handleOrderWebhook']);

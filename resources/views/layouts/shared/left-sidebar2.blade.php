@@ -74,9 +74,6 @@
                                 <a href="{{ route('claim.reimbursement') }}">Claims & Reimbursements</a>
                             </li>
                             <li>
-                                <a href="{{ route('forecast.analysis') }}">Forecast Analysis</a>
-                            </li>
-                            <li>
                                 <a href="{{ route('to.order.analysis') }}">To Order Analysis</a>
                             </li>
                             <li>
@@ -170,10 +167,6 @@
                             </li>
                             <li>
                                 <a href="{{ route('images') }}">Images</a>
-                            </li>
-                            <li>
-                                <a href="https://listing-analysis.5coremanagement.com/public/login" target="_blank"
-                                    rel="noopener noreferrer">Listing Analysis</a>
                             </li>
                             <li>
                                 <a href="{{ route('costprice.analysis') }}">Cost Price Analysis</a>
@@ -495,10 +488,6 @@
                                 <div class="collapse" id="activeChannelMasyer">
                                     <ul class="side-nav-third-level">
                                         <li>
-                                            <a href="{{ route('channel.master', ['channels', 'channel-masters']) }}"
-                                                target="_blank">Active Channels</a>
-                                        </li>
-                                        <li>
                                             <a href="{{ route('opportunity.index') }}">Opportunities</a>
                                         </li>
                                         <li>
@@ -510,10 +499,6 @@
                                         </li>
                                     </ul>
                                 </div>
-                            </li>
-                            <li>
-                                <a href="{{ route('master.pricing.inc.dsc') }}" target="_blank">Price Adjustment
-                                    Manager</a>
                             </li>
 
                             <li class="side-nav-item">
@@ -578,23 +563,6 @@
                                     </ul>
                                 </div>
                             </li>
-                            <li class="side-nav-item">
-                                <a data-bs-toggle="collapse" href="#reviewMaster" aria-expanded="false"
-                                    aria-controls="reviewMaster">
-                                    <span> Review Master </span>
-                                    <span class="menu-arrow"></span>
-                                </a>
-                                <div class="collapse" id="reviewMaster">
-                                    <ul class="side-nav-third-level">
-                                        <li>
-                                            <a href="{{ route('review.master.dashboard') }}">Review Dashboard</a>
-                                        </li>
-                                        <li>
-                                            <a href="{{ route('review.masters.amazon') }}">Amazon Product Reviews</a>
-                                        </li>
-                                    </ul>
-                                </div>
-                            </li>
                             <li>
                                 <a href="{{ route('return.master') }}">Return Analysis</a>
                             </li>
@@ -621,10 +589,6 @@
                                 <a href="{{ route('channel.master', ['channels', 'expenses-analysis']) }}">Shipping
                                     analysis</a>
                             </li>
-                            <li>
-                                <a href="{{ route('channel.master', ['channels', 'advertisement-analysis']) }}">C Care
-                                    Analysis</a>
-                            </li>
                         </ul>
                     </div>
                 </li>
@@ -639,40 +603,6 @@
                 </a>
                 <div class="collapse" id="sidebarPages2">
                     <ul class="side-nav-second-level">
-                            <li>
-                                <a href="{{ route('listingMaster') }}">Listing Masters</a>
-                            </li>
-
-                        <li>
-                            <a href="{{ url('listing-master-counts') }}">Low Visibility Masters</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('listing.audit') }}">Listing Audit Masters</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('zero.visibility') }}">0 Views Masters</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('carousel.sales') }}">Carousel Sales Master</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('email.marketing') }}">Email Marketing</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('whatsapp.marketing') }}">Whatsapp Marketing</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('sms.marketing') }}">SMS Marketing</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('dm.marketing') }}">DM Marketing</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('phone.marketing') }}">Phone Appt Marketing</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('letter.marketing') }}">Letter Marketing</a>
-                        </li>
 
                             <li class="side-nav-item">
                                 <a data-bs-toggle="collapse" href="#sidebarvideoSales" aria-expanded="false"
@@ -889,12 +819,6 @@
                                 <div class="collapse" id="lqsSubmenu">
                                     <ul class="side-nav-fourth-level">
                                             <li>
-                                                <a href="{{ route('listingLQS.master') }}">LQS - Listing</a>
-                                            </li>
-                                            <li>
-                                                <a href="{{ route('cvrLQS.master') }}">Amazon LQS - CVR</a>
-                                            </li>
-                                            <li>
                                                 <a href="{{ route('ebaycvrLQS.master') }}">Ebay LQS - CVR</a>
                                             </li>
                                     </ul>
@@ -934,18 +858,6 @@
                         <li>
                             <a href="{{ route('second', ['products', 'inventory']) }}">Inventory</a>
                         </li>
-                        <li>
-                            <a href="{{ route('second', ['products', 'amazon-Products']) }}">Movement Analysis Y2Y</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('second', ['products', 'amazon-Products']) }}">Movement Anlys M2M</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('second', ['products', 'amazon-Products']) }}">Movement Anlys S2S</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('second', ['products', 'amazon-Products']) }}">Forecast Analysis</a>
-                        </li>
                     </ul>
                 </div>
             </li>
@@ -963,18 +875,6 @@
                             </li>
                             <li>
                                 <a href="{{ route('second', ['products', 'inventory']) }}">Inventory</a>
-                            </li>
-                            <li>
-                                <a href="{{ route('second', ['products', 'amazon-Products']) }}">Movement Analysis Y2Y</a>
-                            </li>
-                            <li>
-                                <a href="{{ route('second', ['products', 'amazon-Products']) }}">Movement Anlys M2M</a>
-                            </li>
-                            <li>
-                                <a href="{{ route('second', ['products', 'amazon-Products']) }}">Movement Anlys S2S</a>
-                            </li>
-                            <li>
-                                <a href="{{ route('second', ['products', 'amazon-Products']) }}">Forecast Analysis</a>
                             </li>
                         </ul>
                     </div>

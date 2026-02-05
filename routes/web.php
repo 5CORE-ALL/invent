@@ -4,8 +4,6 @@
 use App\Http\Controllers\AdsMaster\AdsMasterController;
 use App\Http\Controllers\Channels\AdsMasterController as ChannelAdsMasterController;
 use App\Http\Controllers\Channels\ChannelPromotionMasterController;
-use App\Http\Controllers\MarketingMaster\CvrLQSMasterController;
-use App\Http\Controllers\MarketingMaster\ListingMasterController;
 use App\Http\Controllers\MarketPlace\AmazonFbaInvController;
 use App\Http\Controllers\MarketPlace\AmazonLowVisibilityController;
 use App\Http\Controllers\MarketPlace\AmazonZeroController;
@@ -82,7 +80,6 @@ use App\Http\Controllers\MarketingMaster\VideoPostedController;
 use App\Http\Controllers\MarketPlace\TemuLowVisibilityController;
 use App\Http\Controllers\MarketPlace\TemuZeroController;
 use App\Http\Controllers\MarketPlace\WayfairController;
-use App\Http\Controllers\MarketingMaster\ListingLQSMasterController;
 use App\Http\Controllers\MarketPlace\WayfairLowVisibilityController;
 use App\Http\Controllers\MarketPlace\WayfairZeroController;
 use App\Http\Controllers\MarketPlace\ZeroViewMarketPlace\AliexpressZeroController;
@@ -130,7 +127,6 @@ use App\Http\Controllers\ProductMaster\MovementAnalysisController;
 use App\Http\Controllers\ProductMaster\ForecastAnalysisController;
 use App\Http\Controllers\InventoryManagement\VerificationAdjustmentController;
 use App\Http\Controllers\ShopifyController;
-use App\Http\Controllers\Listing\ListingManagerController;
 use App\Http\Controllers\PurchaseMaster\SupplierController;
 use App\Http\Controllers\ProductMaster\ToBeDCController;
 use App\Http\Controllers\ProductMaster\ToOrderAnalysisController;
@@ -151,8 +147,6 @@ use App\Http\Controllers\Warehouse\WarehouseController;
 use Illuminate\Support\Facades\Auth;
 use App\Http\Controllers\PurchaseMaster\PurchaseOrderController;
 use App\Http\Controllers\PurchaseMaster\ReadyToShipController;
-use App\Http\Controllers\MarketingMaster\ZeroVisibilityMasterController;
-use App\Http\Controllers\MarketingMaster\ListingAuditMasterController;
 use App\Http\Controllers\AdvertisementMaster\Kw_Advt\WalmartController;
 use App\Http\Controllers\AdvertisementMaster\Kw_Advt\KwEbayController;
 use App\Http\Controllers\AdvertisementMaster\Kw_Advt\KwAmazonController;
@@ -206,8 +200,6 @@ use App\Http\Controllers\InventoryManagement\StockTransferController;
 use App\Http\Controllers\Channels\ChannelMovementAnalysisController;
 use App\Http\Controllers\Channels\NewMarketplaceController;
 use App\Http\Controllers\Channels\OpportunityController;
-use App\Http\Controllers\Channels\ReviewMaster\AmazonReviewController;
-use App\Http\Controllers\Channels\ReviewMaster\ReviewDashboardController;
 use App\Http\Controllers\Channels\SetupAccountChannelController;
 use App\Http\Controllers\Channels\ShippingMasterController;
 use App\Http\Controllers\Channels\TrafficMasterController;
@@ -215,7 +207,6 @@ use App\Http\Controllers\Campaigns\EbayMissingAdsController;
 use App\Http\Controllers\Campaigns\TiktokAdsController;
 use App\Http\Controllers\Campaigns\WalmartRunningAdsController;
 
-use App\Http\Controllers\ChannelWiseReviewsController;
 use App\Http\Controllers\ChannelsPricingMasterController;
 use App\Http\Controllers\FBAAnalysticsController;
 use App\Http\Controllers\FbaDataController;
@@ -225,16 +216,9 @@ use App\Http\Controllers\InventoryWarehouseController;
 use App\Http\Controllers\MarketPlace\DobaController;
 use App\Http\Controllers\PurchaseMaster\ClaimReimbursementController;
 use App\Http\Controllers\MarketingMaster\VideoAdsMasterController;
-use App\Http\Controllers\MarketingMaster\DmMarketingController;
-use App\Http\Controllers\MarketingMaster\EmailMarketingController;
-use App\Http\Controllers\MarketingMaster\LetterMarketingController;
-use App\Http\Controllers\MarketingMaster\PhoneAppMarketingController;
-use App\Http\Controllers\MarketingMaster\SmsMarketingController;
-use App\Http\Controllers\MarketingMaster\WhatsappMarketingController;
 use App\Http\Controllers\MarketPlace\EbayTwoController;
 use App\Http\Controllers\MarketPlace\EbayThreeController;
 use App\Http\Controllers\MarketPlace\WalmartControllerMarket;
-use App\Http\Controllers\MarketingMaster\CarouselSalesController;
 use App\Http\Controllers\MarketingMaster\EbayCvrLqsController;
 use App\Http\Controllers\MarketingMaster\ShoppableVideoController;
 use App\Http\Controllers\MarketPlace\ACOSControl\AmazonACOSController;
@@ -246,7 +230,6 @@ use App\Http\Controllers\MarketPlace\ListingMarketPlace\ListingAmazonController;
 use App\Http\Controllers\MarketPlace\SheinController;
 use App\Http\Controllers\MarketPlace\TiktokShopController;
 use App\Http\Controllers\PurchaseMaster\LedgerMasterController;
-use App\Http\Controllers\PricingIncDsc\MasterIncDscController;
 use App\Http\Controllers\PurchaseMaster\ContainerPlanningController;
 use App\Http\Controllers\PurchaseMaster\QualityEnhanceController;
 use App\Http\Controllers\PurchaseMaster\RFQController;
@@ -256,8 +239,6 @@ use App\Http\Controllers\MarketingMaster\InstagramAdsManagerController;
 use App\Http\Controllers\MarketingMaster\YoutubeAdsManagerController;
 use App\Http\Controllers\MarketingMaster\TiktokAdsManagerController;
 use App\Http\Controllers\MarketingMaster\MovementPricingMaster;
-use App\Http\Controllers\MarketingMaster\OrganicViewsController;
-use App\Http\Controllers\MarketingMaster\OverallCvrLqsController;
 use App\Http\Controllers\MarketPlace\Business5coreController;
 use App\Http\Controllers\MarketPlace\EbayViewsController;
 use App\Http\Controllers\MarketPlace\FaireController;
@@ -270,9 +251,6 @@ use App\Http\Controllers\MarketPlace\PlsController;
 use App\Http\Controllers\MarketPlace\TiendamiaController;
 use App\Http\Controllers\MarketPlace\TiktokController;
 use App\Http\Controllers\PurchaseMaster\SupplierRFQController;
-use App\Http\Controllers\StockMappingController;
-use App\Http\Controllers\StockMissingListingController;
-use App\Http\Controllers\ProductMarketing;
 use App\Http\Controllers\FacebookAdsController;
 use App\Http\Controllers\PurchaseMaster\UpComingContainerController;
 use App\Http\Controllers\Sales\EbaySalesController;
@@ -332,7 +310,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay-data-view', [EbayController::class, 'getViewEbayData']);
     Route::get('/ebay2-data-view', [EbayTwoController::class, 'getViewEbayData']);
     Route::get('/shopifyB2C-data-view', [Shopifyb2cController::class, 'getViewShopifyB2CData']);
-    Route::get('/listing-master-data', [App\Http\Controllers\MarketingMaster\ListingMasterController::class, 'getListingMasterData']);
     Route::get('/macy-data-view', [MacyController::class, 'getViewMacyData']);
     Route::get('/macy-pricing-cvr', [MacyController::class, 'macyPricingCvr']);
     Route::get('/macy-pricing-increase-decrease', [MacyController::class, 'macyPricingIncreaseandDecrease']);
@@ -374,45 +351,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/channel/adv/spend/chart/data', [ChannelAdsMasterController::class, 'getChannelSpendChartData'])->name('channel.adv.spend.chart.data');
     Route::get('/channel/adv/adsales/chart/data', [ChannelAdsMasterController::class, 'getChannelAdSalesChartData'])->name('channel.adv.adsales.chart.data');
     Route::get('/channel/adv/acos/chart/data', [ChannelAdsMasterController::class, 'getChannelAcosChartData'])->name('channel.adv.acos.chart.data');
-
-
-
-    //Zero Visibility Master
-    Route::get('/zero-visibility-master', [ZeroVisibilityMasterController::class, 'index'])->name('zero.visibility');
-    Route::get('/live-pending-data', [ZeroVisibilityMasterController::class, 'Zeroviewmasters']);
-    Route::get('/zero-visibility/daily-totals', [ZeroVisibilityMasterController::class, 'getDailyTotals']);
-    Route::post('/store-zero-visibility', [ZeroVisibilityMasterController::class, 'store']);
-    Route::post('/save-channel-action', [ZeroVisibilityMasterController::class, 'saveChannelAction'])
-        ->name('save.channel.action');
-    Route::get('/show-zero-visibility-data', [ZeroVisibilityMasterController::class, 'getMergedChannelData']);
-    Route::get('/zero-visibility/channel-chart', [ZeroVisibilityMasterController::class, 'getChannelChartData']);
-    Route::get('/export-zero-visibility-csv', [ZeroVisibilityMasterController::class, 'exportCsv'])->name('zero.export.csv');
-    Route::post('/update-ra-checkbox', [ZeroVisibilityMasterController::class, 'updateRaCheckbox']);
-    Route::post('/update-sheet-link', [ZeroVisibilityMasterController::class, 'updateSheetLink']);
-
-    //Stock Missing Listing
-    Route::get('/stock-missing-listing', [StockMissingListingController::class, 'index'])->name('stock.missing.listing');
-    Route::get('/stock-missing-listing/data', [StockMissingListingController::class, 'getStockMissingListingData'])->name('stock.missing.listing.data');
-
-    //Listing Audit Master
-    Route::get('/listing-audit-master', [ListingAuditMasterController::class, 'index'])->name('listing.audit');
-    Route::post('/store-list-audit-amazon-data', [ListingAuditMasterController::class, 'storeListingAuditAmazonData']);
-    Route::post('/store-list-audit-ebay-data', [ListingAuditMasterController::class, 'storeListingAuditEbayData']);
-    Route::get('/show-list-audit-master-data', [ListingAuditMasterController::class, 'getListingAuditSummaryWithChannelInfo']);
-    Route::get('/listing-audit-master-data', [ListingAuditMasterController::class, 'getAuditMasterTableData']);
-    Route::get('/export-listing-audit-csv', [ListingAuditMasterController::class, 'exportListingAuditCSV']);
-    Route::post('/update-ra-checkbox', [ListingAuditMasterController::class, 'updateRaCheckbox']);
-
-    //Email Marketing
-
-    Route::get('/email-marketing-master', [EmailMarketingController::class, 'index'])->name('email.marketing');
-    Route::get('/whatsapp-marketing-master', [WhatsappMarketingController::class, 'index'])->name('whatsapp.marketing');
-    Route::get('/sms-marketing-master', [SmsMarketingController::class, 'index'])->name('sms.marketing');
-    Route::get('/dm-marketing-master', [DmMarketingController::class, 'index'])->name('dm.marketing');
-    Route::get('/phone-marketing-master', [PhoneAppMarketingController::class, 'index'])->name('phone.marketing');
-    Route::get('/letter-marketing-master', [LetterMarketingController::class, 'index'])->name('letter.marketing');
-    Route::get('/carousel-sales-master', [CarouselSalesController::class, 'index'])->name('carousel.sales');
-
 
     //Account Health Master
     // Route::get('/channel/account-health-test', [AccountHealthMasterController::class, 'test'])->name('account.health.master');
@@ -596,12 +534,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/channel-analysis/update', [ChannelMovementAnalysisController::class, 'updateField'])->name('channel.updateField');
     Route::get('/channels/get-monthly-data/{channel}', [ChannelMovementAnalysisController::class, 'getMonthlyData'])->name('channels.getMonthlyData');
 
-    Route::get('/master-pricing-inc-dsc', [MasterIncDscController::class, 'index'])->name('master.pricing.inc.dsc');
-    Route::get('/master-pricing/{channel}', [MasterIncDscController::class, 'show'])->name('channel.show');
-    Route::post('/master-pricing/update', [MasterIncDscController::class, 'updateField'])->name('channel.updateField');
-    Route::get('/master-pricing/get-monthly-data/{channel}', [MasterIncDscController::class, 'getMonthlyData'])->name('channels.getMonthlyData');
-
-
     //New Marketplaces
     Route::get('/new-marketplaces-dashboard', [NewMarketplaceController::class, 'index'])->name('new.marketplaces.dashboard');
     Route::get('/channels/fetch', [NewMarketplaceController::class, 'getChannelsFromGoogleSheet'])->name('channels.fetch');
@@ -683,20 +615,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/sourcing/update/{id}', 'updateSourcing')->name('sourcing.update');
         Route::post('/sourcing/delete', 'deleteSourcing')->name('sourcing.delete');
         Route::get('/get-parent-by-sku/{sku}', 'getParentBySku')->name('getParentBySku');
-    });
-
-    //Review Master
-    Route::controller(AmazonReviewController::class)->group(function () {
-        Route::get('/review-master/amazon-product-reviews/', 'index')->name('review.masters.amazon');
-        Route::get('/amazon-product-review-data', 'fetchAmazonProductReview');
-        Route::post('/amazon-product-review-import', 'importProductReview')->name('amazon.product.review.import');
-        Route::post('/amazon-product-reviews/save', 'createUpdateProductReview');
-    });
-
-    //Review Dashboard
-    Route::controller(ReviewDashboardController::class)->group(function () {
-        Route::get('/review-master/daboard', 'index')->name('review.master.dashboard');
-        Route::get('/review-dashboard-data', 'getReviewDataChannelBased');
     });
 
     //LedgerMaster
@@ -1448,20 +1366,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/transit', action: [ForecastAnalysisController::class, 'transit'])->name('transit');
     Route::get('/forecast-analysis/get-sku-quantity', action: [ForecastAnalysisController::class, 'getSkuQuantity'])->name('forecast.analysis.get.sku.quantity');
 
-    Route::get('/listing-master', action: [ListingManagerController::class, 'listingmaster'])->name('listing');
-
-    //marketing master index view routes
-    Route::get('/listingLQS.master', action: [ListingLQSMasterController::class, 'listingLQSMaster'])->name('listingLQS.master');
-    Route::get('/listingLQS/view-data', [ListingLQSMasterController::class, 'getViewListingData'])->name('listingLQS.viewData');
-    Route::post('/listing-lqs/save-action', [ListingLQSMasterController::class, 'saveAction']);
-    Route::get('/cvrLQS.master', action: [CvrLQSMasterController::class, 'cvrLQSMaster'])->name('cvrLQS.master');
-    Route::get('/cvrLQS/view-data', [CvrLQSMasterController::class, 'getViewCvrData'])->name('cvrLQS.viewData');
-    Route::post('/cvr-lqs/save-action', [CvrLQSMasterController::class, 'saveAction']);
-
-    Route::post('/import-cvr-data', [CvrLQSMasterController::class, 'importCVRData'])->name('import.cvr');
-
-    Route::get('/lqs-from-sheet', [ListingLQSMasterController::class, 'getLqsFromGoogleSheet']);
-
     //ebay lqs cvr
     Route::get('/ebaycvrLQS.master', action: [EbayCvrLqsController::class, 'cvrLQSMaster'])->name('ebaycvrLQS.master');
     Route::get('/ebaycvrLQS/view-data', [EbayCvrLqsController::class, 'getViewEbayCvrData'])->name('ebaycvrLQS.viewData');
@@ -1711,26 +1615,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ads-pricing-analysis-data-views', [AdsMasterController::class, 'getViewPricingAnalysisData']);
     Route::post('/pricing-master/save', [AdsMasterController::class, 'save']);
 
-
-    //organic views routes
-
-    Route::get('/organic-views-amazon-data', action: [OrganicViewsController::class, 'getAmazonOrganicViewsData'])->name('organicviews.amazon.data');
-    Route::get('/organicviews-amazon', action: [OrganicViewsController::class, 'amazonOrganicViews'])->name('organicviews.amazon');
-
-    Route::get('/organic-views-ebay-data', action: [OrganicViewsController::class, 'getEbayOrganicViewsData'])->name('organicviews.ebay.data');
-    Route::get('/organicviews-ebay', action: [OrganicViewsController::class, 'ebayOrganicViews'])->name('organicviews.ebay');
-
-    Route::get('/organic-views-ebay2-data', action: [OrganicViewsController::class, 'getEbay2OrganicViewsData'])->name('organicviews.ebay2.data');
-    Route::get('/organicviews-ebay2', action: [OrganicViewsController::class, 'ebay2OrganicViews'])->name('organicviews.ebay2');
-
-    Route::get('/organic-views-ebay3-data', action: [OrganicViewsController::class, 'getEbay3OrganicViewsData'])->name('organicviews.ebay3.data');
-    Route::get('/organicviews-ebay3', action: [OrganicViewsController::class, 'ebay3OrganicViews'])->name('organicviews.ebay3');
-
-    Route::get('/organic-views-temu-data', action: [OrganicViewsController::class, 'getTemuOrganicViewsData'])->name('organicviews.temu.data');
-    Route::get('/organicviews-temu', action: [OrganicViewsController::class, 'temuOrganicViews'])->name('organicviews.temu');
-
-    Route::get('/organic-views-walmart-data', action: [OrganicViewsController::class, 'getWalmartOrganicViewsData'])->name('organicviews.walmart.data');
-    Route::get('/organicviews-walmart', action: [OrganicViewsController::class, 'walmartOrganicViews'])->name('organicviews.walmart');
 
     //ebay db save routes
     Route::post('/ebay/save-nr', [EbayController::class, 'saveNrToDatabase']);
@@ -2250,23 +2134,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/bestbuyusa-analytics/export', [BestbuyUSAZeroController::class, 'exportBestBuyUsaAnalytics'])->name('bestbuyusa.analytics.export');
     Route::get('/bestbuyusa-analytics/sample', [BestbuyUSAZeroController::class, 'downloadSample'])->name('bestbuyusa.analytics.sample');
 
-
-    //listing Master
-    Route::get('/listing-master', [ListingMasterController::class, 'index'])->name('listingMaster');
-    Route::get('/listing-master-data', [ListingMasterController::class, 'getListingMasterData']);
-
-    Route::get('/listing-master-counts', [ListingMasterController::class, 'getListingMasterCountsViews']);
-    Route::post('/listing-master-counts-data', [ListingMasterController::class, 'getMarketplacesData']);
-    Route::delete('/listing-master/{marketplace}', [ListingMasterController::class, 'destroy'])->name('listing-master.destroy');
-
-
-    //overall cvr-lqs
-    Route::get('/overall-lqs-cvr', [OverallCvrLqsController::class, 'index'])->name('overallLqsCvr');
-    Route::get('/lqs-cvr-data', [OverallCvrLqsController::class, 'getCvrLqsData']);
-
-    // Route::get('/listing-master-counts', [OverallCvrLqsController::class, 'getListingMasterCountsViews']);
-    // Route::post('/listing-master-counts-data', [OverallCvrLqsController::class, 'getMarketplacesData']);
-    Route::delete('/listing-master/{marketplace}', [OverallCvrLqsController::class, 'destroy'])->name('listing-master.destroy');
 
     // MM video posted route
     Route::controller(VideoPostedController::class)->group(function () {
@@ -2940,20 +2807,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/walmart/running/ads/data', 'getWalmartRunningAdsData');
         Route::get('/adv-walmart/ad-running/save-data', 'getAdvWalmartRunningSaveData')->name('adv-walmart.ad-running.save-data');
     });
-    // stock missing listing
-
-    // shopify amazon stock mapping
-    Route::controller(StockMappingController::class)->group(function () {
-        Route::get('/stock/mapping/view', 'index')->name('view.stock.mapping');
-        Route::get('/stock/mapping/inventory/data', 'getShopifyAmazonInventoryStock')->name('stock.mapping.inventory');
-        Route::get('/stock/mapping/shopify/data', 'getShopifyStock')->name('stock.mapping.shopify');
-        Route::get('/stock/mapping/amazon/data', 'getAmazonStock')->name('stock.mapping.amazon');
-        Route::post('/stock/mapping/inventory/update_not_required', 'updateNotRequired')->name('stock.mapping.update.notrequired');
-        Route::post('/stock/mapping/inventory/refetch_live_data', 'refetchLiveData')->name('stock.mapping.refetch_live_data');
-    });
-    // shopify amazon stock mapping
-
-
     Route::controller(GoogleAdsController::class)->group(function () {
         Route::get('/google/shopping', 'index')->name('google.shopping');
         Route::get('/google/shopping/running', 'googleShoppingAdsRunning')->name('google.shopping.running');
@@ -3059,20 +2912,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     });
 
     Route::post('/channel-promotion/store', [ChannelPromotionMasterController::class, 'storeOrUpdatePromotion']);
-
-
-
-    Route::get('product-market', [ProductMarketing::class, 'product_master']);
-    Route::get('product-market/details', [ProductMarketing::class, 'product_market_details']);
-
-    // Shopify All Channels - View + JSON
-    Route::get('/shopify-all-channels', [\App\Http\Controllers\SyncShopifyAllChannelDataController::class, 'index']);
-    Route::get('/shopify-all-channels-json', [\App\Http\Controllers\SyncShopifyAllChannelDataController::class, 'data']);
-    Route::get('/shopify-all-channels-export', [\App\Http\Controllers\SyncShopifyAllChannelDataController::class, 'export']);
-
-    Route::get('channels-reviews-master', [ChannelWiseReviewsController::class, 'reviews_dashboard']);
-    Route::get('channels-reviews/details', [ChannelWiseReviewsController::class, 'reviews_dashboard_details']);
-    Route::post('channels-reviews/save', [ChannelWiseReviewsController::class, 'saveReview']);
 
     // eBay Refresh Token Generation Routes (must be before catch-all routes)
     // Unified route for all eBay accounts (eBay1, eBay2, eBay3)
