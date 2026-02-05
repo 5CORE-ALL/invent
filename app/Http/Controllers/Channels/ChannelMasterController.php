@@ -103,7 +103,7 @@ use App\Models\TiktokCampaignReport;
 use App\Models\TiktokSheet;
 use App\Models\TiktokShopListingStatus;
 use App\Models\TopDawgSheetdata;
-use App\Models\WaifairProductSheet;
+use App\Models\WayfairDailyData;
 use App\Models\WayfairListingStatus;
 use App\Models\WalmartListingStatus;
 use App\Models\WalmartMetrics;
@@ -3002,95 +3002,89 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        $query = WaifairProductSheet::where('sku', 'not like', '%Parent%');
+        // Get Wayfair data from wayfair_daily_data table (period = 'l30')
+        $wayfairData = WayfairDailyData::where('period', 'l30')
+            ->where('sku', 'not like', '%Parent%')
+            ->get();
 
-        $l30Orders = $query->sum('l30');
-        $l60Orders = $query->sum('l60');
-        $totalQuantity = $l30Orders; // l30 is already units sold (quantity)
+        // Calculate L30 metrics
+        $l30Orders = $wayfairData->count(); // Total number of orders
+        $totalQuantity = $wayfairData->sum('quantity');
+        $l30Sales = $wayfairData->sum(function($item) {
+            return $item->unit_price * $item->quantity;
+        });
 
-        $l30Sales  = (clone $query)->selectRaw('SUM(l30 * price) as total')->value('total') ?? 0;
-        $l60Sales  = (clone $query)->selectRaw('SUM(l60 * price) as total')->value('total') ?? 0;
+        // For L60, we don't have data yet, so set to 0
+        $l60Orders = 0;
+        $l60Sales = 0;
 
-        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+        $growth = $l30Sales > 0 && $l60Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
 
-        // Get eBay marketing percentage
-        $percentage = ChannelMaster::where('channel', 'Wayfair')->value('channel_percentage') ?? 100;
-        $percentage = $percentage / 100; // convert % to fraction
+        // Get Wayfair marketplace percentage from marketplace_percentages table
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'Wayfair')->first();
+        $percentage = $marketplaceData ? $marketplaceData->percentage : 100;
+        $percentageFraction = $percentage / 100; // convert % to fraction
 
-        // Load product masters (lp, ship) keyed by SKU
-        $productMasters = ProductMaster::all()->keyBy(function ($item) {
+        // Load product masters (lp only, no ship) keyed by SKU
+        $skus = $wayfairData->pluck('sku')->unique()->toArray();
+        $productMasters = ProductMaster::whereIn('sku', $skus)->get()->keyBy(function ($item) {
             return strtoupper($item->sku);
         });
 
-        // Calculate total profit
-        $ebayRows     = $query->get(['sku', 'price', 'l30','l60']);
-        $totalProfit  = 0;
-        $totalProfitL60  = 0;
-        $totalCogs       = 0;
-        $totalCogsL60    = 0;
+        // Calculate total profit (WITHOUT ship cost per new Wayfair formula)
+        $totalProfit = 0;
+        $totalProfitL60 = 0;
+        $totalCogs = 0;
+        $totalCogsL60 = 0;
 
+        foreach ($wayfairData as $order) {
+            $sku = strtoupper($order->sku);
+            $unitPrice = (float) $order->unit_price;
+            $quantity = (int) $order->quantity;
 
-        foreach ($ebayRows as $row) {
-            $sku       = strtoupper($row->sku);
-            $price     = (float) $row->price;
-            $unitsL30  = (int) $row->l30;
-            $unitsL60  = (int) $row->l60;
-
-            $soldAmount = $unitsL30 * $price;
-            if ($soldAmount <= 0) {
+            if ($quantity <= 0) {
                 continue;
             }
 
-            $lp   = 0;
-            $ship = 0;
+            $lp = 0;
 
             if (isset($productMasters[$sku])) {
                 $pm = $productMasters[$sku];
-
                 $values = is_array($pm->Values) ? $pm->Values :
                         (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
 
-                $lp   = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-                $ship = isset($values['ship']) ? (float) $values['ship'] : ($pm->ship ?? 0);
+                // Get LP from Values or direct property
+                foreach ($values as $k => $v) {
+                    if (strtolower($k) === "lp") {
+                        $lp = floatval($v);
+                        break;
+                    }
+                }
+                if ($lp === 0 && isset($pm->lp)) {
+                    $lp = floatval($pm->lp);
+                }
             }
 
-            // Profit per unit
-            $profitPerUnit = ($price * $percentage) - $lp - $ship;
-            $profitTotal   = $profitPerUnit * $unitsL30;
-            $profitTotalL60   = $profitPerUnit * $unitsL60;
+            // Wayfair Profit Formula: (unit_price * percentage) - lp (NO ship cost)
+            $profitPerUnit = ($unitPrice * $percentageFraction) - $lp;
+            $profitTotal = $profitPerUnit * $quantity;
 
             $totalProfit += $profitTotal;
-            $totalProfitL60 += $profitTotalL60;
-
-            $totalCogs    += ($unitsL30 * $lp);
-            $totalCogsL60 += ($unitsL60 * $lp);
-        }
-
-        // --- FIX: Calculate total LP only for SKUs in eBayMetrics ---
-        $ebaySkus   = $ebayRows->pluck('sku')->map(fn($s) => strtoupper($s))->toArray();
-        $ebayPMs    = ProductMaster::whereIn('sku', $ebaySkus)->get();
-
-        $totalLpValue = 0;
-        foreach ($ebayPMs as $pm) {
-            $values = is_array($pm->Values) ? $pm->Values :
-                    (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
-
-            $lp = isset($values['lp']) ? (float) $values['lp'] : ($pm->lp ?? 0);
-            $totalLpValue += $lp;
+            $totalCogs += ($quantity * $lp);
         }
 
         // Use L30 Sales for denominator
         $gProfitPct = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
         $gprofitL60 = $l60Sales > 0 ? ($totalProfitL60 / $l60Sales) * 100 : 0;
 
-        // $gRoi       = $totalLpValue > 0 ? ($totalProfit / $totalLpValue) : 0;
-        // $gRoiL60    = $totalLpValue > 0 ? ($totalProfitL60 / $totalLpValue) : 0;
-
-        $gRoi    = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
+        $gRoi = $totalCogs > 0 ? ($totalProfit / $totalCogs) * 100 : 0;
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
 
         // N PFT = (Sum of PFT / Sum of L30 Sales) * 100
         $nPft = $l30Sales > 0 ? ($totalProfit / $l30Sales) * 100 : 0;
+
+        // N ROI = same as G ROI for Wayfair (no ads)
+        $nRoi = $gRoi;
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Wayfair')->first();
@@ -3111,6 +3105,7 @@ class ChannelMasterController extends Controller
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
             'N PFT'      => round($nPft, 2) . '%',
+            'N ROI'      => round($nRoi, 2),
             'KW Spent'   => 0,
             'PT Spent'   => 0,
             'HL Spent'   => 0,

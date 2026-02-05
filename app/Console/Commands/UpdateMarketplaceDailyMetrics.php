@@ -17,6 +17,7 @@ use App\Models\ShopifyB2BDailyData;
 use App\Models\TikTokDailyData;
 use App\Models\MiraklDailyData;
 use App\Models\DobaDailyData;
+use App\Models\WayfairDailyData;
 use App\Models\ProductMaster;
 use App\Models\MarketplacePercentage;
 use App\Models\ChannelMaster;
@@ -55,6 +56,7 @@ class UpdateMarketplaceDailyMetrics extends Command
             'Tiendamia' => fn() => $this->calculateTiendamiaMetrics($date),
             'Doba' => fn() => $this->calculateDobaMetrics($date),
             'Walmart' => fn() => $this->calculateWalmartMetrics($date),
+            'Wayfair' => fn() => $this->calculateWayfairMetrics($date),
         ];
 
         foreach ($channels as $channel => $calculator) {
@@ -2598,6 +2600,110 @@ class UpdateMarketplaceDailyMetrics extends Command
             'kw_spent' => round($walmartSpent, 2),
             'pmt_spent' => 0, // Walmart doesn't have separate PMT (all in kw_spent)
             'tacos_percentage' => round($tacosPercentage, 1),
+            'n_pft' => round($nPftPercentage, 1),
+            'n_roi' => round($nRoiPercentage, 1),
+        ];
+    }
+
+    private function calculateWayfairMetrics($date)
+    {
+        // Get Wayfair data from wayfair_daily_data table (period = 'l30')
+        $wayfairData = WayfairDailyData::where('period', 'l30')->get();
+
+        if ($wayfairData->isEmpty()) {
+            return null;
+        }
+
+        // Calculate metrics
+        $totalOrders = $wayfairData->count();
+        $totalQuantity = $wayfairData->sum('quantity');
+
+        // Calculate revenue and other metrics
+        $totalRevenue = 0;
+        $totalWeightedPrice = 0;
+        $totalQuantityForPrice = 0;
+        $totalPft = 0;
+        $totalCogs = 0;
+
+        // Get marketplace percentage for Wayfair
+        $marketplaceData = MarketplacePercentage::where('marketplace', 'Wayfair')->first();
+        $percentage = $marketplaceData ? $marketplaceData->percentage : 100;
+        $percentageFraction = $percentage / 100;
+
+        // Get product masters for LP
+        $skus = $wayfairData->pluck('sku')->unique()->toArray();
+        $productMasters = ProductMaster::whereIn('sku', $skus)->get()->keyBy('sku');
+
+        foreach ($wayfairData as $order) {
+            $quantity = (int) $order->quantity;
+            $unitPrice = (float) $order->unit_price;
+
+            if ($quantity <= 0) {
+                continue;
+            }
+
+            // Calculate revenue
+            $revenue = $unitPrice * $quantity;
+            $totalRevenue += $revenue;
+
+            // Calculate weighted price for average
+            if ($quantity > 0 && $unitPrice > 0) {
+                $totalWeightedPrice += $unitPrice * $quantity;
+                $totalQuantityForPrice += $quantity;
+            }
+
+            // Get LP from product master
+            $lp = 0;
+            $pm = $productMasters[$order->sku] ?? null;
+            if ($pm) {
+                $values = is_array($pm->Values) ? $pm->Values :
+                        (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
+
+                foreach ($values as $k => $v) {
+                    if (strtolower($k) === "lp") {
+                        $lp = floatval($v);
+                        break;
+                    }
+                }
+                if ($lp === 0 && isset($pm->lp)) {
+                    $lp = floatval($pm->lp);
+                }
+            }
+
+            // Wayfair Profit Formula: (unit_price * percentage) - lp (NO ship cost)
+            $profitPerUnit = ($unitPrice * $percentageFraction) - $lp;
+            $profitTotal = $profitPerUnit * $quantity;
+
+            $totalPft += $profitTotal;
+            $totalCogs += ($quantity * $lp);
+        }
+
+        // Calculate averages and percentages
+        $avgPrice = $totalQuantityForPrice > 0 ? $totalWeightedPrice / $totalQuantityForPrice : 0;
+        $pftPercentage = $totalRevenue > 0 ? ($totalPft / $totalRevenue) * 100 : 0;
+        $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
+
+        // Wayfair doesn't have ads data
+        $kwSpent = 0;
+        $pmtSpent = 0;
+        $tacosPercentage = 0;
+        $nPftPercentage = $pftPercentage; // Same as PFT% since no ads
+        $nRoiPercentage = $roiPercentage; // Same as ROI% since no ads
+
+        return [
+            'total_orders' => $totalOrders,
+            'total_quantity' => $totalQuantity,
+            'total_revenue' => $totalRevenue,
+            'total_sales' => $totalRevenue,
+            'total_cogs' => $totalCogs,
+            'total_pft' => $totalPft,
+            'pft_percentage' => round($pftPercentage, 1),
+            'roi_percentage' => round($roiPercentage, 1),
+            'avg_price' => round($avgPrice, 2),
+            'l30_sales' => $totalRevenue,
+            'kw_spent' => 0,
+            'pmt_spent' => 0,
+            'tacos_percentage' => 0,
             'n_pft' => round($nPftPercentage, 1),
             'n_roi' => round($nRoiPercentage, 1),
         ];
