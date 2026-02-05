@@ -322,7 +322,14 @@ class ChannelMasterController extends Controller
     private function fetchAdMetricsFromTables(string $channel): array
     {
         $channel = strtolower(trim($channel));
-        $defaults = ['clicks' => 0, 'ad_sales' => 0.0, 'ad_sold' => 0];
+        $defaults = [
+            'clicks' => 0, 'ad_sales' => 0.0, 'ad_sold' => 0,
+            'KW Clicks' => 0, 'PT Clicks' => 0, 'HL Clicks' => 0, 'PMT Clicks' => 0, 'Shopping Clicks' => 0, 'SERP Clicks' => 0,
+            'KW Sales' => 0, 'PT Sales' => 0, 'HL Sales' => 0, 'PMT Sales' => 0, 'Shopping Sales' => 0, 'SERP Sales' => 0,
+            'KW Sold' => 0, 'PT Sold' => 0, 'HL Sold' => 0, 'PMT Sold' => 0, 'Shopping Sold' => 0, 'SERP Sold' => 0,
+            'KW ACOS' => 0, 'PT ACOS' => 0, 'HL ACOS' => 0, 'PMT ACOS' => 0, 'Shopping ACOS' => 0, 'SERP ACOS' => 0,
+            'KW CVR' => 0, 'PT CVR' => 0, 'HL CVR' => 0, 'PMT CVR' => 0, 'Shopping CVR' => 0, 'SERP CVR' => 0,
+        ];
 
         try {
             switch ($channel) {
@@ -336,19 +343,33 @@ class ChannelMasterController extends Controller
 
                     $kw = DB::table('amazon_sp_campaign_reports')->when(true, $dateFilter)
                         ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'")
-                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(sales30d), 0) as s, COALESCE(SUM(purchases1d), 0) as u')->first();
+                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(sales30d), 0) as s, COALESCE(SUM(purchases1d), 0) as u, COALESCE(SUM(spend), 0) as sp')->first();
                     $pt = DB::table('amazon_sp_campaign_reports')->when(true, $dateFilter)
                         ->where(function ($q) {
                             $q->whereRaw("campaignName LIKE '%PT'")->orWhereRaw("campaignName LIKE '%PT.'");
                         })->whereRaw("campaignName NOT LIKE '%FBA PT%'")
-                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(sales30d), 0) as s, COALESCE(SUM(purchases1d), 0) as u')->first();
+                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(sales30d), 0) as s, COALESCE(SUM(purchases1d), 0) as u, COALESCE(SUM(spend), 0) as sp')->first();
                     $hl = DB::table('amazon_sb_campaign_reports')->when(true, $dateFilter)
-                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(sales), 0) as s, COALESCE(SUM(purchases), 0) as u')->first();
+                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(sales), 0) as s, COALESCE(SUM(purchases), 0) as u, COALESCE(SUM(cost), 0) as sp')->first();
 
-                    $clicks = (int) (($kw->c ?? 0) + ($pt->c ?? 0) + ($hl->c ?? 0));
-                    $adSales = (float) (($kw->s ?? 0) + ($pt->s ?? 0) + ($hl->s ?? 0));
-                    $adSold = (int) (($kw->u ?? 0) + ($pt->u ?? 0) + ($hl->u ?? 0));
-                    return ['clicks' => $clicks, 'ad_sales' => round($adSales, 2), 'ad_sold' => $adSold];
+                    $kwC = (int) ($kw->c ?? 0); $kwS = (float) ($kw->s ?? 0); $kwU = (int) ($kw->u ?? 0); $kwSp = (float) ($kw->sp ?? 0);
+                    $ptC = (int) ($pt->c ?? 0); $ptS = (float) ($pt->s ?? 0); $ptU = (int) ($pt->u ?? 0); $ptSp = (float) ($pt->sp ?? 0);
+                    $hlC = (int) ($hl->c ?? 0); $hlS = (float) ($hl->s ?? 0); $hlU = (int) ($hl->u ?? 0); $hlSp = (float) ($hl->sp ?? 0);
+
+                    return [
+                        'clicks' => $kwC + $ptC + $hlC, 'ad_sales' => round($kwS + $ptS + $hlS, 2), 'ad_sold' => $kwU + $ptU + $hlU,
+                        'KW Clicks' => $kwC, 'PT Clicks' => $ptC, 'HL Clicks' => $hlC, 'PMT Clicks' => 0, 'Shopping Clicks' => 0, 'SERP Clicks' => 0,
+                        'KW Sales' => round($kwS, 2), 'PT Sales' => round($ptS, 2), 'HL Sales' => round($hlS, 2), 'PMT Sales' => 0, 'Shopping Sales' => 0, 'SERP Sales' => 0,
+                        'KW Sold' => $kwU, 'PT Sold' => $ptU, 'HL Sold' => $hlU, 'PMT Sold' => 0, 'Shopping Sold' => 0, 'SERP Sold' => 0,
+                        'KW ACOS' => $kwS > 0 ? round(($kwSp / $kwS) * 100, 1) : 0,
+                        'PT ACOS' => $ptS > 0 ? round(($ptSp / $ptS) * 100, 1) : 0,
+                        'HL ACOS' => $hlS > 0 ? round(($hlSp / $hlS) * 100, 1) : 0,
+                        'PMT ACOS' => 0, 'Shopping ACOS' => 0, 'SERP ACOS' => 0,
+                        'KW CVR' => $kwC > 0 ? round(($kwU / $kwC) * 100, 1) : 0,
+                        'PT CVR' => $ptC > 0 ? round(($ptU / $ptC) * 100, 1) : 0,
+                        'HL CVR' => $hlC > 0 ? round(($hlU / $hlC) * 100, 1) : 0,
+                        'PMT CVR' => 0, 'Shopping CVR' => 0, 'SERP CVR' => 0,
+                    ];
                 }
 
                 case 'amazonfba': {
@@ -359,23 +380,32 @@ class ChannelMasterController extends Controller
                         ->whereNotIn('report_date_range', ['L60', 'L30', 'L15', 'L7', 'L1'])
                         ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')");
 
-                    // FBA KW: campaigns ending with 'FBA' but NOT 'FBA PT'
                     $kw = DB::table('amazon_sp_campaign_reports')->when(true, $dateFilter)
                         ->whereRaw("campaignName LIKE '%FBA'")
                         ->whereRaw("campaignName NOT LIKE '%FBA PT%'")
                         ->whereRaw("campaignName NOT LIKE '%FBA PT.%'")
-                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(sales30d), 0) as s, COALESCE(SUM(purchases1d), 0) as u')->first();
-                    // FBA PT: campaigns ending with 'FBA PT' or 'FBA PT.'
+                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(sales30d), 0) as s, COALESCE(SUM(purchases1d), 0) as u, COALESCE(SUM(spend), 0) as sp')->first();
                     $pt = DB::table('amazon_sp_campaign_reports')->when(true, $dateFilter)
                         ->where(function ($q) {
                             $q->whereRaw("campaignName LIKE '%FBA PT'")->orWhereRaw("campaignName LIKE '%FBA PT.'");
                         })
-                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(sales30d), 0) as s, COALESCE(SUM(purchases1d), 0) as u')->first();
+                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(sales30d), 0) as s, COALESCE(SUM(purchases1d), 0) as u, COALESCE(SUM(spend), 0) as sp')->first();
 
-                    $clicks = (int) (($kw->c ?? 0) + ($pt->c ?? 0));
-                    $adSales = (float) (($kw->s ?? 0) + ($pt->s ?? 0));
-                    $adSold = (int) (($kw->u ?? 0) + ($pt->u ?? 0));
-                    return ['clicks' => $clicks, 'ad_sales' => round($adSales, 2), 'ad_sold' => $adSold];
+                    $kwC = (int) ($kw->c ?? 0); $kwS = (float) ($kw->s ?? 0); $kwU = (int) ($kw->u ?? 0); $kwSp = (float) ($kw->sp ?? 0);
+                    $ptC = (int) ($pt->c ?? 0); $ptS = (float) ($pt->s ?? 0); $ptU = (int) ($pt->u ?? 0); $ptSp = (float) ($pt->sp ?? 0);
+
+                    return [
+                        'clicks' => $kwC + $ptC, 'ad_sales' => round($kwS + $ptS, 2), 'ad_sold' => $kwU + $ptU,
+                        'KW Clicks' => $kwC, 'PT Clicks' => $ptC, 'HL Clicks' => 0, 'PMT Clicks' => 0, 'Shopping Clicks' => 0, 'SERP Clicks' => 0,
+                        'KW Sales' => round($kwS, 2), 'PT Sales' => round($ptS, 2), 'HL Sales' => 0, 'PMT Sales' => 0, 'Shopping Sales' => 0, 'SERP Sales' => 0,
+                        'KW Sold' => $kwU, 'PT Sold' => $ptU, 'HL Sold' => 0, 'PMT Sold' => 0, 'Shopping Sold' => 0, 'SERP Sold' => 0,
+                        'KW ACOS' => $kwS > 0 ? round(($kwSp / $kwS) * 100, 1) : 0,
+                        'PT ACOS' => $ptS > 0 ? round(($ptSp / $ptS) * 100, 1) : 0,
+                        'HL ACOS' => 0, 'PMT ACOS' => 0, 'Shopping ACOS' => 0, 'SERP ACOS' => 0,
+                        'KW CVR' => $kwC > 0 ? round(($kwU / $kwC) * 100, 1) : 0,
+                        'PT CVR' => $ptC > 0 ? round(($ptU / $ptC) * 100, 1) : 0,
+                        'HL CVR' => 0, 'PMT CVR' => 0, 'Shopping CVR' => 0, 'SERP CVR' => 0,
+                    ];
                 }
 
                 case 'ebay':
@@ -397,29 +427,44 @@ class ChannelMasterController extends Controller
                     if (!$kwTable || !$pmtTable) return $defaults;
 
                     $kw = DB::table($kwTable)->where('report_range', 'L30')->whereDate('updated_at', '>=', $thirtyDaysAgo)
-                        ->selectRaw('COALESCE(SUM(cpc_clicks), 0) as c, COALESCE(SUM(REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")), 0) as s, COALESCE(SUM(cpc_attributed_sales), 0) as u')
+                        ->selectRaw('COALESCE(SUM(cpc_clicks), 0) as c, COALESCE(SUM(REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")), 0) as s, COALESCE(SUM(cpc_attributed_sales), 0) as u, COALESCE(SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")), 0) as sp')
                         ->first();
                     $pmt = DB::table($pmtTable)->where('report_range', 'L30')->whereDate('updated_at', '>=', $thirtyDaysAgo)
-                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(REPLACE(REPLACE(sale_amount, "USD ", ""), ",", "")), 0) as s, COALESCE(SUM(sales), 0) as u')
+                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(REPLACE(REPLACE(sale_amount, "USD ", ""), ",", "")), 0) as s, COALESCE(SUM(sales), 0) as u, COALESCE(SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")), 0) as sp')
                         ->first();
 
-                    $clicks = (int) (($kw->c ?? 0) + ($pmt->c ?? 0));
-                    $adSales = (float) (($kw->s ?? 0) + ($pmt->s ?? 0));
-                    $adSold = (int) (($kw->u ?? 0) + ($pmt->u ?? 0));
-                    return ['clicks' => $clicks, 'ad_sales' => round($adSales, 2), 'ad_sold' => $adSold];
+                    $kwC = (int) ($kw->c ?? 0); $kwS = (float) ($kw->s ?? 0); $kwU = (int) ($kw->u ?? 0); $kwSp = (float) ($kw->sp ?? 0);
+                    $pmtC = (int) ($pmt->c ?? 0); $pmtS = (float) ($pmt->s ?? 0); $pmtU = (int) ($pmt->u ?? 0); $pmtSp = (float) ($pmt->sp ?? 0);
+
+                    return [
+                        'clicks' => $kwC + $pmtC, 'ad_sales' => round($kwS + $pmtS, 2), 'ad_sold' => $kwU + $pmtU,
+                        'KW Clicks' => $kwC, 'PT Clicks' => 0, 'HL Clicks' => 0, 'PMT Clicks' => $pmtC, 'Shopping Clicks' => 0, 'SERP Clicks' => 0,
+                        'KW Sales' => round($kwS, 2), 'PT Sales' => 0, 'HL Sales' => 0, 'PMT Sales' => round($pmtS, 2), 'Shopping Sales' => 0, 'SERP Sales' => 0,
+                        'KW Sold' => $kwU, 'PT Sold' => 0, 'HL Sold' => 0, 'PMT Sold' => $pmtU, 'Shopping Sold' => 0, 'SERP Sold' => 0,
+                        'KW ACOS' => $kwS > 0 ? round(($kwSp / $kwS) * 100, 1) : 0,
+                        'PT ACOS' => 0, 'HL ACOS' => 0,
+                        'PMT ACOS' => $pmtS > 0 ? round(($pmtSp / $pmtS) * 100, 1) : 0,
+                        'Shopping ACOS' => 0, 'SERP ACOS' => 0,
+                        'KW CVR' => $kwC > 0 ? round(($kwU / $kwC) * 100, 1) : 0,
+                        'PT CVR' => 0, 'HL CVR' => 0,
+                        'PMT CVR' => $pmtC > 0 ? round(($pmtU / $pmtC) * 100, 1) : 0,
+                        'Shopping CVR' => 0, 'SERP CVR' => 0,
+                    ];
                 }
 
                 case 'temu': {
                     $row = DB::table('temu_campaign_reports')
                         ->where('report_range', 'L30')
                         ->whereRaw("(status IS NULL OR status != 'ARCHIVED')")
-                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(base_price_sales), 0) as s, COALESCE(SUM(sub_orders), 0) as u')
+                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(base_price_sales), 0) as s, COALESCE(SUM(sub_orders), 0) as u, COALESCE(SUM(spend), 0) as sp')
                         ->first();
-                    return [
-                        'clicks' => (int) ($row->c ?? 0),
-                        'ad_sales' => round((float) ($row->s ?? 0), 2),
-                        'ad_sold' => (int) ($row->u ?? 0),
-                    ];
+                    $c = (int) ($row->c ?? 0); $s = (float) ($row->s ?? 0); $u = (int) ($row->u ?? 0); $sp = (float) ($row->sp ?? 0);
+                    return array_merge($defaults, [
+                        'clicks' => $c, 'ad_sales' => round($s, 2), 'ad_sold' => $u,
+                        'KW Clicks' => $c, 'KW Sales' => round($s, 2), 'KW Sold' => $u,
+                        'KW ACOS' => $s > 0 ? round(($sp / $s) * 100, 1) : 0,
+                        'KW CVR' => $c > 0 ? round(($u / $c) * 100, 1) : 0,
+                    ]);
                 }
 
                 case 'walmart': {
@@ -427,30 +472,47 @@ class ChannelMasterController extends Controller
                         ->where('report_range', 'L30')
                         ->whereRaw("(status IS NULL OR status != 'ARCHIVED')")
                         ->whereNotNull('campaignName')->where('campaignName', '!=', '')
-                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(sales), 0) as s')
+                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(sales), 0) as s, COALESCE(SUM(spend), 0) as sp')
                         ->first();
-                    return [
-                        'clicks' => (int) ($row->c ?? 0),
-                        'ad_sales' => round((float) ($row->s ?? 0), 2),
-                        'ad_sold' => 0,
-                    ];
+                    $c = (int) ($row->c ?? 0); $s = (float) ($row->s ?? 0); $sp = (float) ($row->sp ?? 0);
+                    return array_merge($defaults, [
+                        'clicks' => $c, 'ad_sales' => round($s, 2), 'ad_sold' => 0,
+                        'KW Clicks' => $c, 'KW Sales' => round($s, 2),
+                        'KW ACOS' => $s > 0 ? round(($sp / $s) * 100, 1) : 0,
+                    ]);
                 }
 
                 case 'shopifyb2c': {
                     $endDate = Carbon::now()->subDays(2)->format('Y-m-d');
                     $startDate = Carbon::now()->subDays(31)->format('Y-m-d');
-                    $row = DB::table('google_ads_campaigns')
+                    // Shopping ads
+                    $shopping = DB::table('google_ads_campaigns')
                         ->whereDate('date', '>=', $startDate)
                         ->whereDate('date', '<=', $endDate)
                         ->where('advertising_channel_type', 'SHOPPING')
                         ->where('campaign_status', 'ENABLED')
-                        ->selectRaw('COALESCE(SUM(metrics_clicks), 0) as c, COALESCE(SUM(ga4_ad_sales), 0) as s, COALESCE(SUM(ga4_sold_units), 0) as u')
+                        ->selectRaw('COALESCE(SUM(metrics_clicks), 0) as c, COALESCE(SUM(ga4_ad_sales), 0) as s, COALESCE(SUM(ga4_sold_units), 0) as u, COALESCE(SUM(metrics_cost_micros), 0) as sp')
                         ->first();
-                    return [
-                        'clicks' => (int) ($row->c ?? 0),
-                        'ad_sales' => round((float) ($row->s ?? 0), 2),
-                        'ad_sold' => (int) ($row->u ?? 0),
-                    ];
+                    // SERP (Search) ads
+                    $serp = DB::table('google_ads_campaigns')
+                        ->whereDate('date', '>=', $startDate)
+                        ->whereDate('date', '<=', $endDate)
+                        ->where('advertising_channel_type', 'SEARCH')
+                        ->whereIn('campaign_status', ['ENABLED', 'PAUSED'])
+                        ->selectRaw('COALESCE(SUM(metrics_clicks), 0) as c, COALESCE(SUM(ga4_ad_sales), 0) as s, COALESCE(SUM(ga4_sold_units), 0) as u, COALESCE(SUM(metrics_cost_micros), 0) as sp')
+                        ->first();
+                    $shpC = (int) ($shopping->c ?? 0); $shpS = (float) ($shopping->s ?? 0); $shpU = (int) ($shopping->u ?? 0); $shpSp = (float) (($shopping->sp ?? 0) / 1000000);
+                    $serpC = (int) ($serp->c ?? 0); $serpS = (float) ($serp->s ?? 0); $serpU = (int) ($serp->u ?? 0); $serpSp = (float) (($serp->sp ?? 0) / 1000000);
+                    return array_merge($defaults, [
+                        'clicks' => $shpC + $serpC, 'ad_sales' => round($shpS + $serpS, 2), 'ad_sold' => $shpU + $serpU,
+                        'Shopping Clicks' => $shpC, 'SERP Clicks' => $serpC,
+                        'Shopping Sales' => round($shpS, 2), 'SERP Sales' => round($serpS, 2),
+                        'Shopping Sold' => $shpU, 'SERP Sold' => $serpU,
+                        'Shopping ACOS' => $shpS > 0 ? round(($shpSp / $shpS) * 100, 1) : 0,
+                        'SERP ACOS' => $serpS > 0 ? round(($serpSp / $serpS) * 100, 1) : 0,
+                        'Shopping CVR' => $shpC > 0 ? round(($shpU / $shpC) * 100, 1) : 0,
+                        'SERP CVR' => $serpC > 0 ? round(($serpU / $serpC) * 100, 1) : 0,
+                    ]);
                 }
 
                 case 'tiktokshop': {
@@ -467,13 +529,15 @@ class ChannelMasterController extends Controller
                         ->whereNotNull('campaign_name')->where('campaign_name', '!=', '')
                         ->whereNotNull('product_id')->where('product_id', '!=', '')
                         ->whereRaw('UPPER(TRIM(campaign_name)) IN (' . $placeholders . ')', $productSkusUpper)
-                        ->selectRaw('COALESCE(SUM(product_ad_clicks), 0) as c, COALESCE(SUM(gross_revenue), 0) as s, COALESCE(SUM(sku_orders), 0) as u')
+                        ->selectRaw('COALESCE(SUM(product_ad_clicks), 0) as c, COALESCE(SUM(gross_revenue), 0) as s, COALESCE(SUM(sku_orders), 0) as u, COALESCE(SUM(spend), 0) as sp')
                         ->first();
-                    return [
-                        'clicks' => (int) ($row->c ?? 0),
-                        'ad_sales' => round((float) ($row->s ?? 0), 2),
-                        'ad_sold' => (int) ($row->u ?? 0),
-                    ];
+                    $c = (int) ($row->c ?? 0); $s = (float) ($row->s ?? 0); $u = (int) ($row->u ?? 0); $sp = (float) ($row->sp ?? 0);
+                    return array_merge($defaults, [
+                        'clicks' => $c, 'ad_sales' => round($s, 2), 'ad_sold' => $u,
+                        'KW Clicks' => $c, 'KW Sales' => round($s, 2), 'KW Sold' => $u,
+                        'KW ACOS' => $s > 0 ? round(($sp / $s) * 100, 1) : 0,
+                        'KW CVR' => $c > 0 ? round(($u / $c) * 100, 1) : 0,
+                    ]);
                 }
 
                 default:
@@ -716,13 +780,15 @@ class ChannelMasterController extends Controller
                 }
             }
 
-            // AD CLICKS, AD SALES, AD SOLD: fetch directly from tables for ad-enabled channels
+            // AD CLICKS, AD SALES, AD SOLD + breakdown: fetch directly from tables for ad-enabled channels
             $adMetricsChannels = ['amazon', 'amazonfba', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'walmart', 'shopifyb2c', 'tiktokshop'];
             if (in_array($key, $adMetricsChannels)) {
                 $metrics = $this->fetchAdMetricsFromTables($key);
                 $clicks = $metrics['clicks'];
                 $adSales = $metrics['ad_sales'];
                 $adSold = $metrics['ad_sold'];
+                // Merge all breakdown fields into row
+                $row = array_merge($row, $metrics);
             } else {
                 // Fallback: adv_masters_data for channels without direct table support
                 $channelKey = strtoupper($channel);
@@ -747,6 +813,12 @@ class ChannelMasterController extends Controller
                     $adSold = 0;
                     $adSales = 0;
                 }
+                // Set default breakdown values for non-ad-enabled channels
+                $row['KW Clicks'] = 0; $row['PT Clicks'] = 0; $row['HL Clicks'] = 0; $row['PMT Clicks'] = 0; $row['Shopping Clicks'] = 0; $row['SERP Clicks'] = 0;
+                $row['KW Sales'] = 0; $row['PT Sales'] = 0; $row['HL Sales'] = 0; $row['PMT Sales'] = 0; $row['Shopping Sales'] = 0; $row['SERP Sales'] = 0;
+                $row['KW Sold'] = 0; $row['PT Sold'] = 0; $row['HL Sold'] = 0; $row['PMT Sold'] = 0; $row['Shopping Sold'] = 0; $row['SERP Sold'] = 0;
+                $row['KW ACOS'] = 0; $row['PT ACOS'] = 0; $row['HL ACOS'] = 0; $row['PMT ACOS'] = 0; $row['Shopping ACOS'] = 0; $row['SERP ACOS'] = 0;
+                $row['KW CVR'] = 0; $row['PT CVR'] = 0; $row['HL CVR'] = 0; $row['PMT CVR'] = 0; $row['Shopping CVR'] = 0; $row['SERP CVR'] = 0;
             }
 
             // Missing Ads: still from adv_masters_data (not in campaign tables)
