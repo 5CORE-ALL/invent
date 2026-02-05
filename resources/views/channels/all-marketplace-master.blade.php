@@ -184,6 +184,10 @@
                     <button id="addChannelBtn" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addChannelModal">
                         <i class="fas fa-plus-circle"></i> Add Channel
                     </button>
+                    
+                    <button id="toggleAdColumnsBtn" class="btn btn-sm btn-outline-secondary">
+                        <i class="fas fa-ad"></i> Show Ads Data
+                    </button>
                 </div>
 
                 <!-- Summary Stats -->
@@ -578,7 +582,7 @@
     <!-- Missing Ads Breakdown Modal -->
     <div class="modal fade" id="missingAdsBreakdownModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-md modal-dialog-centered shadow-none">
-            <div class="modal-content shadow-none">
+            <div class="modal-content">
                 <div class="modal-header bg-danger text-white">
                     <h5 class="modal-title">
                         <i class="fas fa-exclamation-triangle me-2"></i> 
@@ -586,7 +590,7 @@
                     </h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body ">
+                <div class="modal-body">
                     <div class="table-responsive">
                         <table class="table table-bordered table-hover mb-0">
                             <thead class="table-light">
@@ -650,6 +654,33 @@
             if (typeof value === 'number') return value;
             const cleaned = String(value).replace(/[^0-9.-]/g, '');
             return parseFloat(cleaned) || 0;
+        }
+
+        // Track main Ad columns visibility (from Total Ad Spend to Missing Ads)
+        let adColumnsVisible = false;
+        const mainAdColumnFields = ['Total Ad Spend', 'clicks', 'Ad Sales', 'ad_sold', 'ACOS', 'Ads CVR', 'Missing Ads'];
+
+        function toggleMainAdColumns() {
+            adColumnsVisible = !adColumnsVisible;
+            mainAdColumnFields.forEach(field => {
+                if (adColumnsVisible) {
+                    table.showColumn(field);
+                } else {
+                    table.hideColumn(field);
+                }
+            });
+            
+            // Update button text
+            const btn = document.getElementById('toggleAdColumnsBtn');
+            if (adColumnsVisible) {
+                btn.innerHTML = '<i class="fas fa-ad"></i> Hide Ads Data';
+                btn.classList.remove('btn-outline-secondary');
+                btn.classList.add('btn-secondary');
+            } else {
+                btn.innerHTML = '<i class="fas fa-ad"></i> Show Ads Data';
+                btn.classList.remove('btn-secondary');
+                btn.classList.add('btn-outline-secondary');
+            }
         }
 
         // Track Ad Spend breakdown columns visibility
@@ -940,6 +971,7 @@
                         field: "Total Ad Spend",
                         hozAlign: "center",
                         sorter: "number",
+                        visible: false,
                         formatter: function(cell) {
                             const totalSpent = parseNumber(cell.getValue() || 0);
                             if (totalSpent === 0) return '-';
@@ -1113,6 +1145,7 @@
                         field: "clicks",
                         hozAlign: "center",
                         sorter: "number",
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             if (value === 0) return '-';
@@ -1282,6 +1315,7 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 120,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             if (!value || value === 0) return '-';
@@ -1452,6 +1486,7 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             if (value === 0) return '-';
@@ -1621,6 +1656,7 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 90,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             if (!value || value === 0) return '-';
@@ -1774,6 +1810,7 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 100,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             if (!value || value === 0) return '-';
@@ -1928,6 +1965,7 @@
                         hozAlign: "center",
                         sorter: "number",
                         width: 110,
+                        visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
@@ -2399,6 +2437,11 @@
             // Refresh Data
             document.getElementById("refresh-btn").addEventListener("click", function() {
                 table.setData();
+            });
+
+            // Toggle Ad Columns (from Total Ad Spend to Missing Ads)
+            document.getElementById("toggleAdColumnsBtn").addEventListener("click", function() {
+                toggleMainAdColumns();
             });
 
             // Table built event

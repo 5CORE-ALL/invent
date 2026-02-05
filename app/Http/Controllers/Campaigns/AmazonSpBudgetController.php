@@ -3205,18 +3205,26 @@ class AmazonSpBudgetController extends Controller
 
         $totalSpendAll = 0;
         $totalSalesAll = 0;
+        $totalClicksAll = 0;
+        $totalOrdersAll = 0;
 
         foreach ($allL30Campaigns as $campaign) {
             if ($campaignType === 'HL') {
                 $spend = $campaign->cost ?? 0;
                 // SB (Sponsored Brands) table uses 'sales' for L30 range; sales30d may not be populated
                 $sales = (float)($campaign->sales ?? $campaign->sales30d ?? 0);
+                $clicks = (int)($campaign->clicks ?? 0);
+                $orders = (int)($campaign->purchases ?? 0);
             } else {
                 $spend = $campaign->spend ?? 0;
                 $sales = (float)($campaign->sales30d ?? 0);
+                $clicks = (int)($campaign->clicks ?? 0);
+                $orders = (int)($campaign->unitsSoldClicks30d ?? 0);
             }
             $totalSpendAll += $spend;
             $totalSalesAll += $sales;
+            $totalClicksAll += $clicks;
+            $totalOrdersAll += $orders;
         }
 
         $totalACOSAll = $totalSalesAll > 0 ? ($totalSpendAll / $totalSalesAll) * 100 : 0;
@@ -5077,6 +5085,8 @@ class AmazonSpBudgetController extends Controller
             'data' => $result,
             'total_l30_spend' => round($totalSpendAll, 2),
             'total_l30_sales' => round($totalSalesAll, 2),
+            'total_l30_clicks' => (int)$totalClicksAll,
+            'total_l30_orders' => (int)$totalOrdersAll,
             'total_l30_purchases' => (int)$totalPurchasesAll,
             'total_acos' => round($totalACOSAll, 2),
             'total_sku_count' => $totalSkuCount,
