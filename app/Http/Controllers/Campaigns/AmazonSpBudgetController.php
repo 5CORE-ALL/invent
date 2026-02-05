@@ -1262,13 +1262,16 @@ class AmazonSpBudgetController extends Controller
 
     private function filterAmazonUtilizedChartKw($start, $end)
     {
+        // Match the same logic as L30 totals calculation - include all campaigns except PT and ARCHIVED
+        // Use unitsSoldClicks30d for orders to match L30 totals (which uses unitsSoldClicks30d)
+        // Exclude PT campaigns with various naming conventions
         $rawData = DB::table('amazon_sp_campaign_reports')
             ->selectRaw('
                 report_date_range as report_date,
                 campaignName,
                 SUM(spend) as sum_spend,
                 SUM(clicks) as clicks,
-                SUM(purchases1d) as orders,
+                SUM(unitsSoldClicks30d) as orders,
                 SUM(sales30d) as sales
             ')
             ->whereNotNull('report_date_range')
@@ -1276,7 +1279,9 @@ class AmazonSpBudgetController extends Controller
             ->whereRaw("report_date_range <= ?", [$end])
             ->whereNotIn('report_date_range', ['L60','L30','L15','L7','L1'])
             ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
-            ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'")
+            ->whereRaw("campaignName NOT LIKE '% PT%'")
+            ->whereRaw("campaignName NOT LIKE '%-PT%'")
+            ->whereRaw("campaignName NOT LIKE '%.PT%'")
             ->groupBy('report_date_range', 'campaignName')
             ->get();
 
@@ -1285,13 +1290,20 @@ class AmazonSpBudgetController extends Controller
 
     private function filterAmazonUtilizedChartPt($start, $end)
     {
+        // Match the same logic as L30 totals calculation - include all PT campaigns except ARCHIVED
+        // Use unitsSoldClicks30d for orders to match L30 totals (which uses unitsSoldClicks30d)
+        // Use inclusive pattern to match PT campaigns with various naming conventions:
+        // - "SKU PT", "SKU PT AUTO", "SKU PT V2" (space separator)
+        // - "SKU-PT", "SKU-PT-AUTO" (hyphen separator)
+        // - "SKU.PT" (dot separator)
+        // - Ends with "PT" or "PT."
         $rawData = DB::table('amazon_sp_campaign_reports')
             ->selectRaw('
                 report_date_range as report_date,
                 campaignName,
                 SUM(spend) as sum_spend,
                 SUM(clicks) as clicks,
-                SUM(purchases1d) as orders,
+                SUM(unitsSoldClicks30d) as orders,
                 SUM(sales30d) as sales
             ')
             ->whereNotNull('report_date_range')
@@ -1300,11 +1312,12 @@ class AmazonSpBudgetController extends Controller
             ->whereNotIn('report_date_range', ['L60','L30','L15','L7','L1'])
             ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
             ->where(function ($query) {
-                $query->whereRaw("campaignName LIKE '%PT'")
+                $query->whereRaw("campaignName LIKE '% PT%'")
+                    ->orWhereRaw("campaignName LIKE '%-PT%'")
+                    ->orWhereRaw("campaignName LIKE '%.PT%'")
+                    ->orWhereRaw("campaignName LIKE '%PT'")
                     ->orWhereRaw("campaignName LIKE '%PT.'");
             })
-            ->whereRaw("campaignName NOT LIKE '%FBA PT%'")
-            ->whereRaw("campaignName NOT LIKE '%FBA PT.%'")
             ->groupBy('report_date_range', 'campaignName')
             ->get();
 
@@ -3187,17 +3200,23 @@ class AmazonSpBudgetController extends Controller
                 ->where('report_date_range', 'L30');
             
             if ($campaignType === 'PT') {
+                // Match PT campaigns with various naming conventions:
+                // - "SKU PT", "SKU PT AUTO", "SKU PT V2" (space separator)
+                // - "SKU-PT", "SKU-PT-AUTO" (hyphen separator)
+                // - "SKU.PT" (dot separator)
+                // - Ends with "PT" or "PT."
                 $allL30Campaigns->where(function($q) {
-                    $q->where('campaignName', 'LIKE', '% PT')
-                      ->orWhere('campaignName', 'LIKE', '% PT.')
-                      ->orWhere('campaignName', 'LIKE', '%PT')
-                      ->orWhere('campaignName', 'LIKE', '%PT.')
+                    $q->where('campaignName', 'LIKE', '% PT%')
+                      ->orWhere('campaignName', 'LIKE', '%-PT%')
+                      ->orWhere('campaignName', 'LIKE', '%.PT%')
                       ->orWhere('campaignName', 'LIKE', '%PT')
                       ->orWhere('campaignName', 'LIKE', '%PT.');
                 });
             } else {
-                $allL30Campaigns->where('campaignName', 'NOT LIKE', '% PT')
-                               ->where('campaignName', 'NOT LIKE', '% PT.');
+                // Exclude PT campaigns for KW - exclude anything with PT patterns
+                $allL30Campaigns->where('campaignName', 'NOT LIKE', '% PT%')
+                               ->where('campaignName', 'NOT LIKE', '%-PT%')
+                               ->where('campaignName', 'NOT LIKE', '%.PT%');
             }
             
             $allL30Campaigns = $allL30Campaigns->where('campaignStatus', '!=', 'ARCHIVED')->get();
