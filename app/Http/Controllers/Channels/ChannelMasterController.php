@@ -176,6 +176,340 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Fetch Amazon ad spend breakdown (KW, PT, HL) - same logic as Amazon KW/PT/HL Utilized charts.
+     * Uses daily date rows (not L30) with default range: 31 days ago to 2 days ago.
+     *
+     * @return array{kw: float, pt: float, hl: float}
+     */
+    private function fetchAmazonAdSpendBreakdownFromTables(): array
+    {
+        $end = Carbon::now()->subDays(2)->format('Y-m-d');
+        $start = Carbon::now()->subDays(31)->format('Y-m-d');
+
+        // KW: same as filterAmazonUtilizedChartKw - daily dates, exclude PT/FBA, exclude ARCHIVED
+        $kwSpent = round((float) DB::table('amazon_sp_campaign_reports')
+            ->whereNotNull('report_date_range')
+            ->whereBetween('report_date_range', [$start, $end])
+            ->whereNotIn('report_date_range', ['L60', 'L30', 'L15', 'L7', 'L1'])
+            ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
+            ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'")
+            ->sum('spend'), 2);
+
+        // PT: same as filterAmazonUtilizedChartPt - daily dates, PT campaigns only
+        $ptSpent = round((float) DB::table('amazon_sp_campaign_reports')
+            ->whereNotNull('report_date_range')
+            ->whereBetween('report_date_range', [$start, $end])
+            ->whereNotIn('report_date_range', ['L60', 'L30', 'L15', 'L7', 'L1'])
+            ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
+            ->where(function ($q) {
+                $q->whereRaw("campaignName LIKE '%PT'")->orWhereRaw("campaignName LIKE '%PT.'");
+            })
+            ->whereRaw("campaignName NOT LIKE '%FBA PT%'")
+            ->whereRaw("campaignName NOT LIKE '%FBA PT.%'")
+            ->sum('spend'), 2);
+
+        // HL: same as filterAmazonUtilizedChartHl - daily dates, amazon_sb_campaign_reports
+        $hlSpent = round((float) DB::table('amazon_sb_campaign_reports')
+            ->whereNotNull('report_date_range')
+            ->whereBetween('report_date_range', [$start, $end])
+            ->whereNotIn('report_date_range', ['L60', 'L30', 'L15', 'L7', 'L1'])
+            ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
+            ->sum('cost'), 2);
+
+        return ['kw' => $kwSpent, 'pt' => $ptSpent, 'hl' => $hlSpent];
+    }
+
+    /**
+     * Fetch eBay KW and PMT spend from tables - same logic as Ebay KW Ads and PMT Ads pages.
+     * Uses L30 rows, whereDate(updated_at >= 30 days ago), no campaignStatus filter (matches utilized pages).
+     *
+     * @param string $channel ebay, ebaytwo, or ebaythree
+     * @return array{kw: float, pmt: float}
+     */
+    private function fetchEbayAdSpendBreakdownFromTables(string $channel): array
+    {
+        $channel = strtolower(trim($channel));
+        $thirtyDaysAgo = Carbon::now()->subDays(30)->format('Y-m-d');
+
+        $kwTable = match ($channel) {
+            'ebay' => 'ebay_priority_reports',
+            'ebaytwo' => 'ebay_2_priority_reports',
+            'ebaythree' => 'ebay_3_priority_reports',
+            default => null,
+        };
+        $pmtTable = match ($channel) {
+            'ebay' => 'ebay_general_reports',
+            'ebaytwo' => 'ebay_2_general_reports',
+            'ebaythree' => 'ebay_3_general_reports',
+            default => null,
+        };
+
+        if (!$kwTable || !$pmtTable) {
+            return ['kw' => 0.0, 'pmt' => 0.0];
+        }
+
+        if ($channel === 'ebaythree') {
+            $kwSpent = (float) DB::table($kwTable)
+                ->where('report_range', 'L30')
+                ->whereDate('updated_at', '>=', $thirtyDaysAgo)
+                ->get()
+                ->sum(fn ($r) => (float) preg_replace('/[^\d.]/', '', $r->cpc_ad_fees_payout_currency ?? '0'));
+            $pmtSpent = (float) DB::table($pmtTable)
+                ->where('report_range', 'L30')
+                ->whereDate('updated_at', '>=', $thirtyDaysAgo)
+                ->get()
+                ->sum(fn ($r) => (float) preg_replace('/[^\d.]/', '', $r->ad_fees ?? '0'));
+        } else {
+            $kwSpent = (float) DB::table($kwTable)
+                ->where('report_range', 'L30')
+                ->whereDate('updated_at', '>=', $thirtyDaysAgo)
+                ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")), 0) as total')
+                ->value('total') ?? 0;
+            $pmtSpent = (float) DB::table($pmtTable)
+                ->where('report_range', 'L30')
+                ->whereDate('updated_at', '>=', $thirtyDaysAgo)
+                ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")), 0) as total')
+                ->value('total') ?? 0;
+        }
+
+        return ['kw' => round($kwSpent, 2), 'pmt' => round($pmtSpent, 2)];
+    }
+
+    /**
+     * Fetch AD CLICKS, AD SALES, AD SOLD directly from campaign/report tables.
+     * Same tables and logic as Ad Spend for each channel.
+     *
+     * @param string $channel Normalized channel key (amazon, ebay, ebaytwo, ebaythree, temu, walmart, shopifyb2c, tiktokshop)
+     * @return array{clicks: int, ad_sales: float, ad_sold: int}
+     */
+    private function fetchAdMetricsFromTables(string $channel): array
+    {
+        $channel = strtolower(trim($channel));
+        $defaults = ['clicks' => 0, 'ad_sales' => 0.0, 'ad_sold' => 0];
+
+        try {
+            switch ($channel) {
+                case 'amazon': {
+                    $end = Carbon::now()->subDays(2)->format('Y-m-d');
+                    $start = Carbon::now()->subDays(31)->format('Y-m-d');
+                    $dateFilter = fn ($q) => $q->whereNotNull('report_date_range')
+                        ->whereBetween('report_date_range', [$start, $end])
+                        ->whereNotIn('report_date_range', ['L60', 'L30', 'L15', 'L7', 'L1'])
+                        ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')");
+
+                    $kw = DB::table('amazon_sp_campaign_reports')->when(true, $dateFilter)
+                        ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'")
+                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(sales30d), 0) as s, COALESCE(SUM(purchases1d), 0) as u')->first();
+                    $pt = DB::table('amazon_sp_campaign_reports')->when(true, $dateFilter)
+                        ->where(function ($q) {
+                            $q->whereRaw("campaignName LIKE '%PT'")->orWhereRaw("campaignName LIKE '%PT.'");
+                        })->whereRaw("campaignName NOT LIKE '%FBA PT%'")
+                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(sales30d), 0) as s, COALESCE(SUM(purchases1d), 0) as u')->first();
+                    $hl = DB::table('amazon_sb_campaign_reports')->when(true, $dateFilter)
+                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(sales), 0) as s, COALESCE(SUM(purchases), 0) as u')->first();
+
+                    $clicks = (int) (($kw->c ?? 0) + ($pt->c ?? 0) + ($hl->c ?? 0));
+                    $adSales = (float) (($kw->s ?? 0) + ($pt->s ?? 0) + ($hl->s ?? 0));
+                    $adSold = (int) (($kw->u ?? 0) + ($pt->u ?? 0) + ($hl->u ?? 0));
+                    return ['clicks' => $clicks, 'ad_sales' => round($adSales, 2), 'ad_sold' => $adSold];
+                }
+
+                case 'ebay':
+                case 'ebaytwo':
+                case 'ebaythree': {
+                    $thirtyDaysAgo = Carbon::now()->subDays(30)->format('Y-m-d');
+                    $kwTable = match ($channel) {
+                        'ebay' => 'ebay_priority_reports',
+                        'ebaytwo' => 'ebay_2_priority_reports',
+                        'ebaythree' => 'ebay_3_priority_reports',
+                        default => null,
+                    };
+                    $pmtTable = match ($channel) {
+                        'ebay' => 'ebay_general_reports',
+                        'ebaytwo' => 'ebay_2_general_reports',
+                        'ebaythree' => 'ebay_3_general_reports',
+                        default => null,
+                    };
+                    if (!$kwTable || !$pmtTable) return $defaults;
+
+                    $kw = DB::table($kwTable)->where('report_range', 'L30')->whereDate('updated_at', '>=', $thirtyDaysAgo)
+                        ->selectRaw('COALESCE(SUM(cpc_clicks), 0) as c, COALESCE(SUM(REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")), 0) as s, COALESCE(SUM(cpc_attributed_sales), 0) as u')
+                        ->first();
+                    $pmt = DB::table($pmtTable)->where('report_range', 'L30')->whereDate('updated_at', '>=', $thirtyDaysAgo)
+                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(REPLACE(REPLACE(sale_amount, "USD ", ""), ",", "")), 0) as s, COALESCE(SUM(sales), 0) as u')
+                        ->first();
+
+                    $clicks = (int) (($kw->c ?? 0) + ($pmt->c ?? 0));
+                    $adSales = (float) (($kw->s ?? 0) + ($pmt->s ?? 0));
+                    $adSold = (int) (($kw->u ?? 0) + ($pmt->u ?? 0));
+                    return ['clicks' => $clicks, 'ad_sales' => round($adSales, 2), 'ad_sold' => $adSold];
+                }
+
+                case 'temu': {
+                    $row = DB::table('temu_campaign_reports')
+                        ->where('report_range', 'L30')
+                        ->whereRaw("(status IS NULL OR status != 'ARCHIVED')")
+                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(base_price_sales), 0) as s, COALESCE(SUM(sub_orders), 0) as u')
+                        ->first();
+                    return [
+                        'clicks' => (int) ($row->c ?? 0),
+                        'ad_sales' => round((float) ($row->s ?? 0), 2),
+                        'ad_sold' => (int) ($row->u ?? 0),
+                    ];
+                }
+
+                case 'walmart': {
+                    $row = DB::table('walmart_campaign_reports')
+                        ->where('report_range', 'L30')
+                        ->whereRaw("(status IS NULL OR status != 'ARCHIVED')")
+                        ->whereNotNull('campaignName')->where('campaignName', '!=', '')
+                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(sales), 0) as s')
+                        ->first();
+                    return [
+                        'clicks' => (int) ($row->c ?? 0),
+                        'ad_sales' => round((float) ($row->s ?? 0), 2),
+                        'ad_sold' => 0,
+                    ];
+                }
+
+                case 'shopifyb2c': {
+                    $endDate = Carbon::now()->subDays(2)->format('Y-m-d');
+                    $startDate = Carbon::now()->subDays(31)->format('Y-m-d');
+                    $row = DB::table('google_ads_campaigns')
+                        ->whereDate('date', '>=', $startDate)
+                        ->whereDate('date', '<=', $endDate)
+                        ->where('advertising_channel_type', 'SHOPPING')
+                        ->where('campaign_status', 'ENABLED')
+                        ->selectRaw('COALESCE(SUM(metrics_clicks), 0) as c, COALESCE(SUM(ga4_ad_sales), 0) as s, COALESCE(SUM(ga4_sold_units), 0) as u')
+                        ->first();
+                    return [
+                        'clicks' => (int) ($row->c ?? 0),
+                        'ad_sales' => round((float) ($row->s ?? 0), 2),
+                        'ad_sold' => (int) ($row->u ?? 0),
+                    ];
+                }
+
+                case 'tiktokshop': {
+                    $productSkusUpper = ProductMaster::whereRaw("LOWER(sku) NOT LIKE '%parent%'")
+                        ->pluck('sku')->map(fn ($s) => strtoupper(trim($s)))->unique()->values()->toArray();
+                    if (empty($productSkusUpper)) return $defaults;
+                    $placeholders = implode(',', array_fill(0, count($productSkusUpper), '?'));
+                    $row = DB::table('tiktok_campaign_reports')
+                        ->whereIn('report_range', ['L30', 'L7'])
+                        ->where('creative_type', 'Product card')
+                        ->where(function ($q) {
+                            $q->whereNull('status')->orWhere('status', '!=', 'ARCHIVED');
+                        })
+                        ->whereNotNull('campaign_name')->where('campaign_name', '!=', '')
+                        ->whereNotNull('product_id')->where('product_id', '!=', '')
+                        ->whereRaw('UPPER(TRIM(campaign_name)) IN (' . $placeholders . ')', $productSkusUpper)
+                        ->selectRaw('COALESCE(SUM(product_ad_clicks), 0) as c, COALESCE(SUM(gross_revenue), 0) as s, COALESCE(SUM(sku_orders), 0) as u')
+                        ->first();
+                    return [
+                        'clicks' => (int) ($row->c ?? 0),
+                        'ad_sales' => round((float) ($row->s ?? 0), 2),
+                        'ad_sold' => (int) ($row->u ?? 0),
+                    ];
+                }
+
+                default:
+                    return $defaults;
+            }
+        } catch (\Throwable $e) {
+            \Log::error('fetchAdMetricsFromTables error: ' . $e->getMessage());
+            return $defaults;
+        }
+    }
+
+    /**
+     * Fetch Total Ad Spend directly from campaign/report tables (L30).
+     * Amazon KW+PT: amazon_sp_campaign_reports, HL: amazon_sb_campaign_reports
+     * eBay 1/2/3: ebay_*_priority_reports (KW) + ebay_*_general_reports (PMT)
+     * Temu: temu_campaign_reports, Walmart: walmart_campaign_reports
+     * Google/Shopify B2C: google_ads_campaigns, TikTok: tiktok_campaign_reports
+     *
+     * @param string $channel Normalized channel key (amazon, ebay, ebaytwo, ebaythree, temu, walmart, shopifyb2c, tiktokshop)
+     * @return float Total Ad Spend for the channel
+     */
+    private function fetchTotalAdSpendFromTables(string $channel): float
+    {
+        $channel = strtolower(trim($channel));
+
+        switch ($channel) {
+            case 'amazon':
+                $breakdown = $this->fetchAmazonAdSpendBreakdownFromTables();
+                return round($breakdown['kw'] + $breakdown['pt'] + $breakdown['hl'], 2);
+
+            case 'ebay':
+            case 'ebaytwo':
+            case 'ebaythree':
+                $breakdown = $this->fetchEbayAdSpendBreakdownFromTables($channel);
+                return round($breakdown['kw'] + $breakdown['pmt'], 2);
+
+            case 'temu':
+                return round(
+                    (float) DB::table('temu_campaign_reports')
+                        ->where('report_range', 'L30')
+                        ->whereRaw("(status IS NULL OR status != 'ARCHIVED')")
+                        ->sum('spend'),
+                    2
+                );
+
+            case 'walmart':
+                $walmartSpentData = DB::table('walmart_campaign_reports')
+                    ->selectRaw('campaignName, MAX(spend) as max_spend')
+                    ->where('report_range', 'L30')
+                    ->whereRaw("(status IS NULL OR status != 'ARCHIVED')")
+                    ->whereNotNull('campaignName')
+                    ->where('campaignName', '!=', '')
+                    ->groupBy('campaignName')
+                    ->get();
+                return round($walmartSpentData->sum('max_spend') ?? 0, 2);
+
+            case 'shopifyb2c':
+                // Same logic as G-Shopping Utilized (filterGoogleShoppingChart): date range 31 days ago to 2 days ago, ENABLED SHOPPING only
+                $endDate = Carbon::now()->subDays(2)->format('Y-m-d');
+                $startDate = Carbon::now()->subDays(31)->format('Y-m-d');
+                return round(
+                    (float) DB::table('google_ads_campaigns')
+                        ->whereDate('date', '>=', $startDate)
+                        ->whereDate('date', '<=', $endDate)
+                        ->where('advertising_channel_type', 'SHOPPING')
+                        ->where('campaign_status', 'ENABLED')
+                        ->sum('metrics_cost_micros') / 1000000,
+                    2
+                );
+
+            case 'tiktokshop':
+                $productSkusUpper = ProductMaster::whereRaw("LOWER(sku) NOT LIKE '%parent%'")
+                    ->pluck('sku')
+                    ->map(fn ($s) => strtoupper(trim($s)))
+                    ->unique()
+                    ->values()
+                    ->toArray();
+                if (empty($productSkusUpper)) {
+                    return 0.0;
+                }
+                $placeholders = implode(',', array_fill(0, count($productSkusUpper), '?'));
+                return round(
+                    (float) TiktokCampaignReport::whereIn('report_range', ['L30', 'L7'])
+                        ->where('creative_type', 'Product card')
+                        ->where(function ($q) {
+                            $q->whereNull('status')->orWhere('status', '!=', 'ARCHIVED');
+                        })
+                        ->whereNotNull('campaign_name')->where('campaign_name', '!=', '')
+                        ->whereNotNull('product_id')->where('product_id', '!=', '')
+                        ->whereRaw('UPPER(TRIM(campaign_name)) IN (' . $placeholders . ')', $productSkusUpper)
+                        ->sum('cost'),
+                    2
+                );
+
+            default:
+                return 0.0;
+        }
+    }
+
+    /**
      * Handle dynamic route parameters and return a view.
      */
     public function channel_master_index(Request $request, $first = null, $second = null)
@@ -317,8 +651,40 @@ class ChannelMasterController extends Controller
                 }
             }
 
-            // Add clicks data from adv_masters_data if available
-            // Map channel names to match adv_masters_data table
+            // AD CLICKS, AD SALES, AD SOLD: fetch directly from tables for ad-enabled channels
+            $adMetricsChannels = ['amazon', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'walmart', 'shopifyb2c', 'tiktokshop'];
+            if (in_array($key, $adMetricsChannels)) {
+                $metrics = $this->fetchAdMetricsFromTables($key);
+                $clicks = $metrics['clicks'];
+                $adSales = $metrics['ad_sales'];
+                $adSold = $metrics['ad_sold'];
+            } else {
+                // Fallback: adv_masters_data for channels without direct table support
+                $channelKey = strtoupper($channel);
+                $channelMapping = [
+                    'TIKTOKSHOP' => 'TIKTOK',
+                    'SHOPIFYB2C' => 'SHOPIFY',
+                    'SHOPIFYB2B' => 'SHOPIFY',
+                    'EBAYTWO' => 'EBAY 2',
+                    'EBAYTHREE' => 'EBAY 3',
+                    'FBMARKETPLACE' => 'FB CARAOUSEL',
+                    'FBSHOP' => 'FB VIDEO',
+                    'INSTAGRAMSHOP' => 'INSTA CARAOUSEL',
+                ];
+                $advKey = $channelMapping[$channelKey] ?? $channelKey;
+                if (isset($advMastersData[$advKey])) {
+                    $advData = $advMastersData[$advKey];
+                    $clicks = $advData->clicks ?? 0;
+                    $adSold = $advData->ad_sold ?? 0;
+                    $adSales = $advData->ad_sales ?? 0;
+                } else {
+                    $clicks = 0;
+                    $adSold = 0;
+                    $adSales = 0;
+                }
+            }
+
+            // Missing Ads: still from adv_masters_data (not in campaign tables)
             $channelKey = strtoupper($channel);
             $channelMapping = [
                 'TIKTOKSHOP' => 'TIKTOK',
@@ -326,35 +692,24 @@ class ChannelMasterController extends Controller
                 'SHOPIFYB2B' => 'SHOPIFY',
                 'EBAYTWO' => 'EBAY 2',
                 'EBAYTHREE' => 'EBAY 3',
-                'FBMARKETPLACE' => 'FB CARAOUSEL', // Or FB VIDEO
+                'FBMARKETPLACE' => 'FB CARAOUSEL',
                 'FBSHOP' => 'FB VIDEO',
-                'INSTAGRAMSHOP' => 'INSTA CARAOUSEL', // Or INSTA VIDEO
+                'INSTAGRAMSHOP' => 'INSTA CARAOUSEL',
             ];
-            
             $advKey = $channelMapping[$channelKey] ?? $channelKey;
-            
-            if (isset($advMastersData[$advKey])) {
-                $advData = $advMastersData[$advKey];
-                $clicks = $advData->clicks ?? 0;
-                $adSold = $advData->ad_sold ?? 0;
-                $adSales = $advData->ad_sales ?? 0;
-                $missingAds = $advData->missing_ads ?? 0;
-                
-                // Calculate Ads CVR: (ad_sold / clicks) * 100
-                $cvr = $clicks > 0 ? round(($adSold / $clicks) * 100, 2) : 0;
-                
-                $row['clicks'] = $clicks;
-                $row['ad_sold'] = $adSold;
-                $row['Ad Sales'] = $adSales;
-                $row['Ads CVR'] = $cvr;
-                $row['Missing Ads'] = $missingAds;
-            } else {
-                $row['clicks'] = 0;
-                $row['ad_sold'] = 0;
-                $row['Ad Sales'] = 0;
-                $row['Ads CVR'] = 0;
-                $row['Missing Ads'] = 0;
-            }
+            $missingAds = isset($advMastersData[$advKey]) ? ($advMastersData[$advKey]->missing_ads ?? 0) : 0;
+
+            // Calculate Ads CVR and ACOS
+            $cvr = $clicks > 0 ? round(($adSold / $clicks) * 100, 2) : 0;
+            $totalAdSpend = (float) ($row['Total Ad Spend'] ?? 0);
+            $acos = $adSales > 0 ? round(($totalAdSpend / $adSales) * 100, 2) : 0;
+
+            $row['clicks'] = $clicks;
+            $row['ad_sold'] = $adSold;
+            $row['Ad Sales'] = $adSales;
+            $row['Ads CVR'] = $cvr;
+            $row['ACOS'] = $acos;
+            $row['Missing Ads'] = $missingAds;
 
             $finalData[] = $row;
         }
@@ -473,53 +828,72 @@ class ChannelMasterController extends Controller
         
         // Get L60 data from ShipHub (30-59 days ago range)
         // L30 is latest-29 days (30 days), so L60 is 30-59 days before latest (next 30 days)
-        $latestDate = DB::connection('shiphub')
-            ->table('orders')
-            ->where('marketplace', '=', 'amazon')
-            ->max('order_date');
+        $latestDate = null;
+        try {
+            $latestDate = DB::connection('shiphub')
+                ->table('orders')
+                ->where('marketplace', '=', 'amazon')
+                ->max('order_date');
+        } catch (\Throwable $e) {
+            Log::warning('ShipHub connection failed in getAmazonChannelData: ' . $e->getMessage());
+        }
 
         if ($latestDate) {
-            $latestDateCarbon = \Carbon\Carbon::parse($latestDate);
-            $l60StartDate = $latestDateCarbon->copy()->subDays(59)->startOfDay(); // 60 days ago
-            $l60EndDate = $latestDateCarbon->copy()->subDays(30)->endOfDay(); // 31 days ago
-            
-            // Get L60 order items from ShipHub
-            $l60OrderItems = DB::connection('shiphub')
-                ->table('orders as o')
-                ->join('order_items as i', 'o.id', '=', 'i.order_id')
-                ->whereBetween('o.order_date', [$l60StartDate, $l60EndDate])
-                ->where('o.marketplace', '=', 'amazon')
-                ->where(function($query) {
-                    $query->where('o.order_status', '!=', 'Canceled')
-                          ->where('o.order_status', '!=', 'Cancelled')
-                          ->orWhereNull('o.order_status');
-                })
-                ->select(
-                    DB::raw('COUNT(i.id) as order_count'),
-                    DB::raw('SUM(i.unit_price) as total_sales')
-                )
-                ->first();
-            
-            $l60Orders = $l60OrderItems->order_count ?? 0;
-            $l60Sales = $l60OrderItems->total_sales ?? 0;
+            try {
+                $latestDateCarbon = \Carbon\Carbon::parse($latestDate);
+                $l60StartDate = $latestDateCarbon->copy()->subDays(59)->startOfDay(); // 60 days ago
+                $l60EndDate = $latestDateCarbon->copy()->subDays(30)->endOfDay(); // 31 days ago
+
+                // Get L60 order items from ShipHub
+                $l60OrderItems = DB::connection('shiphub')
+                    ->table('orders as o')
+                    ->join('order_items as i', 'o.id', '=', 'i.order_id')
+                    ->whereBetween('o.order_date', [$l60StartDate, $l60EndDate])
+                    ->where('o.marketplace', '=', 'amazon')
+                    ->where(function($query) {
+                        $query->where('o.order_status', '!=', 'Canceled')
+                              ->where('o.order_status', '!=', 'Cancelled')
+                              ->orWhereNull('o.order_status');
+                    })
+                    ->select(
+                        DB::raw('COUNT(i.id) as order_count'),
+                        DB::raw('SUM(i.unit_price) as total_sales')
+                    )
+                    ->first();
+
+                $l60Orders = $l60OrderItems->order_count ?? 0;
+                $l60Sales = $l60OrderItems->total_sales ?? 0;
+            } catch (\Throwable $e) {
+                Log::warning('ShipHub L60 query failed: ' . $e->getMessage());
+                $l60Orders = 0;
+                $l60Sales = 0;
+            }
         } else {
             $l60Orders = 0;
             $l60Sales = 0;
         }
 
-        $l30Sales = $metrics->total_sales ?? 0;
-        $l30Orders = $metrics->total_orders ?? 0;
-        $totalQuantity = $metrics->total_quantity ?? 0;
-        $totalProfit = $metrics->total_pft ?? 0;
-        $totalCogs = $metrics->total_cogs ?? 0;
-        $gProfitPct = $metrics->pft_percentage ?? 0;
-        $gRoi = $metrics->roi_percentage ?? 0;
-        $tacosPercentage = $metrics->tacos_percentage ?? 0;
-        $nPft = $metrics->n_pft ?? 0;
-        $nRoi = $metrics->n_roi ?? 0;
-        $kwSpent = $metrics->kw_spent ?? 0;
-        $ptSpent = $metrics->pmt_spent ?? 0;
-        $hlSpent = $metrics->hl_spent ?? 0;
+        $l30Sales = $metrics?->total_sales ?? 0;
+        $l30Orders = $metrics?->total_orders ?? 0;
+        $totalQuantity = $metrics?->total_quantity ?? 0;
+        $totalProfit = $metrics?->total_pft ?? 0;
+        $totalCogs = $metrics?->total_cogs ?? 0;
+        $gProfitPct = $metrics?->pft_percentage ?? 0;
+        $gRoi = $metrics?->roi_percentage ?? 0;
+        $tacosPercentage = $metrics?->tacos_percentage ?? 0;
+        $nPft = $metrics?->n_pft ?? 0;
+        $nRoi = $metrics?->n_roi ?? 0;
+        // KW, PT, HL, Total Ad Spend: fetch directly from tables (amazon_sp_campaign_reports + amazon_sb_campaign_reports, excludes ARCHIVED)
+        try {
+            $adSpendBreakdown = $this->fetchAmazonAdSpendBreakdownFromTables();
+            $kwSpent = $adSpendBreakdown['kw'];
+            $ptSpent = $adSpendBreakdown['pt'];
+            $hlSpent = $adSpendBreakdown['hl'];
+        } catch (\Throwable $e) {
+            Log::error('fetchAmazonAdSpendBreakdownFromTables failed: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
+            $kwSpent = $ptSpent = $hlSpent = 0;
+        }
+        $totalAdSpend = round($kwSpent + $ptSpent + $hlSpent, 2);
         
         // Calculate growth
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
@@ -529,7 +903,7 @@ class ChannelMasterController extends Controller
         $gRoiL60 = 0;
 
         // Calculate Ads %
-        $adsPercentage = $l30Sales > 0 ? (($kwSpent + $ptSpent + $hlSpent) / $l30Sales) * 100 : 0;
+        $adsPercentage = $l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0;
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Amazon')->first();
@@ -555,12 +929,12 @@ class ChannelMasterController extends Controller
             'KW Spent'   => round($kwSpent, 2),
             'PMT Spent'  => round($ptSpent, 2),
             'HL Spent'   => round($hlSpent, 2),
-            'Total Ad Spend' => round($kwSpent + $ptSpent + $hlSpent, 2),
+            'Total Ad Spend' => $totalAdSpend,
             'Ads%'       => round($adsPercentage, 2) . '%',
-            'type'       => $channelData->type ?? '',
-            'W/Ads'      => $channelData->w_ads ?? 0,
-            'NR'         => $channelData->nr ?? 0,
-            'Update'     => $channelData->update ?? 0,
+            'type'       => $channelData?->type ?? '',
+            'W/Ads'      => $channelData?->w_ads ?? 0,
+            'NR'         => $channelData?->nr ?? 0,
+            'Update'     => $channelData?->update ?? 0,
             'cogs'       => round($totalCogs, 2),
             'Map'        => $mapMissCounts['map'],
             'Miss'       => $mapMissCounts['miss'],
@@ -718,8 +1092,12 @@ class ChannelMasterController extends Controller
         $tacosPercentage = $metrics->tacos_percentage ?? 0;
         $nPft = $metrics->n_pft ?? 0;
         $nRoi = $metrics->n_roi ?? 0;
-        $kwSpent = $metrics->kw_spent ?? 0;
-        $pmtSpent = $metrics->pmt_spent ?? 0;
+
+        // KW/PMT Spend: fetch directly from tables (same logic as Ebay KW Ads & PMT Ads pages)
+        $ebayBreakdown = $this->fetchEbayAdSpendBreakdownFromTables('ebay');
+        $kwSpent = $ebayBreakdown['kw'];
+        $pmtSpent = $ebayBreakdown['pmt'];
+        $totalAdSpend = $kwSpent + $pmtSpent;
         
         // Calculate growth
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
@@ -729,7 +1107,7 @@ class ChannelMasterController extends Controller
         $gRoiL60 = 0;
 
         // Calculate Ads %
-        $adsPercentage = $l30Sales > 0 ? (($kwSpent + $pmtSpent) / $l30Sales) * 100 : 0;
+        $adsPercentage = $l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0;
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'eBay')->first();
@@ -754,7 +1132,7 @@ class ChannelMasterController extends Controller
             'N ROI'      => round($nRoi, 2),
             'KW Spent'   => round($kwSpent, 2),
             'PMT Spent'  => round($pmtSpent, 2),
-            'Total Ad Spend' => round($kwSpent + $pmtSpent, 2),
+            'Total Ad Spend' => $totalAdSpend,
             'Ads%'       => round($adsPercentage, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
@@ -853,8 +1231,12 @@ class ChannelMasterController extends Controller
         $tacosPercentage = $metrics->tacos_percentage ?? 0;
         $nPft = $metrics->n_pft ?? 0;
         $nRoi = $metrics->n_roi ?? 0;
-        $kwSpent = $metrics->kw_spent ?? 0;
-        $pmtSpent = $metrics->pmt_spent ?? 0;
+
+        // KW/PMT Spend: fetch directly from tables (same logic as Ebay 2 KW Ads & PMT Ads pages)
+        $ebay2Breakdown = $this->fetchEbayAdSpendBreakdownFromTables('ebaytwo');
+        $kwSpent = $ebay2Breakdown['kw'];
+        $pmtSpent = $ebay2Breakdown['pmt'];
+        $totalAdSpend = $kwSpent + $pmtSpent;
 
         // Calculate growth
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
@@ -864,7 +1246,7 @@ class ChannelMasterController extends Controller
         $gRoiL60 = $totalCogsL60 > 0 ? ($totalProfitL60 / $totalCogsL60) * 100 : 0;
 
         // Calculate Ads %
-        $adsPercentage = $l30Sales > 0 ? (($kwSpent + $pmtSpent) / $l30Sales) * 100 : 0;
+        $adsPercentage = $l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0;
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'EbayTwo')->first();
@@ -889,7 +1271,7 @@ class ChannelMasterController extends Controller
             'N ROI'      => round($nRoi, 2),
             'KW Spent'   => round($kwSpent, 2),
             'PMT Spent'  => round($pmtSpent, 2),
-            'Total Ad Spend' => round($kwSpent + $pmtSpent, 2),
+            'Total Ad Spend' => $totalAdSpend,
             'Ads%'       => round($adsPercentage, 2) . '%',
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
@@ -1011,8 +1393,12 @@ class ChannelMasterController extends Controller
         $tacosPercentage = $metrics->tacos_percentage ?? 0;
         $nPft = $metrics->n_pft ?? 0;
         $nRoi = $metrics->n_roi ?? 0;
-        $kwSpent = $metrics->kw_spent ?? 0;
-        $pmtSpent = $metrics->pmt_spent ?? 0;
+
+        // KW/PMT Spend: fetch directly from tables (same logic as Ebay 3 KW Ads & PMT Ads pages)
+        $ebay3Breakdown = $this->fetchEbayAdSpendBreakdownFromTables('ebaythree');
+        $kwSpent = $ebay3Breakdown['kw'];
+        $pmtSpent = $ebay3Breakdown['pmt'];
+        $totalAdSpend = $kwSpent + $pmtSpent;
 
         // Calculate growth
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
@@ -1041,8 +1427,8 @@ class ChannelMasterController extends Controller
             'G RoiL60'   => round($gRoiL60, 2),
             'KW Spent'   => round($kwSpent, 2),
             'PMT Spent'  => round($pmtSpent, 2),
-            'Total Ad Spend' => round($kwSpent + $pmtSpent, 2),
-            'Ads%'       => round($tacosPercentage, 2),
+            'Total Ad Spend' => $totalAdSpend,
+            'Ads%'       => round($l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0, 2),
             'TACOS %'    => round($tacosPercentage, 2),
             'N PFT'      => round($nPft, 2),
             'N ROI'      => round($nRoi, 2),
@@ -1511,6 +1897,9 @@ class ChannelMasterController extends Controller
         $nPft = $metrics->n_pft ?? $gProfitPct;
         $nRoi = $metrics->n_roi ?? $gRoi;
         $temuSpent = $metrics->kw_spent ?? 0; // Temu ad spend is stored in kw_spent field
+
+        // Total Ad Spend: fetch directly from temu_campaign_reports table
+        $totalAdSpend = $this->fetchTotalAdSpendFromTables('temu');
         
         // Calculate growth
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
@@ -1520,7 +1909,7 @@ class ChannelMasterController extends Controller
         $gRoiL60 = 0;
 
         // Calculate Ads %
-        $adsPercentage = $l30Sales > 0 ? ($temuSpent / $l30Sales) * 100 : 0;
+        $adsPercentage = $l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0;
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Temu')->first();
@@ -1543,9 +1932,9 @@ class ChannelMasterController extends Controller
             'Total PFT'  => round($totalProfit, 2),
             'N PFT'      => round($nPft, 2) . '%',
             'N ROI'      => round($nRoi, 2),
-            'KW Spent'   => round($temuSpent, 2), // Temu ad spend
+            'KW Spent'   => $totalAdSpend, // Temu ad spend from temu_campaign_reports
             'PMT Spent'  => 0, // Temu doesn't have separate PMT
-            'Total Ad Spend' => round($temuSpent, 2),
+            'Total Ad Spend' => $totalAdSpend,
             'Ads%'       => round($adsPercentage, 2) . '%',
             'TACOS %'    => round($tacosPercentage, 2) . '%',
             'type'       => $channelData->type ?? '',
@@ -1780,31 +2169,8 @@ class ChannelMasterController extends Controller
         }
         $l60OrderCount = count($l60OrderIds);
 
-        // Get Walmart ad spend (L30) - use MAX per campaign to avoid duplicates
-        // Filter by recently updated records (within last 2 hours) to match current Google Sheet data
-        $walmartSpentData = DB::table('walmart_campaign_reports')
-            ->selectRaw('campaignName, MAX(spend) as max_spend')
-            ->where('report_range', 'L30')
-            ->where('updated_at', '>=', \Carbon\Carbon::now()->subHours(2))
-            ->whereNotNull('campaignName')
-            ->where('campaignName', '!=', '')
-            ->groupBy('campaignName')
-            ->get();
-        
-        // If no recent records found, try fetching current Google Sheet data directly
-        if ($walmartSpentData->isEmpty()) {
-            $currentSheetCampaigns = $this->getCurrentGoogleSheetCampaigns();
-            if (!empty($currentSheetCampaigns)) {
-                $walmartSpentData = DB::table('walmart_campaign_reports')
-                    ->where('report_range', 'L30')
-                    ->whereIn('campaignName', $currentSheetCampaigns)
-                    ->selectRaw('campaignName, MAX(spend) as max_spend')
-                    ->groupBy('campaignName')
-                    ->get();
-            }
-        }
-        
-        $walmartSpent = $walmartSpentData->sum('max_spend') ?? 0;
+        // Total Ad Spend: fetch directly from walmart_campaign_reports table
+        $walmartSpent = $this->fetchTotalAdSpendFromTables('walmart');
         
         // Calculate percentages
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
@@ -2902,18 +3268,8 @@ class ChannelMasterController extends Controller
         // Get Map and Miss counts from amazon_channel_summary_data table
         $mapMissCounts = $this->getMapAndMissCounts('tiktok');
 
-        // TikTok Ad Spend: same logic as Ads/Pricing page - only campaigns whose campaign_name matches a product SKU (Product card = SKU-named campaigns). Sum L30+L7 cost for those campaigns only.
-        $productSkusUpper = ProductMaster::whereRaw("LOWER(sku) NOT LIKE '%parent%'")->pluck('sku')->map(function ($s) { return strtoupper(trim($s)); })->unique()->values()->toArray();
-        $tiktokAdSpend = 0.0;
-        if (!empty($productSkusUpper)) {
-            $placeholders = implode(',', array_fill(0, count($productSkusUpper), '?'));
-            $tiktokAdSpend = (float) TiktokCampaignReport::whereIn('report_range', ['L30', 'L7'])
-                ->where('creative_type', 'Product card')
-                ->whereNotNull('campaign_name')->where('campaign_name', '!=', '')
-                ->whereNotNull('product_id')->where('product_id', '!=', '')
-                ->whereRaw('UPPER(TRIM(campaign_name)) IN (' . $placeholders . ')', $productSkusUpper)
-                ->sum('cost');
-        }
+        // Total Ad Spend: fetch directly from tiktok_campaign_reports table
+        $tiktokAdSpend = $this->fetchTotalAdSpendFromTables('tiktokshop');
         $adsPct = $l30Sales > 0 ? ($tiktokAdSpend / $l30Sales) * 100 : 0;
         $netProfit = $totalProfit - $tiktokAdSpend;
         $nPftWithAds = $gProfitPct - $adsPct;
@@ -4070,6 +4426,9 @@ class ChannelMasterController extends Controller
         $nPft = $metrics->n_pft ?? $gProfitPct;
         $nRoi = $metrics->n_roi ?? $gRoi;
         $googleSpent = $metrics->kw_spent ?? 0; // Google Ads spend is stored in kw_spent field
+
+        // Total Ad Spend: fetch directly from google_ads_campaigns table
+        $totalAdSpend = $this->fetchTotalAdSpendFromTables('shopifyb2c');
         
         // Calculate growth
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
@@ -4079,7 +4438,7 @@ class ChannelMasterController extends Controller
         $gRoiL60 = 0;
 
         // Calculate Ads %
-        $adsPercentage = $l30Sales > 0 ? ($googleSpent / $l30Sales) * 100 : 0;
+        $adsPercentage = $l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0;
 
         // Channel data
         $channelData = ChannelMaster::where('channel', 'Shopify B2C')->first();
@@ -4105,9 +4464,9 @@ class ChannelMasterController extends Controller
             'Total PFT'  => round($totalProfit, 2),
             'N PFT'      => round($nPft, 1) . '%',
             'N ROI'      => round($nRoi, 1),
-            'KW Spent'   => round($googleSpent, 2), // Google Ads spend
+            'KW Spent'   => $totalAdSpend, // Google Ads spend from google_ads_campaigns
             'PMT Spent'  => 0, // Shopify B2C doesn't have PMT
-            'Total Ad Spend' => round($googleSpent, 2),
+            'Total Ad Spend' => $totalAdSpend,
             'Ads%'       => round($adsPercentage, 1) . '%',
             'TACOS %'    => round($tacosPercentage, 1) . '%',
             'type'       => $channelData->type ?? '',

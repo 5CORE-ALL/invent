@@ -797,7 +797,74 @@
                         }
                     },
                     {
-                        title: "Ads Clicks",
+                        title: "AD SPEND",
+                        field: "Total Ad Spend",
+                        hozAlign: "center",
+                        sorter: function(a, b, aRow, bRow) {
+                            const calcTotal = (row) => {
+                                const channel = (row['Channel '] || '').trim().toLowerCase();
+                                if (channel === 'tiktok shop') return parseNumber(row['TikTok Ad Spend'] || 0);
+                                const kwSpent = parseNumber(row['KW Spent'] || 0);
+                                const pmtSpent = parseNumber(row['PMT Spent'] || 0);
+                                const hlSpent = parseNumber(row['HL Spent'] || 0);
+                                const walmartSpent = parseNumber(row['Walmart Spent'] || 0);
+                                if (channel === 'walmart') return walmartSpent;
+                                if (channel === 'temu' || channel === 'shopifyb2c') return kwSpent;
+                                return kwSpent + pmtSpent + hlSpent;
+                            };
+                            return calcTotal(aRow.getData()) - calcTotal(bRow.getData());
+                        },
+                        formatter: function(cell) {
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim().toLowerCase();
+                            const kwSpent = parseNumber(rowData['KW Spent'] || 0);
+                            const pmtSpent = parseNumber(rowData['PMT Spent'] || 0);
+                            const hlSpent = parseNumber(rowData['HL Spent'] || 0);
+                            const walmartSpent = parseNumber(rowData['Walmart Spent'] || 0);
+                            const tiktokAdSpend = parseNumber(rowData['TikTok Ad Spend'] || 0);
+                            let totalSpent = 0;
+                            if (channel === 'walmart') totalSpent = walmartSpent;
+                            else if (channel === 'temu' || channel === 'shopifyb2c') totalSpent = kwSpent;
+                            else if (channel === 'tiktok shop') totalSpent = tiktokAdSpend;
+                            else totalSpent = kwSpent + pmtSpent + hlSpent;
+                            if (totalSpent === 0) return '-';
+                            if (channel === 'tiktok shop') {
+                                return `<select class="form-select form-select-sm ad-spend-select" style="min-width: 90px; font-size: 10px; padding: 3px 6px; background-color: #91e1ff; color: black; border: 1px solid #91e1ff; font-weight: bold;"><option value="total" selected style="background-color: #91e1ff; color: black; font-weight: bold;">$${Math.round(totalSpent).toLocaleString('en-US')}</option><option value="tiktok" style="background-color: #000000; color: white; font-weight: bold;">TT: $${tiktokAdSpend.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option></select>`;
+                            }
+                            if (channel === 'walmart') {
+                                return `<select class="form-select form-select-sm ad-spend-select" style="min-width: 90px; font-size: 10px; padding: 3px 6px; background-color: #91e1ff; color: black; border: 1px solid #91e1ff; font-weight: bold;"><option value="total" selected style="background-color: #91e1ff; color: black; font-weight: bold;">$${Math.round(totalSpent).toLocaleString('en-US')}</option><option value="walmart" style="background-color: #0071ce; color: white; font-weight: bold;">WM: $${walmartSpent.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option></select>`;
+                            }
+                            if (channel === 'temu') {
+                                return `<select class="form-select form-select-sm ad-spend-select" style="min-width: 90px; font-size: 10px; padding: 3px 6px; background-color: #91e1ff; color: black; border: 1px solid #91e1ff; font-weight: bold;"><option value="total" selected style="background-color: #91e1ff; color: black; font-weight: bold;">$${Math.round(totalSpent).toLocaleString('en-US')}</option><option value="temu" style="background-color: #ff6600; color: white; font-weight: bold;">TM: $${kwSpent.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option></select>`;
+                            }
+                            if (channel === 'shopifyb2c') {
+                                return `<select class="form-select form-select-sm ad-spend-select" style="min-width: 90px; font-size: 10px; padding: 3px 6px; background-color: #91e1ff; color: black; border: 1px solid #91e1ff; font-weight: bold;"><option value="total" selected style="background-color: #91e1ff; color: black; font-weight: bold;">$${Math.round(totalSpent).toLocaleString('en-US')}</option><option value="google" style="background-color: #4285f4; color: white; font-weight: bold;">G: $${kwSpent.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option></select>`;
+                            }
+                            return `<select class="form-select form-select-sm ad-spend-select" style="min-width: 90px; font-size: 10px; padding: 3px 6px; background-color: #91e1ff; color: black; border: 1px solid #91e1ff; font-weight: bold;"><option value="total" selected style="background-color: #91e1ff; color: black; font-weight: bold;">$${Math.round(totalSpent).toLocaleString('en-US')}</option><option value="kw" style="background-color: #198754; color: white; font-weight: bold;">K: $${kwSpent.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option><option value="pmt" style="background-color: #ffc107; color: black; font-weight: bold;">P: $${pmtSpent.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option><option value="hl" style="background-color: #dc3545; color: white; font-weight: bold;">H: $${hlSpent.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option></select>`;
+                        },
+                        bottomCalc: function(values, data) {
+                            let total = 0;
+                            data.forEach(row => {
+                                const ch = (row['Channel '] || '').trim().toLowerCase();
+                                const kwSpent = parseNumber(row['KW Spent'] || 0);
+                                const pmtSpent = parseNumber(row['PMT Spent'] || 0);
+                                const hlSpent = parseNumber(row['HL Spent'] || 0);
+                                const walmartSpent = parseNumber(row['Walmart Spent'] || 0);
+                                const tiktokAdSpend = parseNumber(row['TikTok Ad Spend'] || 0);
+                                if (ch === 'walmart') total += walmartSpent;
+                                else if (ch === 'temu' || ch === 'shopifyb2c') total += kwSpent;
+                                else if (ch === 'tiktok shop') total += tiktokAdSpend;
+                                else total += kwSpent + pmtSpent + hlSpent;
+                            });
+                            return total;
+                        },
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>$${parseNumber(value).toFixed(0)}</strong>`;
+                        }
+                    },
+                    {
+                        title: "AD CLICKS",
                         field: "clicks",
                         hozAlign: "center",
                         sorter: "number",
@@ -819,8 +886,7 @@
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('clicks-info-icon')) {
                                 e.stopPropagation();
-                                const channelName = $(e.target).data('channel');
-                                showClicksBreakdown(channelName);
+                                showClicksBreakdown($(e.target).data('channel'));
                             }
                         },
                         bottomCalc: "sum",
@@ -830,7 +896,7 @@
                         }
                     },
                     {
-                        title: "Ad Sales",
+                        title: "AD SALES",
                         field: "Ad Sales",
                         hozAlign: "center",
                         sorter: "number",
@@ -839,23 +905,14 @@
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
                             const channel = (rowData['Channel '] || '').trim();
-                            
                             if (!value || value === 0) return '-';
-                            
-                            // Add info icon for channels that might have PT/KW/HL breakdown
-                            const infoIcon = `<i class="fas fa-info-circle sales-info-icon ms-1" 
-                                data-channel="${channel}" 
-                                style="cursor:pointer;color:#17a2b8;font-size:12px;" 
-                                title="View Ad Sales Breakdown"></i>`;
-                            
-                            // Round to whole number, no decimals
+                            const infoIcon = `<i class="fas fa-info-circle sales-info-icon ms-1" data-channel="${channel}" style="cursor:pointer;color:#17a2b8;font-size:12px;" title="View Ad Sales Breakdown"></i>`;
                             return `<span style="font-weight:600;">$${Math.round(value).toLocaleString('en-US')}</span>${infoIcon}`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('sales-info-icon')) {
                                 e.stopPropagation();
-                                const channelName = $(e.target).data('channel');
-                                showAdSalesBreakdown(channelName); // Show Ad Sales specific modal
+                                showAdSalesBreakdown($(e.target).data('channel'));
                             }
                         },
                         bottomCalc: "sum",
@@ -866,7 +923,71 @@
                         }
                     },
                     {
-                        title: "Ads CVR",
+                        title: "AD SOLD",
+                        field: "ad_sold",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 100,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
+                            if (value === 0) return '-';
+                            const infoIcon = `<i class="fas fa-info-circle ad-sold-info-icon ms-1" data-channel="${channel}" style="cursor:pointer;color:#17a2b8;font-size:12px;" title="View Ad Sold Breakdown"></i>`;
+                            return `<span style="font-weight:600;">${value.toLocaleString('en-US')}</span>${infoIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-sold-info-icon')) {
+                                e.stopPropagation();
+                                showCvrBreakdown($(e.target).data('channel'));
+                            }
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong>${parseNumber(value).toLocaleString('en-US')}</strong>`;
+                        }
+                    },
+                    {
+                        title: "ACOS",
+                        field: "ACOS",
+                        hozAlign: "center",
+                        sorter: "number",
+                        width: 90,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            const rowData = cell.getRow().getData();
+                            const channel = (rowData['Channel '] || '').trim();
+                            if (!value || value === 0) return '-';
+                            const infoIcon = `<i class="fas fa-info-circle acos-info-icon ms-1" data-channel="${channel}" style="cursor:pointer;color:#17a2b8;font-size:12px;" title="View ACOS Breakdown"></i>`;
+                            return `<span style="font-weight:600;">${value.toFixed(1)}%</span>${infoIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('acos-info-icon')) {
+                                e.stopPropagation();
+                                showAdSalesBreakdown($(e.target).data('channel'));
+                            }
+                        },
+                        bottomCalc: function(values, data) {
+                            let totalSpend = 0, totalAdSales = 0;
+                            data.forEach(row => {
+                                const ch = (row['Channel '] || '').trim().toLowerCase();
+                                if (ch === 'walmart') totalSpend += parseNumber(row['Walmart Spent'] || 0);
+                                else if (ch === 'temu' || ch === 'shopifyb2c') totalSpend += parseNumber(row['KW Spent'] || 0);
+                                else if (ch === 'tiktok shop') totalSpend += parseNumber(row['TikTok Ad Spend'] || 0);
+                                else totalSpend += parseNumber(row['KW Spent'] || 0) + parseNumber(row['PMT Spent'] || 0) + parseNumber(row['HL Spent'] || 0);
+                                totalAdSales += parseNumber(row['Ad Sales'] || 0);
+                            });
+                            return totalAdSales > 0 ? (totalSpend / totalAdSales) * 100 : 0;
+                        },
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            if (!value || value === 0) return '<strong>-</strong>';
+                            return `<strong>${parseFloat(value).toFixed(1)}%</strong>`;
+                        }
+                    },
+                    {
+                        title: "AD CVR",
                         field: "Ads CVR",
                         hozAlign: "center",
                         sorter: "number",
@@ -1099,162 +1220,6 @@
                             }
                             
                             return `<span style="${style}font-weight:600;">${value.toFixed(0)}%</span>`;
-                        }
-                    },
-                    {
-                        title: "Ad Spend",
-                        field: "Total Ad Spend",
-                        hozAlign: "center",
-                        sorter: function(a, b, aRow, bRow) {
-                            const calcTotal = (row) => {
-                                const channel = (row['Channel '] || '').trim().toLowerCase();
-                                if (channel === 'tiktok shop') return parseNumber(row['TikTok Ad Spend'] || 0);
-                                const kwSpent = parseNumber(row['KW Spent'] || 0);
-                                const pmtSpent = parseNumber(row['PMT Spent'] || 0);
-                                const hlSpent = parseNumber(row['HL Spent'] || 0);
-                                const walmartSpent = parseNumber(row['Walmart Spent'] || 0);
-                                if (channel === 'walmart') return walmartSpent;
-                                if (channel === 'temu' || channel === 'shopifyb2c') return kwSpent;
-                                return kwSpent + pmtSpent + hlSpent;
-                            };
-                            return calcTotal(aRow.getData()) - calcTotal(bRow.getData());
-                        },
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const channel = (rowData['Channel '] || '').trim().toLowerCase();
-                            const kwSpent = parseNumber(rowData['KW Spent'] || 0);
-                            const pmtSpent = parseNumber(rowData['PMT Spent'] || 0);
-                            const hlSpent = parseNumber(rowData['HL Spent'] || 0);
-                            const walmartSpent = parseNumber(rowData['Walmart Spent'] || 0);
-                            const tiktokAdSpend = parseNumber(rowData['TikTok Ad Spend'] || 0);
-                            
-                            // For Walmart, use Walmart Spent as total
-                            // For Temu and Shopify B2C, use KW Spent as total (Google Ads/Temu ad spend is stored in KW Spent field)
-                            // For Tiktok Shop, use TikTok Ad Spend from tiktok_campaign_reports
-                            let totalSpent = 0;
-                            if (channel === 'walmart') {
-                                totalSpent = walmartSpent;
-                            } else if (channel === 'temu' || channel === 'shopifyb2c') {
-                                totalSpent = kwSpent;
-                            } else if (channel === 'tiktok shop') {
-                                totalSpent = tiktokAdSpend;
-                            } else {
-                                totalSpent = kwSpent + pmtSpent + hlSpent;
-                            }
-                            
-                            if (totalSpent === 0) return '-';
-                            
-                            // For Tiktok Shop, show TikTok Ad Spend (from tiktok_campaign_reports)
-                            if (channel === 'tiktok shop') {
-                                return `
-                                    <select class="form-select form-select-sm ad-spend-select"
-                                            style="min-width: 90px;
-                                                   font-size: 10px;
-                                                   padding: 3px 6px;
-                                                   background-color: #91e1ff;
-                                                   color: black;
-                                                   border: 1px solid #91e1ff;
-                                                   font-weight: bold;">
-                                        <option value="total" selected style="background-color: #91e1ff; color: black; font-weight: bold;">$${Math.round(totalSpent).toLocaleString('en-US')}</option>
-                                        <option value="tiktok" style="background-color: #000000; color: white; font-weight: bold;">TT: $${tiktokAdSpend.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option>
-                                    </select>
-                                `;
-                            }
-
-                            // For Walmart, show single option
-                            if (channel === 'walmart') {
-                                return `
-                                    <select class="form-select form-select-sm ad-spend-select"
-                                            style="min-width: 90px;
-                                                   font-size: 10px;
-                                                   padding: 3px 6px;
-                                                   background-color: #91e1ff;
-                                                   color: black;
-                                                   border: 1px solid #91e1ff;
-                                                   font-weight: bold;">
-                                        <option value="total" selected style="background-color: #91e1ff; color: black; font-weight: bold;">$${Math.round(totalSpent).toLocaleString('en-US')}</option>
-                                        <option value="walmart" style="background-color: #0071ce; color: white; font-weight: bold;">WM: $${walmartSpent.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option>
-                                    </select>
-                                `;
-                            }
-
-                            // For Temu, show single option
-                            if (channel === 'temu') {
-                                return `
-                                    <select class="form-select form-select-sm ad-spend-select"
-                                            style="min-width: 90px;
-                                                   font-size: 10px;
-                                                   padding: 3px 6px;
-                                                   background-color: #91e1ff;
-                                                   color: black;
-                                                   border: 1px solid #91e1ff;
-                                                   font-weight: bold;">
-                                        <option value="total" selected style="background-color: #91e1ff; color: black; font-weight: bold;">$${Math.round(totalSpent).toLocaleString('en-US')}</option>
-                                        <option value="temu" style="background-color: #ff6600; color: white; font-weight: bold;">TM: $${kwSpent.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option>
-                                    </select>
-                                `;
-                            }
-
-                            // For Shopify B2C, show single option (Google Ads)
-                            if (channel === 'shopifyb2c') {
-                                return `
-                                    <select class="form-select form-select-sm ad-spend-select"
-                                            style="min-width: 90px;
-                                                   font-size: 10px;
-                                                   padding: 3px 6px;
-                                                   background-color: #91e1ff;
-                                                   color: black;
-                                                   border: 1px solid #91e1ff;
-                                                   font-weight: bold;">
-                                        <option value="total" selected style="background-color: #91e1ff; color: black; font-weight: bold;">$${Math.round(totalSpent).toLocaleString('en-US')}</option>
-                                        <option value="google" style="background-color: #4285f4; color: white; font-weight: bold;">G: $${kwSpent.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option>
-                                    </select>
-                                `;
-                            }
-
-                            // For other channels, show KW/PMT/HL breakdown
-                            return `
-                                <select class="form-select form-select-sm ad-spend-select"
-                                        style="min-width: 90px;
-                                               font-size: 10px;
-                                               padding: 3px 6px;
-                                               background-color: #91e1ff;
-                                               color: black;
-                                               border: 1px solid #91e1ff;
-                                               font-weight: bold;">
-                                    <option value="total" selected style="background-color: #91e1ff; color: black; font-weight: bold;">$${Math.round(totalSpent).toLocaleString('en-US')}</option>
-                                    <option value="kw" style="background-color: #198754; color: white; font-weight: bold;">K: $${kwSpent.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option>
-                                    <option value="pmt" style="background-color: #ffc107; color: black; font-weight: bold;">P: $${pmtSpent.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option>
-                                    <option value="hl" style="background-color: #dc3545; color: white; font-weight: bold;">H: $${hlSpent.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option>
-                                </select>
-                            `;
-                        },
-                        bottomCalc: function(values, data) {
-                            let total = 0;
-                            data.forEach(row => {
-                                const channel = (row['Channel '] || '').trim().toLowerCase();
-                                const kwSpent = parseNumber(row['KW Spent'] || 0);
-                                const pmtSpent = parseNumber(row['PMT Spent'] || 0);
-                                const hlSpent = parseNumber(row['HL Spent'] || 0);
-                                const walmartSpent = parseNumber(row['Walmart Spent'] || 0);
-                                const tiktokAdSpend = parseNumber(row['TikTok Ad Spend'] || 0);
-                                
-                                // For Walmart, Temu, Shopify B2C, Tiktok Shop - only count their specific spend field
-                                if (channel === 'walmart') {
-                                    total += walmartSpent;
-                                } else if (channel === 'temu' || channel === 'shopifyb2c') {
-                                    total += kwSpent; // Temu/Google Ads spend is stored in KW Spent
-                                } else if (channel === 'tiktok shop') {
-                                    total += tiktokAdSpend; // TikTok Ad Spend from tiktok_campaign_reports
-                                } else {
-                                    total += kwSpent + pmtSpent + hlSpent;
-                                }
-                            });
-                            return total;
-                        },
-                        bottomCalcFormatter: function(cell) {
-                            const value = cell.getValue();
-                            return `<strong>$${parseNumber(value).toFixed(0)}</strong>`;
                         }
                     },
                     {
