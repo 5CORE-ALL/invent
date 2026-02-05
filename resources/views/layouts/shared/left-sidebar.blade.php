@@ -296,26 +296,13 @@
                 </div>
 
             </li>
+<li class="side-nav-item">
+    <a href="{{ url('/pricing-master-cvr') }}" class="side-nav-link">
+        <i class="ri-file-line"></i>
+        <span>Pricing Master</span>
+    </a>
+</li>
 
-            <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#pricingmaster" aria-expanded="false"
-                    aria-controls="pricingmaster" class="side-nav-link">
-                    <i class="ri-user-line"></i>
-                    <span>Pricing Master </span>
-                    <span class="menu-arrow"></span>
-                </a>
-                <div class="collapse" id="pricingmaster">
-                    <ul class="side-nav-second-level">
-                        {{-- <li>
-                            <a href="{{ url('pricing-masters.pricing_masters') }}">Pricing Masters </a>
-                        </li> --}}
-                        <li>
-                            <a href="{{ url('/pricing-master-cvr') }}">Pricing Master CVR</a>
-                        </li>   
-
-                    </ul>
-                </div>
-            </li>
 
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#sidebarPagess" aria-expanded="false"
@@ -1556,9 +1543,9 @@
                         <li>
                             <a href="#">Conversion Other Masters</a>
                         </li>
-                        <li>
+                        {{-- <li>
                             <a href="{{ url('pricing-masters.pricing_masters') }}">Pricing Masters</a>
-                        </li>
+                        </li> --}}
                     </ul>
                 </div>
             </li>
