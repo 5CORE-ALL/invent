@@ -459,10 +459,13 @@ $(document).ready(function() {
         } else {
             $('#bulkActionsContainer').show();
             
-            // Populate bulk SKU dropdown
+            // Populate bulk SKU dropdown (exclude parent SKUs)
             let bulkSkuOptions = '<option value="">Select SKU for all checked rows</option>';
             availableSkus.forEach(function(sku) {
-                bulkSkuOptions += `<option value="${sku}">${sku}</option>`;
+                // Skip parent SKUs (SKUs with "PARENT" prefix)
+                if (!sku.toUpperCase().startsWith('PARENT')) {
+                    bulkSkuOptions += `<option value="${sku}">${sku}</option>`;
+                }
             });
             $('#bulkSkuSelect').html(bulkSkuOptions);
             

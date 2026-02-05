@@ -273,25 +273,25 @@ class EbayController extends Controller
             ->whereIn('listing_id', $ebayMetrics->pluck('item_id')->toArray())
             ->get();
 
+        // Fetch LMP data from ebay_sku_competitors table (disconnected from repricer)
         $lmpLowestLookup = collect();
         $lmpDetailsLookup = collect();
         try {
-            $lmpRecords = DB::connection('repricer')
-                ->table('lmp_data')
-                ->select('sku', 'price', 'link')
-                ->where('price', '>', 0)
-                ->whereIn('sku', $nonParentSkus)
-                ->orderBy('sku', 'asc')
-                ->orderByRaw('CAST(price AS DECIMAL(10,2)) ASC')
+            // Fetch all competitors and group by normalized SKU (handle line breaks, spaces, case)
+            $lmpRecords = \App\Models\EbaySkuCompetitor::where('marketplace', 'ebay')
+                ->where('total_price', '>', 0)
+                ->orderBy('total_price', 'asc')
                 ->get()
-                ->groupBy('sku');
+                ->groupBy(function ($item) {
+                    return strtoupper(preg_replace('/\s+/', ' ', trim($item->sku)));
+                });
 
             $lmpDetailsLookup = $lmpRecords;
             $lmpLowestLookup = $lmpRecords->map(function ($items) {
                 return $items->first();
             });
-        } catch (Exception $e) {
-            Log::warning('Could not fetch LMP data from repricer database: ' . $e->getMessage());
+        } catch (\Exception $e) {
+            Log::warning('Could not fetch LMP data from ebay_sku_competitors: ' . $e->getMessage());
         }
 
         // 5. Marketplace percentage
@@ -403,28 +403,33 @@ class EbayController extends Controller
                 $row['suggested_bid'] = null;
             }
 
-            // LMP data - lowest entry plus top entries
-            $lmpEntries = $lmpDetailsLookup->get($pm->sku);
+            // LMP data - lowest entry plus all competitors
+            // Use uppercase and trimmed SKU for lookup (case-insensitive)
+            $skuLookupKey = strtoupper(trim($pm->sku));
+            $lmpEntries = $lmpDetailsLookup->get($skuLookupKey);
             if (!$lmpEntries instanceof \Illuminate\Support\Collection) {
                 $lmpEntries = collect();
             }
 
-            $lowestLmp = $lmpLowestLookup->get($pm->sku);
-            $row['lmp_price'] = ($lowestLmp && isset($lowestLmp->price))
-                ? round((float) $lowestLmp->price, 2)
+            $lowestLmp = $lmpLowestLookup->get($skuLookupKey);
+            $row['lmp_price'] = ($lowestLmp && isset($lowestLmp->total_price))
+                ? (is_numeric($lowestLmp->total_price) ? floatval($lowestLmp->total_price) : null)
                 : null;
-            $row['lmp_link'] = $lowestLmp->link ?? null;
+            $row['lmp_link'] = $lowestLmp->product_link ?? null;
+            $row['lmp_item_id'] = $lowestLmp->item_id ?? null;
+            $row['lmp_title'] = $lowestLmp->product_title ?? null;
             $row['lmp_entries'] = $lmpEntries
-                ->take(5)
                 ->map(function ($entry) {
-                    $entryArray = (array) $entry;
-
                     return [
-                        'price' => isset($entryArray['price']) ? (float) $entryArray['price'] : null,
-                        'link' => $entryArray['link'] ?? null,
+                        'id' => $entry->id,
+                        'item_id' => $entry->item_id,
+                        'price' => floatval($entry->price ?? 0),
+                        'shipping_cost' => floatval($entry->shipping_cost ?? 0),
+                        'total_price' => floatval($entry->total_price ?? 0),
+                        'link' => $entry->product_link,
+                        'title' => $entry->product_title,
                     ];
                 })
-                ->values()
                 ->toArray();
             $row['lmp_entries_total'] = $lmpEntries->count();
 
@@ -2435,5 +2440,208 @@ class EbayController extends Controller
         }
 
         return $sbid > 0 ? $sbid : null;
+    }
+
+    /**
+     * Get eBay LMP data for a specific SKU
+     */
+    public function getEbayLmpData(Request $request)
+    {
+        try {
+            $sku = $request->input('sku');
+            
+            if (!$sku) {
+                return response()->json([
+                    'error' => 'SKU is required'
+                ], 400);
+            }
+            
+            // Use 'ebay' to match database marketplace value
+            $competitors = \App\Models\EbaySkuCompetitor::getCompetitorsForSku($sku, 'ebay');
+            
+            $lowestPrice = $competitors->first();
+            
+            return response()->json([
+                'success' => true,
+                'sku' => $sku,
+                'competitors' => $competitors->map(function ($comp) {
+                    return [
+                        'id' => $comp->id,
+                        'item_id' => $comp->item_id,
+                        'price' => floatval($comp->price ?? 0),
+                        'shipping_cost' => floatval($comp->shipping_cost ?? 0),
+                        'total_price' => floatval($comp->total_price ?? 0),
+                        'link' => $comp->product_link,
+                        'title' => $comp->product_title,
+                        'created_at' => $comp->created_at->format('Y-m-d H:i:s'),
+                    ];
+                }),
+                'lowest_price' => $lowestPrice ? floatval($lowestPrice->total_price) : null,
+                'total_count' => $competitors->count()
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error fetching eBay LMP data', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'error' => 'Failed to fetch LMP data: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Add LMP from competitor data
+     */
+    public function addEbayLmp(Request $request)
+    {
+        try {
+            $validated = $request->validate([
+                'sku' => 'required|string',
+                'item_id' => 'required|string',
+                'price' => 'required|numeric|min:0',
+                'shipping_cost' => 'nullable|numeric|min:0',
+                'product_link' => 'nullable|string',
+                'product_title' => 'nullable|string',
+            ]);
+            
+            $sku = $validated['sku'];
+            $itemId = $validated['item_id'];
+            $price = $validated['price'];
+            $shippingCost = $validated['shipping_cost'] ?? 0;
+            $totalPrice = $price + $shippingCost;
+            
+            // Check if this item_id already exists for this SKU
+            $exists = \App\Models\EbaySkuCompetitor::where('sku', $sku)
+                ->where('item_id', $itemId)
+                ->exists();
+            
+            if ($exists) {
+                return response()->json([
+                    'error' => 'This eBay item is already added as a competitor for this SKU'
+                ], 409);
+            }
+            
+            // Create new LMP entry
+            DB::beginTransaction();
+            
+            $lmp = \App\Models\EbaySkuCompetitor::create([
+                'sku' => $sku,
+                'item_id' => $itemId,
+                'price' => $price,
+                'shipping_cost' => $shippingCost,
+                'total_price' => $totalPrice,
+                'marketplace' => 'ebay',
+                'product_link' => $validated['product_link'] ?? null,
+                'product_title' => $validated['product_title'] ?? null,
+            ]);
+            
+            DB::commit();
+            
+            Log::info('eBay LMP added successfully', [
+                'sku' => $sku,
+                'item_id' => $itemId,
+                'total_price' => $totalPrice
+            ]);
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'LMP added successfully',
+                'data' => [
+                    'id' => $lmp->id,
+                    'sku' => $lmp->sku,
+                    'item_id' => $lmp->item_id,
+                    'price' => floatval($lmp->price),
+                    'shipping_cost' => floatval($lmp->shipping_cost),
+                    'total_price' => floatval($lmp->total_price),
+                    'product_link' => $lmp->product_link,
+                    'product_title' => $lmp->product_title,
+                ]
+            ]);
+            
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            
+            Log::error('Error adding eBay LMP', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'error' => 'Failed to add LMP: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete LMP entry
+     */
+    public function deleteEbayLmp(Request $request)
+    {
+        try {
+            $id = $request->input('id');
+            
+            Log::info('Delete eBay LMP request received', [
+                'id' => $id,
+                'all_input' => $request->all()
+            ]);
+            
+            if (!$id) {
+                return response()->json([
+                    'error' => 'LMP ID is required'
+                ], 400);
+            }
+            
+            $lmp = \App\Models\EbaySkuCompetitor::find($id);
+            
+            if (!$lmp) {
+                Log::warning('eBay LMP entry not found', ['id' => $id]);
+                return response()->json([
+                    'error' => 'LMP entry not found'
+                ], 404);
+            }
+            
+            DB::beginTransaction();
+            
+            $sku = $lmp->sku;
+            $itemId = $lmp->item_id;
+            $totalPrice = $lmp->total_price;
+            
+            $lmp->delete();
+            
+            DB::commit();
+            
+            Log::info('eBay LMP deleted successfully', [
+                'id' => $id,
+                'sku' => $sku,
+                'item_id' => $itemId,
+                'total_price' => $totalPrice
+            ]);
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'LMP deleted successfully'
+            ]);
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            
+            Log::error('Error deleting eBay LMP', [
+                'id' => $id ?? 'unknown',
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return response()->json([
+                'error' => 'Failed to delete LMP: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }

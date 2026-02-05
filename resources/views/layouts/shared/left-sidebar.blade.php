@@ -1447,6 +1447,11 @@
                                             Amazon Competitors
                                         </a>
                                     </li>
+                                    <li>
+                                        <a href="{{ url('/repricer/ebay-search') }}" class="{{ request()->is('repricer/ebay-search*') ? 'active' : '' }}">
+                                            eBay Competitors
+                                        </a>
+                                    </li>
                                 </ul>
                             </div>
                         </li>

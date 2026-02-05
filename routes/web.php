@@ -258,6 +258,7 @@ use App\Http\Controllers\Sales\AmazonSalesController;
 use App\Http\Controllers\Sales\DobaSalesController;
 use App\Http\Controllers\Sales\MercariController;
 use App\Http\Controllers\Sales\BestBuySalesController;
+use App\Http\Controllers\Sales\WayfairSalesController;
 
 /*  
 |--------------------------------------------------------------------------
@@ -727,6 +728,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/ebay-daily-sales-column-visibility', [EbaySalesController::class, 'saveColumnVisibility']);
     Route::get('/ebay/sku-sales-data', [EbaySalesController::class, 'getSkuSalesData'])->name('ebay.sku.sales.data');
     
+    // Wayfair Sales Routes
+    Route::get('/wayfair/daily-sales-data', [WayfairSalesController::class, 'getData'])->name('wayfair.daily.sales.data');
+    Route::get('/wayfair/daily-sales', [WayfairSalesController::class, 'index'])->name('wayfair.daily.sales');
+    Route::get('/wayfair-daily-sales-column-visibility', [WayfairSalesController::class, 'getColumnVisibility']);
+    Route::post('/wayfair-daily-sales-column-visibility', [WayfairSalesController::class, 'saveColumnVisibility']);
+    Route::get('/wayfair/sku-sales-data', [WayfairSalesController::class, 'getSkuSalesData'])->name('wayfair.sku.sales.data');
+    Route::get('/wayfair/test-calculation', [WayfairSalesController::class, 'testCalculation'])->name('wayfair.test.calculation');
+    
     // Best Buy Sales Routes
     Route::get('/bestbuy/daily-sales-data', [BestBuySalesController::class, 'getData'])->name('bestbuy.daily.sales.data');
     Route::get('/bestbuy/daily-sales', [BestBuySalesController::class, 'index'])->name('bestbuy.daily.sales');
@@ -1161,6 +1170,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/push-ebay-price-tabulator', [EbayController::class, 'pushEbayPrice'])->name('ebay.push.price.tabulator');
     Route::post('/update-ebay-sprice-status', [EbayController::class, 'updateEbaySpriceStatus'])->name('ebay.update.sprice.status');
     Route::post('/update-listed-live-ebay', [EbayController::class, 'updateListedLive'])->name('ebay.update.listed.live');
+    
+    // eBay LMP (Lowest Marketplace Price) routes
+    Route::get('/ebay-lmp-data', [EbayController::class, 'getEbayLmpData'])->name('ebay.lmp.data');
+    Route::post('/ebay-lmp-add', [EbayController::class, 'addEbayLmp'])->name('ebay.lmp.add');
+    Route::post('/ebay-lmp-delete', [EbayController::class, 'deleteEbayLmp'])->name('ebay.lmp.delete');
 
     Route::get('/ebay-zero-view', action: [EbayZeroController::class, 'ebayZero'])->name('ebay.zero.view');
     Route::get('/ebay-low-visibility-view', action: [EbayLowVisibilityController::class, 'ebayLowVisibility'])->name('ebay.low.visibility.view');
@@ -2870,6 +2884,15 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/results', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getResults']);
         Route::get('/skus', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'getSkus']);
         Route::post('/store-competitors', [\App\Http\Controllers\RePricer\AmazonSearchController::class, 'storeCompetitors']);
+    });
+
+    Route::prefix('repricer/ebay-search')->group(function () {
+        Route::get('/', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'index']);
+        Route::post('/search', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'search']);
+        Route::get('/history', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'getSearchHistory']);
+        Route::get('/results', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'getResults']);
+        Route::get('/skus', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'getSkus']);
+        Route::post('/store-competitors', [\App\Http\Controllers\RePricer\EbaySearchController::class, 'storeCompetitors']);
     });
 
     Route::get('/facebook-image-ads', [FacebookAdsController::class, 'facebookImageAds'])->name('facebook.image.ads');

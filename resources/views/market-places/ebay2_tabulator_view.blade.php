@@ -372,16 +372,68 @@
         </div>
     </div>
 
-    <!-- LMP Modal -->
+    <!-- LMP Competitors Modal -->
     <div class="modal fade" id="lmpModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
             <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">LMP Data for <span id="lmpSku"></span></h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">
+                        <i class="fa fa-shopping-cart"></i> eBay2 Competitors for SKU: <span id="lmpSku"></span>
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <div id="lmpDataList"></div>
+                    <!-- Add New Competitor Form -->
+                    <div class="card mb-4">
+                        <div class="card-header bg-success text-white">
+                            <h6 class="mb-0"><i class="fa fa-plus-circle"></i> Add New Competitor</h6>
+                        </div>
+                        <div class="card-body">
+                            <form id="addCompetitorForm">
+                                <input type="hidden" id="addCompSku" name="sku">
+                                <div class="row g-3">
+                                    <div class="col-md-3">
+                                        <label class="form-label">eBay Item ID *</label>
+                                        <input type="text" class="form-control" id="addCompItemId" name="item_id" required placeholder="e.g., 123456789012">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">Price *</label>
+                                        <input type="number" class="form-control" id="addCompPrice" name="price" step="0.01" min="0" required placeholder="0.00">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">Shipping</label>
+                                        <input type="number" class="form-control" id="addCompShipping" name="shipping_cost" step="0.01" min="0" placeholder="0.00">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">Product Link</label>
+                                        <input type="url" class="form-control" id="addCompLink" name="product_link" placeholder="https://ebay.com/itm/...">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <label class="form-label">&nbsp;</label>
+                                        <button type="submit" class="btn btn-success w-100">
+                                            <i class="fa fa-plus"></i> Add
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="row mt-2">
+                                    <div class="col-12">
+                                        <label class="form-label">Product Title (optional)</label>
+                                        <input type="text" class="form-control" id="addCompTitle" name="product_title" placeholder="Product title">
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    
+                    <!-- Competitors List -->
+                    <div id="lmpDataList">
+                        <div class="text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading competitors...</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -2402,16 +2454,35 @@
                         hozAlign: "center",
                         sorter: "number",
                         formatter: function(cell) {
-                            const value = cell.getValue();
+                            const lmpPrice = cell.getValue();
                             const rowData = cell.getRow().getData();
                             const sku = rowData['(Child) sku'];
-                            const lmpEntries = rowData.lmp_entries || [];
-                            
-                            if (value && lmpEntries.length > 0) {
-                                const jsonData = JSON.stringify(lmpEntries);
-                                return `<a href="#" class="lmp-link" data-sku="${sku}" data-lmp-data='${jsonData}'>$${parseFloat(value).toFixed(2)}</a>`;
+                            const totalCompetitors = rowData.lmp_entries_total || 0;
+                            const currentPrice = parseFloat(rowData['eBay Price'] || 0);
+
+                            if (!lmpPrice && totalCompetitors === 0) {
+                                return '<span style="color: #999;">N/A</span>';
                             }
-                            return value ? `$${parseFloat(value).toFixed(2)}` : '';
+
+                            let html = '<div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">';
+                            
+                            // Show lowest price OUTSIDE modal
+                            if (lmpPrice) {
+                                const priceFormatted = '$' + parseFloat(lmpPrice).toFixed(2);
+                                const priceColor = (lmpPrice < currentPrice) ? '#dc3545' : '#28a745';
+                                html += `<span style="color: ${priceColor}; font-weight: 600; font-size: 14px;">${priceFormatted}</span>`;
+                            }
+                            
+                            // Show link to open modal with all competitors
+                            if (totalCompetitors > 0) {
+                                html += `<a href="#" class="view-lmp-competitors" data-sku="${sku}" 
+                                    style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 11px;">
+                                    <i class="fa fa-eye"></i> View ${totalCompetitors}
+                                </a>`;
+                            }
+                            
+                            html += '</div>';
+                            return html;
                         },
                         width: 70
                     
@@ -3737,37 +3808,237 @@
             });
         });
 
-        // LMP Modal Event Listener
-        $(document).on('click', '.lmp-link', function(e) {
+        // Global variable to store current LMP data
+        let currentLmpData = {
+            sku: null,
+            competitors: [],
+            lowestPrice: null
+        };
+
+        // Load Competitors Modal Function
+        function loadEbayCompetitorsModal(sku) {
+            $('#lmpSku').text(sku);
+            
+            // Pre-fill form with SKU
+            $('#addCompSku').val(sku);
+            $('#addCompItemId').val('');
+            $('#addCompPrice').val('');
+            $('#addCompShipping').val('');
+            $('#addCompLink').val('');
+            $('#addCompTitle').val('');
+            
+            $('#lmpModal').modal('show');
+            
+            // Show loading state
+            $('#lmpDataList').html(`
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading competitors...</p>
+                </div>
+            `);
+            
+            // Fetch LMP data
+            $.ajax({
+                url: '/ebay-lmp-data',
+                method: 'GET',
+                data: { sku: sku },
+                success: function(response) {
+                    if (response.success && response.competitors && response.competitors.length > 0) {
+                        currentLmpData.sku = sku;
+                        currentLmpData.competitors = response.competitors;
+                        currentLmpData.lowestPrice = response.lowest_price;
+                        
+                        renderEbayCompetitorsList(response.competitors, response.lowest_price);
+                    } else {
+                        $('#lmpDataList').html(`
+                            <div class="alert alert-warning">
+                                <i class="fa fa-info-circle"></i> No competitors found yet. Add your first competitor above!
+                            </div>
+                        `);
+                    }
+                },
+                error: function(xhr) {
+                    console.error('Error loading competitors:', xhr);
+                    $('#lmpDataList').html(`
+                        <div class="alert alert-warning">
+                            <i class="fa fa-info-circle"></i> No competitors found yet. Add your first competitor above!
+                        </div>
+                    `);
+                }
+            });
+        }
+
+        // Render Competitors List Function
+        function renderEbayCompetitorsList(competitors, lowestPrice) {
+            if (!competitors || competitors.length === 0) {
+                $('#lmpDataList').html(`
+                    <div class="alert alert-info">
+                        <i class="fa fa-info-circle"></i> No competitors found for this SKU
+                    </div>
+                `);
+                return;
+            }
+            
+            let html = '<div class="table-responsive"><table class="table table-striped table-hover">';
+            html += `
+                <thead class="table-dark">
+                    <tr>
+                        <th>Item ID</th>
+                        <th>Price</th>
+                        <th>Shipping</th>
+                        <th>Total</th>
+                        <th>Title</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+            `;
+            
+            competitors.forEach(function(item) {
+                const isLowest = item.total_price === lowestPrice;
+                const rowClass = isLowest ? 'table-success' : '';
+                const badge = isLowest ? '<span class="badge bg-success ms-2">Lowest</span>' : '';
+                const productLink = item.link || `https://www.ebay.com/itm/${item.item_id}`;
+                
+                html += `
+                    <tr class="${rowClass}">
+                        <td>
+                            <code>${item.item_id}</code>
+                        </td>
+                        <td>$${parseFloat(item.price).toFixed(2)}</td>
+                        <td>${parseFloat(item.shipping_cost) === 0 ? '<span class="badge bg-info">FREE</span>' : '$' + parseFloat(item.shipping_cost).toFixed(2)}</td>
+                        <td><strong>$${parseFloat(item.total_price).toFixed(2)}</strong> ${badge}</td>
+                        <td style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            ${item.title || 'N/A'}
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm">
+                                <a href="${productLink}" target="_blank" class="btn btn-sm btn-info" title="View Product on eBay">
+                                    <i class="fa fa-external-link"></i>
+                                </a>
+                                <button class="btn btn-sm btn-danger delete-ebay-lmp-btn" 
+                                    data-id="${item.id}" 
+                                    data-item-id="${item.item_id}" 
+                                    data-price="${item.total_price}"
+                                    title="Delete this competitor">
+                                    <i class="fa fa-trash"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            html += '</tbody></table></div>';
+            $('#lmpDataList').html(html);
+        }
+
+        // View Competitors Modal Event Listener
+        $(document).on('click', '.view-lmp-competitors', function(e) {
             e.preventDefault();
             const sku = $(this).data('sku');
-            let data = $(this).data('lmp-data');
-            
-            try {
-                if (typeof data === 'string') {
-                    data = JSON.parse(data);
-                }
-                openLmpModal(sku, data);
-            } catch (error) {
-                console.error('Error parsing LMP data:', error);
-                alert('Error loading LMP data');
-            }
+            loadEbayCompetitorsModal(sku);
         });
 
-        // LMP Modal Function
-        function openLmpModal(sku, data) {
-            $('#lmpSku').text(sku);
-            let html = '';
-            data.forEach(item => {
-                html += `<div style="margin-bottom: 10px; border: 1px solid #ccc; padding: 10px;">
-                    <strong>Price: $${item.price}</strong><br>
-                    <a href="${item.link}" target="_blank">View Link</a>
-                    ${item.image ? `<br><img src="${item.image}" alt="Product Image" style="max-width: 100px; max-height: 100px;">` : ''}
-                </div>`;
+        // Add Competitor Form Submission
+        $('#addCompetitorForm').on('submit', function(e) {
+            e.preventDefault();
+            
+            const $submitBtn = $(this).find('button[type="submit"]');
+            const originalHtml = $submitBtn.html();
+            $submitBtn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Adding...');
+            
+            $.ajax({
+                url: '/ebay-lmp-add',
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                data: {
+                    sku: $('#addCompSku').val(),
+                    item_id: $('#addCompItemId').val(),
+                    price: $('#addCompPrice').val(),
+                    shipping_cost: $('#addCompShipping').val() || 0,
+                    product_link: $('#addCompLink').val(),
+                    product_title: $('#addCompTitle').val()
+                },
+                success: function(response) {
+                    if (response.success) {
+                        showToast('Competitor added successfully', 'success');
+                        
+                        // Clear form
+                        $('#addCompItemId').val('');
+                        $('#addCompPrice').val('');
+                        $('#addCompShipping').val('');
+                        $('#addCompLink').val('');
+                        $('#addCompTitle').val('');
+                        
+                        // Reload competitors list
+                        const sku = $('#addCompSku').val();
+                        loadEbayCompetitorsModal(sku);
+                        
+                        // Reload main table data
+                        table.replaceData();
+                    } else {
+                        showToast(response.error || 'Failed to add competitor', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    const errorMsg = xhr.responseJSON?.error || 'Failed to add competitor';
+                    showToast(errorMsg, 'error');
+                },
+                complete: function() {
+                    $submitBtn.prop('disabled', false).html(originalHtml);
+                }
             });
-            $('#lmpDataList').html(html);
-            $('#lmpModal').modal('show');
-        }
+        });
+
+        // Delete Competitor Button Click
+        $(document).on('click', '.delete-ebay-lmp-btn', function() {
+            const $btn = $(this);
+            const id = $btn.data('id');
+            const itemId = $btn.data('item-id');
+            const price = $btn.data('price');
+            
+            if (!confirm(`Delete competitor ${itemId} ($${price})?`)) {
+                return;
+            }
+            
+            const originalHtml = $btn.html();
+            $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i>');
+            
+            $.ajax({
+                url: '/ebay-lmp-delete',
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                data: { id: id },
+                success: function(response) {
+                    if (response.success) {
+                        showToast('Competitor deleted successfully', 'success');
+                        
+                        // Reload competitors list
+                        const sku = currentLmpData.sku;
+                        loadEbayCompetitorsModal(sku);
+                        
+                        // Reload main table data
+                        table.replaceData();
+                    } else {
+                        showToast(response.error || 'Failed to delete competitor', 'error');
+                    }
+                },
+                error: function(xhr) {
+                    const errorMsg = xhr.responseJSON?.error || 'Failed to delete competitor';
+                    showToast(errorMsg, 'error');
+                },
+                complete: function() {
+                    $btn.prop('disabled', false).html(originalHtml);
+                }
+            });
+        });
 
         // Tooltip functions for eBay2 links
         function showEbay2Tooltip(element) {
