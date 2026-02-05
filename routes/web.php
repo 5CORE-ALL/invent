@@ -151,7 +151,6 @@ use App\Http\Controllers\Warehouse\WarehouseController;
 use Illuminate\Support\Facades\Auth;
 use App\Http\Controllers\PurchaseMaster\PurchaseOrderController;
 use App\Http\Controllers\PurchaseMaster\ReadyToShipController;
-use App\Http\Controllers\PricingMaster\PricingMasterController;
 use App\Http\Controllers\MarketingMaster\ZeroVisibilityMasterController;
 use App\Http\Controllers\MarketingMaster\ListingAuditMasterController;
 use App\Http\Controllers\AdvertisementMaster\Kw_Advt\WalmartController;
@@ -248,7 +247,6 @@ use App\Http\Controllers\MarketPlace\SheinController;
 use App\Http\Controllers\MarketPlace\TiktokShopController;
 use App\Http\Controllers\PurchaseMaster\LedgerMasterController;
 use App\Http\Controllers\PricingIncDsc\MasterIncDscController;
-use App\Http\Controllers\PricingMaster\PricingMasterViewsController;
 use App\Http\Controllers\PurchaseMaster\ContainerPlanningController;
 use App\Http\Controllers\PurchaseMaster\QualityEnhanceController;
 use App\Http\Controllers\PurchaseMaster\RFQController;
@@ -273,7 +271,6 @@ use App\Http\Controllers\MarketPlace\TiendamiaController;
 use App\Http\Controllers\MarketPlace\TiktokController;
 use App\Http\Controllers\PurchaseMaster\SupplierRFQController;
 use App\Http\Controllers\StockMappingController;
-use App\Http\Controllers\MissingListingController;
 use App\Http\Controllers\StockMissingListingController;
 use App\Http\Controllers\ProductMarketing;
 use App\Http\Controllers\FacebookAdsController;
@@ -1703,54 +1700,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/amazon-low-visibility/reason-action/update', [AmazonLowVisibilityController::class, 'updateReasonAction']);
 
 
-    // Route::get('/pricing-master.pricing_master', [PricingMasterController::class, 'pricingMaster']);
-    // Route::get('/pricing-analysis-data-view', [PricingMasterController::class, 'getViewPricingAnalysisData']);
-
-
-    Route::get('/pricing-analysis-data-view', [PricingMasterViewsController::class, 'getViewPricingAnalysisData']);
-    Route::post('/update-amazon-price', action: [PricingMasterViewsController::class, 'updatePrice'])->name('amazon.priceChange');
-    Route::post('/push-shopify-price', action: [PricingMasterViewsController::class, 'pushShopifyPriceBySku'])->name('shopify.priceChange');
-    Route::post('/push-ebay-price', action: [PricingMasterViewsController::class, 'pushEbayPriceBySku'])->name('ebay.priceChange');
-    Route::post('/push-ebay2-price', action: [PricingMasterViewsController::class, 'pushEbayTwoPriceBySku'])->name('ebay2.priceChange');
-    Route::post('/push-ebay3-price', action: [PricingMasterViewsController::class, 'pushEbayThreePriceBySku'])->name('ebay3.priceChange');
-    Route::post('/pricing-master/save', [PricingMasterController::class, 'save']);
-    Route::post('/pricing-master/save-sprice', [PricingMasterViewsController::class, 'saveSprice']);
-    Route::post('/pricing-master/save-remark', [PricingMasterViewsController::class, 'saveRemark']);
-    Route::post('/push-walmart-price', [PricingMasterViewsController::class, 'pushPricewalmart']);
-    // Route::post('/push-doba-price', [PricingMasterViewsController::class, 'pushdobaPriceBySku']);
-    Route::post('/update-doba-price', [PricingMasterViewsController::class, 'pushdobaPriceBySku']); // Added for compatibility
-    Route::get('/test-doba-connection', [PricingMasterViewsController::class, 'testDobaConnection']); // Debug route
-    Route::post('/update-reverb-price', [PricingMasterViewsController::class, 'updateReverbPrice'])->name('reverb.priceChange');
-    Route::post('/update-macy-price', [PricingMasterViewsController::class, 'updateMacyPrice'])->name('macy.priceChange');
-    // Route::post('/update-reverb-price', [PricingMasterViewsController::class, 'updateReverbPrice'])->name('reverb.priceChange');
-
-
-
-
-    // Pricing Master Views Roi Dashboard
-
-    Route::get('/pricing-masters.pricing_masters', [PricingMasterViewsController::class, 'pricingMaster']);
-    Route::get('/get-chart-data', [PricingMasterViewsController::class, 'getChartData']);
-
-    Route::get('/inventory-by-sales-value', [PricingMasterViewsController::class, 'inventoryBySalesValue'])->name('inventory.by.sales.value');
-    Route::get('/pricing-master-data-views', [PricingMasterViewsController::class, 'getViewPricingAnalysisData']);
-    Route::get('/pricing-master/export', [PricingMasterViewsController::class, 'exportPricingMaster'])->name('pricing-master.export');
-    Route::get('/pricing-master/lmp-history', [PricingMasterViewsController::class, 'getLmpHistory']);
-    Route::get('/pricing-master/channel-metrics-history', [PricingMasterViewsController::class, 'getChannelMetricsHistory']);
-    Route::post('/pricing-master/import-site-l90', [PricingMasterViewsController::class, 'importSiteL90Data'])->name('pricing-master.import-site-l90');
-    Route::get('/pricing-master/download-site-l90-sample', [PricingMasterViewsController::class, 'downloadSiteL90Sample'])->name('pricing-master.download-site-l90-sample');
-    Route::get('/pricing-master/roi-dashboard', [PricingMasterViewsController::class, 'getViewPricingAnalysisROIDashboardData']);
-    Route::post('/pricing-master/save', [PricingMasterViewsController::class, 'save']);
-    Route::post('/pricing-master/save-image-url', [PricingMasterViewsController::class, 'saveImageUrl']);
-    Route::get('/parent.pricing-masters', [PricingMasterViewsController::class, 'pricingMasterCopy']);
-    Route::get('/calculate-cvr-masters', [PricingMasterViewsController::class, 'calculateCVRMasters']);
-    Route::get('/calculate-wmp-masters', [PricingMasterViewsController::class, 'calculateWMPMasters']);
-    Route::get('/pricing-master-incremental', [PricingMasterViewsController::class, 'pricingMasterIncR']);
-    Route::post('/product-master/wmp-mark-as-done', [PricingMasterViewsController::class, 'wmpMarkAsDone']);
-    Route::get('/pricing-masters-l90.pricing_masters-l90', [PricingMasterViewsController::class, 'pricingMasterl90Data']);
-
-
-
     Route::get('/movement-pricing-master', [MovementPricingMaster::class, 'MovementPricingMaster']);
     Route::get('/pricing-analysis-data-views', [MovementPricingMaster::class, 'getViewPricingAnalysisData']);
     Route::post('/pricing-master/save', [MovementPricingMaster::class, 'save']);
@@ -1781,13 +1730,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::get('/organic-views-walmart-data', action: [OrganicViewsController::class, 'getWalmartOrganicViewsData'])->name('organicviews.walmart.data');
     Route::get('/organicviews-walmart', action: [OrganicViewsController::class, 'walmartOrganicViews'])->name('organicviews.walmart');
-
-
-    // Analysis routes
-    Route::get('/pricing-master/l30-analysis', [PricingMasterViewsController::class, 'getL30Analysis']);
-    Route::get('/pricing-master/site-analysis', [PricingMasterViewsController::class, 'getSiteAnalysis']);
-    Route::get('/pricing-master/profit-analysis', [PricingMasterViewsController::class, 'getProfitAnalysis']);
-    Route::get('/pricing-master/roi-analysis', [PricingMasterViewsController::class, 'getRoiAnalysis']);
 
     //ebay db save routes
     Route::post('/ebay/save-nr', [EbayController::class, 'saveNrToDatabase']);
@@ -2996,19 +2938,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/walmart/running/ads', 'index')->name('walmart.running.ads');
         Route::get('/walmart/running/ads/data', 'getWalmartRunningAdsData');
         Route::get('/adv-walmart/ad-running/save-data', 'getAdvWalmartRunningSaveData')->name('adv-walmart.ad-running.save-data');
-    });
-    // stock missing listing
-    Route::controller(MissingListingController::class)->group(function () {
-        Route::get('/stock/missing/listing', 'index')->name('view.missing.listing');
-        // Route::get('/stock/missing/listing/data', 'getShopifyMissingInventoryStock')->name('stock.missing.inventory');
-        Route::get('/stock/missing/listing/data', 'shopifyMissingInventoryListings')->name('stock.missing.inventory');
-        Route::get('/stock/missing/inventory/refetch_live_data', 'refetchLiveData')->name('stock.mapping.refetch_live_data');
-        Route::post('/stock/missing/inventory/refetch_live_data_u', 'refetchLiveDataU')->name('stock.mapping.refetch_live_data');
-
-        // Route::get('/stock/mapping/shopify/data', 'getShopifyStock')->name('stock.mapping.shopify');
-        // Route::get('/stock/mapping/amazon/data', 'getAmazonStock')->name('stock.mapping.amazon');
-        // Route::post('/stock/mapping/inventory/update_not_required', 'updateNotRequired')->name('stock.mapping.update.notrequired');
-        // Route::get('/stock/mapping/inventory/refetch_live_data', 'refetchLiveData')->name('stock.mapping.refetch_live_data');        
     });
     // stock missing listing
 
