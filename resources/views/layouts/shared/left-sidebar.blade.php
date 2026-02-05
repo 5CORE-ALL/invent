@@ -108,13 +108,6 @@
                 </a>
                 <div class="collapse" id="sidebarPages22">
                     <ul class="side-nav-second-level">
-                        <li>
-                            <a href="{{ url('product-market') }}">Product Marketing</a>
-                        </li>
-
-                        <li>
-                            <a href="{{ url('shopify-all-channels') }}"> All Channels Sales </a>
-                        </li>
 
                     </ul>
                 </div>
@@ -267,9 +260,6 @@
                 </a>
                 <div class="collapse" id="sidebarPages22">
                     <ul class="side-nav-second-level">
-                        <li>
-                            <a href="{{ url('channels-reviews-master') }}">Channels Reviews</a>
-                        </li>
 
                     </ul>
                 </div>
@@ -730,10 +720,6 @@
                                         <a href="{{ route('channel.adv.master') }}">ADV Masters</a>
                                     </li>
 
-                                    <li>
-                                        <a href="{{ route('channel.master', ['channels', 'channel-masters']) }}"
-                                            target="_blank">Dummy Channel for testing</a>
-                                    </li>
                                     <!-- End Nikhil Code  -->
                                     <li>
                                         <a href="{{ route('opportunity.index') }}">Opportunities</a>
@@ -747,10 +733,6 @@
                                     </li>
                                 </ul>
                             </div>
-                        </li>
-                        <li>
-                            <a href="{{ route('master.pricing.inc.dsc') }}" target="_blank">Price Adjustment
-                                Manager</a>
                         </li>
 
                         <li class="side-nav-item">
@@ -937,77 +919,6 @@
                 <div class="collapse" id="sidebarPages2">
                     <ul class="side-nav-second-level">
 
-                        <li>
-                            <a href="{{ route('view.stock.mapping') }}">Stock Mapping -
-                                <span id="stockMappingNotMatchingBadge"
-                                    style="color: red; font-weight: bold; margin-left: 6px;">0</span>
-                            </a>
-                        </li>
-
-
-                        <li>
-                            <a href="{{ url('/live-pending-data') }}">Live Pending -
-                                <span id="livePendingCountBadge"
-                                    style="color: red; font-weight: bold; margin-left: 6px;">0</span>
-                            </a>
-                        </li>
-
-                        <li>
-                            <a href="{{ route('zero.visibility') }}">Zero Views Masters -
-                                <span id="zeroVisibilityBadge"
-                                    style="color: red; font-weight: bold; margin-left: 6px;">0</span>
-                            </a>
-                        </li>
-
-                        <li>
-                            <a href="{{ route('stock.missing.listing') }}">Stock Missing Listing</a>
-                        </li>
-
-                        {{-- <li>
-                            <a href="{{ url('listing-master-counts') }}">Low Visibility Masters</a>
-                        </li> --}}
-
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#sidebarlowvisibilitymaster" aria-expanded="false"
-                                aria-controls="sidebarlowvisibilitymaster">
-                                <span>Low Visibility Masters</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="sidebarlowvisibilitymaster">
-                                <ul class="side-nav-third-level">
-                                    <li class="side-nav-item">
-                                        <a data-bs-toggle="collapse" href="#lowvisibilitySubmenu"
-                                            aria-expanded="false" aria-controls="lowvisibilitySubmenu">
-                                            <span>Organic Views</span>
-                                            <span class="menu-arrow"></span>
-                                        </a>
-                                        <div class="collapse" id="lowvisibilitySubmenu">
-                                            <ul class="side-nav-third-level">
-                                                <li>
-                                                    <a href="{{ route('organicviews.amazon') }}">Amazon</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('organicviews.ebay') }}"> Ebay</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('organicviews.ebay2') }}"> Ebay 2</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('organicviews.ebay3') }}"> Ebay 3</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('organicviews.temu') }}">Temu</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('organicviews.walmart') }}">Walmart</a>
-                                                </li>
-                                            </ul>
-                                        </div>
-                                    </li>
-                                </ul>
-                            </div>
-                        </li>
-
                         <!--- Start Nikhil Code -->
                         <li class="side-nav-item">
                             <a data-bs-toggle="collapse" href="#video-ads-master" aria-expanded="false"
@@ -1037,38 +948,6 @@
                         </li>
 
                         <!-- End Nikhil Code  -->
-
-
-                        <li>
-                            <a href="{{ route('listingMaster') }}">Listing Masters</a>
-                        </li>
-
-
-                        <li>
-                            <a href="{{ route('listing.audit') }}">Listing Audit Masters</a>
-                        </li>
-
-                        <li>
-                            <a href="{{ route('carousel.sales') }}">Carousel Sales Master</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('email.marketing') }}">Email Marketing</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('whatsapp.marketing') }}">Whatsapp Marketing</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('sms.marketing') }}">SMS Marketing</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('dm.marketing') }}">DM Marketing</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('phone.marketing') }}">Phone Appt Marketing</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('letter.marketing') }}">Letter Marketing</a>
-                        </li>
 
                         <li class="side-nav-item">
                             <a data-bs-toggle="collapse" href="#sidebarvideoSales" aria-expanded="false"
@@ -1446,9 +1325,6 @@
                             </a>
                             <div class="collapse" id="lqsSubmenu">
                                 <ul class="side-nav-fourth-level">
-                                    <li>
-                                        <a href="{{ route('overallLqsCvr') }}">OverAll LQS - CVR</a>
-                                    </li>
                                     <li>
                                         <a href="{{ route('listingLQS.master') }}">LQS - Listing</a>
                                     </li>
@@ -2936,77 +2812,7 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        const zeroBadge = document.getElementById('zeroVisibilityBadge');
-        const liveBadge = document.getElementById('livePendingCountBadge');
-        const stockBadge = document.getElementById('stockMappingNotMatchingBadge');
-
-        // ===== ZERO VISIBILITY TOTAL =====
-        if (zeroBadge) {
-            fetch('/show-zero-visibility-data')
-                .then(res => {
-                    if (!res.ok) throw new Error('HTTP ' + res.status);
-                    return res.json();
-                })
-                .then(json => {
-                    const data = json.data || [];
-                    const zeroTotal = data.reduce((sum, row) => sum + (parseInt(row[
-                        'Zero Visibility SKU Count']) || 0), 0);
-                    zeroBadge.textContent = zeroTotal;
-                })
-                .catch(err => {
-                    console.error('Failed to load zero visibility total:', err);
-                    zeroBadge.textContent = '0';
-                });
-        }
-
-        // ===== LIVE PENDING TOTAL =====
-        if (liveBadge) {
-            // Request the live-pending page logic but ask for JSON so the controller returns the computed data
-            fetch('/live-pending-data', {
-                    headers: {
-                        'Accept': 'application/json'
-                    }
-                })
-                .then(res => res.json())
-                .then(json => {
-                    const data = json.data || [];
-                    const liveTotal = data.reduce((sum, row) => {
-                        const val = parseInt(row['Live Pending']) || parseInt(row[
-                            'Live Pending Count']) || 0;
-                        return sum + val;
-                    }, 0);
-                    // Format with thousands separator
-                    liveBadge.textContent = liveTotal.toLocaleString('en-US');
-                    // Optionally hide when zero
-                    liveBadge.style.display = liveTotal ? 'inline' : 'none';
-                })
-                .catch(err => console.error('Failed to load live pending total:', err));
-        }
-        // ===== STOCK MAPPING NOT MATCHING TOTAL ===== (DISABLED TO PREVENT CONNECTION ISSUES)
-        // if (stockBadge) {
-        //     fetch('/stock/mapping/inventory/data')
-        //         .then(res => {
-        //             if (!res.ok) throw new Error('HTTP ' + res.status);
-        //             return res.json();
-        //         })
-        //         .then(json => {
-        //             const total = parseInt(json.totalNotMatching) || 0;
-        //             stockBadge.textContent = total.toLocaleString('en-US');
-        //             // keep visible even if zero to match other badges
-        //         })
-        //         .catch(err => {
-        //             console.error('Failed to load stock mapping total:', err);
-        //             stockBadge.textContent = '0';
-        //         });
-        // }
-
-        // Set stock badge to 0 to avoid display issues
-        if (stockBadge) {
-            stockBadge.textContent = '0';
-        }
-        //                 Object.keys(ls).forEach(mp => {
-        //                     if (ls[mp] === "Not Listed" && !(zi[mp] === true)) {
-        //                         total++;
+        // Placeholder for future badge functionality
     });
 </script>
 

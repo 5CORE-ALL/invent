@@ -495,10 +495,6 @@
                                 <div class="collapse" id="activeChannelMasyer">
                                     <ul class="side-nav-third-level">
                                         <li>
-                                            <a href="{{ route('channel.master', ['channels', 'channel-masters']) }}"
-                                                target="_blank">Active Channels</a>
-                                        </li>
-                                        <li>
                                             <a href="{{ route('opportunity.index') }}">Opportunities</a>
                                         </li>
                                         <li>
@@ -510,10 +506,6 @@
                                         </li>
                                     </ul>
                                 </div>
-                            </li>
-                            <li>
-                                <a href="{{ route('master.pricing.inc.dsc') }}" target="_blank">Price Adjustment
-                                    Manager</a>
                             </li>
 
                             <li class="side-nav-item">
@@ -639,40 +631,6 @@
                 </a>
                 <div class="collapse" id="sidebarPages2">
                     <ul class="side-nav-second-level">
-                            <li>
-                                <a href="{{ route('listingMaster') }}">Listing Masters</a>
-                            </li>
-
-                        <li>
-                            <a href="{{ url('listing-master-counts') }}">Low Visibility Masters</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('listing.audit') }}">Listing Audit Masters</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('zero.visibility') }}">0 Views Masters</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('carousel.sales') }}">Carousel Sales Master</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('email.marketing') }}">Email Marketing</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('whatsapp.marketing') }}">Whatsapp Marketing</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('sms.marketing') }}">SMS Marketing</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('dm.marketing') }}">DM Marketing</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('phone.marketing') }}">Phone Appt Marketing</a>
-                        </li>
-                        <li>
-                            <a href="{{ route('letter.marketing') }}">Letter Marketing</a>
-                        </li>
 
                             <li class="side-nav-item">
                                 <a data-bs-toggle="collapse" href="#sidebarvideoSales" aria-expanded="false"
