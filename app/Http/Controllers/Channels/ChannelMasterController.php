@@ -220,6 +220,43 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Fetch Amazon FBA ad spend breakdown (KW, PT) - FBA-specific campaigns.
+     * FBA KW: campaigns ending with 'FBA' but NOT 'FBA PT'
+     * FBA PT: campaigns ending with 'FBA PT' or 'FBA PT.'
+     *
+     * @return array{kw: float, pt: float}
+     */
+    private function fetchAmazonFbaAdSpendBreakdownFromTables(): array
+    {
+        $end = Carbon::now()->subDays(2)->format('Y-m-d');
+        $start = Carbon::now()->subDays(31)->format('Y-m-d');
+
+        // FBA KW: campaigns ending with 'FBA' but NOT 'FBA PT' or 'FBA PT.'
+        $kwSpent = round((float) DB::table('amazon_sp_campaign_reports')
+            ->whereNotNull('report_date_range')
+            ->whereBetween('report_date_range', [$start, $end])
+            ->whereNotIn('report_date_range', ['L60', 'L30', 'L15', 'L7', 'L1'])
+            ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
+            ->whereRaw("campaignName LIKE '%FBA'")
+            ->whereRaw("campaignName NOT LIKE '%FBA PT%'")
+            ->whereRaw("campaignName NOT LIKE '%FBA PT.%'")
+            ->sum('spend'), 2);
+
+        // FBA PT: campaigns ending with 'FBA PT' or 'FBA PT.'
+        $ptSpent = round((float) DB::table('amazon_sp_campaign_reports')
+            ->whereNotNull('report_date_range')
+            ->whereBetween('report_date_range', [$start, $end])
+            ->whereNotIn('report_date_range', ['L60', 'L30', 'L15', 'L7', 'L1'])
+            ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
+            ->where(function ($q) {
+                $q->whereRaw("campaignName LIKE '%FBA PT'")->orWhereRaw("campaignName LIKE '%FBA PT.'");
+            })
+            ->sum('spend'), 2);
+
+        return ['kw' => $kwSpent, 'pt' => $ptSpent];
+    }
+
+    /**
      * Fetch eBay KW and PMT spend from tables - same logic as Ebay KW Ads and PMT Ads pages.
      * Uses L30 rows, whereDate(updated_at >= 30 days ago), no campaignStatus filter (matches utilized pages).
      *
@@ -311,6 +348,33 @@ class ChannelMasterController extends Controller
                     $clicks = (int) (($kw->c ?? 0) + ($pt->c ?? 0) + ($hl->c ?? 0));
                     $adSales = (float) (($kw->s ?? 0) + ($pt->s ?? 0) + ($hl->s ?? 0));
                     $adSold = (int) (($kw->u ?? 0) + ($pt->u ?? 0) + ($hl->u ?? 0));
+                    return ['clicks' => $clicks, 'ad_sales' => round($adSales, 2), 'ad_sold' => $adSold];
+                }
+
+                case 'amazonfba': {
+                    $end = Carbon::now()->subDays(2)->format('Y-m-d');
+                    $start = Carbon::now()->subDays(31)->format('Y-m-d');
+                    $dateFilter = fn ($q) => $q->whereNotNull('report_date_range')
+                        ->whereBetween('report_date_range', [$start, $end])
+                        ->whereNotIn('report_date_range', ['L60', 'L30', 'L15', 'L7', 'L1'])
+                        ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')");
+
+                    // FBA KW: campaigns ending with 'FBA' but NOT 'FBA PT'
+                    $kw = DB::table('amazon_sp_campaign_reports')->when(true, $dateFilter)
+                        ->whereRaw("campaignName LIKE '%FBA'")
+                        ->whereRaw("campaignName NOT LIKE '%FBA PT%'")
+                        ->whereRaw("campaignName NOT LIKE '%FBA PT.%'")
+                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(sales30d), 0) as s, COALESCE(SUM(purchases1d), 0) as u')->first();
+                    // FBA PT: campaigns ending with 'FBA PT' or 'FBA PT.'
+                    $pt = DB::table('amazon_sp_campaign_reports')->when(true, $dateFilter)
+                        ->where(function ($q) {
+                            $q->whereRaw("campaignName LIKE '%FBA PT'")->orWhereRaw("campaignName LIKE '%FBA PT.'");
+                        })
+                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(sales30d), 0) as s, COALESCE(SUM(purchases1d), 0) as u')->first();
+
+                    $clicks = (int) (($kw->c ?? 0) + ($pt->c ?? 0));
+                    $adSales = (float) (($kw->s ?? 0) + ($pt->s ?? 0));
+                    $adSold = (int) (($kw->u ?? 0) + ($pt->u ?? 0));
                     return ['clicks' => $clicks, 'ad_sales' => round($adSales, 2), 'ad_sold' => $adSold];
                 }
 
@@ -570,6 +634,7 @@ class ChannelMasterController extends Controller
         // Map lowercase channel key => controller method
         $controllerMap = [
             'amazon'    => 'getAmazonChannelData',
+            'amazonfba' => 'getAmazonFbaChannelData',
             'ebay'      => 'getEbayChannelData',
             'ebaytwo'   => 'getEbaytwoChannelData',
             'ebaythree' => 'getEbaythreeChannelData',
@@ -652,7 +717,7 @@ class ChannelMasterController extends Controller
             }
 
             // AD CLICKS, AD SALES, AD SOLD: fetch directly from tables for ad-enabled channels
-            $adMetricsChannels = ['amazon', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'walmart', 'shopifyb2c', 'tiktokshop'];
+            $adMetricsChannels = ['amazon', 'amazonfba', 'ebay', 'ebaytwo', 'ebaythree', 'temu', 'walmart', 'shopifyb2c', 'tiktokshop'];
             if (in_array($key, $adMetricsChannels)) {
                 $metrics = $this->fetchAdMetricsFromTables($key);
                 $clicks = $metrics['clicks'];
@@ -927,8 +992,11 @@ class ChannelMasterController extends Controller
             'N PFT'      => round($nPft, 2) . '%',
             'N ROI'      => round($nRoi, 2),
             'KW Spent'   => round($kwSpent, 2),
-            'PMT Spent'  => round($ptSpent, 2),
+            'PT Spent'   => round($ptSpent, 2),
             'HL Spent'   => round($hlSpent, 2),
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
             'Total Ad Spend' => $totalAdSpend,
             'Ads%'       => round($adsPercentage, 2) . '%',
             'type'       => $channelData?->type ?? '',
@@ -944,6 +1012,145 @@ class ChannelMasterController extends Controller
         return response()->json([
             'status' => 200,
             'message' => 'Amazon channel data fetched successfully',
+            'data' => $result,
+        ]);
+    }
+
+    /**
+     * Fetch Amazon FBA channel data.
+     * FBA campaigns end with 'FBA' or 'FBA PT', separate from regular Amazon KW/PT campaigns.
+     */
+    public function getAmazonFbaChannelData(Request $request)
+    {
+        $result = [];
+
+        // Get metrics from marketplace_daily_metrics table for Amazon FBA
+        $metrics = MarketplaceDailyMetric::where('channel', 'Amazon FBA')->latest('date')->first();
+
+        // Get L60 data from ShipHub for Amazon FBA (30-59 days ago range)
+        $latestDate = null;
+        try {
+            $latestDate = DB::connection('shiphub')
+                ->table('orders')
+                ->where('marketplace', '=', 'amazon-fba')
+                ->max('order_date');
+        } catch (\Throwable $e) {
+            Log::warning('ShipHub connection failed in getAmazonFbaChannelData: ' . $e->getMessage());
+        }
+
+        if ($latestDate) {
+            try {
+                $latestDateCarbon = \Carbon\Carbon::parse($latestDate);
+                $l60StartDate = $latestDateCarbon->copy()->subDays(59)->startOfDay();
+                $l60EndDate = $latestDateCarbon->copy()->subDays(30)->endOfDay();
+
+                $l60OrderItems = DB::connection('shiphub')
+                    ->table('orders as o')
+                    ->join('order_items as i', 'o.id', '=', 'i.order_id')
+                    ->whereBetween('o.order_date', [$l60StartDate, $l60EndDate])
+                    ->where('o.marketplace', '=', 'amazon-fba')
+                    ->where(function($query) {
+                        $query->where('o.order_status', '!=', 'Canceled')
+                              ->where('o.order_status', '!=', 'Cancelled')
+                              ->orWhereNull('o.order_status');
+                    })
+                    ->select(
+                        DB::raw('COUNT(i.id) as order_count'),
+                        DB::raw('SUM(i.unit_price) as total_sales')
+                    )
+                    ->first();
+
+                $l60Orders = $l60OrderItems->order_count ?? 0;
+                $l60Sales = $l60OrderItems->total_sales ?? 0;
+            } catch (\Throwable $e) {
+                Log::warning('ShipHub L60 query failed for Amazon FBA: ' . $e->getMessage());
+                $l60Orders = 0;
+                $l60Sales = 0;
+            }
+        } else {
+            $l60Orders = 0;
+            $l60Sales = 0;
+        }
+
+        $l30Sales = $metrics?->total_sales ?? 0;
+        $l30Orders = $metrics?->total_orders ?? 0;
+        $totalQuantity = $metrics?->total_quantity ?? 0;
+        $totalProfit = $metrics?->total_pft ?? 0;
+        $totalCogs = $metrics?->total_cogs ?? 0;
+        $gProfitPct = $metrics?->pft_percentage ?? 0;
+        $gRoi = $metrics?->roi_percentage ?? 0;
+        $tacosPercentage = $metrics?->tacos_percentage ?? 0;
+        $nPft = $metrics?->n_pft ?? 0;
+        $nRoi = $metrics?->n_roi ?? 0;
+
+        // FBA KW + PT spend: fetch from tables using FBA-specific filters
+        try {
+            $adSpendBreakdown = $this->fetchAmazonFbaAdSpendBreakdownFromTables();
+            $kwSpent = $adSpendBreakdown['kw'];
+            $ptSpent = $adSpendBreakdown['pt'];
+        } catch (\Throwable $e) {
+            Log::error('fetchAmazonFbaAdSpendBreakdownFromTables failed: ' . $e->getMessage());
+            $kwSpent = $ptSpent = 0;
+        }
+        $totalAdSpend = round($kwSpent + $ptSpent, 2);
+
+        // Calculate growth
+        $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
+
+        $gprofitL60 = 0;
+        $gRoiL60 = 0;
+
+        // Calculate Ads %
+        $adsPercentage = $l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0;
+
+        // Channel data
+        $channelData = ChannelMaster::whereRaw("LOWER(REPLACE(channel, ' ', '')) = 'amazonfba'")->first();
+
+        // Get Map and Miss counts
+        $mapMissCounts = $this->getMapAndMissCounts('amazonfba');
+
+        $result[] = [
+            'Channel '   => 'Amazon FBA',
+            'L-60 Sales' => intval($l60Sales),
+            'L30 Sales'  => intval($l30Sales),
+            'Growth'     => round($growth, 2) . '%',
+            'L60 Orders' => $l60Orders,
+            'L30 Orders' => $l30Orders,
+            'Qty'        => intval($totalQuantity),
+            'Gprofit%'   => round($gProfitPct, 2) . '%',
+            'gprofitL60' => round($gprofitL60, 2) . '%',
+            'G Roi'      => round($gRoi, 2),
+            'G RoiL60'   => round($gRoiL60, 2),
+            'Total PFT'  => round($totalProfit, 2),
+            'N PFT'      => round($nPft, 2) . '%',
+            'N ROI'      => round($nRoi, 2),
+            'KW Spent'   => round($kwSpent, 2),
+            'PT Spent'   => round($ptSpent, 2),
+            'HL Spent'   => 0, // FBA doesn't have HL (Headline) ads separate
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => $totalAdSpend,
+            'Ads%'       => round($adsPercentage, 2),
+            'TACOS'      => round($tacosPercentage, 2),
+            'AD CLICKS'  => 0,
+            'AD SALES'   => 0,
+            'AD SOLD'    => 0,
+            'ACOS'       => 0,
+            'AD CVR'     => 0,
+            'Link'       => null,
+            'sheet_link' => $channelData->sheet_link ?? null,
+            'missing_link' => $channelData->missing_link ?? null,
+            'type'       => $channelData->type ?? 'B2C',
+            'cogs'       => round($totalCogs, 2),
+            'Map'        => $mapMissCounts['map'],
+            'Miss'       => $mapMissCounts['miss'],
+            'NMap'       => $mapMissCounts['nmap'],
+        ];
+
+        return response()->json([
+            'status' => 200,
+            'message' => 'Amazon FBA channel data fetched successfully',
             'data' => $result,
         ]);
     }
@@ -1131,7 +1338,11 @@ class ChannelMasterController extends Controller
             'N PFT'      => round($nPft, 2) . '%',
             'N ROI'      => round($nRoi, 2),
             'KW Spent'   => round($kwSpent, 2),
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
             'PMT Spent'  => round($pmtSpent, 2),
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
             'Total Ad Spend' => $totalAdSpend,
             'Ads%'       => round($adsPercentage, 2) . '%',
             'type'       => $channelData->type ?? '',
@@ -1270,7 +1481,11 @@ class ChannelMasterController extends Controller
             'N PFT'      => round($nPft, 2) . '%',
             'N ROI'      => round($nRoi, 2),
             'KW Spent'   => round($kwSpent, 2),
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
             'PMT Spent'  => round($pmtSpent, 2),
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
             'Total Ad Spend' => $totalAdSpend,
             'Ads%'       => round($adsPercentage, 2) . '%',
             'type'       => $channelData->type ?? '',
@@ -1426,7 +1641,11 @@ class ChannelMasterController extends Controller
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
             'KW Spent'   => round($kwSpent, 2),
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
             'PMT Spent'  => round($pmtSpent, 2),
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
             'Total Ad Spend' => $totalAdSpend,
             'Ads%'       => round($l30Sales > 0 ? ($totalAdSpend / $l30Sales) * 100 : 0, 2),
             'TACOS %'    => round($tacosPercentage, 2),
@@ -1546,6 +1765,13 @@ class ChannelMasterController extends Controller
             'Total PFT'  => round($totalProfit, 2),
             'N PFT'      => round($nPft, 2) . '%',
             'N ROI'      => round($nRoi, 2),
+            'KW Spent'   => 0,
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => 0,
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -1709,6 +1935,13 @@ class ChannelMasterController extends Controller
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'      => round($gRoiL60, 2),
             'N PFT'      => round($nPft, 2) . '%',
+            'KW Spent'   => 0,
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => 0,
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -1826,6 +2059,13 @@ class ChannelMasterController extends Controller
             'G RoiL60'      => round($gRoiL60, 1),
             'N PFT'      => round($nPftPct, 1) . '%',
             'N ROI'      => round($nRoi, 1),
+            'KW Spent'   => 0,
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => 0,
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -1932,8 +2172,12 @@ class ChannelMasterController extends Controller
             'Total PFT'  => round($totalProfit, 2),
             'N PFT'      => round($nPft, 2) . '%',
             'N ROI'      => round($nRoi, 2),
-            'KW Spent'   => $totalAdSpend, // Temu ad spend from temu_campaign_reports
-            'PMT Spent'  => 0, // Temu doesn't have separate PMT
+            'KW Spent'   => $totalAdSpend, // Temu KW ad spend from temu_campaign_reports
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
             'Total Ad Spend' => $totalAdSpend,
             'Ads%'       => round($adsPercentage, 2) . '%',
             'TACOS %'    => round($tacosPercentage, 2) . '%',
@@ -2208,6 +2452,13 @@ class ChannelMasterController extends Controller
             'G RoiL60'      => round($gRoiL60, 2),
             'Total PFT'  => round($totalProfit, 2),
             'Walmart Spent' => round($walmartSpent, 2),
+            'KW Spent'   => round($walmartSpent, 2), // Walmart KW ad spend
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => round($walmartSpent, 2),
             'TACOS %'    => round($tacosPercentage, 2) . '%',
             'N PFT'      => round($nPft, 2) . '%',
             'N ROI'      => round($nRoi, 2),
@@ -2316,6 +2567,13 @@ class ChannelMasterController extends Controller
             'Total PFT'  => round($totalProfit, 2),
             'N PFT'      => round($nPft, 2) . '%',
             'N ROI'      => round($nRoi, 2),
+            'KW Spent'   => 0,
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => 0,
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -2427,6 +2685,13 @@ class ChannelMasterController extends Controller
             'Total PFT'  => round($totalProfit, 2),
             'N PFT'      => round($nPft, 2) . '%',
             'N ROI'      => round($nRoi, 2),
+            'KW Spent'   => 0,
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => 0,
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -2598,6 +2863,13 @@ class ChannelMasterController extends Controller
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'      => round($gRoiL60, 2),
             'N PFT'      => round($nPft, 2) . '%',
+            'KW Spent'   => 0,
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => 0,
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -2767,6 +3039,13 @@ class ChannelMasterController extends Controller
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
             'N PFT'      => round($nPft, 2) . '%',
+            'KW Spent'   => 0,
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => 0,
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -2930,6 +3209,13 @@ class ChannelMasterController extends Controller
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
             'N PFT'      => round($nPft, 2) . '%',
+            'KW Spent'   => 0,
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => 0,
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -2998,6 +3284,13 @@ class ChannelMasterController extends Controller
             'G RoiL60'   => round($gRoiL60, 1),
             'N PFT'      => round($nPft, 1) . '%',
             'N ROI'      => round($nRoi, 1),
+            'KW Spent'   => 0,
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => 0,
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -3292,9 +3585,13 @@ class ChannelMasterController extends Controller
             'N ROI'      => round($nRoiWithAds, 2),
             'Ads%'       => round($adsPct, 2),
             'TikTok Ad Spend' => round($tiktokAdSpend, 2),
-            'KW Spent'   => 0,
-            'PMT Spent'  => 0,
+            'KW Spent'   => round($tiktokAdSpend, 2), // TikTok KW ad spend
+            'PT Spent'   => 0,
             'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => round($tiktokAdSpend, 2),
             'type'       => $channelData->type ?? 'B2C',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -3459,6 +3756,13 @@ class ChannelMasterController extends Controller
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
             'N PFT'      => round($nPft, 2) . '%',
+            'KW Spent'   => 0,
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => 0,
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -3567,6 +3871,13 @@ class ChannelMasterController extends Controller
             'G RoiL60'   => round($gRoiL60, 2),
             'N PFT'      => round($nPft, 2) . '%',
             'N ROI'      => round($nRoi, 2),
+            'KW Spent'   => 0,
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => 0,
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -3678,6 +3989,13 @@ class ChannelMasterController extends Controller
             'G RoiL60'   => round($gRoiL60, 1),
             'N PFT'      => round($nPft, 1) . '%',
             'N ROI'      => round($nRoi, 1),
+            'KW Spent'   => 0,
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => 0,
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -3785,6 +4103,13 @@ class ChannelMasterController extends Controller
             'G RoiL60'   => round($gRoiL60, 1),
             'N PFT'      => round($nPft, 1) . '%',
             'N ROI'      => round($nRoi, 1),
+            'KW Spent'   => 0,
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => 0,
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -3953,6 +4278,13 @@ class ChannelMasterController extends Controller
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
             'N PFT'      => round($nPft, 2) . '%',
+            'KW Spent'   => 0,
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => 0,
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -4121,6 +4453,13 @@ class ChannelMasterController extends Controller
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
             'N PFT'      => round($nPft, 2) . '%',
+            'KW Spent'   => 0,
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => 0,
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -4254,6 +4593,13 @@ class ChannelMasterController extends Controller
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
             'N PFT'      => round($nPft, 2) . '%',
+            'KW Spent'   => 0,
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => 0,
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -4387,6 +4733,13 @@ class ChannelMasterController extends Controller
             'G Roi'      => round($gRoi, 2),
             'G RoiL60'   => round($gRoiL60, 2),
             'N PFT'      => round($nPft, 2) . '%',
+            'KW Spent'   => 0,
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => 0,
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,
@@ -4428,7 +4781,23 @@ class ChannelMasterController extends Controller
         $googleSpent = $metrics->kw_spent ?? 0; // Google Ads spend is stored in kw_spent field
 
         // Total Ad Spend: fetch directly from google_ads_campaigns table
-        $totalAdSpend = $this->fetchTotalAdSpendFromTables('shopifyb2c');
+        // Shopping ads (advertising_channel_type = 'SHOPPING')
+        $shoppingAdSpend = $this->fetchTotalAdSpendFromTables('shopifyb2c');
+        
+        // SERP/Search ads (advertising_channel_type = 'SEARCH') - include ENABLED and PAUSED campaigns
+        $endDate = Carbon::now()->subDays(2)->format('Y-m-d');
+        $startDate = Carbon::now()->subDays(31)->format('Y-m-d');
+        $serpAdSpend = round(
+            (float) DB::table('google_ads_campaigns')
+                ->whereDate('date', '>=', $startDate)
+                ->whereDate('date', '<=', $endDate)
+                ->where('advertising_channel_type', 'SEARCH')
+                ->whereIn('campaign_status', ['ENABLED', 'PAUSED'])
+                ->sum('metrics_cost_micros') / 1000000,
+            2
+        );
+        
+        $totalAdSpend = round($shoppingAdSpend + $serpAdSpend, 2);
         
         // Calculate growth
         $growth = $l30Sales > 0 ? (($l30Sales - $l60Sales) / $l30Sales) * 100 : 0;
@@ -4464,8 +4833,12 @@ class ChannelMasterController extends Controller
             'Total PFT'  => round($totalProfit, 2),
             'N PFT'      => round($nPft, 1) . '%',
             'N ROI'      => round($nRoi, 1),
-            'KW Spent'   => $totalAdSpend, // Google Ads spend from google_ads_campaigns
-            'PMT Spent'  => 0, // Shopify B2C doesn't have PMT
+            'KW Spent'   => 0,
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => $shoppingAdSpend, // Google Shopping spend (SHOPPING type)
+            'SERP Spent' => $serpAdSpend, // Google Search spend (SEARCH type)
             'Total Ad Spend' => $totalAdSpend,
             'Ads%'       => round($adsPercentage, 1) . '%',
             'TACOS %'    => round($tacosPercentage, 1) . '%',
@@ -4584,6 +4957,13 @@ class ChannelMasterController extends Controller
             'G RoiL60'   => round($gRoiL60, 1),
             'N PFT'      => round($nPft, 1) . '%',
             'N ROI'      => round($nRoi, 1),
+            'KW Spent'   => 0,
+            'PT Spent'   => 0,
+            'HL Spent'   => 0,
+            'PMT Spent'  => 0,
+            'Shopping Spent' => 0,
+            'SERP Spent' => 0,
+            'Total Ad Spend' => 0,
             'type'       => $channelData->type ?? '',
             'W/Ads'      => $channelData->w_ads ?? 0,
             'NR'         => $channelData->nr ?? 0,

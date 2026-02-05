@@ -603,6 +603,21 @@
             return parseFloat(cleaned) || 0;
         }
 
+        // Track Ad Spend breakdown columns visibility
+        let adSpendBreakdownVisible = false;
+        const adSpendBreakdownFields = ['KW Spent', 'PT Spent', 'HL Spent', 'PMT Spent', 'Shopping Spent', 'SERP Spent'];
+
+        function toggleAdSpendBreakdownColumns() {
+            adSpendBreakdownVisible = !adSpendBreakdownVisible;
+            adSpendBreakdownFields.forEach(field => {
+                if (adSpendBreakdownVisible) {
+                    table.showColumn(field);
+                } else {
+                    table.hideColumn(field);
+                }
+            });
+        }
+
         $(document).ready(function() {
             // Initialize Tabulator
             table = new Tabulator("#marketplace-table", {
@@ -800,67 +815,119 @@
                         title: "AD SPEND",
                         field: "Total Ad Spend",
                         hozAlign: "center",
-                        sorter: function(a, b, aRow, bRow) {
-                            const calcTotal = (row) => {
-                                const channel = (row['Channel '] || '').trim().toLowerCase();
-                                if (channel === 'tiktok shop') return parseNumber(row['TikTok Ad Spend'] || 0);
-                                const kwSpent = parseNumber(row['KW Spent'] || 0);
-                                const pmtSpent = parseNumber(row['PMT Spent'] || 0);
-                                const hlSpent = parseNumber(row['HL Spent'] || 0);
-                                const walmartSpent = parseNumber(row['Walmart Spent'] || 0);
-                                if (channel === 'walmart') return walmartSpent;
-                                if (channel === 'temu' || channel === 'shopifyb2c') return kwSpent;
-                                return kwSpent + pmtSpent + hlSpent;
-                            };
-                            return calcTotal(aRow.getData()) - calcTotal(bRow.getData());
-                        },
+                        sorter: "number",
                         formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const channel = (rowData['Channel '] || '').trim().toLowerCase();
-                            const kwSpent = parseNumber(rowData['KW Spent'] || 0);
-                            const pmtSpent = parseNumber(rowData['PMT Spent'] || 0);
-                            const hlSpent = parseNumber(rowData['HL Spent'] || 0);
-                            const walmartSpent = parseNumber(rowData['Walmart Spent'] || 0);
-                            const tiktokAdSpend = parseNumber(rowData['TikTok Ad Spend'] || 0);
-                            let totalSpent = 0;
-                            if (channel === 'walmart') totalSpent = walmartSpent;
-                            else if (channel === 'temu' || channel === 'shopifyb2c') totalSpent = kwSpent;
-                            else if (channel === 'tiktok shop') totalSpent = tiktokAdSpend;
-                            else totalSpent = kwSpent + pmtSpent + hlSpent;
+                            const totalSpent = parseNumber(cell.getValue() || 0);
                             if (totalSpent === 0) return '-';
-                            if (channel === 'tiktok shop') {
-                                return `<select class="form-select form-select-sm ad-spend-select" style="min-width: 90px; font-size: 10px; padding: 3px 6px; background-color: #91e1ff; color: black; border: 1px solid #91e1ff; font-weight: bold;"><option value="total" selected style="background-color: #91e1ff; color: black; font-weight: bold;">$${Math.round(totalSpent).toLocaleString('en-US')}</option><option value="tiktok" style="background-color: #000000; color: white; font-weight: bold;">TT: $${tiktokAdSpend.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option></select>`;
-                            }
-                            if (channel === 'walmart') {
-                                return `<select class="form-select form-select-sm ad-spend-select" style="min-width: 90px; font-size: 10px; padding: 3px 6px; background-color: #91e1ff; color: black; border: 1px solid #91e1ff; font-weight: bold;"><option value="total" selected style="background-color: #91e1ff; color: black; font-weight: bold;">$${Math.round(totalSpent).toLocaleString('en-US')}</option><option value="walmart" style="background-color: #0071ce; color: white; font-weight: bold;">WM: $${walmartSpent.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option></select>`;
-                            }
-                            if (channel === 'temu') {
-                                return `<select class="form-select form-select-sm ad-spend-select" style="min-width: 90px; font-size: 10px; padding: 3px 6px; background-color: #91e1ff; color: black; border: 1px solid #91e1ff; font-weight: bold;"><option value="total" selected style="background-color: #91e1ff; color: black; font-weight: bold;">$${Math.round(totalSpent).toLocaleString('en-US')}</option><option value="temu" style="background-color: #ff6600; color: white; font-weight: bold;">TM: $${kwSpent.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option></select>`;
-                            }
-                            if (channel === 'shopifyb2c') {
-                                return `<select class="form-select form-select-sm ad-spend-select" style="min-width: 90px; font-size: 10px; padding: 3px 6px; background-color: #91e1ff; color: black; border: 1px solid #91e1ff; font-weight: bold;"><option value="total" selected style="background-color: #91e1ff; color: black; font-weight: bold;">$${Math.round(totalSpent).toLocaleString('en-US')}</option><option value="google" style="background-color: #4285f4; color: white; font-weight: bold;">G: $${kwSpent.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option></select>`;
-                            }
-                            return `<select class="form-select form-select-sm ad-spend-select" style="min-width: 90px; font-size: 10px; padding: 3px 6px; background-color: #91e1ff; color: black; border: 1px solid #91e1ff; font-weight: bold;"><option value="total" selected style="background-color: #91e1ff; color: black; font-weight: bold;">$${Math.round(totalSpent).toLocaleString('en-US')}</option><option value="kw" style="background-color: #198754; color: white; font-weight: bold;">K: $${kwSpent.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option><option value="pmt" style="background-color: #ffc107; color: black; font-weight: bold;">P: $${pmtSpent.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option><option value="hl" style="background-color: #dc3545; color: white; font-weight: bold;">H: $${hlSpent.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</option></select>`;
+                            const infoIcon = `<i class="fas fa-info-circle ad-spend-breakdown-toggle ms-1" style="cursor:pointer;color:#17a2b8;font-size:12px;" title="Toggle Spend Breakdown"></i>`;
+                            return `<span style="font-weight:600;">$${Math.round(totalSpent).toLocaleString('en-US')}</span>${infoIcon}`;
                         },
-                        bottomCalc: function(values, data) {
-                            let total = 0;
-                            data.forEach(row => {
-                                const ch = (row['Channel '] || '').trim().toLowerCase();
-                                const kwSpent = parseNumber(row['KW Spent'] || 0);
-                                const pmtSpent = parseNumber(row['PMT Spent'] || 0);
-                                const hlSpent = parseNumber(row['HL Spent'] || 0);
-                                const walmartSpent = parseNumber(row['Walmart Spent'] || 0);
-                                const tiktokAdSpend = parseNumber(row['TikTok Ad Spend'] || 0);
-                                if (ch === 'walmart') total += walmartSpent;
-                                else if (ch === 'temu' || ch === 'shopifyb2c') total += kwSpent;
-                                else if (ch === 'tiktok shop') total += tiktokAdSpend;
-                                else total += kwSpent + pmtSpent + hlSpent;
-                            });
-                            return total;
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('ad-spend-breakdown-toggle')) {
+                                e.stopPropagation();
+                                toggleAdSpendBreakdownColumns();
+                            }
                         },
+                        bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
                             const value = cell.getValue();
                             return `<strong>$${parseNumber(value).toFixed(0)}</strong>`;
+                        }
+                    },
+                    {
+                        title: "KW",
+                        field: "KW Spent",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            if (value === 0) return '-';
+                            return `<span style="font-weight:600;color:#198754;">$${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong style="color:#198754;">$${parseNumber(value).toFixed(2)}</strong>`;
+                        }
+                    },
+                    {
+                        title: "PT",
+                        field: "PT Spent",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            if (value === 0) return '-';
+                            return `<span style="font-weight:600;color:#0d6efd;">$${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong style="color:#0d6efd;">$${parseNumber(value).toFixed(2)}</strong>`;
+                        }
+                    },
+                    {
+                        title: "HL",
+                        field: "HL Spent",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            if (value === 0) return '-';
+                            return `<span style="font-weight:600;color:#dc3545;">$${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong style="color:#dc3545;">$${parseNumber(value).toFixed(2)}</strong>`;
+                        }
+                    },
+                    {
+                        title: "PMT",
+                        field: "PMT Spent",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            if (value === 0) return '-';
+                            return `<span style="font-weight:600;color:#ffc107;">$${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong style="color:#ffc107;">$${parseNumber(value).toFixed(2)}</strong>`;
+                        }
+                    },
+                    {
+                        title: "G-SHOP",
+                        field: "Shopping Spent",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            if (value === 0) return '-';
+                            return `<span style="font-weight:600;color:#4285f4;">$${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong style="color:#4285f4;">$${parseNumber(value).toFixed(2)}</strong>`;
+                        }
+                    },
+                    {
+                        title: "G-SERP",
+                        field: "SERP Spent",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = parseNumber(cell.getValue());
+                            if (value === 0) return '-';
+                            return `<span style="font-weight:600;color:#6f42c1;">$${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;
+                        },
+                        bottomCalc: "sum",
+                        bottomCalcFormatter: function(cell) {
+                            const value = cell.getValue();
+                            return `<strong style="color:#6f42c1;">$${parseNumber(value).toFixed(2)}</strong>`;
                         }
                     },
                     {
