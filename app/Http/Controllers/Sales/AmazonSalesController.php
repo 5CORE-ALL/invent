@@ -62,12 +62,20 @@ class AmazonSalesController extends Controller
     public function getData(Request $request)
     {
         // ============================================================
-        // LAST 31 DAYS FROM TODAY (FIXED)
-        // Example: today Feb 4 → Jan 5 to Feb 4
+        // LAST 30 DAYS BASED ON LATEST ORDER DATE IN DATABASE
+        // Get the latest order date from amazon_orders and calculate 30-day range from there
+        // Example: Latest order Feb 5 → Jan 7 to Feb 5 (30 days)
         // ============================================================
     
-        $endDateCarbon = now()->endOfDay();
-        $startDateCarbon = now()->subDays(30)->startOfDay(); // 31 days total
+        $latestDate = DB::table('amazon_orders')->max('order_date');
+        
+        if (!$latestDate) {
+            return response()->json([]);
+        }
+        
+        $latestDateCarbon = \Carbon\Carbon::parse($latestDate);
+        $endDateCarbon = $latestDateCarbon->endOfDay(); // Latest date in DB
+        $startDateCarbon = $latestDateCarbon->copy()->subDays(29)->startOfDay(); // 30 days before latest
     
         $startDateStr = $startDateCarbon->format('Y-m-d');
         $endDateStr   = $endDateCarbon->format('Y-m-d');
@@ -226,7 +234,7 @@ class AmazonSalesController extends Controller
                 'currency' => $item->currency,
                 'order_date' => $item->order_date,
                 'status' => $item->status,
-                'period' => 'L31',
+                'period' => 'L30',
                 'lp' => round($lp, 2),
                 'ship' => round($ship, 2),
                 't_weight' => round($tWeight, 2),

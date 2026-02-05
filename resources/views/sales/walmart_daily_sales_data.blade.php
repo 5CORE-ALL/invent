@@ -46,13 +46,13 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Walmart Daily Sales Data',
-        'sub_title' => 'Walmart USA Daily Sales Data Analysis (L33)',
+        'sub_title' => 'Walmart USA Daily Sales Data Analysis (L30)',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>Walmart Daily Sales Data (L33)</h4>
+                <h4>Walmart Daily Sales Data (L30)</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
@@ -454,7 +454,7 @@
             // Update summary stats
             function updateSummary() {
                 const data = table.getData("active");
-                let totalOrders = 0;
+                let uniqueOrderIds = new Set(); // Track unique order IDs
                 let totalQuantity = 0;
                 let totalRevenue = 0;
                 let totalPft = 0;
@@ -468,7 +468,7 @@
                         return;
                     }
 
-                    totalOrders++;
+                    uniqueOrderIds.add(row.order_id); // Track unique order ID
                     const quantity = parseInt(row.quantity) || 0;
                     const unitPrice = parseFloat(row.unit_price) || 0;
 
@@ -507,6 +507,7 @@
                 // Calculate N ROI: ROI % - TACOS %
                 const nRoi = roiPercentage - tacosPercentage;
 
+                const totalOrders = uniqueOrderIds.size; // Count unique orders
                 $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
                 $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
                 $('#total-sales-badge').text('Total Sales: $' + Math.round(totalRevenue).toLocaleString());

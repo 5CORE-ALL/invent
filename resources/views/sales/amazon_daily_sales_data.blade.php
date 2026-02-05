@@ -495,7 +495,7 @@
         // Update summary stats (matching eBay pattern exactly)
         function updateSummary() {
             const data = table.getData("active");
-            let totalOrders = 0;
+            let uniqueOrderIds = new Set(); // Track unique order IDs
             let totalQuantity = 0;
             let totalRevenue = 0;
             let totalPft = 0;
@@ -513,7 +513,7 @@
                     return;
                 }
                 
-                totalOrders++;
+                uniqueOrderIds.add(row.order_id); // Track unique order ID
                 const quantity = parseInt(row.quantity) || 0;
                 const basePrice = parseFloat(row.price) || 0;
                 
@@ -586,6 +586,7 @@
             const isFiltered = activeDataCount < totalDataCount || hasTableFilters || skuSearchValue.trim() !== '';
 
             // Update badges (matching eBay format exactly)
+            const totalOrders = uniqueOrderIds.size; // Count unique orders
             $('#total-orders-badge').text('Total Orders: ' + totalOrders.toLocaleString());
             $('#total-quantity-badge').text('Total Quantity: ' + totalQuantity.toLocaleString());
             $('#total-sales-badge').text('Total Sales: $' + totalRevenue.toFixed(2));

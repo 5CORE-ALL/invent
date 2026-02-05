@@ -2337,10 +2337,12 @@ class ChannelMasterController extends Controller
         }
 
         $latestDateCarbon = \Carbon\Carbon::parse($latestDate);
-        $l30StartDate = $latestDateCarbon->copy()->subDays(29)->startOfDay(); // 30 days total
-        $l30EndDate = $latestDateCarbon->endOfDay();
-        $l60StartDate = $latestDateCarbon->copy()->subDays(59)->startOfDay(); // 60 days total
-        $l60EndDate = $latestDateCarbon->copy()->subDays(30)->endOfDay(); // End at 31 days ago
+        // Get 30 days EXCLUDING today: from (latest - 30 days) to (latest - 1 day)
+        $l30EndDate = $latestDateCarbon->copy()->subDay()->endOfDay(); // Yesterday
+        $l30StartDate = $l30EndDate->copy()->subDays(29)->startOfDay(); // 30 days before yesterday
+        // L60: 30-day period ending the day before L30 starts (days 31-60)
+        $l60EndDate = $l30StartDate->copy()->subDay()->endOfDay(); // Day before L30 starts
+        $l60StartDate = $l60EndDate->copy()->subDays(29)->startOfDay(); // 30 days before that
 
         // Get Walmart marketing percentage (default 80%)
         $marketplaceData = MarketplacePercentage::where('marketplace', 'Walmart')->first();
