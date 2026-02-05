@@ -102,11 +102,6 @@
                             <li>
                                 <a href="{{ route('claim.reimbursement') }}">Claims & Reimbursements</a>
                             </li>
-                            @if (isset($permissions['forecast_analysis']) && in_array('view', $permissions['forecast_analysis']))
-                                <li>
-                                    <a href="{{ route('forecast.analysis') }}">Forecast Analysis</a>
-                                </li>
-                            @endif
                             @if (isset($permissions['to_order_analysis']) && in_array('view', $permissions['to_order_analysis']))
                                 <li>
                                     <a href="{{ route('to.order.analysis') }}">To Order Analysis</a>
@@ -211,12 +206,6 @@
                                 <li>
                                     <a href="{{ route('product.master') }}">CP
                                         Masters</a>
-                                </li>
-                            @endif
-                            @if (isset($permissions['listing_analysis']) && in_array('view', $permissions['listing_analysis']))
-                                <li>
-                                    <a href="https://listing-analysis.5coremanagement.com/public/login" target="_blank"
-                                        rel="noopener noreferrer">Listing Analysis</a>
                                 </li>
                             @endif
                             @if (isset($permissions['cost_price_analysis']) && in_array('view', $permissions['cost_price_analysis']))
@@ -690,23 +679,6 @@
                                     </ul>
                                 </div>
                             </li>
-                            <li class="side-nav-item">
-                                <a data-bs-toggle="collapse" href="#reviewMaster" aria-expanded="false"
-                                    aria-controls="reviewMaster">
-                                    <span> Review Master </span>
-                                    <span class="menu-arrow"></span>
-                                </a>
-                                <div class="collapse" id="reviewMaster">
-                                    <ul class="side-nav-third-level">
-                                        <li>
-                                            <a href="{{ route('review.master.dashboard') }}">Review Dashboard</a>
-                                        </li>
-                                        <li>
-                                            <a href="{{ route('review.masters.amazon') }}">Amazon Product Reviews</a>
-                                        </li>
-                                    </ul>
-                                </div>
-                            </li>
                             @if (isset($permissions['return_analysis_channel']) && in_array('view', $permissions['return_analysis_channel']))
                                 <li>
                                     <a href="{{ route('return.master') }}">Return Analysis</a>
@@ -979,15 +951,7 @@
                                 </a>
                                 <div class="collapse" id="lqsSubmenu">
                                     <ul class="side-nav-fourth-level">
-                                        @if (isset($permissions['listing_LQS_masters']) && in_array('view', $permissions['listing_LQS_masters']))
-                                            <li>
-                                                <a href="{{ route('listingLQS.master') }}">LQS - Listing</a>
-                                            </li>
-                                        @endif
                                         @if (isset($permissions['cvr_LQS_masters']) && in_array('view', $permissions['cvr_LQS_masters']))
-                                            <li>
-                                                <a href="{{ route('cvrLQS.master') }}">Amazon LQS - CVR</a>
-                                            </li>
                                             <li>
                                                 <a href="{{ route('ebaycvrLQS.master') }}">Ebay LQS - CVR</a>
                                             </li>

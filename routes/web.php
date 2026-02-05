@@ -4,7 +4,6 @@
 use App\Http\Controllers\AdsMaster\AdsMasterController;
 use App\Http\Controllers\Channels\AdsMasterController as ChannelAdsMasterController;
 use App\Http\Controllers\Channels\ChannelPromotionMasterController;
-use App\Http\Controllers\MarketingMaster\CvrLQSMasterController;
 use App\Http\Controllers\MarketPlace\AmazonFbaInvController;
 use App\Http\Controllers\MarketPlace\AmazonLowVisibilityController;
 use App\Http\Controllers\MarketPlace\AmazonZeroController;
@@ -81,7 +80,6 @@ use App\Http\Controllers\MarketingMaster\VideoPostedController;
 use App\Http\Controllers\MarketPlace\TemuLowVisibilityController;
 use App\Http\Controllers\MarketPlace\TemuZeroController;
 use App\Http\Controllers\MarketPlace\WayfairController;
-use App\Http\Controllers\MarketingMaster\ListingLQSMasterController;
 use App\Http\Controllers\MarketPlace\WayfairLowVisibilityController;
 use App\Http\Controllers\MarketPlace\WayfairZeroController;
 use App\Http\Controllers\MarketPlace\ZeroViewMarketPlace\AliexpressZeroController;
@@ -202,8 +200,6 @@ use App\Http\Controllers\InventoryManagement\StockTransferController;
 use App\Http\Controllers\Channels\ChannelMovementAnalysisController;
 use App\Http\Controllers\Channels\NewMarketplaceController;
 use App\Http\Controllers\Channels\OpportunityController;
-use App\Http\Controllers\Channels\ReviewMaster\AmazonReviewController;
-use App\Http\Controllers\Channels\ReviewMaster\ReviewDashboardController;
 use App\Http\Controllers\Channels\SetupAccountChannelController;
 use App\Http\Controllers\Channels\ShippingMasterController;
 use App\Http\Controllers\Channels\TrafficMasterController;
@@ -618,20 +614,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/sourcing/update/{id}', 'updateSourcing')->name('sourcing.update');
         Route::post('/sourcing/delete', 'deleteSourcing')->name('sourcing.delete');
         Route::get('/get-parent-by-sku/{sku}', 'getParentBySku')->name('getParentBySku');
-    });
-
-    //Review Master
-    Route::controller(AmazonReviewController::class)->group(function () {
-        Route::get('/review-master/amazon-product-reviews/', 'index')->name('review.masters.amazon');
-        Route::get('/amazon-product-review-data', 'fetchAmazonProductReview');
-        Route::post('/amazon-product-review-import', 'importProductReview')->name('amazon.product.review.import');
-        Route::post('/amazon-product-reviews/save', 'createUpdateProductReview');
-    });
-
-    //Review Dashboard
-    Route::controller(ReviewDashboardController::class)->group(function () {
-        Route::get('/review-master/daboard', 'index')->name('review.master.dashboard');
-        Route::get('/review-dashboard-data', 'getReviewDataChannelBased');
     });
 
     //LedgerMaster
@@ -1382,18 +1364,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/approval.required', action: [ForecastAnalysisController::class, 'approvalRequired'])->name('approval.required');
     Route::get('/transit', action: [ForecastAnalysisController::class, 'transit'])->name('transit');
     Route::get('/forecast-analysis/get-sku-quantity', action: [ForecastAnalysisController::class, 'getSkuQuantity'])->name('forecast.analysis.get.sku.quantity');
-
-    //marketing master index view routes
-    Route::get('/listingLQS.master', action: [ListingLQSMasterController::class, 'listingLQSMaster'])->name('listingLQS.master');
-    Route::get('/listingLQS/view-data', [ListingLQSMasterController::class, 'getViewListingData'])->name('listingLQS.viewData');
-    Route::post('/listing-lqs/save-action', [ListingLQSMasterController::class, 'saveAction']);
-    Route::get('/cvrLQS.master', action: [CvrLQSMasterController::class, 'cvrLQSMaster'])->name('cvrLQS.master');
-    Route::get('/cvrLQS/view-data', [CvrLQSMasterController::class, 'getViewCvrData'])->name('cvrLQS.viewData');
-    Route::post('/cvr-lqs/save-action', [CvrLQSMasterController::class, 'saveAction']);
-
-    Route::post('/import-cvr-data', [CvrLQSMasterController::class, 'importCVRData'])->name('import.cvr');
-
-    Route::get('/lqs-from-sheet', [ListingLQSMasterController::class, 'getLqsFromGoogleSheet']);
 
     //ebay lqs cvr
     Route::get('/ebaycvrLQS.master', action: [EbayCvrLqsController::class, 'cvrLQSMaster'])->name('ebaycvrLQS.master');
