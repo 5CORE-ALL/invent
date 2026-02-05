@@ -1,4 +1,4 @@
-@extends('layouts.vertical', ['title' => 'Pricing Master CVR', 'sidenav' => 'condensed'])
+@extends('layouts.vertical', ['title' => 'Pricing Master ', 'sidenav' => 'condensed'])
 
 @section('css')
     <meta name="csrf-token" content="{{ csrf_token() }}">
@@ -191,8 +191,8 @@
 
 @section('content')
     @include('layouts.shared.page-title', [
-        'page_title' => 'Pricing Master CVR',
-        'sub_title' => 'Pricing Master CVR Data with Editable SPRICE',
+        'page_title' => 'Pricing Master',
+        'sub_title' => 'Pricing Master Data with Editable SPRICE',
     ])
     <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 9999;"></div>
     
@@ -305,7 +305,7 @@
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>CVR Master Data</h4>
+             
                 <div class="d-flex align-items-center flex-wrap gap-2">
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: 130px;">

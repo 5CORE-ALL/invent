@@ -228,27 +228,6 @@
                 </div>
             </li>
 
-            {{-- <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#prcmasterinc" aria-expanded="false" aria-controls="prcmasterinc"
-                    class="side-nav-link">
-                    <i class="ri-user-line"></i>
-                    <span>Pricing Masters IncR</span>
-                    <span class="menu-arrow"></span>
-                </a>
-                <div class="collapse" id="prcmasterinc">
-                    <ul class="side-nav-second-level">
-
-                        <li>
-                            <a href="{{ url('/pricing-master-incremental') }}"> Prc Master IncR </a>
-                        </li>
-                    </ul>
-                </div>
-
-            </li> --}}
-
-
-
-
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#fbaPricingMaster" aria-expanded="false"
                     aria-controls="sidebarPages22" class="side-nav-link">
@@ -295,26 +274,6 @@
                     </ul>
                 </div>
 
-            </li>
-
-            <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#pricingmaster" aria-expanded="false"
-                    aria-controls="pricingmaster" class="side-nav-link">
-                    <i class="ri-user-line"></i>
-                    <span>Pricing Master </span>
-                    <span class="menu-arrow"></span>
-                </a>
-                <div class="collapse" id="pricingmaster">
-                    <ul class="side-nav-second-level">
-                        {{-- <li>
-                            <a href="{{ url('pricing-masters.pricing_masters') }}">Pricing Masters </a>
-                        </li> --}}
-                        <li>
-                            <a href="{{ url('/pricing-master-cvr') }}">Pricing Master CVR</a>
-                        </li>   
-
-                    </ul>
-                </div>
             </li>
 
             <li class="side-nav-item">
@@ -398,18 +357,6 @@
                         </li>
                         <li>
                             <a href="{{ route('images') }}">Images</a>
-                        </li>
-                        <li>
-                            <a href="{{ url('/parent.pricing-masters') }}">ROI dashboard</a>
-                        </li>
-
-
-                        <li>
-                            <a href="{{ url('calculate-wmp-masters') }}">WMP Masters</a>
-                        </li>
-
-                        <li>
-                            <a href="{{ url('inventory-by-sales-value') }}">Inv by Sales Value </a>
                         </li>
 
                         <li>
@@ -990,14 +937,6 @@
                 <div class="collapse" id="sidebarPages2">
                     <ul class="side-nav-second-level">
 
-
-                        <li>
-                            <a href="{{ route('view.missing.listing') }}">Missing Listing -
-                                <span id="missingListingTotalBadge"
-                                    style="color: red; font-weight: bold; margin-left: 6px;">0</span>
-                            </a>
-                        </li>
-
                         <li>
                             <a href="{{ route('view.stock.mapping') }}">Stock Mapping -
                                 <span id="stockMappingNotMatchingBadge"
@@ -1069,26 +1008,6 @@
                             </div>
                         </li>
 
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#video-ads-master" aria-expanded="false"
-                                aria-controls="video-ads-master" class="side-nav-link">
-                                <span>CVR MASTERS</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="video-ads-master">
-                                <ul class="side-nav-second-level">
-                                    <li>
-                                        <a href="{{ url('cvr-master') }}">CVR Masters</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ url('pricing-masters-l90.pricing_masters-l90') }}">Listing
-                                            CVR</a>
-                                    </li>
-
-                                </ul>
-                            </div>
-                        </li>
-
                         <!--- Start Nikhil Code -->
                         <li class="side-nav-item">
                             <a data-bs-toggle="collapse" href="#video-ads-master" aria-expanded="false"
@@ -1129,9 +1048,6 @@
                             <a href="{{ route('listing.audit') }}">Listing Audit Masters</a>
                         </li>
 
-                        <li>
-                            <a href="{{ url('movement-pricing-master') }}"> Movement Analysis Master</a>
-                        </li>
                         <li>
                             <a href="{{ route('carousel.sales') }}">Carousel Sales Master</a>
                         </li>
@@ -1555,9 +1471,6 @@
                         </li>
                         <li>
                             <a href="#">Conversion Other Masters</a>
-                        </li>
-                        <li>
-                            <a href="{{ url('pricing-masters.pricing_masters') }}">Pricing Masters</a>
                         </li>
                     </ul>
                 </div>
@@ -3026,7 +2939,6 @@
         const zeroBadge = document.getElementById('zeroVisibilityBadge');
         const liveBadge = document.getElementById('livePendingCountBadge');
         const stockBadge = document.getElementById('stockMappingNotMatchingBadge');
-        const missingBadge = document.getElementById('missingListingTotalBadge');
 
         // ===== ZERO VISIBILITY TOTAL =====
         if (zeroBadge) {
@@ -3092,52 +3004,9 @@
         if (stockBadge) {
             stockBadge.textContent = '0';
         }
-
-        // ===== MISSING LISTING NOT LISTED TOTAL ===== (DISABLED TO PREVENT CONNECTION ISSUES)
-        // if (missingBadge) {
-        //     fetch('/stock/missing/listing/data')
-        //         .then(res => {
-        //             if (!res.ok) throw new Error('HTTP ' + res.status);
-        //             return res.json();
-        //         })
-        //         .then(json => {
-        //             const data = json.data || [];
-        //             let total = 0;
-
-        //             // Calculate total "Not Listed" items (excluding zero inventory)
-        //             // Filter out rows where shopify inventory is zero (matching page behavior)
-        //             const filteredData = data.filter(row => {
-        //                 const zi = row.is_zero_inventory || {};
-        //                 return !(zi.shopify === true);
-        //             });
-
-        //             filteredData.forEach(row => {
-        //                 const ls = row.listing_status || {};
-        //                 const zi = row.is_zero_inventory || {};
-        //                 
-        //                 // Get all marketplace keys from listing_status
         //                 Object.keys(ls).forEach(mp => {
         //                     if (ls[mp] === "Not Listed" && !(zi[mp] === true)) {
         //                         total++;
-        //                     }
-        //                 });
-        //             });
-
-        //             missingBadge.textContent = total.toLocaleString('en-US');
-        //             missingBadge.style.display = 'inline';
-        //         })
-        //         .catch(err => {
-        //             console.error('Failed to load missing listing total:', err);
-        //             missingBadge.textContent = '0';
-        //             missingBadge.style.display = 'inline';
-        //         });
-        // }
-
-        // Set missing badge to 0 to avoid display issues
-        if (missingBadge) {
-            missingBadge.textContent = '0';
-            missingBadge.style.display = 'inline';
-        }
     });
 </script>
 
