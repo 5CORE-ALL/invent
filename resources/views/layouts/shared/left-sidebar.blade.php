@@ -827,10 +827,6 @@
                             <a href="{{ route('channel.master', ['channels', 'expenses-analysis']) }}">Shipping
                                 analysis</a>
                         </li>
-                        <li>
-                            <a href="{{ route('channel.master', ['channels', 'advertisement-analysis']) }}">C Care
-                                Analysis</a>
-                        </li>
                     </ul>
                 </div>
             </li>

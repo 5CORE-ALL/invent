@@ -745,13 +745,6 @@
                                         analysis</a>
                                 </li>
                             @endif
-                            @if (isset($permissions['ccare_analysis_channel']) && in_array('view', $permissions['ccare_analysis_channel']))
-                                <li>
-                                    <a href="{{ route('channel.master', ['channels', 'advertisement-analysis']) }}">C
-                                        Care
-                                        Analysis</a>
-                                </li>
-                            @endif
                         </ul>
 
                     </div>
