@@ -311,10 +311,6 @@
                             </select>
                         </div>
                         <div class="mb-3">
-                            <label for="editBase" class="form-label">Achieved</label>
-                            <input type="number" class="form-control" id="editBase" step="0.01">
-                        </div>
-                        <div class="mb-3">
                             <label for="editTarget" class="form-label">Target</label>
                             <input type="number" class="form-control" id="editTarget" step="0.01">
                         </div>
@@ -941,29 +937,6 @@
                         bottomCalcFormatter: function(cell) {
                             const value = cell.getValue();
                             return `<strong>$${parseNumber(value).toLocaleString('en-US')}</strong>`;
-                        }
-                    },
-                    {
-                        title: "Growth",
-                        field: "Growth",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const l30Sales = parseNumber(rowData['L30 Sales']);
-                            const achieved = parseNumber(rowData['base']);
-                            const growthPercent = achieved > 0 ? ((l30Sales - achieved) / achieved) * 100 : 0;
-                            
-                            let style = '';
-                            if (growthPercent < 0) { 
-                                style = 'color:#a00211;'; // Red text
-                            } else if (growthPercent === 0) { 
-                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;'; // Yellow bg with black text
-                            } else { 
-                                style = 'color:#28a745;'; // Green text
-                            }
-                            
-                            return `<span style="${style}font-weight:600;">${growthPercent < 0 ? '' : '+'}${growthPercent.toFixed(0)}%</span>`;
                         }
                     },
                     {
@@ -2151,16 +2124,6 @@
                         }
                     },
                     {
-                        title: "Achieved",
-                        field: "base",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
-                            return `<span>${value.toLocaleString('en-US')}</span>`;
-                        }
-                    },
-                    {
                         title: "Action",
                         field: "_action",
                         hozAlign: "center",
@@ -2206,7 +2169,6 @@
                     const channel = rowData['Channel '] || rowData['Channel'] || '';
                     const sheetUrl = rowData['sheet_link'] || '';
                     const type = rowData['type'] || '';
-                    const base = rowData['base'] || 0;
                     const target = rowData['target'] || 0;
                     const missingLink = rowData['missing_link'] || '';
                     
@@ -2214,7 +2176,6 @@
                     $('#editChannelName').val(channel);
                     $('#editChannelUrl').val(sheetUrl);
                     $('#editType').val(type);
-                    $('#editBase').val(base);
                     $('#editTarget').val(target);
                     $('#editMissingLink').val(missingLink);
                     $('#originalChannel').val(channel);
@@ -2963,7 +2924,6 @@
                     const channel = rowData['Channel '] || rowData['Channel'] || '';
                     const sheetUrl = rowData['sheet_link'] || '';
                     const type = rowData['type'] || '';
-                    const base = rowData['base'] || 0;
                     const target = rowData['target'] || 0;
                     const missingLink = rowData['missing_link'] || '';
                     
@@ -2971,7 +2931,6 @@
                     $('#editChannelName').val(channel);
                     $('#editChannelUrl').val(sheetUrl);
                     $('#editType').val(type);
-                    $('#editBase').val(base);
                     $('#editTarget').val(target);
                     $('#editMissingLink').val(missingLink);
                     $('#originalChannel').val(channel);
@@ -3437,7 +3396,6 @@
                 const channel = $('#editChannelName').val().trim();
                 const sheetUrl = $('#editChannelUrl').val().trim();
                 const type = $('#editType').val();
-                const base = $('#editBase').val().trim();
                 const target = $('#editTarget').val().trim();
                 const missingLink = $('#editMissingLink').val().trim();
                 const originalChannel = $('#originalChannel').val().trim();
@@ -3454,7 +3412,6 @@
                         channel: channel,
                         sheet_url: sheetUrl,
                         type: type,
-                        base: base,
                         target: target,
                         missing_link: missingLink,
                         original_channel: originalChannel,

@@ -6183,7 +6183,6 @@ class ChannelMasterController extends Controller
                     'channel_percentage' => floatval($row['channel_percentage'] ?? 0),
                     'base' => floatval($row['base'] ?? 0),
                     'target' => floatval($row['target'] ?? 0),
-                    'achieved' => floatval($row['Achieved'] ?? 0),
                     'type' => $row['type'] ?? 'B2C',
                     'w_ads' => intval($row['W/Ads'] ?? 0),
                     'update' => intval($row['Update'] ?? 0),
