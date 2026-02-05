@@ -660,11 +660,12 @@
             let showRaOnly = false; // Filter for RA only
             let showPinkDilPausedOnly = false; // Filter for Pink DIL paused campaigns only
             let totalACOSValue = 0;
-            let totalL30Spend = 0;
-            let totalL30Sales = 0;
-            let totalL30Purchases = 0;
-            let totalL30Clicks = 0;
-            let totalL30Orders = 0;
+            // Use window-level variables so they're accessible from the daterangepicker callback
+            window.totalL30Spend = 0;
+            window.totalL30Sales = 0;
+            window.totalL30Purchases = 0;
+            window.totalL30Clicks = 0;
+            window.totalL30Orders = 0;
             let totalSkuCountFromBackend = 0; // Store total SKU count from backend
 
             const getDilColor = (value) => {
@@ -3037,21 +3038,21 @@
                 ],
                 ajaxResponse: function(url, params, response) {
                     totalACOSValue = parseFloat(response.total_acos) || 0;
-                    totalL30Spend = parseFloat(response.total_l30_spend) || 0;
-                    totalL30Sales = parseFloat(response.total_l30_sales) || 0;
-                    totalL30Purchases = parseInt(response.total_l30_purchases) || 0;
-                    totalL30Clicks = parseInt(response.total_l30_clicks) || 0;
-                    totalL30Orders = parseInt(response.total_l30_orders) || 0;
+                    window.totalL30Spend = parseFloat(response.total_l30_spend) || 0;
+                    window.totalL30Sales = parseFloat(response.total_l30_sales) || 0;
+                    window.totalL30Purchases = parseInt(response.total_l30_purchases) || 0;
+                    window.totalL30Clicks = parseInt(response.total_l30_clicks) || 0;
+                    window.totalL30Orders = parseInt(response.total_l30_orders) || 0;
                     totalSkuCountFromBackend = parseInt(response.total_sku_count) || 0;
                     
                     // Update summary cards with totals from table data (includes all rows including paused ads)
-                    $('.card-clicks').text(totalL30Clicks.toLocaleString());
-                    $('.card-spend').text('$' + Math.round(totalL30Spend).toLocaleString());
-                    $('.card-orders').text(totalL30Orders.toLocaleString());
-                    $('.card-sales').text('$' + Math.round(totalL30Sales).toLocaleString());
-                    const acos = totalL30Sales >= 1 ? (totalL30Spend / totalL30Sales) * 100 : (totalL30Spend > 0 ? 100 : 0);
+                    $('.card-clicks').text(window.totalL30Clicks.toLocaleString());
+                    $('.card-spend').text('$' + Math.round(window.totalL30Spend).toLocaleString());
+                    $('.card-orders').text(window.totalL30Orders.toLocaleString());
+                    $('.card-sales').text('$' + Math.round(window.totalL30Sales).toLocaleString());
+                    const acos = window.totalL30Sales >= 1 ? (window.totalL30Spend / window.totalL30Sales) * 100 : (window.totalL30Spend > 0 ? 100 : 0);
                     $('.card-acos').text(acos.toFixed(0) + '%');
-                    const cvr = totalL30Clicks > 0 ? (totalL30Orders / totalL30Clicks) * 100 : 0;
+                    const cvr = window.totalL30Clicks > 0 ? (window.totalL30Orders / window.totalL30Clicks) * 100 : 0;
                     $('.card-cvr').text(cvr.toFixed(2) + '%');
                     
                     // Update pagination and filter-based counts (including Total SKU) after data is loaded
@@ -4983,7 +4984,7 @@
                     }
                 }
             });
-            function fetchChartData(startDate, endDate) {
+            function fetchChartData(startDate, endDate, updateCards = false) {
                 if (!startDate || !endDate) {
                     endDate = moment().subtract(2, 'days').format('YYYY-MM-DD');
                     startDate = moment().subtract(31, 'days').format('YYYY-MM-DD');
@@ -4999,7 +5000,18 @@
                         chart.data.datasets[2].data = response.orders;
                         chart.data.datasets[3].data = response.sales;
                         chart.update();
-                        // Summary cards are updated from table data (ajaxResponse) to include all rows including paused ads
+                        // Update summary cards only when user explicitly selects a date range
+                        if (updateCards) {
+                            $('.card-clicks').text(response.totals.clicks.toLocaleString());
+                            $('.card-spend').text('$' + Math.round(response.totals.spend).toLocaleString());
+                            $('.card-orders').text(response.totals.orders.toLocaleString());
+                            $('.card-sales').text('$' + Math.round(response.totals.sales).toLocaleString());
+                            const ts = response.totals.spend || 0, tsl = response.totals.sales || 0;
+                            const acos = tsl >= 1 ? (ts / tsl) * 100 : (ts > 0 ? 100 : 0);
+                            $('.card-acos').text(acos.toFixed(0) + '%');
+                            const tc = response.totals.clicks || 0, to = response.totals.orders || 0;
+                            $('.card-cvr').text((tc > 0 ? (to / tc) * 100 : 0).toFixed(2) + '%');
+                        }
                     }
                 });
             }
@@ -5026,16 +5038,41 @@
                         'This Month': [moment().startOf('month'), moment().endOf('month')],
                         'Last Month': [moment().subtract(1, 'month').startOf('month'), moment().subtract(1, 'month').endOf('month')]
                     }
-                }, function(s, e) {
+                }, function(s, e, label) {
                     const sd = s.format('YYYY-MM-DD'), ed = e.format('YYYY-MM-DD');
                     $('#daterange-btn span').html('Date range: ' + sd + ' - ' + ed);
-                    fetchChartData(sd, ed);
+                    
+                    // If "Last 30 Days" is selected, use L30 totals directly (they match the table data)
+                    // This ensures consistency between page load totals and "Last 30 Days" filter
+                    if (label === 'Last 30 Days') {
+                        // Use L30 totals from table data
+                        $('.card-clicks').text(window.totalL30Clicks.toLocaleString());
+                        $('.card-spend').text('$' + Math.round(window.totalL30Spend).toLocaleString());
+                        $('.card-orders').text(window.totalL30Orders.toLocaleString());
+                        $('.card-sales').text('$' + Math.round(window.totalL30Sales).toLocaleString());
+                        const acos = window.totalL30Sales >= 1 ? (window.totalL30Spend / window.totalL30Sales) * 100 : (window.totalL30Spend > 0 ? 100 : 0);
+                        $('.card-acos').text(acos.toFixed(0) + '%');
+                        const cvr = window.totalL30Clicks > 0 ? (window.totalL30Orders / window.totalL30Clicks) * 100 : 0;
+                        $('.card-cvr').text(cvr.toFixed(2) + '%');
+                        fetchChartData(sd, ed, false); // Update chart only, not cards
+                    } else {
+                        fetchChartData(sd, ed, true); // Update cards with filtered data
+                    }
                 });
                 $('#daterange-btn').on('cancel.daterangepicker', function() {
                     $(this).find('span').html('Date range: Select');
-                    fetchChartData();
+                    // Restore summary cards to table data totals (all rows including paused ads)
+                    $('.card-clicks').text(window.totalL30Clicks.toLocaleString());
+                    $('.card-spend').text('$' + Math.round(window.totalL30Spend).toLocaleString());
+                    $('.card-orders').text(window.totalL30Orders.toLocaleString());
+                    $('.card-sales').text('$' + Math.round(window.totalL30Sales).toLocaleString());
+                    const acos = window.totalL30Sales >= 1 ? (window.totalL30Spend / window.totalL30Sales) * 100 : (window.totalL30Spend > 0 ? 100 : 0);
+                    $('.card-acos').text(acos.toFixed(0) + '%');
+                    const cvr = window.totalL30Clicks > 0 ? (window.totalL30Orders / window.totalL30Clicks) * 100 : 0;
+                    $('.card-cvr').text(cvr.toFixed(2) + '%');
+                    fetchChartData(); // Refresh chart with default date range
                 });
-                fetchChartData();
+                fetchChartData(); // Initial load - cards are set by ajaxResponse
             });
         })();
     </script>

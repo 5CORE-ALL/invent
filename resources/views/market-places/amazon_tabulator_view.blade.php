@@ -187,6 +187,71 @@
                         <option value="zero">0 Sold</option>
                     </select>
 
+                    <select id="section-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">Section</option>
+                        <option value="pricing">Pricing</option>
+                        <option value="kw-ads">KW Ads</option>
+                        <option value="pt-ads">PT Ads</option>
+                        <option value="hl-ads">HL Ads</option>
+                    </select>
+
+                    <!-- KW Page Filters -->
+                    <select id="utilization-type-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all">Utilization</option>
+                        <option value="gg">Green+Green</option>
+                        <option value="gp">Green+Pink</option>
+                        <option value="gr">Green+Red</option>
+                        <option value="pg">Pink+Green</option>
+                        <option value="pp">Pink+Pink</option>
+                        <option value="pr">Pink+Red</option>
+                        <option value="rg">Red+Green</option>
+                        <option value="rp">Red+Pink</option>
+                        <option value="rr">Red+Red</option>
+                    </select>
+
+                    <select id="campaign-status-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="ALL">Campaign</option>
+                        <option value="ENABLED">Enabled</option>
+                        <option value="PAUSED">Paused</option>
+                        <option value="ENDED">Ended</option>
+                    </select>
+
+                    <select id="nra-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="">NRA</option>
+                        <option value="NRA">NRA</option>
+                        <option value="RA">RA</option>
+                        <option value="LATER">LATER</option>
+                    </select>
+
+                    <select id="price-slab-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="">Price Slab</option>
+                        <option value="lt10">&lt; $10</option>
+                        <option value="10-20">$10 - $20</option>
+                        <option value="20-30">$20 - $30</option>
+                        <option value="30-50">$30 - $50</option>
+                        <option value="50-100">$50 - $100</option>
+                        <option value="gt100">&gt; $100</option>
+                    </select>
+
+                    <select id="acos-slab-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="">ACOS</option>
+                        <option value="8">&lt; 5%</option>
+                        <option value="7">5-9%</option>
+                        <option value="6">10-14%</option>
+                        <option value="5">15-19%</option>
+                        <option value="4">20-24%</option>
+                        <option value="3">25-29%</option>
+                        <option value="2">30-34%</option>
+                        <option value="1">≥ 35%</option>
+                        <option value="acos35spend10">&gt;35% &amp; SPEND &gt;10</option>
+                    </select>
+
                     <!-- Unified Range Filter (Views & Sold) -->
                     <select id="range-column-select" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
@@ -206,6 +271,23 @@
                     <span class="badge bg-info fs-6 p-2" id="range-filter-count-badge" style="color: white; font-weight: bold; display: none;">
                         Filtered: <span id="range-filter-count">0</span>
                     </span>
+
+                    <!-- 7UB/1UB/ACOS Range Filters -->
+                    <span class="text-muted ms-2" style="font-size: 0.75rem;">7UB:</span>
+                    <input type="number" id="7ub-min" class="form-control form-control-sm" 
+                        placeholder="Min" step="0.1" style="width: 60px; display: inline-block;">
+                    <input type="number" id="7ub-max" class="form-control form-control-sm" 
+                        placeholder="Max" step="0.1" style="width: 60px; display: inline-block;">
+                    <span class="text-muted ms-2" style="font-size: 0.75rem;">1UB:</span>
+                    <input type="number" id="1ub-min" class="form-control form-control-sm" 
+                        placeholder="Min" step="0.1" style="width: 60px; display: inline-block;">
+                    <input type="number" id="1ub-max" class="form-control form-control-sm" 
+                        placeholder="Max" step="0.1" style="width: 60px; display: inline-block;">
+                    <span class="text-muted ms-2" style="font-size: 0.75rem;">ACOS:</span>
+                    <input type="number" id="acos-range-min" class="form-control form-control-sm" 
+                        placeholder="Min" step="0.1" style="width: 60px; display: inline-block;">
+                    <input type="number" id="acos-range-max" class="form-control form-control-sm" 
+                        placeholder="Max" step="0.1" style="width: 60px; display: inline-block;">
 
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
@@ -318,6 +400,29 @@
                         <span class="badge bg-dark fs-6 p-2" id="kw-spend-badge" style="color: white; font-weight: bold;">KW Ads: $0</span>
                         <span class="badge bg-secondary fs-6 p-2" id="hl-spend-badge" style="color: white; font-weight: bold;">HL Ads: $0</span>
                         <span class="badge bg-dark fs-6 p-2" id="pt-spend-badge" style="color: white; font-weight: bold;">PT Ads: $0</span>
+                        
+                        <!-- Campaign Statistics (from KW page) -->
+                        <span class="badge fs-6 p-2 campaign-count-badge" id="campaign-count-badge" style="background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); color: black; font-weight: bold; cursor: pointer;" title="Total campaigns">
+                            Campaign: <span id="campaign-count">0</span>
+                        </span>
+                        <span class="badge fs-6 p-2 missing-campaign-badge" id="missing-campaign-badge" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: black; font-weight: bold; cursor: pointer;" title="Missing campaigns">
+                            Missing Camp: <span id="missing-campaign-count">0</span>
+                        </span>
+                        <span class="badge fs-6 p-2 nra-count-badge" id="nra-count-badge" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: black; font-weight: bold; cursor: pointer;" title="NRA count">
+                            NRA: <span id="nra-count">0</span>
+                        </span>
+                        <span class="badge fs-6 p-2 ra-count-badge" id="ra-count-badge" style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color: black; font-weight: bold; cursor: pointer;" title="RA count">
+                            RA: <span id="ra-count">0</span>
+                        </span>
+                        <span class="badge fs-6 p-2 paused-campaigns-badge" id="paused-campaigns-badge" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: black; font-weight: bold; cursor: pointer;" title="Paused campaigns">
+                            Paused: <span id="paused-campaigns-count">0</span>
+                        </span>
+                        <span class="badge fs-6 p-2 7ub-count-badge" id="7ub-count-badge" style="background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%); color: black; font-weight: bold; cursor: pointer;" title="7UB count">
+                            7UB: <span id="7ub-count">0</span>
+                        </span>
+                        <span class="badge fs-6 p-2 7ub-1ub-count-badge" id="7ub-1ub-count-badge" style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); color: black; font-weight: bold; cursor: pointer;" title="7UB+1UB count">
+                            7UB+1UB: <span id="7ub-1ub-count">0</span>
+                        </span>
                     </div>
                 </div>
             </div>
@@ -2839,7 +2944,622 @@
                         },
                         width: 100
                     },
-                   
+                    
+                    // KW Page Columns
+                    {
+                        title: "7 UB%",
+                        field: "l7_spend",
+                        hozAlign: "right",
+                        visible: false,
+                        minWidth: 72,
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            if (!hasCampaign) return '-';
+                            var l7_spend = parseFloat(row.l7_spend) || 0;
+                            var budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
+                            var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
+                            var td = cell.getElement();
+                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
+                            if (ub7 >= 66 && ub7 <= 99) {
+                                td.classList.add('green-bg');
+                            } else if (ub7 > 99) {
+                                td.classList.add('pink-bg');
+                            } else if (ub7 < 66) {
+                                td.classList.add('red-bg');
+                            }
+                            return ub7.toFixed(0) + "%";
+                        }
+                    },
+                    {
+                        title: "1 UB%",
+                        field: "l1_spend",
+                        hozAlign: "right",
+                        visible: false,
+                        minWidth: 72,
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            if (!hasCampaign) return '-';
+                            var l1_spend = parseFloat(row.l1_spend) || 0;
+                            var budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
+                            var ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
+                            var td = cell.getElement();
+                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
+                            if (ub1 >= 66 && ub1 <= 99) {
+                                td.classList.add('green-bg');
+                            } else if (ub1 > 99) {
+                                td.classList.add('pink-bg');
+                            } else if (ub1 < 66) {
+                                td.classList.add('red-bg');
+                            }
+                            return ub1.toFixed(0) + "%";
+                        }
+                    },
+                    {
+                        title: "AVG CPC",
+                        field: "avg_cpc",
+                        hozAlign: "center",
+                        visible: false,
+                        minWidth: 72,
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            if (!hasCampaign) return '-';
+                            var avg_cpc = parseFloat(row.avg_cpc) || 0;
+                            return avg_cpc.toFixed(2);
+                        }
+                    },
+                    {
+                        title: "L7 CPC",
+                        field: "l7_cpc",
+                        hozAlign: "center",
+                        visible: false,
+                        minWidth: 72,
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            if (!hasCampaign) return '-';
+                            var l7_cpc = parseFloat(row.l7_cpc) || 0;
+                            return l7_cpc.toFixed(2);
+                        }
+                    },
+                    {
+                        title: "L1 CPC",
+                        field: "l1_cpc",
+                        hozAlign: "center",
+                        visible: false,
+                        minWidth: 72,
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            if (!hasCampaign) return '-';
+                            var l1_cpc = parseFloat(row.l1_cpc) || 0;
+                            return l1_cpc.toFixed(2);
+                        }
+                    },
+                    {
+                        title: "Last SBID",
+                        field: "last_sbid",
+                        hozAlign: "center",
+                        visible: false,
+                        minWidth: 72,
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            if (!value || value === '' || value === '0' || value === 0) {
+                                return '-';
+                            }
+                            return parseFloat(value).toFixed(2);
+                        }
+                    },
+                    {
+                        title: "SBID",
+                        field: "sbid",
+                        hozAlign: "center",
+                        visible: false,
+                        minWidth: 72,
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            if (!hasCampaign) return '-';
+                            
+                            // Calculate SBID dynamically like KW page
+                            var l1Cpc = parseFloat(row.l1_cpc) || 0;
+                            var l7Cpc = parseFloat(row.l7_cpc) || 0;
+                            var avgCpc = parseFloat(row.avg_cpc) || 0;
+                            var price = parseFloat(row.price) || 0;
+                            var budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
+                            
+                            // Calculate UB7 and UB1
+                            var ub7 = 0, ub1 = 0;
+                            if (budget > 0) {
+                                ub7 = (parseFloat(row.l7_spend) || 0) / (budget * 7) * 100;
+                                ub1 = (parseFloat(row.l1_spend) || 0) / budget * 100;
+                            }
+                            
+                            // Determine utilization type
+                            var rowType = 'all';
+                            if (ub7 > 99 && ub1 > 99) {
+                                rowType = 'over';
+                            } else if (ub7 < 66 && ub1 < 66) {
+                                rowType = 'under';
+                            } else if (ub7 >= 66 && ub7 <= 99 && ub1 >= 66 && ub1 <= 99) {
+                                rowType = 'correctly';
+                            }
+                            
+                            var sbid = 0;
+                            
+                            // Special case: If UB7 and UB1 = 0%, use price-based default
+                            if (ub7 === 0 && ub1 === 0) {
+                                if (price < 50) {
+                                    sbid = 0.50;
+                                } else if (price >= 50 && price < 100) {
+                                    sbid = 1.00;
+                                } else if (price >= 100 && price < 200) {
+                                    sbid = 1.50;
+                                } else {
+                                    sbid = 2.00;
+                                }
+                            } else if (rowType === 'over') {
+                                // Priority: L1 CPC → L7 CPC → AVG CPC → 1.00, then decrease by 10%
+                                if (l1Cpc > 0) {
+                                    sbid = Math.floor(l1Cpc * 0.90 * 100) / 100;
+                                } else if (l7Cpc > 0) {
+                                    sbid = Math.floor(l7Cpc * 0.90 * 100) / 100;
+                                } else if (avgCpc > 0) {
+                                    sbid = Math.floor(avgCpc * 0.90 * 100) / 100;
+                                } else {
+                                    sbid = 1.00;
+                                }
+                            } else if (rowType === 'under') {
+                                // Priority: L1 CPC → L7 CPC → AVG CPC → 1.00, then increase by 10%
+                                if (l1Cpc > 0) {
+                                    sbid = Math.floor(l1Cpc * 1.10 * 100) / 100;
+                                } else if (l7Cpc > 0) {
+                                    sbid = Math.floor(l7Cpc * 1.10 * 100) / 100;
+                                } else if (avgCpc > 0) {
+                                    sbid = Math.floor(avgCpc * 1.10 * 100) / 100;
+                                } else {
+                                    sbid = 1.00;
+                                }
+                            }
+                            
+                            // Apply price-based caps
+                            if (price < 10 && sbid > 0.10) {
+                                sbid = 0.10;
+                            } else if (price >= 10 && price < 20 && sbid > 0.20) {
+                                sbid = 0.20;
+                            }
+                            
+                            if (sbid === 0) return '-';
+                            return sbid.toFixed(2);
+                        }
+                    },
+                    {
+                        title: "SBID M",
+                        field: "sbid_m",
+                        hozAlign: "center",
+                        visible: false,
+                        minWidth: 72,
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            if (!value || value === '' || value === '0' || value === 0) {
+                                return '-';
+                            }
+                            return parseFloat(value).toFixed(2);
+                        }
+                    },
+                    {
+                        title: "SBGT",
+                        field: "sbgt",
+                        hozAlign: "center",
+                        visible: false,
+                        minWidth: 60,
+                        mutator: function (value, data) {
+                            var acos = parseFloat(data.acos || data.ACOS || 0);
+                            var price = parseFloat(data.price || 0);
+                            var sbgt;
+                            // Same price-based SBGT for all rows (parent now has avg price)
+                            if (acos > 20) {
+                                sbgt = 1;
+                            } else {
+                                sbgt = Math.ceil(price * 0.10);
+                                if (sbgt < 1) sbgt = 1;
+                                if (sbgt > 5) sbgt = 5;
+                            }
+                            return sbgt;
+                        },
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            if (!hasCampaign) return '-';
+                            var value = cell.getValue();
+                            if (value === undefined || value === null) return '-';
+                            return value;
+                        }
+                    },
+                    {
+                        title: "AD CVR",
+                        field: "ad_cvr",
+                        hozAlign: "right",
+                        visible: false,
+                        minWidth: 72,
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return value.toFixed(2) + "%";
+                        },
+                        sorter: "number",
+                        width: 90
+                    },
+                    {
+                        title: "BGT",
+                        field: "campaignBudgetAmount",
+                        hozAlign: "right",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return '$' + value.toFixed(2);
+                        }
+                    },
+                    {
+                        title: "Status",
+                        field: "campaignStatus",
+                        visible: false,
+                        formatter: function(cell) {
+                            const value = (cell.getValue() || '').toUpperCase();
+                            let dotColor = '';
+                            if (value === 'ENABLED') {
+                                dotColor = 'green';
+                            } else if (value === 'PAUSED') {
+                                dotColor = 'red';
+                            } else {
+                                dotColor = 'gray';
+                            }
+                            return `<div style="display: flex; align-items: center; justify-content: center;">
+                                <span class="status-dot ${dotColor}" style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background-color: ${dotColor};" title="${value || ''}"></span>
+                            </div>`;
+                        },
+                        hozAlign: "center"
+                    },
+                    {
+                        title: "Active",
+                        field: "active_toggle",
+                        hozAlign: "center",
+                        visible: false,
+                        width: 80,
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var campaignId = row.campaign_id;
+                            var status = row.campaignStatus || 'PAUSED';
+                            var isEnabled = status === 'ENABLED';
+                            
+                            if (!campaignId) {
+                                return '<span style="color: #999;">-</span>';
+                            }
+                            
+                            return `
+                                <div class="form-check form-switch d-flex justify-content-center">
+                                    <input class="form-check-input campaign-status-toggle" 
+                                           type="checkbox" 
+                                           role="switch" 
+                                           data-campaign-id="${campaignId}"
+                                           ${isEnabled ? 'checked' : ''}
+                                           style="cursor: pointer; width: 3rem; height: 1.5rem;">
+                                </div>
+                            `;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('campaign-status-toggle')) {
+                                e.stopPropagation();
+                            }
+                        }
+                    },
+                    {
+                        title: "NRL",
+                        field: "NRL",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            const row = cell.getRow();
+                            const sku = row.getData()['(Child) sku'];
+                            const value = cell.getValue() || "REQ";
+
+                            return `
+                                <select class="form-select form-select-sm editable-select" 
+                                        data-sku="${sku}" 
+                                        data-field="NRL"
+                                        style="width: 50px; border: 1px solid gray; padding: 2px; font-size: 20px; text-align: center;">
+                                    <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>🟢</option>
+                                    <option value="NRL" ${value === 'NRL' ? 'selected' : ''}>🔴</option>
+                                </select>
+                            `;
+                        }
+                    },
+                    {
+                        title: "A DIL %",
+                        field: "A DIL %",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            const data = cell.getRow().getData();
+                            const al30 = parseFloat(data.A_L30);
+                            const inv = parseFloat(data.INV);
+                            if (!isNaN(al30) && !isNaN(inv) && inv !== 0) {
+                                const dilPercent = (al30 / inv) * 100;
+                                let color = '';
+                                // Color logic from DIL column
+                                if (dilPercent < 16.66) color = '#a00211';
+                                else if (dilPercent >= 16.66 && dilPercent < 25) color = '#ffc107';
+                                else if (dilPercent >= 25 && dilPercent < 50) color = '#28a745';
+                                else color = '#e83e8c';
+                                return `<span style="color: ${color}; font-weight: 600;">${Math.round(dilPercent)}%</span>`;
+                            }
+                            return '<span style="color: #6c757d;">0%</span>';
+                        }
+                    },
+                    {
+                        title: "APR BID",
+                        field: "apr_bid",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var sbidM = parseFloat(row.sbid_m) || 0;
+                            var isApproved = row.sbid_approved || false;
+                            var campaignId = row.campaign_id;
+                            
+                            if (!campaignId) {
+                                return '<span style="color: #999;">-</span>';
+                            }
+                            
+                            if (isApproved) {
+                                return '<i class="fas fa-check-circle text-success apr-bid-icon" style="cursor: pointer; font-size: 18px;" title="SBID Approved"></i>';
+                            } else {
+                                return '<i class="fas fa-check text-primary apr-bid-icon" style="cursor: pointer; font-size: 18px;" title="Click to approve SBID"></i>';
+                            }
+                        },
+                        cellClick: function(e, cell) {
+                            var row = cell.getRow();
+                            var rowData = row.getData();
+                            var campaignId = rowData.campaign_id;
+                            var sbidM = parseFloat(rowData.sbid_m) || 0;
+                            
+                            if (!campaignId || sbidM <= 0) {
+                                alert('Please enter a valid SBID M value first');
+                                return;
+                            }
+                            
+                            // Show loading
+                            cell.getElement().innerHTML = '<i class="fas fa-spinner fa-spin text-primary"></i>';
+                            
+                            $.ajax({
+                                url: '/approve-amazon-sbid',
+                                method: 'POST',
+                                data: {
+                                    campaign_id: campaignId,
+                                    sbid_m: sbidM,
+                                    campaign_type: 'KW',
+                                    _token: '{{ csrf_token() }}'
+                                },
+                                success: function(response) {
+                                    if (response.status === 200) {
+                                        rowData.sbid_approved = true;
+                                        row.update(rowData);
+                                        cell.getElement().innerHTML = '<i class="fas fa-check-circle text-success apr-bid-icon" style="cursor: pointer; font-size: 18px;" title="SBID Approved"></i>';
+                                    } else {
+                                        alert('Failed to approve SBID: ' + (response.message || 'Unknown error'));
+                                        row.reformat();
+                                    }
+                                },
+                                error: function(xhr, status, error) {
+                                    alert('Error approving SBID: ' + error);
+                                    row.reformat();
+                                }
+                            });
+                        }
+                    },
+                    {
+                        title: "Campaign",
+                        field: "campaignName",
+                        visible: false,
+                        minWidth: 220
+                    },
+                    {
+                        title: "Clicks L7",
+                        field: "l7_clicks",
+                        hozAlign: "right",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseInt(cell.getValue() || 0);
+                            return value.toLocaleString();
+                        }
+                    },
+                    {
+                        title: "Spend L7",
+                        field: "spend_l7_col",
+                        hozAlign: "right",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return '$' + value.toFixed(2);
+                        }
+                    },
+                    {
+                        title: "Sales L7",
+                        field: "l7_sales",
+                        hozAlign: "right",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return '$' + value.toFixed(2);
+                        }
+                    },
+                    {
+                        title: "Ad Sold L7",
+                        field: "l7_purchases",
+                        hozAlign: "right",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseInt(cell.getValue() || 0);
+                            return value.toLocaleString();
+                        }
+                    },
+                    {
+                        title: "Clicks L30",
+                        field: "l30_clicks",
+                        hozAlign: "right",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseInt(cell.getValue() || 0);
+                            return value.toLocaleString();
+                        }
+                    },
+                    {
+                        title: "Spend L30",
+                        field: "l30_spend",
+                        hozAlign: "right",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return '$' + value.toFixed(2);
+                        }
+                    },
+                    {
+                        title: "Sales L30",
+                        field: "l30_sales",
+                        hozAlign: "right",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return '$' + value.toFixed(2);
+                        }
+                    },
+                    {
+                        title: "Ad Sold L30",
+                        field: "l30_purchases",
+                        hozAlign: "right",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseInt(cell.getValue() || 0);
+                            return value.toLocaleString();
+                        }
+                    },
+                    {
+                        title: "NRA",
+                        field: "NRA",
+                        visible: false,
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const value = cell.getValue();
+                            if (!value) return '';
+                            let color = '';
+                            if (value === 'NRA') color = '#dc3545';
+                            else if (value === 'RA') color = '#28a745';
+                            else if (value === 'LATER') color = '#ffc107';
+                            return `<span style="color: ${color}; font-weight: 600;">${value}</span>`;
+                        }
+                    },
+                    {
+                        title: "KW Issue",
+                        field: "target_kw_issue",
+                        hozAlign: "center",
+                        visible: false
+                    },
+                    {
+                        title: "PT Issue",
+                        field: "target_pt_issue",
+                        hozAlign: "center",
+                        visible: false
+                    },
+                    {
+                        title: "Variation",
+                        field: "variation_issue",
+                        hozAlign: "center",
+                        visible: false
+                    },
+                    {
+                        title: "Wrong Prod.",
+                        field: "incorrect_product_added",
+                        hozAlign: "center",
+                        visible: false
+                    },
+                    {
+                        title: "-ve KW",
+                        field: "target_negative_kw_issue",
+                        hozAlign: "center",
+                        visible: false
+                    },
+                    {
+                        title: "Review Target",
+                        field: "target_review_issue",
+                        hozAlign: "center",
+                        visible: false
+                    },
+                    {
+                        title: "CVR Target",
+                        field: "target_cvr_issue",
+                        hozAlign: "center",
+                        visible: false
+                    },
+                    {
+                        title: "Content",
+                        field: "content_check",
+                        hozAlign: "center",
+                        visible: false
+                    },
+                    {
+                        title: "Price Justify",
+                        field: "price_justification_check",
+                        hozAlign: "center",
+                        visible: false
+                    },
+                    {
+                        title: "Ad Not Req",
+                        field: "ad_not_req",
+                        hozAlign: "center",
+                        visible: false
+                    },
+                    {
+                        title: "Review",
+                        field: "review_issue",
+                        hozAlign: "center",
+                        visible: false
+                    },
+                    {
+                        title: "Issue",
+                        field: "issue_found",
+                        hozAlign: "left",
+                        visible: false
+                    },
+                    {
+                        title: "Action",
+                        field: "action_taken",
+                        hozAlign: "left",
+                        visible: false
+                    },
+                    {
+                        title: "TPFT%",
+                        field: "TPFT",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell){
+                            let value = parseFloat(cell.getValue()) || 0;
+                            let percent = value.toFixed(0);
+                            let color = "";
+                            if (value < 10) {
+                                color = "red";
+                            } else if (value >= 10 && value < 15) {
+                                color = "#ffc107";
+                            } else if (value >= 15 && value < 20) {
+                                color = "blue";
+                            } else if (value >= 20 && value <= 40) {
+                                color = "green";
+                            } else if (value > 40) {
+                                color = "#e83e8c";
+                            }
+                            return `<span style="font-weight:600; color:${color};">${percent}%</span>`;
+                        }
+                    }
                 ]
             });
 
@@ -2940,6 +3660,13 @@
             });
 
             // Apply filters
+            // UB Zone function for utilization type filtering
+            function ubZone(ub) {
+                if (ub >= 66 && ub <= 99) return 'g';
+                if (ub > 99) return 'p';
+                return 'r';
+            }
+
             function applyFilters() {
                 const inventoryFilter = $('#inventory-filter').val();
                 const nrlFilter = $('#nrl-filter').val();
@@ -2953,6 +3680,19 @@
                 const rangeMin = parseFloat($('#range-min').val()) || null;
                 const rangeMax = parseFloat($('#range-max').val()) || null;
                 const rangeColumn = $('#range-column-select').val() || '';
+                
+                // New KW filters
+                const utilizationTypeFilter = $('#utilization-type-filter').val();
+                const campaignStatusFilter = $('#campaign-status-filter').val();
+                const nraFilter = $('#nra-filter').val();
+                const priceSlabFilter = $('#price-slab-filter').val();
+                const acosSlabFilter = $('#acos-slab-filter').val();
+                const ub7Min = parseFloat($('#7ub-min').val()) || null;
+                const ub7Max = parseFloat($('#7ub-max').val()) || null;
+                const ub1Min = parseFloat($('#1ub-min').val()) || null;
+                const ub1Max = parseFloat($('#1ub-max').val()) || null;
+                const acosRangeMin = parseFloat($('#acos-range-min').val()) || null;
+                const acosRangeMax = parseFloat($('#acos-range-max').val()) || null;
 
                 table.clearFilter(true);
 
@@ -3170,6 +3910,124 @@
                     });
                 }
 
+                // Utilization Type filter (7UB x 1UB combinations)
+                if (utilizationTypeFilter && utilizationTypeFilter !== 'all') {
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return false;
+                        
+                        var hasCampaign = data.hasCampaign !== undefined ? data.hasCampaign : (data.campaign_id && data.campaignName);
+                        if (!hasCampaign) return false;
+                        
+                        var l7_spend = parseFloat(data.l7_spend) || 0;
+                        var l1_spend = parseFloat(data.l1_spend) || 0;
+                        var budget = (data.utilization_budget != null && data.utilization_budget !== '') ? parseFloat(data.utilization_budget) : (parseFloat(data.campaignBudgetAmount) || 0);
+                        
+                        var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
+                        var ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
+                        
+                        var zone7 = ubZone(ub7);
+                        var zone1 = ubZone(ub1);
+                        var combo = zone7 + zone1;
+                        
+                        return combo === utilizationTypeFilter;
+                    });
+                }
+
+                // Campaign Status filter
+                if (campaignStatusFilter && campaignStatusFilter !== 'ALL') {
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return false;
+                        const status = (data.campaignStatus || '').toUpperCase();
+                        return status === campaignStatusFilter;
+                    });
+                }
+
+                // NRA filter
+                if (nraFilter && nraFilter !== '') {
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return false;
+                        return data.NRA === nraFilter;
+                    });
+                }
+
+                // Price Slab filter
+                if (priceSlabFilter && priceSlabFilter !== '') {
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return false;
+                        const price = parseFloat(data.price) || 0;
+                        
+                        if (priceSlabFilter === 'lt10') return price < 10;
+                        if (priceSlabFilter === '10-20') return price >= 10 && price < 20;
+                        if (priceSlabFilter === '20-30') return price >= 20 && price < 30;
+                        if (priceSlabFilter === '30-50') return price >= 30 && price < 50;
+                        if (priceSlabFilter === '50-100') return price >= 50 && price < 100;
+                        if (priceSlabFilter === 'gt100') return price >= 100;
+                        return true;
+                    });
+                }
+
+                // ACOS Slab filter
+                if (acosSlabFilter && acosSlabFilter !== '') {
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return false;
+                        const acos = parseFloat(data.ACOS || data.acos) || 0;
+                        const spend = parseFloat(data.AD_Spend_L30 || data.l30_spend) || 0;
+                        
+                        if (acosSlabFilter === 'acos35spend10') return acos >= 35 && spend > 10;
+                        if (acosSlabFilter === '8') return acos < 5;
+                        if (acosSlabFilter === '7') return acos >= 5 && acos < 10;
+                        if (acosSlabFilter === '6') return acos >= 10 && acos < 15;
+                        if (acosSlabFilter === '5') return acos >= 15 && acos < 20;
+                        if (acosSlabFilter === '4') return acos >= 20 && acos < 25;
+                        if (acosSlabFilter === '3') return acos >= 25 && acos < 30;
+                        if (acosSlabFilter === '2') return acos >= 30 && acos < 35;
+                        if (acosSlabFilter === '1') return acos >= 35;
+                        return true;
+                    });
+                }
+
+                // 7UB Range filter
+                if (ub7Min !== null || ub7Max !== null) {
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return false;
+                        
+                        var l7_spend = parseFloat(data.l7_spend) || 0;
+                        var budget = (data.utilization_budget != null && data.utilization_budget !== '') ? parseFloat(data.utilization_budget) : (parseFloat(data.campaignBudgetAmount) || 0);
+                        var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
+                        
+                        if (ub7Min !== null && ub7 < ub7Min) return false;
+                        if (ub7Max !== null && ub7 > ub7Max) return false;
+                        return true;
+                    });
+                }
+
+                // 1UB Range filter
+                if (ub1Min !== null || ub1Max !== null) {
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return false;
+                        
+                        var l1_spend = parseFloat(data.l1_spend) || 0;
+                        var budget = (data.utilization_budget != null && data.utilization_budget !== '') ? parseFloat(data.utilization_budget) : (parseFloat(data.campaignBudgetAmount) || 0);
+                        var ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
+                        
+                        if (ub1Min !== null && ub1 < ub1Min) return false;
+                        if (ub1Max !== null && ub1 > ub1Max) return false;
+                        return true;
+                    });
+                }
+
+                // ACOS Range filter
+                if (acosRangeMin !== null || acosRangeMax !== null) {
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return false;
+                        const acos = parseFloat(data.ACOS || data.acos) || 0;
+                        
+                        if (acosRangeMin !== null && acos < acosRangeMin) return false;
+                        if (acosRangeMax !== null && acos > acosRangeMax) return false;
+                        return true;
+                    });
+                }
+
                 updateCalcValues();
                 updateSummary();
                 updateSeoCount();
@@ -3179,7 +4037,12 @@
                 }, 100);
             }
 
-            $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter').on('change', function() {
+            $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #dil-filter, #rating-filter, #parent-filter, #status-filter, #sold-filter, #utilization-type-filter, #campaign-status-filter, #nra-filter, #price-slab-filter, #acos-slab-filter').on('change', function() {
+                applyFilters();
+            });
+
+            // 7UB, 1UB, ACOS range filter input handlers
+            $('#7ub-min, #7ub-max, #1ub-min, #1ub-max, #acos-range-min, #acos-range-max').on('keyup change', function() {
                 applyFilters();
             });
 
@@ -3194,6 +4057,110 @@
                 $('#range-max').val('');
                 $('#range-column-select').val('');
                 applyFilters();
+            });
+
+            // Section filter - show/hide columns based on section
+            $('#section-filter').on('change', function() {
+                var section = $(this).val();
+                
+                // Define column groups for each section
+                // KW Ads columns as specified by user:
+                // Active, SKU, Ratings, Missing, INV, OV L30, DIL %, AL 30, A DIL %, NRL, NRA, Price, 
+                // BGT, SBGT, ACOS, Clicks L7, Clicks L30, Spend L30, Sales L30, Ad Sold L30, AD CVR,
+                // 7 UB%, 1 UB%, AVG CPC, L7 CPC, L1 CPC, Last SBID, SBID, SBID M, APR BID, TPFT%, Status, CAMPAIGN
+                var kwAdsColumns = [
+                    'active_toggle',    // Active toggle
+                    '(Child) sku',      // SKU
+                    'rating',           // Ratings
+                    'is_missing',       // Missing
+                    'INV',              // INV
+                    'L30',              // OV L30
+                    'E Dil%',           // DIL %
+                    'A_L30',            // AL 30
+                    'A DIL %',          // A DIL %
+                    'NRL',              // NRL
+                    'NRA',              // NRA
+                    'price',            // Price
+                    'campaignBudgetAmount', // BGT
+                    'sbgt',             // SBGT
+                    'ACOS',             // ACOS
+                    'l7_clicks',        // Clicks L7
+                    'l30_clicks',       // Clicks L30
+                    'l30_spend',        // Spend L30
+                    'l30_sales',        // Sales L30
+                    'l30_purchases',    // Ad Sold L30
+                    'ad_cvr',           // AD CVR
+                    'l7_spend',         // 7 UB%
+                    'l1_spend',         // 1 UB%
+                    'avg_cpc',          // AVG CPC
+                    'l7_cpc',           // L7 CPC
+                    'l1_cpc',           // L1 CPC
+                    'last_sbid',        // Last SBID
+                    'sbid',             // SBID
+                    'sbid_m',           // SBID M
+                    'apr_bid',          // APR BID
+                    'TPFT',             // TPFT%
+                    'campaignStatus',   // Status
+                    'campaignName'      // CAMPAIGN
+                ];
+                
+                var pricingColumns = [
+                    '(Child) sku', 'price', 'c_price', 'actual_cost', 'buy_box_price', 
+                    'GPFT%', 'PFT%', 'ROI_percentage', 'cost', 'margin', 'INV', 'A_L30'
+                ];
+                var ptAdsColumns = [
+                    '(Child) sku', 'pmt_spend_L30', 'pmt_sales_L30', 'price', 'INV', 'A_L30', 
+                    'rating', 'campaignStatus'
+                ];
+                var hlAdsColumns = [
+                    '(Child) sku', 'hl_spend_L30', 'hl_sales_L30', 'price', 'INV', 'A_L30', 
+                    'rating', 'campaignStatus'
+                ];
+                
+                if (section === 'all') {
+                    // Reset to default visibility - show all columns that were visible before
+                    table.getColumns().forEach(function(col) {
+                        var def = col.getDefinition();
+                        // Show columns that don't have visible: false in their definition
+                        if (def.visible !== false) {
+                            table.showColumn(def.field);
+                        }
+                    });
+                    return;
+                }
+                
+                // Get all column field names
+                var allColumns = table.getColumns().map(function(col) {
+                    return col.getField();
+                }).filter(function(field) {
+                    return field; // Filter out undefined/null
+                });
+                
+                // Determine which columns to show based on section
+                var columnsToShow = [];
+                if (section === 'pricing') {
+                    columnsToShow = pricingColumns;
+                } else if (section === 'kw-ads') {
+                    columnsToShow = kwAdsColumns;
+                } else if (section === 'pt-ads') {
+                    columnsToShow = ptAdsColumns;
+                } else if (section === 'hl-ads') {
+                    columnsToShow = hlAdsColumns;
+                }
+                
+                // Hide all columns first
+                allColumns.forEach(function(col) {
+                    if (table.getColumn(col)) {
+                        table.hideColumn(col);
+                    }
+                });
+                
+                // Show only the columns for the selected section
+                columnsToShow.forEach(function(col) {
+                    if (table.getColumn(col)) {
+                        table.showColumn(col);
+                    }
+                });
             });
 
             // Function to update range filter badge
@@ -3281,6 +4248,15 @@
                 let mapCount = 0;
                 let missingCount = 0;
                 let missingAmazonCount = 0;
+                
+                // KW page counts
+                let campaignCount = 0;
+                let missingCampaignCount = 0;
+                let nraCount = 0;
+                let raCount = 0;
+                let pausedCampaignsCount = 0;
+                let ub7Count = 0;
+                let ub7Ub1Count = 0;
 
                 data.forEach(row => {
                     if (!row['is_parent_summary'] && parseFloat(row['INV']) > 0) {
@@ -3347,6 +4323,46 @@
                         if (!isNaN(dil)) {
                             totalDilPercent += dil;
                             dilCount++;
+                        }
+                        
+                        // KW page counts
+                        // Campaign count
+                        const hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                        if (hasCampaign) {
+                            campaignCount++;
+                            
+                            // Check for paused campaigns
+                            const campaignStatus = (row.campaignStatus || '').toUpperCase();
+                            if (campaignStatus === 'PAUSED') {
+                                pausedCampaignsCount++;
+                            }
+                            
+                            // Calculate 7UB and 1UB
+                            const l7_spend = parseFloat(row.l7_spend) || 0;
+                            const l1_spend = parseFloat(row.l1_spend) || 0;
+                            const budget = (row.utilization_budget != null && row.utilization_budget !== '') ? parseFloat(row.utilization_budget) : (parseFloat(row.campaignBudgetAmount) || 0);
+                            const ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
+                            const ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
+                            
+                            // 7UB green count (66-99%)
+                            if (ub7 >= 66 && ub7 <= 99) {
+                                ub7Count++;
+                            }
+                            
+                            // 7UB + 1UB both green count
+                            if ((ub7 >= 66 && ub7 <= 99) && (ub1 >= 66 && ub1 <= 99)) {
+                                ub7Ub1Count++;
+                            }
+                        } else {
+                            missingCampaignCount++;
+                        }
+                        
+                        // NRA/RA count
+                        const nraValue = row.NRA || '';
+                        if (nraValue === 'NRA') {
+                            nraCount++;
+                        } else if (nraValue === 'RA') {
+                            raCount++;
                         }
                     }
                 });
@@ -3432,6 +4448,15 @@
                 $('#kw-spend-badge').text('KW Ads: $' + Math.round(campaignTotals.kw_spend_L30 || 0));
                 $('#hl-spend-badge').text('HL Ads: $' + Math.round(campaignTotals.hl_spend_L30 || 0));
                 $('#pt-spend-badge').text('PT Ads: $' + Math.round(campaignTotals.pt_spend_L30 || 0));
+                
+                // Update KW page badges
+                $('#campaign-count').text(campaignCount.toLocaleString());
+                $('#missing-campaign-count').text(missingCampaignCount.toLocaleString());
+                $('#nra-count').text(nraCount.toLocaleString());
+                $('#ra-count').text(raCount.toLocaleString());
+                $('#paused-campaigns-count').text(pausedCampaignsCount.toLocaleString());
+                $('#7ub-count').text(ub7Count.toLocaleString());
+                $('#7ub-1ub-count').text(ub7Ub1Count.toLocaleString());
             }
 
             // Build Column Visibility Dropdown
