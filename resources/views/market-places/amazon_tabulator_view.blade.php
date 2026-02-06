@@ -972,7 +972,6 @@
                     table.getColumn('AD%').hide();
                     table.getColumn('ACOS').hide();
                     table.getColumn('ad_pause').hide();
-                    table.getColumn('AD_Spend_L30').hide();
                     table.getColumn('SALES_L30').hide();
                     
                     // Hide SPFT and SROI columns
@@ -997,7 +996,6 @@
                     table.getColumn('AD%').show();
                     table.getColumn('ACOS').show();
                     table.getColumn('ad_pause').show();
-                    table.getColumn('AD_Spend_L30').show();
                     table.getColumn('SALES_L30').show();
                     
                     // Show SPFT and SROI columns
@@ -2000,7 +1998,7 @@
                         width: 60
                     },
                     {
-                        title: "Missing",
+                        title: "Missing L",
                         field: "is_missing",
                         hozAlign: "center",
                         width: 65,
@@ -2220,6 +2218,75 @@
                             return Math.round(value || 0);
                         }
                     },
+                    {
+                        title: "A DIL %",
+                        field: "A DIL %",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            const data = cell.getRow().getData();
+                            const al30 = parseFloat(data.A_L30);
+                            const inv = parseFloat(data.INV);
+                            if (!isNaN(al30) && !isNaN(inv) && inv !== 0) {
+                                const dilPercent = (al30 / inv) * 100;
+                                let color = '';
+                                // Color logic from DIL column
+                                if (dilPercent < 16.66) color = '#a00211';
+                                else if (dilPercent >= 16.66 && dilPercent < 25) color = '#ffc107';
+                                else if (dilPercent >= 25 && dilPercent < 50) color = '#28a745';
+                                else color = '#e83e8c';
+                                return `<span style="color: ${color}; font-weight: 600;">${Math.round(dilPercent)}%</span>`;
+                            }
+                            return '<span style="color: #6c757d;">0%</span>';
+                        }
+                    },
+                    {
+                        title: "NRL",
+                        field: "NRL",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            const row = cell.getRow();
+                            const sku = row.getData()['(Child) sku'];
+                            const value = cell.getValue() || "REQ";
+
+                            return `
+                                <select class="form-select form-select-sm editable-select" 
+                                        data-sku="${sku}" 
+                                        data-field="NRL"
+                                        style="width: 50px; border: 1px solid gray; padding: 2px; font-size: 20px; text-align: center;">
+                                    <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>🟢</option>
+                                    <option value="NRL" ${value === 'NRL' ? 'selected' : ''}>🔴</option>
+                                </select>
+                            `;
+                        }
+                    },
+                    {
+                        title: "KW NRA",
+                        field: "NRA",
+                        visible: false,
+                        hozAlign: "center",
+                        formatter: function(cell) {
+                            const row = cell.getRow();
+                            const sku = row.getData()['(Child) sku'];
+                            const rowData = row.getData();
+                            // If NRL is 'NRL' (red dot), default to NRA, otherwise default to RA
+                            const nrlValue = rowData.NRL || "REQ";
+                            const defaultValue = (nrlValue === 'NRL') ? "NRA" : "RA";
+                            const value = (cell.getValue()?.trim()) || defaultValue;
+
+                            return `
+                                <select class="form-select form-select-sm editable-select" 
+                                        data-sku="${sku}" 
+                                        data-field="NRA"
+                                        style="width: 50px; border: 1px solid gray; padding: 2px; font-size: 20px; text-align: center;">
+                                    <option value="RA" ${value === 'RA' ? 'selected' : ''}>🟢</option>
+                                    <option value="NRA" ${value === 'NRA' ? 'selected' : ''}>🔴</option>
+                                    <option value="LATER" ${value === 'LATER' ? 'selected' : ''}>🟡</option>
+                                </select>
+                            `;
+                        }
+                    },
 
                     {
                         title: "A L7",
@@ -2282,7 +2349,7 @@
                     },
 
                     {
-                        title: "Prc",
+                        title: "KW Prc",
                         field: "price",
                         hozAlign: "center",
                         formatter: function(cell) {
@@ -2418,52 +2485,199 @@
                         },
                         width: 55
                     },
+                    {
+                        title: "KW ACOS",
+                        field: "acos",
+                        hozAlign: "right",
+                        minWidth: 72,
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var spend30 = parseFloat(row.l30_spend || 0);
+                            var sales30 = parseFloat(row.l30_sales || 0);
+                            var acosRaw = row.acos; 
+                            var acos = parseFloat(acosRaw);
+                            if (isNaN(acos)) {
+                                acos = 0;
+                            }
+                            // ACOS must be 0 when Spend L30 and Sales L30 are both 0
+                            if (spend30 === 0 && sales30 === 0) {
+                                acos = 0;
+                            }
+                            var td = cell.getElement();
+                            td.classList.remove('green-bg', 'pink-bg', 'red-bg');
+                            
+                            // Build tooltip with L30 and L7 stats (same as KW page)
+                            var clicks30 = parseInt(row.l30_clicks || 0).toLocaleString();
+                            var spend30Display = parseFloat(row.l30_spend || 0).toFixed(0);
+                            var sales30Display = parseFloat(row.l30_sales || 0).toFixed(0);
+                            var adSold30 = parseInt(row.l30_purchases || 0).toLocaleString();
+                            var clicks7 = parseInt(row.l7_clicks || 0).toLocaleString();
+                            var spend7 = parseFloat(row.l7_spend || 0).toFixed(2);
+                            var sales7 = parseFloat(row.l7_sales || 0).toFixed(2);
+                            var adSold7 = parseInt(row.l7_purchases || 0).toLocaleString();
+                            var tooltipText = "L30: Clicks " + clicks30 + ", Spend " + spend30Display + ", Sales " + sales30Display + ", Ad Sold " + adSold30 +
+                                "\nL7: Clicks " + clicks7 + ", Spend " + spend7 + ", Sales " + sales7 + ", Ad Sold " + adSold7 +
+                                "\n(Click info to show/hide Clicks L7, Spend L7, Sales L7, Ad Sold L7 and L30 columns)";
+                            
+                            var acosDisplay;
+                            if (acos === 0) {
+                                acosDisplay = "0%"; 
+                            } else if (acos < 7) {
+                                td.classList.add('pink-bg');
+                                acosDisplay = acos.toFixed(0) + "%";
+                            } else if (acos >= 7 && acos <= 14) {
+                                td.classList.add('green-bg');
+                                acosDisplay = acos.toFixed(0) + "%";
+                            } else if (acos > 14) {
+                                td.classList.add('red-bg');
+                                acosDisplay = acos.toFixed(0) + "%";
+                            }
+                            return `<div class="text-center">${acosDisplay}<i class="fas fa-info-circle ms-1 info-icon-toggle" style="cursor: pointer; color: #0d6efd;" title="${tooltipText}"></i></div>`;
+                        },
+                        sorter: "number"
+                    },
 
                     {
-                        title: "ACOS",
-                        field: "ACOS",
+                        title: "KW BGT",
+                        field: "campaignBudgetAmount",
                         hozAlign: "center",
+                        visible: false,
                         formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const spend = parseFloat(rowData.SPEND_L30 || rowData.AD_Spend_L30) || 0;
-                            const sales = parseFloat(rowData.SALES_L30) || 0;
-                            const sku = rowData["(Child) sku"] || rowData.SKU || rowData.sku || '';
-                            
-                            // Calculate ACOS: (SPEND_L30 / SALES_L30) * 100
-                            let acos = 0;
-                            if (sales > 0) {
-                                acos = (spend / sales) * 100;
-                            } else if (spend > 0 && sales === 0) {
-                                acos = 100;
+                            var value = parseFloat(cell.getValue() || 0);
+                            return Math.round(value);
+                        }
+                    },
+                    {
+                        title: "KW SBGT",
+                        field: "sbgt",
+                        hozAlign: "center",
+                        visible: false,
+                        minWidth: 60,
+                        mutator: function (value, data) {
+                            var acos = parseFloat(data.acos || data.ACOS || 0);
+                            var price = parseFloat(data.price || 0);
+                            var sbgt;
+                            // Same price-based SBGT for all rows (parent now has avg price)
+                            if (acos > 20) {
+                                sbgt = 1;
+                            } else {
+                                sbgt = Math.ceil(price * 0.10);
+                                if (sbgt < 1) sbgt = 1;
+                                if (sbgt > 5) sbgt = 5;
                             }
-                            
-                            // If spend > 0 but ACOS is 0, show red alert
-                            if (spend > 0 && acos === 0) {
-                                return `<span style="color: #dc3545; font-weight: 600;">100%</span> <i class="fas fa-info-circle acos-info-icon" style="cursor: pointer; color: #6c757d; margin-left: 5px;" data-sku="${sku}" title="View Campaign Details"></i>`;
-                            }
-                            
-                            let color = '';
-                            if (acos < 20) color = '#28a745'; // green
-                            else if (acos >= 20 && acos < 30) color = '#3591dc'; // blue
-                            else if (acos >= 30 && acos < 40) color = '#ffc107'; // yellow
-                            else color = '#a00211'; // red
-                            
-                            return `<span style="color: ${color}; font-weight: 600;">${acos.toFixed(0)}%</span> <i class="fas fa-info-circle acos-info-icon" style="cursor: pointer; color: #6c757d; margin-left: 5px;" data-sku="${sku}" title="View Campaign Details"></i>`;
+                            return sbgt;
                         },
-                        sorter: function(a, b, aRow, bRow) {
-                            const calcACOS = (row) => {
-                                const spend = parseFloat(row.SPEND_L30 || row.AD_Spend_L30) || 0;
-                                const sales = parseFloat(row.SALES_L30) || 0;
-                                if (sales > 0) {
-                                    return (spend / sales) * 100;
-                                } else if (spend > 0 && sales === 0) {
-                                    return 100;
-                                }
-                                return 0;
-                            };
-                            return calcACOS(aRow.getData()) - calcACOS(bRow.getData());
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            if (!hasCampaign) return '-';
+                            var value = cell.getValue();
+                            if (value === undefined || value === null) return '-';
+                            return value;
+                        }
+                    },
+                    {
+                        title: "Clicks L7",
+                        field: "l7_clicks",
+                        hozAlign: "right",
+                        visible: false,
+                        minWidth: 80,
+                        formatter: function(cell) {
+                            var value = parseInt(cell.getValue() || 0);
+                            var tooltipL7 = "Click info to show/hide Spend L7, Sales L7, Ad Sold L7";
+                            return value.toLocaleString() + '<i class="fas fa-info-circle ms-1 info-icon-l7-toggle" style="cursor: pointer; color: #0d6efd;" title="' + tooltipL7 + '"></i>';
                         },
-                        width: 80
+                        sorter: "number"
+                    },
+                    {
+                        title: "Spend L7",
+                        field: "spend_l7_col",
+                        hozAlign: "right",
+                        visible: false,
+                        minWidth: 75,
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return '$' + value.toFixed(2);
+                        }
+                    },
+                    {
+                        title: "Sales L7",
+                        field: "l7_sales",
+                        hozAlign: "right",
+                        visible: false,
+                        minWidth: 70,
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return '$' + value.toFixed(2);
+                        }
+                    },
+                    {
+                        title: "Ad Sold L7",
+                        field: "l7_purchases",
+                        hozAlign: "right",
+                        visible: false,
+                        minWidth: 85,
+                        formatter: function(cell) {
+                            var value = parseInt(cell.getValue() || 0);
+                            return value.toLocaleString();
+                        }
+                    },
+                    {
+                        title: "Clicks L30",
+                        field: "l30_clicks",
+                        hozAlign: "right",
+                        visible: false,
+                        minWidth: 85,
+                        formatter: function(cell) {
+                            var value = parseInt(cell.getValue() || 0);
+                            return value.toLocaleString();
+                        }
+                    },
+                    {
+                        title: "Spend L30",
+                        field: "l30_spend",
+                        hozAlign: "right",
+                        visible: false,
+                        minWidth: 80,
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return '$' + value.toFixed(0);
+                        }
+                    },
+                    {
+                        title: "Sales L30",
+                        field: "l30_sales",
+                        hozAlign: "right",
+                        visible: false,
+                        minWidth: 75,
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return '$' + value.toFixed(0);
+                        }
+                    },
+                    {
+                        title: "Ad Sold L30",
+                        field: "l30_purchases",
+                        hozAlign: "right",
+                        visible: false,
+                        minWidth: 90,
+                        formatter: function(cell) {
+                            var value = parseInt(cell.getValue() || 0);
+                            return value.toLocaleString();
+                        }
+                    },
+                    {
+                        title: "KW AD CVR",
+                        field: "ad_cvr",
+                        hozAlign: "right",
+                        visible: false,
+                        minWidth: 72,
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return value.toFixed(1) + "%";
+                        },
+                        sorter: "number",
+                        width: 90
                     },
 
                     {
@@ -2504,19 +2718,6 @@
                             }
                         },
                         width: 90
-                    },
-
-                    {
-                        title: "SPEND L30",
-                        field: "AD_Spend_L30",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const value = parseFloat(cell.getValue() || 0);
-                            if (value === 0) return '';
-                            return `<span>${value.toFixed(0)}</span>`;
-                        },
-                        width: 85
                     },
 
                     {
@@ -2881,73 +3082,9 @@
                         width: 80
                     },
 
-                    {
-                        title: "SPEND L30",
-                        field: "AD_Spend_L30",
-                        hozAlign: "center",
-                        sorter: "number",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const kwSpend = parseFloat(rowData.kw_spend_L30) || 0;
-                            const pmtSpend = parseFloat(rowData.pmt_spend_L30) || 0;
-                            const totalSpend = kwSpend + pmtSpend;
-                            
-                            if (totalSpend === 0) return '';
-                            return `
-                                <span>$${totalSpend.toFixed(2)}</span>
-                                <i class="fa fa-info-circle text-primary toggle-spendL30-btn" 
-                                style="cursor:pointer; margin-left:8px;"></i>
-                            `;
-                        },
-                        bottomCalc: "sum",
-                        bottomCalcFormatter: function(cell) {
-                            const value = cell.getValue();
-                            return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
-                        },
-                        width: 90,
-                        visible: false
-                    },
-
-                    
-                    {
-                        title: "KW SPEND L30",
-                        field: "kw_spend_L30",
-                        hozAlign: "center",
-                        sorter: "number",
-                        visible: false,
-                        formatter: function(cell) {
-                            const value = parseFloat(cell.getValue() || 0);
-                            return `$${value.toFixed(2)}`;
-                        },
-                        bottomCalc: "sum",
-                        bottomCalcFormatter: function(cell) {
-                            const value = cell.getValue();
-                            return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
-                        },
-                        width: 100
-                    },
-
-                    {
-                        title: "PMT SPEND L30",
-                        field: "pmt_spend_L30",
-                        hozAlign: "center",
-                        sorter: "number",
-                        visible: false,
-                        formatter: function(cell) {
-                            const value = parseFloat(cell.getValue() || 0);
-                            return `$${value.toFixed(2)}`;
-                        },
-                        bottomCalc: "sum",
-                        bottomCalcFormatter: function(cell) {
-                            const value = cell.getValue();
-                            return `<strong>$${parseFloat(value).toFixed(2)}</strong>`;
-                        },
-                        width: 100
-                    },
-                    
                     // KW Page Columns
                     {
-                        title: "7 UB%",
+                        title: "KW 7 UB%",
                         field: "l7_spend",
                         hozAlign: "right",
                         visible: false,
@@ -2972,7 +3109,7 @@
                         }
                     },
                     {
-                        title: "1 UB%",
+                        title: "KW 1 UB%",
                         field: "l1_spend",
                         hozAlign: "right",
                         visible: false,
@@ -2997,7 +3134,7 @@
                         }
                     },
                     {
-                        title: "AVG CPC",
+                        title: "KW AVG CPC",
                         field: "avg_cpc",
                         hozAlign: "center",
                         visible: false,
@@ -3011,7 +3148,7 @@
                         }
                     },
                     {
-                        title: "L7 CPC",
+                        title: "KW L7 CPC",
                         field: "l7_cpc",
                         hozAlign: "center",
                         visible: false,
@@ -3025,7 +3162,7 @@
                         }
                     },
                     {
-                        title: "L1 CPC",
+                        title: "KW L1 CPC",
                         field: "l1_cpc",
                         hozAlign: "center",
                         visible: false,
@@ -3039,7 +3176,7 @@
                         }
                     },
                     {
-                        title: "Last SBID",
+                        title: "KW Last SBID",
                         field: "last_sbid",
                         hozAlign: "center",
                         visible: false,
@@ -3053,7 +3190,7 @@
                         }
                     },
                     {
-                        title: "SBID",
+                        title: "KW SBID",
                         field: "sbid",
                         hozAlign: "center",
                         visible: false,
@@ -3136,7 +3273,7 @@
                         }
                     },
                     {
-                        title: "SBID M",
+                        title: "KW SBID M",
                         field: "sbid_m",
                         hozAlign: "center",
                         visible: false,
@@ -3148,78 +3285,6 @@
                             }
                             return parseFloat(value).toFixed(2);
                         }
-                    },
-                    {
-                        title: "SBGT",
-                        field: "sbgt",
-                        hozAlign: "center",
-                        visible: false,
-                        minWidth: 60,
-                        mutator: function (value, data) {
-                            var acos = parseFloat(data.acos || data.ACOS || 0);
-                            var price = parseFloat(data.price || 0);
-                            var sbgt;
-                            // Same price-based SBGT for all rows (parent now has avg price)
-                            if (acos > 20) {
-                                sbgt = 1;
-                            } else {
-                                sbgt = Math.ceil(price * 0.10);
-                                if (sbgt < 1) sbgt = 1;
-                                if (sbgt > 5) sbgt = 5;
-                            }
-                            return sbgt;
-                        },
-                        formatter: function(cell) {
-                            var row = cell.getRow().getData();
-                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
-                            if (!hasCampaign) return '-';
-                            var value = cell.getValue();
-                            if (value === undefined || value === null) return '-';
-                            return value;
-                        }
-                    },
-                    {
-                        title: "AD CVR",
-                        field: "ad_cvr",
-                        hozAlign: "right",
-                        visible: false,
-                        minWidth: 72,
-                        formatter: function(cell) {
-                            var value = parseFloat(cell.getValue() || 0);
-                            return value.toFixed(2) + "%";
-                        },
-                        sorter: "number",
-                        width: 90
-                    },
-                    {
-                        title: "BGT",
-                        field: "campaignBudgetAmount",
-                        hozAlign: "right",
-                        visible: false,
-                        formatter: function(cell) {
-                            var value = parseFloat(cell.getValue() || 0);
-                            return '$' + value.toFixed(2);
-                        }
-                    },
-                    {
-                        title: "Status",
-                        field: "campaignStatus",
-                        visible: false,
-                        formatter: function(cell) {
-                            const value = (cell.getValue() || '').toUpperCase();
-                            let dotColor = '';
-                            if (value === 'ENABLED') {
-                                dotColor = 'green';
-                            } else if (value === 'PAUSED') {
-                                dotColor = 'red';
-                            } else {
-                                dotColor = 'gray';
-                            }
-                            return `<div style="display: flex; align-items: center; justify-content: center;">
-                                <span class="status-dot ${dotColor}" style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background-color: ${dotColor};" title="${value || ''}"></span>
-                            </div>`;
-                        },
-                        hozAlign: "center"
                     },
                     {
                         title: "Active",
@@ -3255,50 +3320,7 @@
                         }
                     },
                     {
-                        title: "NRL",
-                        field: "NRL",
-                        hozAlign: "center",
-                        visible: false,
-                        formatter: function(cell) {
-                            const row = cell.getRow();
-                            const sku = row.getData()['(Child) sku'];
-                            const value = cell.getValue() || "REQ";
-
-                            return `
-                                <select class="form-select form-select-sm editable-select" 
-                                        data-sku="${sku}" 
-                                        data-field="NRL"
-                                        style="width: 50px; border: 1px solid gray; padding: 2px; font-size: 20px; text-align: center;">
-                                    <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>🟢</option>
-                                    <option value="NRL" ${value === 'NRL' ? 'selected' : ''}>🔴</option>
-                                </select>
-                            `;
-                        }
-                    },
-                    {
-                        title: "A DIL %",
-                        field: "A DIL %",
-                        hozAlign: "center",
-                        visible: false,
-                        formatter: function(cell) {
-                            const data = cell.getRow().getData();
-                            const al30 = parseFloat(data.A_L30);
-                            const inv = parseFloat(data.INV);
-                            if (!isNaN(al30) && !isNaN(inv) && inv !== 0) {
-                                const dilPercent = (al30 / inv) * 100;
-                                let color = '';
-                                // Color logic from DIL column
-                                if (dilPercent < 16.66) color = '#a00211';
-                                else if (dilPercent >= 16.66 && dilPercent < 25) color = '#ffc107';
-                                else if (dilPercent >= 25 && dilPercent < 50) color = '#28a745';
-                                else color = '#e83e8c';
-                                return `<span style="color: ${color}; font-weight: 600;">${Math.round(dilPercent)}%</span>`;
-                            }
-                            return '<span style="color: #6c757d;">0%</span>';
-                        }
-                    },
-                    {
-                        title: "APR BID",
+                        title: "KW APR BID",
                         field: "apr_bid",
                         hozAlign: "center",
                         visible: false,
@@ -3359,105 +3381,10 @@
                         }
                     },
                     {
-                        title: "Campaign",
+                        title: "KW Campaign",
                         field: "campaignName",
                         visible: false,
                         minWidth: 220
-                    },
-                    {
-                        title: "Clicks L7",
-                        field: "l7_clicks",
-                        hozAlign: "right",
-                        visible: false,
-                        formatter: function(cell) {
-                            var value = parseInt(cell.getValue() || 0);
-                            return value.toLocaleString();
-                        }
-                    },
-                    {
-                        title: "Spend L7",
-                        field: "spend_l7_col",
-                        hozAlign: "right",
-                        visible: false,
-                        formatter: function(cell) {
-                            var value = parseFloat(cell.getValue() || 0);
-                            return '$' + value.toFixed(2);
-                        }
-                    },
-                    {
-                        title: "Sales L7",
-                        field: "l7_sales",
-                        hozAlign: "right",
-                        visible: false,
-                        formatter: function(cell) {
-                            var value = parseFloat(cell.getValue() || 0);
-                            return '$' + value.toFixed(2);
-                        }
-                    },
-                    {
-                        title: "Ad Sold L7",
-                        field: "l7_purchases",
-                        hozAlign: "right",
-                        visible: false,
-                        formatter: function(cell) {
-                            var value = parseInt(cell.getValue() || 0);
-                            return value.toLocaleString();
-                        }
-                    },
-                    {
-                        title: "Clicks L30",
-                        field: "l30_clicks",
-                        hozAlign: "right",
-                        visible: false,
-                        formatter: function(cell) {
-                            var value = parseInt(cell.getValue() || 0);
-                            return value.toLocaleString();
-                        }
-                    },
-                    {
-                        title: "Spend L30",
-                        field: "l30_spend",
-                        hozAlign: "right",
-                        visible: false,
-                        formatter: function(cell) {
-                            var value = parseFloat(cell.getValue() || 0);
-                            return '$' + value.toFixed(2);
-                        }
-                    },
-                    {
-                        title: "Sales L30",
-                        field: "l30_sales",
-                        hozAlign: "right",
-                        visible: false,
-                        formatter: function(cell) {
-                            var value = parseFloat(cell.getValue() || 0);
-                            return '$' + value.toFixed(2);
-                        }
-                    },
-                    {
-                        title: "Ad Sold L30",
-                        field: "l30_purchases",
-                        hozAlign: "right",
-                        visible: false,
-                        formatter: function(cell) {
-                            var value = parseInt(cell.getValue() || 0);
-                            return value.toLocaleString();
-                        }
-                    },
-                    {
-                        title: "NRA",
-                        field: "NRA",
-                        visible: false,
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const value = cell.getValue();
-                            if (!value) return '';
-                            let color = '';
-                            if (value === 'NRA') color = '#dc3545';
-                            else if (value === 'RA') color = '#28a745';
-                            else if (value === 'LATER') color = '#ffc107';
-                            return `<span style="color: ${color}; font-weight: 600;">${value}</span>`;
-                        }
                     },
                     {
                         title: "KW Issue",
@@ -4071,8 +3998,13 @@
                 var kwAdsColumns = [
                     'active_toggle',    // Active toggle
                     '(Child) sku',      // SKU
-                    'rating',           // Ratings
-                    'is_missing',       // Missing
+                    'acos',             // KW ACOS (first after SKU)
+                    'l30_spend',        // KW Spend (after ACOS)
+                    'l30_clicks',       // KW Clicks (after Spend)
+                    'ad_cvr',           // KW CVR (after Clicks)
+                    'rating',           // Reviews (after CVR)
+                    'campaignBudgetAmount', // BGT
+                    'sbgt',             // SBGT
                     'INV',              // INV
                     'L30',              // OV L30
                     'E Dil%',           // DIL %
@@ -4081,15 +4013,6 @@
                     'NRL',              // NRL
                     'NRA',              // NRA
                     'price',            // Price
-                    'campaignBudgetAmount', // BGT
-                    'sbgt',             // SBGT
-                    'ACOS',             // ACOS
-                    'l7_clicks',        // Clicks L7
-                    'l30_clicks',       // Clicks L30
-                    'l30_spend',        // Spend L30
-                    'l30_sales',        // Sales L30
-                    'l30_purchases',    // Ad Sold L30
-                    'ad_cvr',           // AD CVR
                     'l7_spend',         // 7 UB%
                     'l1_spend',         // 1 UB%
                     'avg_cpc',          // AVG CPC
@@ -4100,7 +4023,6 @@
                     'sbid_m',           // SBID M
                     'apr_bid',          // APR BID
                     'TPFT',             // TPFT%
-                    'campaignStatus',   // Status
                     'campaignName'      // CAMPAIGN
                 ];
                 
@@ -4109,12 +4031,12 @@
                     'GPFT%', 'PFT%', 'ROI_percentage', 'cost', 'margin', 'INV', 'A_L30'
                 ];
                 var ptAdsColumns = [
-                    '(Child) sku', 'pmt_spend_L30', 'pmt_sales_L30', 'price', 'INV', 'A_L30', 
-                    'rating', 'campaignStatus'
+                    '(Child) sku', 'pmt_sales_L30', 'price', 'INV', 'A_L30', 
+                    'rating'
                 ];
                 var hlAdsColumns = [
                     '(Child) sku', 'hl_spend_L30', 'hl_sales_L30', 'price', 'INV', 'A_L30', 
-                    'rating', 'campaignStatus'
+                    'rating'
                 ];
                 
                 if (section === 'all') {
@@ -4159,6 +4081,54 @@
                 columnsToShow.forEach(function(col) {
                     if (table.getColumn(col)) {
                         table.showColumn(col);
+                    }
+                });
+                
+                // For KW Ads section: sort by ACOS descending and show all rows including parents
+                if (section === 'kw-ads') {
+                    // Move columns in order after SKU: ACOS, Spend, Clicks, CVR, Reviews
+                    table.moveColumn("acos", "(Child) sku", true);      // KW ACOS after SKU
+                    table.moveColumn("l30_spend", "acos", true);        // KW Spend after ACOS
+                    table.moveColumn("l30_clicks", "l30_spend", true);  // KW Clicks after Spend
+                    table.moveColumn("ad_cvr", "l30_clicks", true);     // KW CVR after Clicks
+                    table.moveColumn("rating", "ad_cvr", true);         // Reviews after CVR
+                    
+                    table.setSort("acos", "desc");
+                    // Clear any filters that might hide parent rows
+                    table.clearFilter();
+                    applyFilters(); // Re-apply base filters but ensure parents are shown
+                }
+            });
+
+            // ACOS info icon: toggle detail columns (Clicks L7, Clicks L30, Spend L30, Sales L30, Ad Sold L30)
+            $(document).on('click', '.info-icon-toggle', function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                // ACOS info: toggle Clicks L7 + L30 columns
+                var acosDetailFields = ['l7_clicks', 'l30_clicks', 'l30_spend', 'l30_sales', 'l30_purchases'];
+                var firstCol = table.getColumn('l7_clicks');
+                var anyVisible = firstCol && firstCol.isVisible();
+                acosDetailFields.forEach(function(fieldName) {
+                    if (anyVisible) {
+                        table.hideColumn(fieldName);
+                    } else {
+                        table.showColumn(fieldName);
+                    }
+                });
+            });
+            
+            // Clicks L7 info icon: toggle only Spend L7, Sales L7, Ad Sold L7
+            $(document).on('click', '.info-icon-l7-toggle', function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                var l7DetailFields = ['spend_l7_col', 'l7_sales', 'l7_purchases'];
+                var spendL7Col = table.getColumn('spend_l7_col');
+                var anyL7Visible = spendL7Col && spendL7Col.isVisible();
+                l7DetailFields.forEach(function(fieldName) {
+                    if (anyL7Visible) {
+                        table.hideColumn(fieldName);
+                    } else {
+                        table.showColumn(fieldName);
                     }
                 });
             });
@@ -4591,25 +4561,67 @@
                 saveColumnVisibilityToServer();
             });
 
-            // Toggle SPEND L30 breakdown columns
-            document.addEventListener("click", function(e) {
-                if (e.target.classList.contains("toggle-spendL30-btn")) {
-                    let colsToToggle = ["kw_spend_L30", "pmt_spend_L30"];
-
-                    colsToToggle.forEach(colField => {
-                        const col = table.getColumn(colField);
-                        if (col.isVisible()) {
-                            col.hide();
+            // Handle campaign status toggle
+            document.addEventListener("change", function(e) {
+                if(e.target.classList.contains("campaign-status-toggle")) {
+                    let campaignId = e.target.getAttribute("data-campaign-id");
+                    let isEnabled = e.target.checked;
+                    let newStatus = isEnabled ? 'ENABLED' : 'PAUSED';
+                    
+                    if(!campaignId) {
+                        alert("Campaign ID not found!");
+                        e.target.checked = !isEnabled; // Revert toggle
+                        return;
+                    }
+                    
+                    const overlay = document.getElementById("progress-overlay");
+                    if (overlay) {
+                        overlay.style.display = "flex";
+                    }
+                    
+                    fetch('/toggle-amazon-sp-campaign-status', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                        },
+                        body: JSON.stringify({
+                            campaign_id: campaignId,
+                            status: newStatus
+                        })
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if(data.status === 200){
+                            // Update the row data
+                            let rows = table.getRows();
+                            for(let i = 0; i < rows.length; i++) {
+                                let rowData = rows[i].getData();
+                                if(rowData.campaign_id === campaignId) {
+                                    rows[i].update({campaignStatus: newStatus});
+                                    break;
+                                }
+                            }
                         } else {
-                            col.show();
+                            alert("Error: " + (data.message || "Failed to update campaign status"));
+                            e.target.checked = !isEnabled; // Revert toggle
+                        }
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        alert("Request failed: " + err.message);
+                        e.target.checked = !isEnabled; // Revert toggle
+                    })
+                    .finally(() => {
+                        if (overlay) {
+                            overlay.style.display = "none";
                         }
                     });
-                    
-                    // Update column visibility in cache
-                    saveColumnVisibilityToServer();
-                    buildColumnDropdown();
                 }
+            });
 
+            // Copy SKU to clipboard
+            document.addEventListener("click", function(e) {
                 // Copy SKU to clipboard
                 if (e.target.classList.contains("copy-sku-btn") || e.target.closest('.copy-sku-btn')) {
                     const btn = e.target.classList.contains("copy-sku-btn") ? e.target : e.target.closest(

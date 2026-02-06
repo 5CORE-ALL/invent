@@ -1563,22 +1563,38 @@ class OverallAmazonController extends Controller
         $percentage = $marketplaceData ? ($marketplaceData->percentage / 100) : 1; 
         $adUpdates  = $marketplaceData ? $marketplaceData->ad_updates : 0;   
 
+        // Calculate AVG CPC from all daily records (lifetime average) - same as KW page
+        $avgCpcData = collect();
+        try {
+            $dailyRecords = DB::table('amazon_sp_campaign_reports')
+                ->select('campaign_id', DB::raw('AVG(costPerClick) as avg_cpc'))
+                ->where('ad_type', 'SPONSORED_PRODUCTS')
+                ->where('campaignStatus', '!=', 'ARCHIVED')
+                ->where('report_date_range', 'REGEXP', '^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+                ->where('costPerClick', '>', 0)
+                ->whereNotNull('campaign_id')
+                ->groupBy('campaign_id')
+                ->get();
+            
+            foreach ($dailyRecords as $record) {
+                if ($record->campaign_id && $record->avg_cpc > 0) {
+                    $avgCpcData->put($record->campaign_id, round($record->avg_cpc, 2));
+                }
+            }
+        } catch (\Exception $e) {
+            Log::warning('Could not calculate AVG CPC: ' . $e->getMessage());
+        }
+
         // Fetch Amazon SP Campaign Reports for L30 (KW campaigns - NOT PT)
-        // Use EXACT same logic as AmazonCampaignReportsController::amazonKwAdsView() line 46-57
-        // Group ONLY by campaignName and use MAX(spend) to avoid double-counting duplicate entries
-        $amazonSpCampaignReportsL30 = DB::table('amazon_sp_campaign_reports')
-            ->selectRaw('
-                campaignName,
-                MAX(spend) as spend,
-                SUM(clicks) as clicks,
-                SUM(sales30d) as sales30d,
-                MAX(costPerClick) as costPerClick,
-                MAX(campaignStatus) as campaignStatus
-            ')
-            ->where('ad_type', 'SPONSORED_PRODUCTS')
+        // Use EXACT same logic as AmazonSpBudgetController::amazonSpBudgetTable() line 2073-2080
+        // Get individual campaign records without grouping (same as KW page)
+        $amazonSpCampaignReportsL30 = AmazonSpCampaignReport::where('ad_type', 'SPONSORED_PRODUCTS')
             ->where('report_date_range', 'L30')
-            ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'") // Exclude PT and FBA campaigns
-            ->groupBy('campaignName')
+            ->where('campaignName', 'NOT LIKE', '% PT')
+            ->where('campaignName', 'NOT LIKE', '% PT.')
+            ->where('campaignName', 'NOT LIKE', '%FBA')
+            ->where('campaignName', 'NOT LIKE', '%FBA.')
+            ->where('campaignStatus', '!=', 'ARCHIVED')
             ->get();
 
         // Fetch Amazon SP Campaign Reports for L30 (PT campaigns)
@@ -1969,48 +1985,56 @@ class OverallAmazonController extends Controller
             $row['has_campaigns'] = $matchedCampaignsKwL30->isNotEmpty() || $matchedCampaignsPtL30->isNotEmpty();
             $row['hasCampaign'] = $matchedCampaignsKwL30->isNotEmpty() || $matchedCampaignsPtL30->isNotEmpty();
             
-            // Match L7 campaign data for utilization (check both SKU and parent)
+            // Match L7 campaign data for utilization - use same normalization as KW page
             $cleanSku = strtoupper(trim(rtrim($sku, '.')));
-            $cleanParent = strtoupper(trim($parent));
             
-            $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($cleanSku, $cleanParent) {
-                $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
-                // Match by SKU or parent
-                return $campaignName === $cleanSku 
-                    || str_starts_with($campaignName, $cleanSku . ' ')
-                    || $campaignName === $cleanParent
-                    || str_starts_with($campaignName, $cleanParent . ' ');
+            // Helper to normalize campaign name (same as KW page)
+            $normalizeCampaignNameForMatch = function($campaignName) {
+                // Replace non-breaking spaces and other special whitespace
+                $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $campaignName ?? '');
+                $cn = preg_replace('/\s+/', ' ', $cn);
+                return strtoupper(trim(rtrim($cn, '.')));
+            };
+            
+            // Match L7 campaign - exact SKU match (same as KW page)
+            $matchedCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($cleanSku, $normalizeCampaignNameForMatch) {
+                $campaignName = $normalizeCampaignNameForMatch($item->campaignName);
+                return $campaignName === $cleanSku;
             });
             
-            // Match L1 campaign data for utilization
-            $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($cleanSku, $cleanParent) {
-                $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
-                return $campaignName === $cleanSku 
-                    || str_starts_with($campaignName, $cleanSku . ' ')
-                    || $campaignName === $cleanParent
-                    || str_starts_with($campaignName, $cleanParent . ' ');
+            // Match L1 campaign - exact SKU match (same as KW page)
+            $matchedCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($cleanSku, $normalizeCampaignNameForMatch) {
+                $campaignName = $normalizeCampaignNameForMatch($item->campaignName);
+                return $campaignName === $cleanSku;
             });
             
-            // Match L90 campaign data for budget
-            $matchedCampaignL90 = $amazonSpCampaignReportsL90->first(function ($item) use ($cleanSku, $cleanParent) {
-                $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
-                return $campaignName === $cleanSku 
-                    || str_starts_with($campaignName, $cleanSku . ' ')
-                    || $campaignName === $cleanParent
-                    || str_starts_with($campaignName, $cleanParent . ' ');
+            // Match L90 campaign - exact SKU match
+            $matchedCampaignL90 = $amazonSpCampaignReportsL90->first(function ($item) use ($cleanSku, $normalizeCampaignNameForMatch) {
+                $campaignName = $normalizeCampaignNameForMatch($item->campaignName);
+                return $campaignName === $cleanSku;
             });
             
-            // KW page fields for utilization
-            $row['l7_spend'] = $matchedCampaignL7->spend ?? 0;
-            $row['l1_spend'] = $matchedCampaignL1->spend ?? 0;
-            $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
-            $row['l1_cpc'] = $matchedCampaignL1->costPerClick ?? 0;
-            $row['avg_cpc'] = $matchedCampaignL90->avg_cpc ?? 0;
-            $row['campaignBudgetAmount'] = $matchedCampaignL90->campaignBudgetAmount ?? ($matchedCampaignL7->campaignBudgetAmount ?? 0);
+            // Also get L30 campaign for ACOS calculation (same as KW page)
+            $matchedCampaignL30ForAcos = $amazonSpCampaignReportsL30->first(function ($item) use ($cleanSku, $normalizeCampaignNameForMatch) {
+                $campaignName = $normalizeCampaignNameForMatch($item->campaignName);
+                return $campaignName === $cleanSku;
+            });
+            
+            // KW page fields for utilization - prioritize L30 data, fallback to L7/L1
+            // Get budget from L30 first (same as KW page line 2922)
+            $row['campaignBudgetAmount'] = $matchedCampaignL30ForAcos->campaignBudgetAmount ?? ($matchedCampaignL7->campaignBudgetAmount ?? ($matchedCampaignL1->campaignBudgetAmount ?? 0));
             $row['utilization_budget'] = $row['campaignBudgetAmount'];
             $row['campaign_id'] = $matchedCampaignL7->campaign_id ?? ($matchedCampaignL1->campaign_id ?? null);
             $row['campaignName'] = $matchedCampaignL7->campaignName ?? ($matchedCampaignL1->campaignName ?? null);
             $row['campaignStatus'] = $matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? null);
+            
+            // L7/L1 spend and CPC (same as KW page)
+            $row['l7_spend'] = $matchedCampaignL7->spend ?? 0;
+            $row['l1_spend'] = $matchedCampaignL1->spend ?? 0;
+            $row['l7_cpc'] = $matchedCampaignL7->costPerClick ?? 0;
+            $row['l1_cpc'] = $matchedCampaignL1->costPerClick ?? 0;
+            // AVG CPC from lifetime average (same as KW page)
+            $row['avg_cpc'] = $row['campaign_id'] ? $avgCpcData->get($row['campaign_id'], 0) : 0;
             
             // L7 click/sales data
             $row['l7_clicks'] = $matchedCampaignL7->clicks ?? 0;
@@ -2023,17 +2047,18 @@ class OverallAmazonController extends Controller
             $row['kw_sales_L30'] = $matchedCampaignsKwL30->sum('sales30d');
             $row['pmt_sales_L30'] = $matchedCampaignsPtL30->sum('sales30d');
             
-            // L30 click/sales data
-            $firstKwL30 = $matchedCampaignsKwL30->first();
-            $row['l30_clicks'] = $firstKwL30->clicks ?? 0;
-            $row['l30_spend'] = $row['kw_spend_L30'];
-            $row['l30_sales'] = $row['kw_sales_L30'];
-            $row['l30_purchases'] = 0; // Not available
+            // L30 click/sales data - use the matched L30 campaign (same as KW page)
+            // If no exact match found, values should be 0 (same as KW page behavior)
+            $row['l30_clicks'] = $matchedCampaignL30ForAcos->clicks ?? 0;
+            $row['l30_spend'] = $matchedCampaignL30ForAcos->spend ?? 0;
+            $row['l30_sales'] = $matchedCampaignL30ForAcos->sales30d ?? 0;
+            $row['l30_purchases'] = $matchedCampaignL30ForAcos->unitsSoldClicks30d ?? 0;
             
             // SBID fields - get last_sbid and sbid_m from campaign data
             $row['sbid'] = 0;
             
             // Get last_sbid and sbid_m from maps
+            $cleanParent = strtoupper(trim($parent));
             $lastSbid = '';
             $sbidM = '';
             $campaignIdStr = $row['campaign_id'] ? (string)$row['campaign_id'] : null;
@@ -2068,9 +2093,17 @@ class OverallAmazonController extends Controller
             $l30Purchases = $row['l30_purchases'];
             $row['ad_cvr'] = $l30Clicks > 0 ? round(($l30Purchases / $l30Clicks) * 100, 2) : 0;
             
-            // ACOS calculation
-            $row['ACOS'] = $row['l30_sales'] > 0 ? round(($row['l30_spend'] / $row['l30_sales']) * 100, 2) : 0;
-            $row['acos'] = $row['ACOS'];
+            // ACOS calculation (same logic as KW page line 3132-3139)
+            $spend30Val = $row['l30_spend'];
+            $sales30Val = $row['l30_sales'];
+            if ($spend30Val > 0 && $sales30Val > 0) {
+                $row['acos'] = round(($spend30Val / $sales30Val) * 100, 2);
+            } elseif ($spend30Val > 0 && $sales30Val == 0) {
+                $row['acos'] = 100;
+            } else {
+                $row['acos'] = 0;
+            }
+            $row['ACOS'] = $row['acos'];
 
             // HL (Headline/Sponsored Brands) data (like AmazonAdRunningController)
             if (isset($parentHlSpendData[$parent]) && $parentHlSpendData[$parent]['childCount'] > 0) {
@@ -2302,43 +2335,48 @@ class OverallAmazonController extends Controller
             ];
             
             // Add campaign data for parent rows - match by "PARENT {parent}" campaign name
-            $parentCampaignName = 'PARENT ' . strtoupper(trim($parent));
-            $cleanParentName = strtoupper(trim($parent));
+            // Normalize parent name (handle special characters like non-breaking spaces)
+            $parentNorm = strtoupper(trim(preg_replace('/\s+/', ' ', str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $parent ?? ''))));
+            $parentCampaignName = 'PARENT ' . $parentNorm;
+            $parentNormNoDot = rtrim($parentNorm, '.');
+            $parentCampaignNameNoDot = rtrim($parentCampaignName, '.');
             
-            // Match L7 campaign for parent
-            $parentCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($parentCampaignName, $cleanParentName) {
-                $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
+            // Helper to normalize campaign name for matching (same as KW page)
+            $normalizeCampaignName = function($campaignName) {
+                $cn = str_replace(["\xC2\xA0", "\xE2\x80\x80", "\xE2\x80\x81", "\xE2\x80\x82", "\xE2\x80\x83"], ' ', $campaignName ?? '');
+                $cn = preg_replace('/\s+/', ' ', $cn);
+                return strtoupper(trim(rtrim($cn, '.')));
+            };
+            
+            // Match L7 campaign for parent - EXACT match only (no partial/prefix matching)
+            // For parent rows, campaign should be exactly "PARENT {parent}" or "{parent}"
+            // Do NOT match child campaigns like "DS CH BLK" when parent is "DS CH"
+            $parentCampaignL7 = $amazonSpCampaignReportsL7->first(function ($item) use ($parentCampaignName, $parentCampaignNameNoDot, $normalizeCampaignName) {
+                $campaignName = $normalizeCampaignName($item->campaignName);
+                // Only match exact "PARENT {parent}" campaign, not child SKU campaigns
                 return $campaignName === $parentCampaignName 
-                    || $campaignName === $cleanParentName
-                    || str_starts_with($campaignName, $parentCampaignName . ' ')
-                    || str_starts_with($campaignName, $cleanParentName . ' ');
+                    || $campaignName === $parentCampaignNameNoDot;
             });
             
             // Match L1 campaign for parent
-            $parentCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($parentCampaignName, $cleanParentName) {
-                $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
+            $parentCampaignL1 = $amazonSpCampaignReportsL1->first(function ($item) use ($parentCampaignName, $parentCampaignNameNoDot, $normalizeCampaignName) {
+                $campaignName = $normalizeCampaignName($item->campaignName);
                 return $campaignName === $parentCampaignName 
-                    || $campaignName === $cleanParentName
-                    || str_starts_with($campaignName, $parentCampaignName . ' ')
-                    || str_starts_with($campaignName, $cleanParentName . ' ');
+                    || $campaignName === $parentCampaignNameNoDot;
             });
             
             // Match L90 campaign for parent (for budget)
-            $parentCampaignL90 = $amazonSpCampaignReportsL90->first(function ($item) use ($parentCampaignName, $cleanParentName) {
-                $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
+            $parentCampaignL90 = $amazonSpCampaignReportsL90->first(function ($item) use ($parentCampaignName, $parentCampaignNameNoDot, $normalizeCampaignName) {
+                $campaignName = $normalizeCampaignName($item->campaignName);
                 return $campaignName === $parentCampaignName 
-                    || $campaignName === $cleanParentName
-                    || str_starts_with($campaignName, $parentCampaignName . ' ')
-                    || str_starts_with($campaignName, $cleanParentName . ' ');
+                    || $campaignName === $parentCampaignNameNoDot;
             });
             
             // Match L30 campaign for parent
-            $parentCampaignsL30 = $amazonSpCampaignReportsL30->filter(function ($item) use ($parentCampaignName, $cleanParentName) {
-                $campaignName = strtoupper(trim(rtrim($item->campaignName, '.')));
+            $parentCampaignsL30 = $amazonSpCampaignReportsL30->filter(function ($item) use ($parentCampaignName, $parentCampaignNameNoDot, $normalizeCampaignName) {
+                $campaignName = $normalizeCampaignName($item->campaignName);
                 return $campaignName === $parentCampaignName 
-                    || $campaignName === $cleanParentName
-                    || str_starts_with($campaignName, $parentCampaignName . ' ')
-                    || str_starts_with($campaignName, $cleanParentName . ' ');
+                    || $campaignName === $parentCampaignNameNoDot;
             });
             
             // Add campaign data to parent summary
@@ -2347,11 +2385,33 @@ class OverallAmazonController extends Controller
             $sumRow['campaignName'] = $parentCampaignL7->campaignName ?? ($parentCampaignL1->campaignName ?? null);
             $sumRow['campaignStatus'] = $parentCampaignL7->campaignStatus ?? ($parentCampaignL1->campaignStatus ?? null);
             $sumRow['campaignBudgetAmount'] = $parentCampaignL90->campaignBudgetAmount ?? ($parentCampaignL7->campaignBudgetAmount ?? 0);
-            $sumRow['l7_spend'] = $parentCampaignL7->spend ?? 0;
-            $sumRow['l1_spend'] = $parentCampaignL1->spend ?? 0;
+            
+            // L7 spend with fallback calculation (clicks * cpc) like KW page
+            $l7SpendVal = $parentCampaignL7 ? (float)($parentCampaignL7->spend ?? $parentCampaignL7->cost ?? 0) : 0;
+            if ($l7SpendVal <= 0 && $parentCampaignL7) {
+                $c7 = (int)($parentCampaignL7->clicks ?? 0);
+                $cpc7 = (float)($parentCampaignL7->costPerClick ?? 0);
+                if ($c7 > 0 && $cpc7 > 0) {
+                    $l7SpendVal = round($c7 * $cpc7, 2);
+                }
+            }
+            $sumRow['l7_spend'] = $l7SpendVal;
+            
+            // L1 spend with fallback calculation
+            $l1SpendVal = $parentCampaignL1 ? (float)($parentCampaignL1->spend ?? $parentCampaignL1->cost ?? 0) : 0;
+            if ($l1SpendVal <= 0 && $parentCampaignL1) {
+                $c1 = (int)($parentCampaignL1->clicks ?? 0);
+                $cpc1 = (float)($parentCampaignL1->costPerClick ?? 0);
+                if ($c1 > 0 && $cpc1 > 0) {
+                    $l1SpendVal = round($c1 * $cpc1, 2);
+                }
+            }
+            $sumRow['l1_spend'] = $l1SpendVal;
+            
             $sumRow['l7_cpc'] = $parentCampaignL7->costPerClick ?? 0;
             $sumRow['l1_cpc'] = $parentCampaignL1->costPerClick ?? 0;
-            $sumRow['avg_cpc'] = $parentCampaignL90->avg_cpc ?? 0;
+            // AVG CPC from lifetime average (same as KW page)
+            $sumRow['avg_cpc'] = $sumRow['campaign_id'] ? $avgCpcData->get($sumRow['campaign_id'], 0) : 0;
             $sumRow['l7_clicks'] = $parentCampaignL7->clicks ?? 0;
             $sumRow['l7_sales'] = $parentCampaignL7->sales30d ?? 0;
             
@@ -2378,15 +2438,15 @@ class OverallAmazonController extends Controller
                 $parentLastSbid = $lastSbidMap[$parentCampaignIdStr];
             } elseif (isset($lastSbidMap['name_' . $parentCampaignName])) {
                 $parentLastSbid = $lastSbidMap['name_' . $parentCampaignName];
-            } elseif (isset($lastSbidMap['name_' . $cleanParentName])) {
-                $parentLastSbid = $lastSbidMap['name_' . $cleanParentName];
+            } elseif (isset($lastSbidMap['name_' . $parentNorm])) {
+                $parentLastSbid = $lastSbidMap['name_' . $parentNorm];
             }
             if ($parentCampaignIdStr && isset($sbidMMap[$parentCampaignIdStr])) {
                 $parentSbidM = $sbidMMap[$parentCampaignIdStr];
             } elseif (isset($sbidMMap['name_' . $parentCampaignName])) {
                 $parentSbidM = $sbidMMap['name_' . $parentCampaignName];
-            } elseif (isset($sbidMMap['name_' . $cleanParentName])) {
-                $parentSbidM = $sbidMMap['name_' . $cleanParentName];
+            } elseif (isset($sbidMMap['name_' . $parentNorm])) {
+                $parentSbidM = $sbidMMap['name_' . $parentNorm];
             }
             $sumRow['last_sbid'] = $parentLastSbid;
             $sumRow['sbid_m'] = $parentSbidM;
