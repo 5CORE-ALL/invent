@@ -974,7 +974,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
-                            return `<span style="font-weight:600;color:#198754;">$${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>${chartIcon}`;
+                            return `<span style="font-weight:600;color:#198754;">$${value.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('ad-chart-icon')) {
@@ -985,7 +985,7 @@
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
                             const value = cell.getValue();
-                            return `<strong style="color:#198754;">$${parseNumber(value).toFixed(2)}</strong>`;
+                            return `<strong style="color:#198754;">$${parseNumber(value).toFixed(0)}</strong>`;
                         }
                     },
                     {
@@ -999,7 +999,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
-                            return `<span style="font-weight:600;color:#0d6efd;">$${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>${chartIcon}`;
+                            return `<span style="font-weight:600;color:#0d6efd;">$${value.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('ad-chart-icon')) {
@@ -1010,7 +1010,7 @@
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
                             const value = cell.getValue();
-                            return `<strong style="color:#0d6efd;">$${parseNumber(value).toFixed(2)}</strong>`;
+                            return `<strong style="color:#0d6efd;">$${parseNumber(value).toFixed(0)}</strong>`;
                         }
                     },
                     {
@@ -1024,7 +1024,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon = `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
-                            return `<span style="font-weight:600;color:#dc3545;">$${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>${chartIcon}`;
+                            return `<span style="font-weight:600;color:#dc3545;">$${value.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('ad-chart-icon')) {
@@ -1035,7 +1035,7 @@
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
                             const value = cell.getValue();
-                            return `<strong style="color:#dc3545;">$${parseNumber(value).toFixed(2)}</strong>`;
+                            return `<strong style="color:#dc3545;">$${parseNumber(value).toFixed(0)}</strong>`;
                         }
                     },
                     {

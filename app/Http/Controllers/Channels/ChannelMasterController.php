@@ -1020,16 +1020,11 @@ class ChannelMasterController extends Controller
         $tacosPercentage = $metrics?->tacos_percentage ?? 0;
         $nPft = $metrics?->n_pft ?? 0;
         $nRoi = $metrics?->n_roi ?? 0;
-        // KW, PT, HL, Total Ad Spend: fetch directly from tables (amazon_sp_campaign_reports + amazon_sb_campaign_reports, excludes ARCHIVED)
-        try {
-            $adSpendBreakdown = $this->fetchAmazonAdSpendBreakdownFromTables();
-            $kwSpent = $adSpendBreakdown['kw'];
-            $ptSpent = $adSpendBreakdown['pt'];
-            $hlSpent = $adSpendBreakdown['hl'];
-        } catch (\Throwable $e) {
-            Log::error('fetchAmazonAdSpendBreakdownFromTables failed: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
-            $kwSpent = $ptSpent = $hlSpent = 0;
-        }
+        
+        // Get ad spend from marketplace_daily_metrics (pre-calculated from UpdateMarketplaceDailyMetrics)
+        $kwSpent = $metrics?->kw_spent ?? 0;
+        $ptSpent = $metrics?->pmt_spent ?? 0; // Note: stored as pmt_spent in metrics table
+        $hlSpent = $metrics?->hl_spent ?? 0;
         $totalAdSpend = round($kwSpent + $ptSpent + $hlSpent, 2);
         
         // Calculate growth
@@ -1063,9 +1058,9 @@ class ChannelMasterController extends Controller
             'Total PFT'  => round($totalProfit, 2),
             'N PFT'      => round($nPft, 2) . '%',
             'N ROI'      => round($nRoi, 2),
-            'KW Spent'   => round($kwSpent, 2),
-            'PT Spent'   => round($ptSpent, 2),
-            'HL Spent'   => round($hlSpent, 2),
+            'KW Spent'   => round($kwSpent, 0),
+            'PT Spent'   => round($ptSpent, 0),
+            'HL Spent'   => round($hlSpent, 0),
             'PMT Spent'  => 0,
             'Shopping Spent' => 0,
             'SERP Spent' => 0,
