@@ -3966,12 +3966,27 @@
                     });
                 }
 
-                // Campaign Status filter
-                if (campaignStatusFilter && campaignStatusFilter !== 'ALL') {
+                // Campaign Status filter (Active Filter)
+                if (campaignStatusFilter && campaignStatusFilter !== '' && campaignStatusFilter !== 'ALL') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return false;
-                        const status = (data.campaignStatus || '').toUpperCase();
-                        return status === campaignStatusFilter;
+                        if (data.is_parent_summary) return true; // Show parent rows
+                        
+                        // Check campaign status - use kw_campaign_status, pt_campaign_status, or campaignStatus
+                        var kwStatus = (data.kw_campaign_status || '').toUpperCase();
+                        var ptStatus = (data.pt_campaign_status || '').toUpperCase();
+                        var generalStatus = (data.campaignStatus || '').toUpperCase();
+                        
+                        // Determine if row is ENABLED or PAUSED
+                        var isEnabled = kwStatus === 'ENABLED' || ptStatus === 'ENABLED' || generalStatus === 'ENABLED';
+                        var isPaused = !isEnabled && (kwStatus === 'PAUSED' || ptStatus === 'PAUSED' || generalStatus === 'PAUSED' || kwStatus || ptStatus || generalStatus);
+                        
+                        if (campaignStatusFilter === 'ENABLED') {
+                            return isEnabled;
+                        } else if (campaignStatusFilter === 'PAUSED') {
+                            return !isEnabled && (kwStatus || ptStatus || generalStatus); // Has campaign but not enabled
+                        }
+                        
+                        return true;
                     });
                 }
 
@@ -4072,7 +4087,8 @@
 
                 // Apply section-specific filters
                 var sectionFilter = $('#section-filter').val();
-                if (sectionFilter === 'kw-ads') {
+                // Only hide NRA rows in KW ADS section when NRA filter is not specifically set to show NRA
+                if (sectionFilter === 'kw-ads' && nraFilter !== 'NRA') {
                     // Hide rows marked as NRA (red dot) in KW NRA column
                     table.addFilter(function(data) {
                         if (data.is_parent_summary) return true; // Show parent rows

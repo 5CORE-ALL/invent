@@ -2414,13 +2414,15 @@ class OverallAmazonController extends Controller
             $sumRow['avg_cpc'] = $sumRow['campaign_id'] ? $avgCpcData->get($sumRow['campaign_id'], 0) : 0;
             $sumRow['l7_clicks'] = $parentCampaignL7->clicks ?? 0;
             $sumRow['l7_sales'] = $parentCampaignL7->sales30d ?? 0;
+            $sumRow['l7_purchases'] = $parentCampaignL7->unitsSoldClicks7d ?? 0;
+            $sumRow['spend_l7_col'] = $sumRow['l7_spend'];
             
             // L30 data for parent
             $firstParentL30 = $parentCampaignsL30->first();
-            $sumRow['l30_clicks'] = $firstParentL30->clicks ?? 0;
+            $sumRow['l30_clicks'] = $parentCampaignsL30->sum('clicks');
             $sumRow['l30_spend'] = $parentCampaignsL30->sum('spend');
             $sumRow['l30_sales'] = $parentCampaignsL30->sum('sales30d');
-            $sumRow['l30_purchases'] = 0;
+            $sumRow['l30_purchases'] = $parentCampaignsL30->sum('unitsSoldClicks30d');
             
             // AD CVR and ACOS for parent
             $sumRow['ad_cvr'] = $sumRow['l30_clicks'] > 0 ? round(($sumRow['l30_purchases'] / $sumRow['l30_clicks']) * 100, 2) : 0;
