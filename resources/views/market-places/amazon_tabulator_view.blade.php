@@ -3913,11 +3913,20 @@
                     });
                 }
 
-                // NRA filter
+                // NRA filter - apply same default logic as formatter
                 if (nraFilter && nraFilter !== '') {
                     table.addFilter(function(data) {
-                        if (data.is_parent_summary) return false;
-                        return data.NRA === nraFilter;
+                        if (data.is_parent_summary) return true; // Show parent rows
+                        
+                        // Get NRA value, applying default logic if empty
+                        var nraValue = (data.NRA || '').toString().trim();
+                        if (!nraValue) {
+                            // Apply default: if NRL is 'NRL', default to 'NRA', otherwise 'RA'
+                            var nrlValue = (data.NRL || 'REQ').toString().trim();
+                            nraValue = (nrlValue === 'NRL') ? 'NRA' : 'RA';
+                        }
+                        
+                        return nraValue === nraFilter;
                     });
                 }
 
@@ -4695,17 +4704,6 @@
                 
                 if (selectedSkusList.length === 0) {
                     alert('Please select at least one row');
-                    return;
-                }
-                
-                var confirmMessage = 'Are you sure you want to mark ' + selectedSkusList.length + ' row(s) as ' + action + '?';
-                if (action === 'PAUSE') {
-                    confirmMessage = 'Are you sure you want to PAUSE campaigns for ' + selectedSkusList.length + ' row(s)?';
-                } else if (action === 'ACTIVATE') {
-                    confirmMessage = 'Are you sure you want to ACTIVATE campaigns for ' + selectedSkusList.length + ' row(s)?';
-                }
-                
-                if (!confirm(confirmMessage)) {
                     return;
                 }
                 
