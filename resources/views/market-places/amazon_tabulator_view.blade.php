@@ -213,10 +213,10 @@
 
                     <select id="campaign-status-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="ALL">Campaign</option>
-                        <option value="ENABLED">Enabled</option>
+                        <option value="">Active Filter</option>
+                        <option value="ALL">All</option>
+                        <option value="ENABLED">Active</option>
                         <option value="PAUSED">Paused</option>
-                        <option value="ENDED">Ended</option>
                     </select>
 
                     <select id="nra-filter" class="form-select form-select-sm"
@@ -288,6 +288,30 @@
                         placeholder="Min" step="0.1" style="width: 60px; display: inline-block;">
                     <input type="number" id="acos-range-max" class="form-control form-control-sm" 
                         placeholder="Max" step="0.1" style="width: 60px; display: inline-block;">
+
+                    <!-- Selected Rows Count -->
+                    <span class="badge bg-primary fs-6 p-2 ms-2" id="selected-rows-count" style="display: none;">
+                        0 selected
+                    </span>
+                    <button class="btn btn-sm btn-outline-secondary ms-1" id="clear-selection-btn" style="display: none;" title="Clear Selection">
+                        <i class="fas fa-times"></i> Clear
+                    </button>
+
+                    <!-- Bulk Actions Dropdown -->
+                    <div class="dropdown d-inline-block ms-2" id="bulk-actions-container" style="display: none;">
+                        <button class="btn btn-sm btn-warning dropdown-toggle" type="button"
+                            id="bulkActionsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-tasks"></i> Bulk Actions
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="bulkActionsDropdown">
+                            <li><a class="dropdown-item bulk-action-item" href="#" data-action="NRA">Mark as NRA</a></li>
+                            <li><a class="dropdown-item bulk-action-item" href="#" data-action="RA">Mark as RA</a></li>
+                            <li><a class="dropdown-item bulk-action-item" href="#" data-action="LATER">Mark as LATER</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item bulk-action-item" href="#" data-action="PAUSE">Pause Campaigns</a></li>
+                            <li><a class="dropdown-item bulk-action-item" href="#" data-action="ACTIVATE">Activate Campaigns</a></li>
+                        </ul>
+                    </div>
 
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
@@ -1814,6 +1838,24 @@
                     }
                 },
                 columns: [
+                    // Row selection checkbox column
+                    {
+                        title: "<input type='checkbox' id='select-all-rows' title='Select All'>",
+                        field: "row_select",
+                        hozAlign: "center",
+                        headerSort: false,
+                        width: 40,
+                        frozen: true,
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var sku = row['(Child) sku'] || '';
+                            return "<input type='checkbox' class='row-select-checkbox' data-sku='" + sku + "'>";
+                        },
+                        cellClick: function(e, cell) {
+                            // Prevent row click event
+                            e.stopPropagation();
+                        }
+                    },
                     // {
                     //     title: "Parent",
                     //     field: "Parent",
@@ -4054,6 +4096,12 @@
                         var field = def.field;
                         if (!field) return;
                         
+                        // Always keep row_select column visible
+                        if (field === 'row_select') {
+                            table.showColumn(field);
+                            return;
+                        }
+                        
                         // Show columns that don't have visible: false in their definition
                         // Hide columns that have visible: false
                         if (def.visible === false) {
@@ -4084,9 +4132,9 @@
                     columnsToShow = hlAdsColumns;
                 }
                 
-                // Hide all columns first
+                // Hide all columns first (except row_select checkbox column)
                 allColumns.forEach(function(col) {
-                    if (table.getColumn(col)) {
+                    if (table.getColumn(col) && col !== 'row_select') {
                         table.hideColumn(col);
                     }
                 });
@@ -4098,6 +4146,11 @@
                     }
                 });
                 
+                // Always keep row_select column visible
+                if (table.getColumn('row_select')) {
+                    table.showColumn('row_select');
+                }
+                
                 // For KW Ads section: sort by ACOS descending and show all rows including parents
                 if (section === 'kw-ads') {
                     // Move columns in order after SKU: ACOS, Spend, Clicks, CVR, Reviews, then NRA, then Active toggle
@@ -4106,7 +4159,7 @@
                     table.moveColumn("l30_clicks", "l30_spend", true);  // KW Clicks after Spend
                     table.moveColumn("ad_cvr", "l30_clicks", true);     // KW CVR after Clicks
                     table.moveColumn("rating", "ad_cvr", true);         // Reviews after CVR
-                    table.moveColumn("NRA", "rating", true);            // KW NRA after Reviews
+                    table.moveColumn("NRA", "NRL", true);               // KW NRA after NRL
                     table.moveColumn("active_toggle", "NRA", true);     // Active toggle after NRA
                     
                     table.setSort("acos", "desc");
@@ -4551,8 +4604,222 @@
                     });
                     updateSelectAllCheckbox();
                     updateSeoCount();
+                    // Refresh row selection checkboxes to reflect selectedRows set
+                    $('.row-select-checkbox').each(function() {
+                        var sku = $(this).data('sku');
+                        $(this).prop('checked', selectedRows.has(sku));
+                    });
+                    updateRowSelectAllCheckbox();
+                    updateSelectedCount();
                 }, 100);
             });
+
+            // Row selection - track selected rows
+            var selectedRows = new Set();
+
+            // Select all rows checkbox handler
+            $(document).on('change', '#select-all-rows', function() {
+                var isChecked = $(this).prop('checked');
+                var visibleRows = table.getRows('active');
+                
+                visibleRows.forEach(function(row) {
+                    var sku = row.getData()['(Child) sku'] || '';
+                    if (isChecked) {
+                        selectedRows.add(sku);
+                    } else {
+                        selectedRows.delete(sku);
+                    }
+                });
+                
+                // Update all visible checkboxes
+                $('.row-select-checkbox').prop('checked', isChecked);
+                updateSelectedCount();
+            });
+
+            // Individual row checkbox handler
+            $(document).on('change', '.row-select-checkbox', function() {
+                var sku = $(this).data('sku');
+                if ($(this).prop('checked')) {
+                    selectedRows.add(sku);
+                } else {
+                    selectedRows.delete(sku);
+                }
+                updateRowSelectAllCheckbox();
+                updateSelectedCount();
+            });
+
+            // Update select all checkbox state based on individual checkboxes
+            function updateRowSelectAllCheckbox() {
+                var allCheckboxes = $('.row-select-checkbox');
+                var checkedCheckboxes = $('.row-select-checkbox:checked');
+                
+                if (allCheckboxes.length === 0) {
+                    $('#select-all-rows').prop('checked', false);
+                    $('#select-all-rows').prop('indeterminate', false);
+                } else if (checkedCheckboxes.length === 0) {
+                    $('#select-all-rows').prop('checked', false);
+                    $('#select-all-rows').prop('indeterminate', false);
+                } else if (checkedCheckboxes.length === allCheckboxes.length) {
+                    $('#select-all-rows').prop('checked', true);
+                    $('#select-all-rows').prop('indeterminate', false);
+                } else {
+                    $('#select-all-rows').prop('checked', false);
+                    $('#select-all-rows').prop('indeterminate', true);
+                }
+            }
+
+            // Update selected count display
+            function updateSelectedCount() {
+                var count = selectedRows.size;
+                if (count > 0) {
+                    $('#selected-rows-count').text(count + ' selected').show();
+                    $('#clear-selection-btn').show();
+                    $('#bulk-actions-container').show();
+                } else {
+                    $('#selected-rows-count').hide();
+                    $('#clear-selection-btn').hide();
+                    $('#bulk-actions-container').hide();
+                }
+            }
+
+            // Clear selection button handler
+            $('#clear-selection-btn').on('click', function() {
+                clearRowSelections();
+            });
+
+            // Bulk action handler
+            $(document).on('click', '.bulk-action-item', function(e) {
+                e.preventDefault();
+                var action = $(this).data('action');
+                var selectedSkusList = getSelectedSkus();
+                
+                if (selectedSkusList.length === 0) {
+                    alert('Please select at least one row');
+                    return;
+                }
+                
+                var confirmMessage = 'Are you sure you want to mark ' + selectedSkusList.length + ' row(s) as ' + action + '?';
+                if (action === 'PAUSE') {
+                    confirmMessage = 'Are you sure you want to PAUSE campaigns for ' + selectedSkusList.length + ' row(s)?';
+                } else if (action === 'ACTIVATE') {
+                    confirmMessage = 'Are you sure you want to ACTIVATE campaigns for ' + selectedSkusList.length + ' row(s)?';
+                }
+                
+                if (!confirm(confirmMessage)) {
+                    return;
+                }
+                
+                // Show loading
+                var $btn = $('#bulkActionsDropdown');
+                var originalText = $btn.html();
+                $btn.html('<i class="fas fa-spinner fa-spin"></i> Processing...').prop('disabled', true);
+                
+                // Handle PAUSE/ACTIVATE actions differently
+                if (action === 'PAUSE' || action === 'ACTIVATE') {
+                    var newStatus = action === 'ACTIVATE' ? 'ENABLED' : 'PAUSED';
+                    
+                    var promises = selectedSkusList.map(function(sku) {
+                        return fetch('/toggle-amazon-sku-ads', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                            },
+                            body: JSON.stringify({
+                                sku: sku,
+                                status: newStatus
+                            })
+                        }).then(function(res) { return res.json(); });
+                    });
+                    
+                    Promise.all(promises).then(function(results) {
+                        // Update table data
+                        selectedSkusList.forEach(function(sku) {
+                            var rows = table.getRows().filter(function(row) {
+                                return row.getData()['(Child) sku'] === sku;
+                            });
+                            rows.forEach(function(row) {
+                                row.update({
+                                    kw_campaign_status: newStatus,
+                                    pt_campaign_status: newStatus,
+                                    campaignStatus: newStatus,
+                                    ad_pause: newStatus === 'PAUSED'
+                                });
+                                row.reformat();
+                            });
+                        });
+                        
+                        // Show success message
+                        var statusText = newStatus === 'ENABLED' ? 'activated' : 'paused';
+                        showToast('success', selectedSkusList.length + ' campaign(s) ' + statusText);
+                        
+                        // Clear selections
+                        clearRowSelections();
+                        
+                        // Restore button
+                        $btn.html(originalText).prop('disabled', false);
+                    }).catch(function(err) {
+                        console.error('Bulk action error:', err);
+                        alert('Error processing bulk action: ' + (err.message || 'Unknown error'));
+                        $btn.html(originalText).prop('disabled', false);
+                    });
+                } else {
+                    // Handle NRA/RA/LATER actions
+                    var promises = selectedSkusList.map(function(sku) {
+                        return fetch('/update-amazon-nr-nrl-fba', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                            },
+                            body: JSON.stringify({
+                                sku: sku,
+                                field: 'NRA',
+                                value: action
+                            })
+                        }).then(function(res) { return res.json(); });
+                    });
+                    
+                    Promise.all(promises).then(function(results) {
+                        // Update table data
+                        selectedSkusList.forEach(function(sku) {
+                            var rows = table.getRows().filter(function(row) {
+                                return row.getData()['(Child) sku'] === sku;
+                            });
+                            rows.forEach(function(row) {
+                                row.update({NRA: action});
+                            });
+                        });
+                        
+                        // Show success message
+                        showToast('success', selectedSkusList.length + ' row(s) marked as ' + action);
+                        
+                        // Clear selections
+                        clearRowSelections();
+                        
+                        // Restore button
+                        $btn.html(originalText).prop('disabled', false);
+                    }).catch(function(err) {
+                        console.error('Bulk action error:', err);
+                        alert('Error processing bulk action: ' + (err.message || 'Unknown error'));
+                        $btn.html(originalText).prop('disabled', false);
+                    });
+                }
+            });
+
+            // Function to get all selected SKUs
+            function getSelectedSkus() {
+                return Array.from(selectedRows);
+            }
+
+            // Function to clear all selections
+            function clearRowSelections() {
+                selectedRows.clear();
+                $('.row-select-checkbox').prop('checked', false);
+                $('#select-all-rows').prop('checked', false);
+                $('#select-all-rows').prop('indeterminate', false);
+                updateSelectedCount();
+            }
 
             // Toggle column from dropdown
             document.getElementById("column-dropdown-menu").addEventListener("change", function(e) {
