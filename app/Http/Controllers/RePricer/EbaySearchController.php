@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\EbayCompetitorItem;
 use App\Models\EbaySkuCompetitor;
 use App\Models\AmazonDatasheet;
+use App\Models\ProductMaster;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Validator;
@@ -49,7 +50,7 @@ class EbaySearchController extends Controller
         }
 
         $collectedItemIds = [];
-        $maxPages = 5;
+        $maxPages = 10; // Increased from 5 to 10 for more comprehensive results
 
         try {
             // Fetch up to 5 pages of results
@@ -270,23 +271,26 @@ class EbaySearchController extends Controller
 
     /**
      * Get SKUs for dropdown
+     * Fetches from product_master to show all available SKUs
      *
      * @return \Illuminate\Http\JsonResponse
      */
     public function getSkus()
     {
-        // Get unique SKUs from amazon_datsheets (can be used for eBay as well)
-        $skus = AmazonDatasheet::select('sku')
+        // Get unique SKUs from product_master (excludes PARENT SKUs)
+        $skus = ProductMaster::select('sku')
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
+            ->where('sku', 'NOT LIKE', 'PARENT%')
             ->distinct()
             ->orderBy('sku', 'asc')
-            ->limit(1000)
             ->pluck('sku');
 
         return response()->json([
             'success' => true,
-            'data' => $skus
+            'data' => $skus,
+            'total' => $skus->count(),
+            'source' => 'product_master'
         ]);
     }
 

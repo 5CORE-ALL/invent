@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AmazonCompetitorAsin;
 use App\Models\AmazonSkuCompetitor;
 use App\Models\AmazonDatasheet;
+use App\Models\ProductMaster;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Validator;
@@ -236,23 +237,26 @@ class AmazonSearchController extends Controller
 
     /**
      * Get SKUs for dropdown
+     * Fetches from product_master to show all available SKUs
      *
      * @return \Illuminate\Http\JsonResponse
      */
     public function getSkus()
     {
-        // Get unique SKUs from amazon_datsheets
-        $skus = AmazonDatasheet::select('sku')
+        // Get unique SKUs from product_master (excludes PARENT SKUs)
+        $skus = ProductMaster::select('sku')
             ->whereNotNull('sku')
             ->where('sku', '!=', '')
+            ->where('sku', 'NOT LIKE', 'PARENT%')
             ->distinct()
             ->orderBy('sku', 'asc')
-            ->limit(1000)
             ->pluck('sku');
 
         return response()->json([
             'success' => true,
-            'data' => $skus
+            'data' => $skus,
+            'total' => $skus->count(),
+            'source' => 'product_master'
         ]);
     }
 

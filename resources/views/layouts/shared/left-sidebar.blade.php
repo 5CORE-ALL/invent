@@ -1447,15 +1447,7 @@
                     <span class="menu-arrow"></span>
                 </a>
                 <div class="collapse" id="lmpsMaster">
-                    <ul class="side-nav-second-level">
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#amazonLmps" aria-expanded="false"
-                                aria-controls="amazonLmps">
-                                <span>Amazon LMP's</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="amazonLmps">
-                                <ul class="side-nav-third-level">
+                   <ul class="side-nav-third-level">
                                     <li>
                                         <a href="{{ url('/repricer/amazon-search') }}"
                                             class="{{ request()->is('repricer/amazon-search*') ? 'active' : '' }}">
@@ -1469,9 +1461,6 @@
                                         </a>
                                     </li>
                                 </ul>
-                            </div>
-                        </li>
-                    </ul>
                 </div>
             </li>
 
@@ -1836,7 +1825,7 @@
                             </div>
                         </li> --}}
 
-                        {{-- eBay --}}
+                        {{-- Amazon Competitors--}}
                         <li class="side-nav-item">
                             <a data-bs-toggle="collapse" href="#sidebarThirdLevel" aria-expanded="false"
                                 aria-controls="sidebarThirdLevel">
