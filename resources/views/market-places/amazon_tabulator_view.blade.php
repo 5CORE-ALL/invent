@@ -167,8 +167,9 @@
 
                     <select id="parent-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="show">Show Parent</option>
-                        <option value="hide" selected>Hide Parent</option>
+                        <option value="all">All Rows</option>
+                        <option value="parents">Parents</option>
+                        <option value="skus" selected>SKUs</option>
                     </select>
 
                     <select id="status-filter" class="form-select form-select-sm"
@@ -3764,11 +3765,19 @@
                     });
                 }
 
-                if (parentFilter === 'hide') {
+                // Filter Rows: parents, skus, or all
+                if (parentFilter === 'parents') {
+                    // Show only parent rows
+                    table.addFilter(function(data) {
+                        return data.is_parent_summary === true;
+                    });
+                } else if (parentFilter === 'skus') {
+                    // Show all rows except parent rows
                     table.addFilter(function(data) {
                         return data.is_parent_summary !== true;
                     });
                 }
+                // If 'all', don't add any filter - show all rows
 
                 if (statusFilter !== 'all') {
                     table.addFilter(function(data) {
