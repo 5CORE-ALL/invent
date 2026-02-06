@@ -66,9 +66,9 @@ class WalmartSalesController extends Controller
             }
 
             $latestDateCarbon = Carbon::parse($latestDate);
-            // Get 30 days EXCLUDING today: from (latest - 30 days) to (latest - 1 day)
-            $endDate = $latestDateCarbon->copy()->subDay()->endOfDay(); // Yesterday
-            $startDate = $endDate->copy()->subDays(29)->startOfDay(); // 30 days before yesterday
+            // Get 31 days from latest order date
+            $endDate = $latestDateCarbon->endOfDay(); // Latest date in DB
+            $startDate = $latestDateCarbon->copy()->subDays(30)->startOfDay(); // 31 days before latest
 
             // Get Walmart percentage from database (default 80%)
             $marketplaceData = MarketplacePercentage::where('marketplace', 'Walmart')->first();

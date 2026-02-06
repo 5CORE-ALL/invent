@@ -99,12 +99,19 @@
                 </div>
             </li>
 
-          <li class="side-nav-item">
-    <a href="{{ url('/pricing-master-cvr') }}" class="side-nav-link">
-        <i class="ri-user-line"></i>
-        <span>Pricing  Master</span>
-    </a>
-</li>
+            <li class="side-nav-item">
+                <a href="{{ url('/pricing-master-cvr') }}" class="side-nav-link">
+                    <i class="ri-file-line"></i>
+                    <span>Pricing Master</span>
+                </a>
+            </li>
+
+                <li class="side-nav-item">
+                <a href="{{ url('/cvr-master') }}" class="side-nav-link">
+                    <i class="ri-file-line"></i>
+                    <span>CVR Master</span>
+                </a>
+            </li>
 
 
 
@@ -241,7 +248,7 @@
             </li>
 
 
-        
+
 
             <li class="side-nav-item">
                 <a data-bs-toggle="collapse" href="#sidebarPagess" aria-expanded="false"
@@ -298,7 +305,7 @@
                         <li>
                             <a href="{{ route('target.products.master') }}">Target Products Master</a>
                         </li>
-                        
+
                         <li>
                             <a href="{{ route('tag.lines.master') }}">Tag lines Masters</a>
                         </li>
@@ -681,7 +688,7 @@
                             </a>
                             <div class="collapse" id="activeChannelMasyer">
                                 <ul class="side-nav-third-level">
-                                
+
                                     <li>
                                         <a href="{{ route('all.marketplace.master') }}">Active Channels</a>
                                     </li>
@@ -1428,8 +1435,8 @@
 
             {{-- LMP's Master --}}
             <li class="side-nav-item">
-                <a data-bs-toggle="collapse" href="#lmpsMaster" aria-expanded="false"
-                    aria-controls="lmpsMaster" class="side-nav-link">
+                <a data-bs-toggle="collapse" href="#lmpsMaster" aria-expanded="false" aria-controls="lmpsMaster"
+                    class="side-nav-link">
                     <i class="ri-price-tag-3-line"></i>
                     <span>LMP's Master</span>
                     <span class="menu-arrow"></span>
@@ -1445,12 +1452,14 @@
                             <div class="collapse" id="amazonLmps">
                                 <ul class="side-nav-third-level">
                                     <li>
-                                        <a href="{{ url('/repricer/amazon-search') }}" class="{{ request()->is('repricer/amazon-search*') ? 'active' : '' }}">
+                                        <a href="{{ url('/repricer/amazon-search') }}"
+                                            class="{{ request()->is('repricer/amazon-search*') ? 'active' : '' }}">
                                             Amazon Competitors
                                         </a>
                                     </li>
                                     <li>
-                                        <a href="{{ url('/repricer/ebay-search') }}" class="{{ request()->is('repricer/ebay-search*') ? 'active' : '' }}">
+                                        <a href="{{ url('/repricer/ebay-search') }}"
+                                            class="{{ request()->is('repricer/ebay-search*') ? 'active' : '' }}">
                                             eBay Competitors
                                         </a>
                                     </li>
@@ -1551,7 +1560,7 @@
                                         <a href="{{ url('/amazon-tabulator-view') }}">Amz FBM
                                         </a>
                                     </li>
-                                      <li>
+                                    <li>
 
                                         <a href="{{ url('/amazonpricing-cvr-tabular') }}">Amz FBM SEO
                                         </a>
@@ -1568,24 +1577,26 @@
                                     </li>
 
                                     <li>
-                                        <a data-bs-toggle="collapse" href="#amazonTargetingCheck" aria-expanded="false"
-                                            aria-controls="amazonTargetingCheck">
+                                        <a data-bs-toggle="collapse" href="#amazonTargetingCheck"
+                                            aria-expanded="false" aria-controls="amazonTargetingCheck">
                                             <span>TARGETING CHECK</span>
                                             <span class="menu-arrow"></span>
                                         </a>
                                         <div class="collapse" id="amazonTargetingCheck">
                                             <ul class="side-nav-fourth-level">
                                                 <li>
-                                                    <a href="{{ route('amazon.fbm.targeting.check.kw') }}">TARGET KW</a>
+                                                    <a href="{{ route('amazon.fbm.targeting.check.kw') }}">TARGET
+                                                        KW</a>
                                                 </li>
                                                 <li>
-                                                    <a href="{{ route('amazon.fbm.targeting.check.pt') }}">TARGET PT</a>
+                                                    <a href="{{ route('amazon.fbm.targeting.check.pt') }}">TARGET
+                                                        PT</a>
                                                 </li>
                                             </ul>
                                         </div>
                                     </li>
 
-                                 
+
 
 
                                     {{-- <li>
@@ -1829,11 +1840,11 @@
                             </a>
                             <div class="collapse" id="sidebarThirdLevel">
                                 <ul class="side-nav-third-level">
-                                   
+
                                     <li>
                                         <a href="{{ route('adcvr.ebay') }}">Ebay Ads - CVR</a>
                                     </li>
-                                   
+
 
                                     <li>
                                         <a href="{{ route('listing.ebay') }}">Listing EBay</a>
@@ -1845,7 +1856,7 @@
 
                                     <li>
                                         <a href="{{ url('ebay-tabulator-view') }}">Ebay Pricing
-                                             </a>
+                                        </a>
                                     </li>
 
                                     {{-- <li>
@@ -1905,10 +1916,10 @@
                                     </li>
                                     <li>
                                         <a href="{{ route('ebay.running.ads') }}">Ebay Running Ads</a>
-                                    </li>--}}
+                                    </li> --}}
                                     <li>
                                         <a href="{{ route('ebay.utilized') }}">Ebay Utilized's</a>
-                                    </li> 
+                                    </li>
                                     {{-- <li>
                                         <a href="{{ route('ebay-over-uti') }}">Ebay OVER UTIL.</a>
                                     </li>
@@ -1945,10 +1956,10 @@
                                 <ul class="side-nav-third-level">
 
                                     <li>
-                                        <a data-bs-toggle="collapse" href="#shopifyb2cSubmenu"
-                                            aria-expanded="false" aria-controls="shopifyb2cSubmenu">
+                                        <a data-bs-toggle="collapse" href="#shopifyb2cSubmenu" aria-expanded="false"
+                                            aria-controls="shopifyb2cSubmenu">
                                             <span>Shopify B2C View</span>
-                                           
+
                                         </a>
 
                                     </li>
@@ -2003,7 +2014,7 @@
 
 
 
-                                
+
                                 </ul>
                             </div>
                         </li>
@@ -2023,7 +2034,8 @@
                                         <a href="{{ route('wayfair.zero.view') }}">Wayfair 0 View</a>
                                     </li>
                                     <li>
-                                        <a href="{{ route('wayfair.low.visibility.view') }}">Wayfair Low Visibility</a>
+                                        <a href="{{ route('wayfair.low.visibility.view') }}">Wayfair Low
+                                            Visibility</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('listing.wayfair') }}">Listing Wayfair</a>
@@ -2109,7 +2121,7 @@
                                         </a>
                                         <div class="collapse" id="dobaSubmenu">
                                             <ul class="side-nav-fourth-level">
-                                              
+
                                                 <li>
                                                     <a href="{{ route('zero.doba') }}">Doba 0 view</a>
                                                 </li>
@@ -2117,9 +2129,9 @@
                                         </div>
                                     </li>
 
-                                      <li>
-                                                    <a href="{{ url('doba-tabulator') }}">Doba pricing</a>
-                                                </li>
+                                    <li>
+                                        <a href="{{ url('doba-tabulator') }}">Doba pricing</a>
+                                    </li>
                                     <li>
                                         <a href="{{ route('listing.doba') }}">Listing Doba</a>
                                     </li>
@@ -2149,7 +2161,7 @@
                                         </a>
                                         <div class="collapse" id="ebay2Submenu">
                                             <ul class="side-nav-fourth-level">
-                                               
+
 
                                                 <li>
                                                     <a href="{{ route('ebay2.low.visibility.view') }}">Ebay
@@ -2163,8 +2175,8 @@
                                             </ul>
                                         </div>
                                     </li>
- <li> <a href="{{ url('ebay2-tabulator-view') }}">Ebay 2 Pricing </a>
-                                                </li>
+                                    <li> <a href="{{ url('ebay2-tabulator-view') }}">Ebay 2 Pricing </a>
+                                    </li>
 
                                     <li>
                                         <a href="{{ route('listing.ebayTwo') }}">Listing Ebay 2</a>
@@ -2205,7 +2217,7 @@
                                         </a>
                                         <div class="collapse" id="ebay3Submenu">
                                             <ul class="side-nav-fourth-level">
-                                                
+
 
                                                 <li>
                                                     <a href="{{ route('ebay3.low.visibility.view') }}">Ebay
@@ -2219,14 +2231,14 @@
                                             </ul>
                                         </div>
                                     </li>
-<li>
+                                    <li>
                                         <a href="{{ url('ebay3-tabulator-view') }}">Ebay 3 Pricing Decrease</a>
                                     </li>
                                     <li>
                                         <a href="{{ route('listing.ebayThree') }}">Listing Ebay 3</a>
                                     </li>
 
-                                    
+
                                     {{-- <li>
                                         <a data-bs-toggle="collapse" href="#ebay3AcosSubmenu"
                                             aria-expanded="false" aria-controls="ebay3AcosSubmenu">
@@ -2328,420 +2340,420 @@
                                             <span>Walmart View</span>
                                             <span class="menu-arrow"></span>
                                         </a>
-                                         <li>
+                                    <li>
                                         <a href="{{ route('walmart.sheet.upload') }}">Walmart Pricing</a>
                                     </li>
-                                        <div class="collapse" id="walmartSubmenu">
-                                            <ul class="side-nav-fourth-level">
-                                                {{-- <li>
+                                    <div class="collapse" id="walmartSubmenu">
+                                        <ul class="side-nav-fourth-level">
+                                            {{-- <li>
                                                     <a href="{{ url('walmartAnalysis') }}">Walmart's
                                                         Analytics</a>
                                                 </li> --}}
 
-                                               
-                                            </ul>
-                                        </div>
-                                    </li>
 
-                                    <li>
-                                        <a href="{{ route('listing.walmart') }}">Listing Walmart</a>
-                                    </li>
-                                    {{-- <li>
+                                        </ul>
+                                    </div>
+                        </li>
+
+                        <li>
+                            <a href="{{ route('listing.walmart') }}">Listing Walmart</a>
+                        </li>
+                        {{-- <li>
                                         <a href="{{ url('walmart-tabulator-view') }}">Walmart Pricing - CVR</a>
                                     </li> --}}
-                                    
+
+                        <li>
+                            <a href="{{ route('walmart.utilized.bgt') }}">Walmart BGT Util.</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('walmart.utilized.kw') }}">Walmart Kw Ads Report</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('walmart.over.utilized') }}">Walmart Over Utili.</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('walmart.under.utilized') }}">Walmart Under Utili.</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('walmart.correctly.utilized') }}">Walmart Correctly
+                                Utili.</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('walmart.missing.ads') }}">Walmart Missing Ads</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('walmart.running.ads') }}">Walmart Running Ads</a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarGoogleShopping" aria-expanded="false"
+                    aria-controls="sidebarGoogleShopping">
+                    <span> Google Ads </span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarGoogleShopping">
+                    <ul class="side-nav-third-level">
+                        <li>
+                            <a href="{{ route('google.shopping.running') }}">G-Shopping Running Ads</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('google.shopping.utilized') }}">G-Shopping Utilized's</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('google.shopping.report') }}">G-Shopping Report</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('google.serp.list') }}">Google SERP</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('google.serp.report') }}">Google SERP Report</a>
+                        </li>
+                        <li>
+                            <a href="{{ route('google.pmax.list') }}">Google PMAX</a>
+                        </li>
+
+                        <li class="side-nav-item">
+                            <a data-bs-toggle="collapse" href="#sidebarFacebook" aria-expanded="false"
+                                aria-controls="sidebarFacebook">
+                                <span> Facebook </span>
+                                <span class="menu-arrow"></span>
+                            </a>
+                            <div class="collapse" id="sidebarFacebook">
+                                <ul class="side-nav-fourth-level">
                                     <li>
-                                        <a href="{{ route('walmart.utilized.bgt') }}">Walmart BGT Util.</a>
+                                        <a href="{{ route('facebook.image.ads') }}">FB Image Ads</a>
                                     </li>
                                     <li>
-                                        <a href="{{ route('walmart.utilized.kw') }}">Walmart Kw Ads Report</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('walmart.over.utilized') }}">Walmart Over Utili.</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('walmart.under.utilized') }}">Walmart Under Utili.</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('walmart.correctly.utilized') }}">Walmart Correctly
-                                            Utili.</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('walmart.missing.ads') }}">Walmart Missing Ads</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('walmart.running.ads') }}">Walmart Running Ads</a>
+                                        <a href="{{ route('facebook.ads.master') }}">FB Video Ads</a>
                                     </li>
                                 </ul>
                             </div>
                         </li>
+                    </ul>
+                </div>
+            </li>
 
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#sidebarGoogleShopping" aria-expanded="false"
-                                aria-controls="sidebarGoogleShopping">
-                                <span> Google Ads </span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="sidebarGoogleShopping">
-                                <ul class="side-nav-third-level">
-                                    <li>
-                                        <a href="{{ route('google.shopping.running') }}">G-Shopping Running Ads</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('google.shopping.utilized') }}">G-Shopping Utilized's</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('google.shopping.report') }}">G-Shopping Report</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('google.serp.list') }}">Google SERP</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('google.serp.report') }}">Google SERP Report</a>
-                                    </li>
-                                    <li>
-                                        <a href="{{ route('google.pmax.list') }}">Google PMAX</a>
-                                    </li>
+            <!-- Aliexpress -->
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarAliexpress" aria-expanded="false"
+                    aria-controls="sidebarAliexpress">
+                    <span>Aliexpress</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarAliexpress">
+                    <ul class="side-nav-third-level">
+                        <!-- <li><a href="#">Aliexpress Analytics</a></li> -->
 
-                                    <li class="side-nav-item">
-                                        <a data-bs-toggle="collapse" href="#sidebarFacebook" aria-expanded="false"
-                                            aria-controls="sidebarFacebook">
-                                            <span> Facebook </span>
-                                            <span class="menu-arrow"></span>
-                                        </a>
-                                        <div class="collapse" id="sidebarFacebook">
-                                            <ul class="side-nav-fourth-level">
-                                                <li>
-                                                    <a href="{{ route('facebook.image.ads') }}">FB Image Ads</a>
-                                                </li>
-                                                <li>
-                                                    <a href="{{ route('facebook.ads.master') }}">FB Video Ads</a>
-                                                </li>
-                                            </ul>
-                                        </div>
-                                    </li>
-                                </ul>
-                            </div>
+                        <li>
+                            <a href="{{ route('zero.aliexpress') }}">Aliexpress 0 view</a>
                         </li>
 
-                        <!-- Aliexpress -->
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#sidebarAliexpress" aria-expanded="false"
-                                aria-controls="sidebarAliexpress">
-                                <span>Aliexpress</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="sidebarAliexpress">
-                                <ul class="side-nav-third-level">
-                                    <!-- <li><a href="#">Aliexpress Analytics</a></li> -->
-                                   
-                                    <li>
-                                        <a href="{{ route('zero.aliexpress') }}">Aliexpress 0 view</a>
-                                    </li>
+                        <li><a href="{{ route('listing.aliexpress') }}">Listing Aliexpress</a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
 
-                                    <li><a href="{{ route('listing.aliexpress') }}">Listing Aliexpress</a>
-                                    </li>
-                                </ul>
-                            </div>
+            <!-- Shopify wholesale/DS -->
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarShopifyWholesale" aria-expanded="false"
+                    aria-controls="sidebarShopifyWholesale">
+                    <span>Shopify wholesale/DS</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarShopifyWholesale">
+                    <ul class="side-nav-third-level">
+                        <li><a href="#">Shopify Wholesale Analytics</a></li>
+
+                        <li>
+                            <a href="{{ route('zero.shopifywholesale') }}">Shopify Wholesale 0
+                                view</a>
                         </li>
 
-                        <!-- Shopify wholesale/DS -->
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#sidebarShopifyWholesale" aria-expanded="false"
-                                aria-controls="sidebarShopifyWholesale">
-                                <span>Shopify wholesale/DS</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="sidebarShopifyWholesale">
-                                <ul class="side-nav-third-level">
-                                    <li><a href="#">Shopify Wholesale Analytics</a></li>
-
-                                    <li>
-                                        <a href="{{ route('zero.shopifywholesale') }}">Shopify Wholesale 0
-                                            view</a>
-                                    </li>
-
-                                    <li><a href="{{ route('listing.shopifywholesale') }}">Listing Shopify
-                                            wholesale/DS</a></li>
-                                </ul>
-                            </div>
-                        </li>
-                        <!-- Faire -->
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#sidebarFaire" aria-expanded="false"
-                                aria-controls="sidebarFaire">
-                                <span>Faire</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="sidebarFaire">
-                                <ul class="side-nav-third-level">
-                                    <li><a href="{{ url('faireAnalysis') }}">Faire Analytics</a></li>
-                                    <li><a href="{{ route('zero.faire') }}">Faire 0 view</a></li>
-                                    <li><a href="{{ route('listing.faire') }}">Listing Faire</a></li>
-                                </ul>
-                            </div>
-                        </li>
-                        <!-- Tiktok Shop -->
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#sidebarTiktokShop" aria-expanded="false"
-                                aria-controls="sidebarTiktokShop">
-                                <span>Tiktok Shop</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="sidebarTiktokShop">
-                                <ul class="side-nav-third-level">
-                                    {{-- <li>
+                        <li><a href="{{ route('listing.shopifywholesale') }}">Listing Shopify
+                                wholesale/DS</a></li>
+                    </ul>
+                </div>
+            </li>
+            <!-- Faire -->
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarFaire" aria-expanded="false"
+                    aria-controls="sidebarFaire">
+                    <span>Faire</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarFaire">
+                    <ul class="side-nav-third-level">
+                        <li><a href="{{ url('faireAnalysis') }}">Faire Analytics</a></li>
+                        <li><a href="{{ route('zero.faire') }}">Faire 0 view</a></li>
+                        <li><a href="{{ route('listing.faire') }}">Listing Faire</a></li>
+                    </ul>
+                </div>
+            </li>
+            <!-- Tiktok Shop -->
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarTiktokShop" aria-expanded="false"
+                    aria-controls="sidebarTiktokShop">
+                    <span>Tiktok Shop</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarTiktokShop">
+                    <ul class="side-nav-third-level">
+                        {{-- <li>
                                         <a href="{{ url('tiktokAnalysis') }}">Tiktok Shop Analytics</a>
                                     </li> --}}
 
-                                    <li>
-                                        <a href="{{ route('zero.tiktokshop') }}">Tiktok Shop 0 view</a>
-                                    </li>
+                        <li>
+                            <a href="{{ route('zero.tiktokshop') }}">Tiktok Shop 0 view</a>
+                        </li>
 
-                                    <li><a href="{{ route('listing.tiktokshop') }}">Listing Tiktok Shop</a>
-                                    </li>
-                                    {{-- <li><a href="{{ route('tiktokshop.ads') }}">Tiktok Shop Ads</a>
+                        <li><a href="{{ route('listing.tiktokshop') }}">Listing Tiktok Shop</a>
+                        </li>
+                        {{-- <li><a href="{{ route('tiktokshop.ads') }}">Tiktok Shop Ads</a>
                                     </li> --}}
-                                    <li><a href="{{ route('tiktok.pricing') }}">TikTok Shop Analytics</a>
-                                    </li>
-                                    <li><a href="{{ route('tiktok.utilized') }}">TikTok Shop Ads</a>
-                                    </li>
-                                </ul>
-                            </div>
+                        <li><a href="{{ route('tiktok.pricing') }}">TikTok Shop Analytics</a>
                         </li>
-                        <!-- Mercari w Ship -->
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#sidebarMercariWShip" aria-expanded="false"
-                                aria-controls="sidebarMercariWShip">
-                                <span>Mercari w Ship</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="sidebarMercariWShip">
-                                <ul class="side-nav-third-level">
-                                    <li><a href="{{ url('mercariAnalysis') }}">Mercari w Ship Analytics</a></li>
-
-                                    <li>
-                                        <a href="{{ route('zero.mercariwship') }}">Mercari w Ship 0 view</a>
-                                    </li>
-
-                                    <li><a href="{{ route('listing.mercariwship') }}">Listing Mercari w
-                                            Ship</a></li>
-                                </ul>
-                            </div>
+                        <li><a href="{{ route('tiktok.utilized') }}">TikTok Shop Ads</a>
                         </li>
-                        <!-- FB Marketplace -->
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#sidebarFBMarketplace" aria-expanded="false"
-                                aria-controls="sidebarFBMarketplace">
-                                <span>FB Marketplace</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="sidebarFBMarketplace">
-                                <ul class="side-nav-third-level">
-                                    <li><a href="{{ url('fbmarketplaceAnalysis') }}">FB Marketplace Analytics</a>
-                                    </li>
+                    </ul>
+                </div>
+            </li>
+            <!-- Mercari w Ship -->
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarMercariWShip" aria-expanded="false"
+                    aria-controls="sidebarMercariWShip">
+                    <span>Mercari w Ship</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarMercariWShip">
+                    <ul class="side-nav-third-level">
+                        <li><a href="{{ url('mercariAnalysis') }}">Mercari w Ship Analytics</a></li>
 
-                                    <li>
-                                        <a href="{{ route('zero.fbmarketplace') }}">FB Marketplace 0
-                                            view</a>
-                                    </li>
-
-                                    <li><a href="{{ route('listing.fbmarketplace') }}">Listing FB
-                                            Marketplace</a></li>
-                                </ul>
-                            </div>
-                        </li>
-                        <!-- Business 5Core -->
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#sidebarBusiness5Core" aria-expanded="false"
-                                aria-controls="sidebarBusiness5Core">
-                                <span>Business 5Core</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="sidebarBusiness5Core">
-                                <ul class="side-nav-third-level">
-                                    <li><a href="{{ url('business5coreAnalysis') }}">Business 5Core Analytics</a>
-                                    </li>
-
-                                    <li>
-                                        <a href="{{ route('zero.business5core') }}">Business 5Core 0
-                                            view</a>
-                                    </li>
-
-                                    <li><a href="{{ route('listing.business5core') }}">Listing Business
-                                            5Core</a></li>
-                                </ul>
-                            </div>
-                        </li>
-                        <!-- PLS -->
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#sidebarPLS" aria-expanded="false"
-                                aria-controls="sidebarPLS">
-                                <span>PLS</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="sidebarPLS">
-                                <ul class="side-nav-third-level">
-                                    <li><a href="{{ url('plsAnalysis') }}">PLS Analytics</a></li>
-
-                                    <li>
-                                        <a href="{{ route('zero.pls') }}">PLS 0 view</a>
-                                    </li>
-
-                                    <li><a href="{{ route('listing.pls') }}">Listing PLS</a></li>
-                                </ul>
-                            </div>
+                        <li>
+                            <a href="{{ route('zero.mercariwship') }}">Mercari w Ship 0 view</a>
                         </li>
 
-
-                        <!-- Mercari w/o Ship -->
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#sidebarMercariWoShip" aria-expanded="false"
-                                aria-controls="sidebarMercariWoShip">
-                                <span>Mercari w/o Ship</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="sidebarMercariWoShip">
-                                <ul class="side-nav-third-level">
-                                    <li><a href="{{ url('mercariwoshipAnalysis') }}">Mercari w/o Ship Analytics</a>
-                                    </li>
-
-                                    <li>
-                                        <a href="{{ route('zero.mercariwoship') }}">Mercari w/o Ship 0
-                                            view</a>
-                                    </li>
-
-                                    <li><a href="{{ route('listing.mercariwoship') }}">Listing Mercari w/o
-                                            Ship</a></li>
-                                </ul>
-                            </div>
+                        <li><a href="{{ route('listing.mercariwship') }}">Listing Mercari w
+                                Ship</a></li>
+                    </ul>
+                </div>
+            </li>
+            <!-- FB Marketplace -->
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarFBMarketplace" aria-expanded="false"
+                    aria-controls="sidebarFBMarketplace">
+                    <span>FB Marketplace</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarFBMarketplace">
+                    <ul class="side-nav-third-level">
+                        <li><a href="{{ url('fbmarketplaceAnalysis') }}">FB Marketplace Analytics</a>
                         </li>
 
-
-                        <!-- Tiendamia -->
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#sidebarTiendamia" aria-expanded="false"
-                                aria-controls="sidebarTiendamia">
-                                <span>Tiendamia</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="sidebarTiendamia">
-                                <ul class="side-nav-third-level">
-                                    <li><a href="{{ url('tiendamiaAnalysis') }}">Tiendamia Analytics</a></li>
-
-                                    <li>
-                                        <a href="{{ route('zero.tiendamia') }}">Tiendamia 0 view</a>
-                                    </li>
-
-                                    <li><a href="{{ route('listing.tiendamia') }}">Listing Tiendamia</a>
-                                    </li>
-                                </ul>
-                            </div>
-                        </li>
-                        <!-- Shein -->
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#sidebarShein" aria-expanded="false"
-                                aria-controls="sidebarShein">
-                                <span>Shein</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="sidebarShein">
-                                <ul class="side-nav-third-level">
-                                    <li>
-                                        <a href="{{ url('sheinAnalysis') }}">Shein
-                                            Analytics</a>
-                                    </li>
-                                    <li><a href="{{ url('shein-tabulator') }}">Shein Daily Data</a></li>
-                                    <li><a href="{{ route('zero.shein') }}">Shein 0 view</a></li>
-                                    <li><a href="{{ route('listing.shein') }}">Listing Shein</a></li>
-                                </ul>
-                            </div>
+                        <li>
+                            <a href="{{ route('zero.fbmarketplace') }}">FB Marketplace 0
+                                view</a>
                         </li>
 
-
-                        <!-- FB Shop -->
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#sidebarFBShop" aria-expanded="false"
-                                aria-controls="sidebarFBShop">
-                                <span>FB Shop</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="sidebarFBShop">
-                                <ul class="side-nav-third-level">
-                                    <li><a href="{{ url('fbshopAnalysis') }}">FB Shop Analytics</a></li>
-                                    <li>
-                                        <a href="{{ route('zero.fbshop') }}">FB Shop 0 view</a>
-                                    </li>
-
-                                    <li><a href="{{ route('listing.fbshop') }}">Listing FB Shop</a></li>
-                                </ul>
-                            </div>
-                        </li>
-                        <!-- Instagram Shop -->
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#sidebarInstagramShop" aria-expanded="false"
-                                aria-controls="sidebarInstagramShop">
-                                <span>Instagram Shop</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="sidebarInstagramShop">
-                                <ul class="side-nav-third-level">
-                                    <li><a href="{{ url('instagramAnalysis') }}">Instagram Shop Analytics</a></li>
-
-                                    <li>
-                                        <a href="{{ route('zero.instagramshop') }}">Instagram Shop 0
-                                            view</a>
-                                    </li>
-
-                                    <li><a href="{{ route('listing.instagramshop') }}">Listing Instagram
-                                            Shop</a></li>
-                                </ul>
-                            </div>
+                        <li><a href="{{ route('listing.fbmarketplace') }}">Listing FB
+                                Marketplace</a></li>
+                    </ul>
+                </div>
+            </li>
+            <!-- Business 5Core -->
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarBusiness5Core" aria-expanded="false"
+                    aria-controls="sidebarBusiness5Core">
+                    <span>Business 5Core</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarBusiness5Core">
+                    <ul class="side-nav-third-level">
+                        <li><a href="{{ url('business5coreAnalysis') }}">Business 5Core Analytics</a>
                         </li>
 
-                        <!-- DHGate -->
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#sidebarDHGate" aria-expanded="false"
-                                aria-controls="sidebarDHGate">
-                                <span>DHGate</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="sidebarDHGate">
-                                <ul class="side-nav-third-level">
-                                    <li><a href="{{ route('zero.dhgate') }}">DHGate 0 view</a></li>
-
-                                    <li><a href="{{ route('listing.dhgate') }}">Listing DHGate</a></li>
-                                </ul>
-                            </div>
+                        <li>
+                            <a href="{{ route('zero.business5core') }}">Business 5Core 0
+                                view</a>
                         </li>
-                        <!-- Bestbuy USA -->
-                        <li class="side-nav-item">
-                            <a data-bs-toggle="collapse" href="#sidebarBestbuyUSA" aria-expanded="false"
-                                aria-controls="sidebarBestbuyUSA">
-                                <span>Bestbuy USA</span>
-                                <span class="menu-arrow"></span>
-                            </a>
-                            <div class="collapse" id="sidebarBestbuyUSA">
-                                <ul class="side-nav-third-level">
-                                      <li><a href="{{ route('bestbuy.pricing') }}">Best Buy Pricing</a></li>
-                                    <li><a href="{{ route('zero.bestbuyusa') }}">Bestbuy USA 0 view</a></li>
 
-                                    <li><a href="{{ route('listing.bestbuyusa') }}">Listing Bestbuy USA</a>
-                                    </li>
+                        <li><a href="{{ route('listing.business5core') }}">Listing Business
+                                5Core</a></li>
+                    </ul>
+                </div>
+            </li>
+            <!-- PLS -->
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarPLS" aria-expanded="false"
+                    aria-controls="sidebarPLS">
+                    <span>PLS</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarPLS">
+                    <ul class="side-nav-third-level">
+                        <li><a href="{{ url('plsAnalysis') }}">PLS Analytics</a></li>
 
-                                  
-                                </ul>
-                            </div>
+                        <li>
+                            <a href="{{ route('zero.pls') }}">PLS 0 view</a>
                         </li>
+
+                        <li><a href="{{ route('listing.pls') }}">Listing PLS</a></li>
+                    </ul>
+                </div>
+            </li>
+
+
+            <!-- Mercari w/o Ship -->
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarMercariWoShip" aria-expanded="false"
+                    aria-controls="sidebarMercariWoShip">
+                    <span>Mercari w/o Ship</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarMercariWoShip">
+                    <ul class="side-nav-third-level">
+                        <li><a href="{{ url('mercariwoshipAnalysis') }}">Mercari w/o Ship Analytics</a>
+                        </li>
+
+                        <li>
+                            <a href="{{ route('zero.mercariwoship') }}">Mercari w/o Ship 0
+                                view</a>
+                        </li>
+
+                        <li><a href="{{ route('listing.mercariwoship') }}">Listing Mercari w/o
+                                Ship</a></li>
+                    </ul>
+                </div>
+            </li>
+
+
+            <!-- Tiendamia -->
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarTiendamia" aria-expanded="false"
+                    aria-controls="sidebarTiendamia">
+                    <span>Tiendamia</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarTiendamia">
+                    <ul class="side-nav-third-level">
+                        <li><a href="{{ url('tiendamiaAnalysis') }}">Tiendamia Analytics</a></li>
+
+                        <li>
+                            <a href="{{ route('zero.tiendamia') }}">Tiendamia 0 view</a>
+                        </li>
+
+                        <li><a href="{{ route('listing.tiendamia') }}">Listing Tiendamia</a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
+            <!-- Shein -->
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarShein" aria-expanded="false"
+                    aria-controls="sidebarShein">
+                    <span>Shein</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarShein">
+                    <ul class="side-nav-third-level">
+                        <li>
+                            <a href="{{ url('sheinAnalysis') }}">Shein
+                                Analytics</a>
+                        </li>
+                        <li><a href="{{ url('shein-tabulator') }}">Shein Daily Data</a></li>
+                        <li><a href="{{ route('zero.shein') }}">Shein 0 view</a></li>
+                        <li><a href="{{ route('listing.shein') }}">Listing Shein</a></li>
+                    </ul>
+                </div>
+            </li>
+
+
+            <!-- FB Shop -->
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarFBShop" aria-expanded="false"
+                    aria-controls="sidebarFBShop">
+                    <span>FB Shop</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarFBShop">
+                    <ul class="side-nav-third-level">
+                        <li><a href="{{ url('fbshopAnalysis') }}">FB Shop Analytics</a></li>
+                        <li>
+                            <a href="{{ route('zero.fbshop') }}">FB Shop 0 view</a>
+                        </li>
+
+                        <li><a href="{{ route('listing.fbshop') }}">Listing FB Shop</a></li>
+                    </ul>
+                </div>
+            </li>
+            <!-- Instagram Shop -->
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarInstagramShop" aria-expanded="false"
+                    aria-controls="sidebarInstagramShop">
+                    <span>Instagram Shop</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarInstagramShop">
+                    <ul class="side-nav-third-level">
+                        <li><a href="{{ url('instagramAnalysis') }}">Instagram Shop Analytics</a></li>
+
+                        <li>
+                            <a href="{{ route('zero.instagramshop') }}">Instagram Shop 0
+                                view</a>
+                        </li>
+
+                        <li><a href="{{ route('listing.instagramshop') }}">Listing Instagram
+                                Shop</a></li>
+                    </ul>
+                </div>
+            </li>
+
+            <!-- DHGate -->
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarDHGate" aria-expanded="false"
+                    aria-controls="sidebarDHGate">
+                    <span>DHGate</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarDHGate">
+                    <ul class="side-nav-third-level">
+                        <li><a href="{{ route('zero.dhgate') }}">DHGate 0 view</a></li>
+
+                        <li><a href="{{ route('listing.dhgate') }}">Listing DHGate</a></li>
+                    </ul>
+                </div>
+            </li>
+            <!-- Bestbuy USA -->
+            <li class="side-nav-item">
+                <a data-bs-toggle="collapse" href="#sidebarBestbuyUSA" aria-expanded="false"
+                    aria-controls="sidebarBestbuyUSA">
+                    <span>Bestbuy USA</span>
+                    <span class="menu-arrow"></span>
+                </a>
+                <div class="collapse" id="sidebarBestbuyUSA">
+                    <ul class="side-nav-third-level">
+                        <li><a href="{{ route('bestbuy.pricing') }}">Best Buy Pricing</a></li>
+                        <li><a href="{{ route('zero.bestbuyusa') }}">Bestbuy USA 0 view</a></li>
+
+                        <li><a href="{{ route('listing.bestbuyusa') }}">Listing Bestbuy USA</a>
+                        </li>
+
 
                     </ul>
                 </div>
             </li>
-        </ul>
-        <!--- End Sidemenu -->
 
-        <div class="clearfix"></div>
+        </ul>
     </div>
+    </li>
+    </ul>
+    <!--- End Sidemenu -->
+
+    <div class="clearfix"></div>
+</div>
 </div>
 <!-- ========== Left Sidebar End ========== -->
 

@@ -46,13 +46,13 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Walmart Daily Sales Data',
-        'sub_title' => 'Walmart USA Daily Sales Data Analysis (L30)',
+        'sub_title' => 'Walmart USA Daily Sales Data Analysis (L31)',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>Walmart Daily Sales Data (L30)</h4>
+                <h4>Walmart Daily Sales Data (L31)</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
