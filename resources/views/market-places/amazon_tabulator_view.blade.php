@@ -2349,7 +2349,7 @@
                     },
 
                     {
-                        title: "KW Prc",
+                        title: "Price",
                         field: "price",
                         hozAlign: "center",
                         formatter: function(cell) {
@@ -2460,6 +2460,7 @@
                         title: "TACOS",
                         field: "AD%",
                         hozAlign: "center",
+                        visible: false,
                         sorter: "number",
                         formatter: function(cell) {
                             const value = cell.getValue();
@@ -2489,6 +2490,7 @@
                         title: "KW ACOS",
                         field: "acos",
                         hozAlign: "right",
+                        visible: false,
                         minWidth: 72,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
@@ -3996,22 +3998,28 @@
                 // BGT, SBGT, ACOS, Clicks L7, Clicks L30, Spend L30, Sales L30, Ad Sold L30, AD CVR,
                 // 7 UB%, 1 UB%, AVG CPC, L7 CPC, L1 CPC, Last SBID, SBID, SBID M, APR BID, TPFT%, Status, CAMPAIGN
                 var kwAdsColumns = [
-                    'active_toggle',    // Active toggle
                     '(Child) sku',      // SKU
                     'acos',             // KW ACOS (first after SKU)
                     'l30_spend',        // KW Spend (after ACOS)
                     'l30_clicks',       // KW Clicks (after Spend)
                     'ad_cvr',           // KW CVR (after Clicks)
                     'rating',           // Reviews (after CVR)
-                    'campaignBudgetAmount', // BGT
+                    'campaignBudgetAmount', // KW BGT
                     'sbgt',             // SBGT
+                    'NRA',              // KW NRA
+                    'active_toggle',    // Active toggle (after NRA)
+                    'l7_clicks',        // Clicks L7
+                    'spend_l7_col',     // Spend L7
+                    'l7_sales',         // Sales L7
+                    'l7_purchases',     // Ad Sold L7
+                    'l30_sales',        // Sales L30
+                    'l30_purchases',    // Ad Sold L30
                     'INV',              // INV
                     'L30',              // OV L30
                     'E Dil%',           // DIL %
                     'A_L30',            // AL 30
                     'A DIL %',          // A DIL %
                     'NRL',              // NRL
-                    'NRA',              // NRA
                     'price',            // Price
                     'l7_spend',         // 7 UB%
                     'l1_spend',         // 1 UB%
@@ -4040,12 +4048,18 @@
                 ];
                 
                 if (section === 'all') {
-                    // Reset to default visibility - show all columns that were visible before
+                    // Reset to default visibility based on column definitions
                     table.getColumns().forEach(function(col) {
                         var def = col.getDefinition();
+                        var field = def.field;
+                        if (!field) return;
+                        
                         // Show columns that don't have visible: false in their definition
-                        if (def.visible !== false) {
-                            table.showColumn(def.field);
+                        // Hide columns that have visible: false
+                        if (def.visible === false) {
+                            table.hideColumn(field);
+                        } else {
+                            table.showColumn(field);
                         }
                     });
                     return;
@@ -4086,12 +4100,14 @@
                 
                 // For KW Ads section: sort by ACOS descending and show all rows including parents
                 if (section === 'kw-ads') {
-                    // Move columns in order after SKU: ACOS, Spend, Clicks, CVR, Reviews
+                    // Move columns in order after SKU: ACOS, Spend, Clicks, CVR, Reviews, then NRA, then Active toggle
                     table.moveColumn("acos", "(Child) sku", true);      // KW ACOS after SKU
                     table.moveColumn("l30_spend", "acos", true);        // KW Spend after ACOS
                     table.moveColumn("l30_clicks", "l30_spend", true);  // KW Clicks after Spend
                     table.moveColumn("ad_cvr", "l30_clicks", true);     // KW CVR after Clicks
                     table.moveColumn("rating", "ad_cvr", true);         // Reviews after CVR
+                    table.moveColumn("NRA", "rating", true);            // KW NRA after Reviews
+                    table.moveColumn("active_toggle", "NRA", true);     // Active toggle after NRA
                     
                     table.setSort("acos", "desc");
                     // Clear any filters that might hide parent rows
@@ -4731,6 +4747,58 @@
                     })
                     .finally(() => {
                         if (overlay) overlay.style.display = "none";
+                    });
+                }
+            });
+
+            // Handle NRA/NRL dropdown changes - save to database
+            document.addEventListener("change", function(e) {
+                if (e.target.classList.contains("editable-select")) {
+                    let sku = e.target.getAttribute("data-sku");
+                    let field = e.target.getAttribute("data-field");
+                    let value = e.target.value;
+
+                    // Update color immediately for NRA field
+                    if (field === 'NRA') {
+                        if (value === 'NRA') {
+                            e.target.style.backgroundColor = '#dc3545'; // red
+                            e.target.style.color = '#000';
+                        } else if (value === 'RA') {
+                            e.target.style.backgroundColor = '#28a745'; // green
+                            e.target.style.color = '#000';
+                        } else if (value === 'LATER') {
+                            e.target.style.backgroundColor = '#ffc107'; // yellow
+                            e.target.style.color = '#000';
+                        }
+                    }
+
+                    // Save to database
+                    fetch('/update-amazon-nr-nrl-fba', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                        },
+                        body: JSON.stringify({
+                            sku: sku,
+                            field: field,
+                            value: value
+                        })
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        console.log(data);
+                        // Update table data with response
+                        if (data.success && typeof table !== 'undefined' && table) {
+                            let rows = table.searchRows('(Child) sku', '=', sku);
+                            if (rows.length > 0) {
+                                rows[0].update({[field]: value});
+                            }
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Error saving NRA:', err);
+                        alert("Failed to save: " + (err.message || "Network error"));
                     });
                 }
             });
