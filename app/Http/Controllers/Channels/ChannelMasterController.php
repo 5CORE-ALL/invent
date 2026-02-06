@@ -6644,4 +6644,41 @@ class ChannelMasterController extends Controller
         }
     }
 
+    /**
+     * Archive a channel (soft delete by setting status to 'Inactive')
+     */
+    public function archiveChannel(Request $request)
+    {
+        try {
+            $channelName = $request->input('channel');
+            
+            if (!$channelName) {
+                return response()->json(['success' => false, 'message' => 'Channel name is required'], 400);
+            }
+
+            // Find the channel
+            $channel = ChannelMaster::where('channel', $channelName)->first();
+            
+            if (!$channel) {
+                return response()->json(['success' => false, 'message' => 'Channel not found'], 404);
+            }
+
+            // Archive by setting status to Inactive
+            $channel->status = 'Inactive';
+            $channel->save();
+
+            \Log::info('Channel archived: ' . $channelName);
+
+            return response()->json([
+                'success' => true, 
+                'message' => 'Channel archived successfully',
+                'channel' => $channelName
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Archive channel error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Error archiving channel: ' . $e->getMessage()], 500);
+        }
+    }
+
 }

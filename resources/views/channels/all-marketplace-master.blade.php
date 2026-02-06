@@ -2197,8 +2197,26 @@
                                 const $btn = $target.hasClass('delete-channel-btn') ? $target : $target.closest('.delete-channel-btn');
                                 const channel = $btn.data('channel');
                                 
-                                if (confirm(`Are you sure you want to archive channel: ${channel}?`)) {
-                                    showToast('info', 'Archive functionality coming soon');
+                                if (confirm(`Are you sure you want to archive channel: ${channel}?\n\nThis will set the channel status to "Inactive" and it will no longer appear in the list.`)) {
+                                    $.ajax({
+                                        url: '/channel-archive',
+                                        method: 'POST',
+                                        data: {
+                                            channel: channel,
+                                            _token: '{{ csrf_token() }}'
+                                        },
+                                        success: function(response) {
+                                            if (response.success) {
+                                                showToast('success', 'Channel archived successfully');
+                                                table.replaceData();
+                                            } else {
+                                                showToast('error', response.message || 'Failed to archive channel');
+                                            }
+                                        },
+                                        error: function(xhr) {
+                                            showToast('error', 'Error archiving channel: ' + (xhr.responseJSON?.message || 'Unknown error'));
+                                        }
+                                    });
                                 }
                                 return;
                             }
@@ -2958,9 +2976,27 @@
                 
                 const channel = $(this).data('channel');
                 
-                if (confirm(`Are you sure you want to archive channel: ${channel}?`)) {
-                    showToast('info', 'Archive functionality coming soon');
-                    // TODO: Implement archive functionality
+                if (confirm(`Are you sure you want to archive channel: ${channel}?\n\nThis will set the channel status to "Inactive" and it will no longer appear in the list.`)) {
+                    $.ajax({
+                        url: '/channel-archive',
+                        method: 'POST',
+                        data: {
+                            channel: channel,
+                            _token: '{{ csrf_token() }}'
+                        },
+                        success: function(response) {
+                            if (response.success) {
+                                showToast('success', 'Channel archived successfully');
+                                // Reload the table
+                                table.replaceData();
+                            } else {
+                                showToast('error', response.message || 'Failed to archive channel');
+                            }
+                        },
+                        error: function(xhr) {
+                            showToast('error', 'Error archiving channel: ' + (xhr.responseJSON?.message || 'Unknown error'));
+                        }
+                    });
                 }
             });
 
