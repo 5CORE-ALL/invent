@@ -234,7 +234,7 @@
 
                     <select id="nra-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="">NRA</option>
+                        <option value="">KW NRA</option>
                         <option value="NRA">NRA</option>
                         <option value="RA">RA</option>
                         <option value="LATER">LATER</option>
@@ -3352,20 +3352,27 @@
                         width: 80,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
-                            var campaignId = row.campaign_id;
-                            var status = row.campaignStatus || 'PAUSED';
-                            var isEnabled = status === 'ENABLED';
+                            var sku = row['(Child) sku'] || '';
                             
-                            if (!campaignId) {
+                            // Check if has campaign using same logic as other columns
+                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            
+                            if (!hasCampaign) {
                                 return '<span style="color: #999;">-</span>';
                             }
+                            
+                            // Check campaign status - if either KW or PT is ENABLED, ads are enabled
+                            var kwStatus = (row.kw_campaign_status || row.campaignStatus || '').toUpperCase();
+                            var ptStatus = (row.pt_campaign_status || '').toUpperCase();
+                            var isEnabled = kwStatus === 'ENABLED' || ptStatus === 'ENABLED';
                             
                             return `
                                 <div class="form-check form-switch d-flex justify-content-center">
                                     <input class="form-check-input campaign-status-toggle" 
                                            type="checkbox" 
                                            role="switch" 
-                                           data-campaign-id="${campaignId}"
+                                           data-sku="${sku}"
+                                           data-campaign-id="${row.campaign_id || ''}"
                                            ${isEnabled ? 'checked' : ''}
                                            style="cursor: pointer; width: 3rem; height: 1.5rem;">
                                 </div>
@@ -3374,6 +3381,39 @@
                         cellClick: function(e, cell) {
                             if (e.target.classList.contains('campaign-status-toggle')) {
                                 e.stopPropagation();
+                            }
+                        }
+                    },
+                    {
+                        title: "Missing AD",
+                        field: "missing_ad",
+                        hozAlign: "center",
+                        visible: false,
+                        width: 60,
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            
+                            // First check NRA status (from KW NRA column)
+                            var nraValue = (row.NRA || '').toString().trim();
+                            if (!nraValue) {
+                                var nrlValue = (row.NRL || 'REQ').toString().trim();
+                                nraValue = (nrlValue === 'NRL') ? 'NRA' : 'RA';
+                            }
+                            
+                            // If NRA (red dot in KW NRA) - show Yellow dot
+                            if (nraValue === 'NRA') {
+                                return '<span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background-color: #ffc107;"></span>';
+                            }
+                            
+                            // Check if has campaign
+                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            
+                            if (hasCampaign) {
+                                // Has campaign and not NRA - Green dot
+                                return '<span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background-color: #28a745;"></span>';
+                            } else {
+                                // No campaign and not NRA - Missing - Red dot
+                                return '<span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background-color: #dc3545;"></span>';
                             }
                         }
                     },
@@ -4030,6 +4070,26 @@
                     });
                 }
 
+                // Apply section-specific filters
+                var sectionFilter = $('#section-filter').val();
+                if (sectionFilter === 'kw-ads') {
+                    // Hide rows marked as NRA (red dot) in KW NRA column
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return true; // Show parent rows
+                        
+                        // Get NRA value, applying default logic if empty
+                        var nraValue = (data.NRA || '').toString().trim();
+                        if (!nraValue) {
+                            // Apply default: if NRL is 'NRL', default to 'NRA', otherwise 'RA'
+                            var nrlValue = (data.NRL || 'REQ').toString().trim();
+                            nraValue = (nrlValue === 'NRL') ? 'NRA' : 'RA';
+                        }
+                        
+                        // Hide rows with NRA (red dot)
+                        return nraValue !== 'NRA';
+                    });
+                }
+
                 updateCalcValues();
                 updateSummary();
                 updateSeoCount();
@@ -4081,6 +4141,7 @@
                     'sbgt',             // SBGT
                     'NRA',              // KW NRA
                     'active_toggle',    // Active toggle (after NRA)
+                    'missing_ad',       // Missing AD
                     'l7_clicks',        // Clicks L7
                     'spend_l7_col',     // Spend L7
                     'l7_sales',         // Sales L7
@@ -4184,7 +4245,7 @@
                 
                 // For KW Ads section: sort by ACOS descending and show all rows including parents
                 if (section === 'kw-ads') {
-                    // Move columns in order after SKU: ACOS, Spend, Clicks, CVR, Reviews, then NRA, then Active toggle
+                    // Move columns in order after SKU: ACOS, Spend, Clicks, CVR, Reviews, then NRA, then Active toggle, then Missing AD
                     table.moveColumn("acos", "(Child) sku", true);      // KW ACOS after SKU
                     table.moveColumn("l30_spend", "acos", true);        // KW Spend after ACOS
                     table.moveColumn("l30_clicks", "l30_spend", true);  // KW Clicks after Spend
@@ -4192,27 +4253,12 @@
                     table.moveColumn("rating", "ad_cvr", true);         // Reviews after CVR
                     table.moveColumn("NRA", "NRL", true);               // KW NRA after NRL
                     table.moveColumn("active_toggle", "NRA", true);     // Active toggle after NRA
+                    table.moveColumn("missing_ad", "active_toggle", true); // Missing AD after Active
                     
                     table.setSort("acos", "desc");
-                    // Clear any filters that might hide parent rows
+                    // Clear any filters and re-apply with section rules
                     table.clearFilter();
-                    applyFilters(); // Re-apply base filters but ensure parents are shown
-                    
-                    // Hide rows marked as NRA (red dot) in KW NRA column
-                    table.addFilter(function(data) {
-                        if (data.is_parent_summary) return true; // Show parent rows
-                        
-                        // Get NRA value, applying default logic if empty
-                        var nraValue = (data.NRA || '').toString().trim();
-                        if (!nraValue) {
-                            // Apply default: if NRL is 'NRL', default to 'NRA', otherwise 'RA'
-                            var nrlValue = (data.NRL || 'REQ').toString().trim();
-                            nraValue = (nrlValue === 'NRL') ? 'NRA' : 'RA';
-                        }
-                        
-                        // Hide rows with NRA (red dot)
-                        return nraValue !== 'NRA';
-                    });
+                    applyFilters(); // Re-apply all filters including section-specific rules
                 }
             });
 
