@@ -109,7 +109,7 @@ class TaskController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'title' => 'required|string|max:255',
+            'title' => 'required|string|max:1000',
             'description' => 'nullable|string',
             'group' => 'nullable|string|max:255',
             'priority' => 'required|in:low,normal,high',
@@ -276,7 +276,7 @@ class TaskController extends Controller
         $this->authorize('update', $task);
 
         $validated = $request->validate([
-            'title' => 'required|string|max:255',
+            'title' => 'required|string|max:1000',
             'description' => 'nullable|string',
             'group' => 'nullable|string|max:255',
             'priority' => 'required|in:low,normal,high',
