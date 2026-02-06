@@ -34,6 +34,18 @@
             font-weight: 600;
         }
         
+        /* Keep checkbox column header upright (not rotated) */
+        .tabulator .tabulator-header .tabulator-col[tabulator-field="row_select"] .tabulator-col-content .tabulator-col-title {
+            writing-mode: horizontal-tb !important;
+            text-orientation: mixed !important;
+            transform: none !important;
+            height: auto !important;
+        }
+        
+        .tabulator .tabulator-header .tabulator-col[tabulator-field="row_select"] .tabulator-col-content .tabulator-col-title input {
+            transform: none !important;
+        }
+        
         .tabulator .tabulator-header .tabulator-col {
             height: 80px !important;
         }
@@ -1841,16 +1853,17 @@
                 columns: [
                     // Row selection checkbox column
                     {
-                        title: "<input type='checkbox' id='select-all-rows' title='Select All'>",
+                        title: "<div style='transform: rotate(0deg) !important; display: flex; justify-content: center; align-items: center;'><input type='checkbox' id='select-all-rows' title='Select All' style='transform: rotate(0deg) !important; width: 16px; height: 16px; cursor: pointer;'></div>",
                         field: "row_select",
                         hozAlign: "center",
                         headerSort: false,
+                        headerVertical: false,
                         width: 40,
                         frozen: true,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
                             var sku = row['(Child) sku'] || '';
-                            return "<input type='checkbox' class='row-select-checkbox' data-sku='" + sku + "'>";
+                            return "<input type='checkbox' class='row-select-checkbox' data-sku='" + sku + "' style='width: 16px; height: 16px; cursor: pointer;'>";
                         },
                         cellClick: function(e, cell) {
                             // Prevent row click event
@@ -4651,21 +4664,32 @@
             // Row selection - track selected rows
             var selectedRows = new Set();
 
-            // Select all rows checkbox handler
+            // Select all rows checkbox handler - only select rows on current page
             $(document).on('change', '#select-all-rows', function() {
                 var isChecked = $(this).prop('checked');
-                var visibleRows = table.getRows('active');
                 
-                visibleRows.forEach(function(row) {
+                // Get rows on current page using Tabulator's getPageData or getRows
+                var currentPageRows = table.getRows('active');
+                var pageSize = table.getPageSize();
+                var currentPage = table.getPage();
+                var startIndex = (currentPage - 1) * pageSize;
+                var endIndex = startIndex + pageSize;
+                
+                // Get only rows for current page
+                var pageRows = currentPageRows.slice(startIndex, endIndex);
+                
+                pageRows.forEach(function(row) {
                     var sku = row.getData()['(Child) sku'] || '';
-                    if (isChecked) {
-                        selectedRows.add(sku);
-                    } else {
-                        selectedRows.delete(sku);
+                    if (sku) {
+                        if (isChecked) {
+                            selectedRows.add(sku);
+                        } else {
+                            selectedRows.delete(sku);
+                        }
                     }
                 });
                 
-                // Update all visible checkboxes
+                // Update all visible checkboxes on current page
                 $('.row-select-checkbox').prop('checked', isChecked);
                 updateSelectedCount();
             });
