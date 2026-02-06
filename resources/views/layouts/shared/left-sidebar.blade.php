@@ -44,6 +44,15 @@
                 </a>
             </li>
 
+                <li class="side-nav-item">
+                 <a href="{{ route('all.marketplace.master') }}" class="side-nav-link">
+                    <i class="ri-file-line"></i>
+                    <span>Active Channels Master</span>
+                </a>
+            </li>
+
+
+
             {{-- User --}}
 
             <li class="side-nav-item">
@@ -687,9 +696,7 @@
                             <div class="collapse" id="activeChannelMasyer">
                                 <ul class="side-nav-third-level">
 
-                                    <li>
-                                        <a href="{{ route('all.marketplace.master') }}">Active Channels</a>
-                                    </li>
+                                   
                                     <!-- Start Nikhil Code -->
                                     {{-- <li>
                                         <a href="{{ route('channel.ads.master') }}">AD Masters</a>
