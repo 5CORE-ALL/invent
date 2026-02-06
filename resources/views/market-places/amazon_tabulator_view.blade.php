@@ -4184,6 +4184,22 @@
                     // Clear any filters that might hide parent rows
                     table.clearFilter();
                     applyFilters(); // Re-apply base filters but ensure parents are shown
+                    
+                    // Hide rows marked as NRA (red dot) in KW NRA column
+                    table.addFilter(function(data) {
+                        if (data.is_parent_summary) return true; // Show parent rows
+                        
+                        // Get NRA value, applying default logic if empty
+                        var nraValue = (data.NRA || '').toString().trim();
+                        if (!nraValue) {
+                            // Apply default: if NRL is 'NRL', default to 'NRA', otherwise 'RA'
+                            var nrlValue = (data.NRL || 'REQ').toString().trim();
+                            nraValue = (nrlValue === 'NRL') ? 'NRA' : 'RA';
+                        }
+                        
+                        // Hide rows with NRA (red dot)
+                        return nraValue !== 'NRA';
+                    });
                 }
             });
 
