@@ -71,13 +71,13 @@
 @section('content')
     @include('layouts.shared.page-title', [
         'page_title' => 'Amazon Daily Sales Data',
-        'sub_title' => 'Amazon Daily Sales Data Analysis (L30)',
+        'sub_title' => 'Amazon Daily Sales Data Analysis (L31)',
     ])
     <div class="toast-container"></div>
     <div class="row">
         <div class="card shadow-sm">
             <div class="card-body py-3">
-                <h4>Amazon Daily Sales Data (L30)</h4>
+                <h4>Amazon Daily Sales Data (L31)</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2 mb-3">
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
@@ -516,15 +516,16 @@
                 uniqueOrderIds.add(row.order_id); // Track unique order ID
                 const quantity = parseInt(row.quantity) || 0;
                 const basePrice = parseFloat(row.price) || 0;
+                const saleAmount = parseFloat(row.sale_amount) || 0; // Use pre-calculated sale_amount
                 
                 // Skip if quantity is 0
                 if (quantity === 0) {
                     return;
                 }
                 
-                // Total revenue = basePrice * quantity
+                // Total revenue = use pre-calculated sale_amount (avoids rounding errors)
                 totalQuantity += quantity;
-                totalRevenue += basePrice * quantity;
+                totalRevenue += saleAmount;
                 
                 // Calculate weighted price
                 if (quantity > 0 && basePrice > 0) {
@@ -539,9 +540,8 @@
                 totalPft += pft;
                 totalCogs += cogs;
                 
-                // L30 Sales = Quantity * price
-                const l30Sales = quantity * basePrice;
-                totalL30Sales += l30Sales;
+                // L30 Sales = use sale_amount
+                totalL30Sales += saleAmount;
                 
                 // Track unique SKU spend (KW + PT) - only count once per SKU
                 if (row.sku && !uniqueSkuSpend[row.sku]) {

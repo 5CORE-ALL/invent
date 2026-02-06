@@ -89,8 +89,8 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateAmazonMetrics($date)
     {
-        // 30 days: Get latest Amazon order date from inventory database and calculate 30-day range
-        // Uses latest date in DB as end date, then goes back 30 days
+        // 31 days: Get latest Amazon order date from inventory database and calculate 31-day range
+        // Uses latest date in DB as end date, then goes back 31 days
         $latestDate = DB::table('amazon_orders')
             ->max('order_date');
 
@@ -100,7 +100,7 @@ class UpdateMarketplaceDailyMetrics extends Command
 
         $latestDateCarbon = Carbon::parse($latestDate);
         $endDateCarbon = $latestDateCarbon->endOfDay(); // Latest date in DB
-        $startDateCarbon = $latestDateCarbon->copy()->subDays(29)->startOfDay(); // 30 days before latest
+        $startDateCarbon = $latestDateCarbon->copy()->subDays(30)->startOfDay(); // 31 days total
 
         // Get order items from inventory database (matching AmazonSalesController exactly)
         $orderItems = DB::table('amazon_orders as o')
@@ -2428,8 +2428,8 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateWalmartMetrics($date)
     {
-        // 30 days: Get latest Walmart order date from walmart_daily_data (same as Sales page)
-        // Excluding today - get previous 30 days only
+        // 31 days: Get latest Walmart order date from walmart_daily_data (same as Sales page)
+        // Uses latest date in DB and goes back 31 days
         $latestDate = \App\Models\WalmartDailyData::max('order_date');
 
         if (!$latestDate) {
@@ -2437,9 +2437,9 @@ class UpdateMarketplaceDailyMetrics extends Command
         }
 
         $latestDateCarbon = Carbon::parse($latestDate);
-        // Get 30 days EXCLUDING today: from (latest - 30 days) to (latest - 1 day)
-        $endDate = $latestDateCarbon->copy()->subDay()->endOfDay(); // Yesterday
-        $startDate = $endDate->copy()->subDays(29)->startOfDay(); // 30 days before yesterday
+        // Get 31 days from latest order date
+        $endDate = $latestDateCarbon->endOfDay(); // Latest date in DB
+        $startDate = $latestDateCarbon->copy()->subDays(30)->startOfDay(); // 31 days total
 
         // Get Walmart orders from walmart_daily_data (same as Sales page)
         $orders = \App\Models\WalmartDailyData::where('period', 'l30')
