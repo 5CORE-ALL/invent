@@ -201,6 +201,20 @@
             border-right: 1px solid #e9ecef !important;
             padding: 12px 8px !important;
             color: #495057;
+            white-space: normal !important; /* Allow text wrapping */
+            vertical-align: top !important;
+        }
+        
+        /* Title cell multi-line support */
+        .title-cell-content {
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            word-wrap: break-word;
+            word-break: break-word;
+            line-height: 1.4;
+            max-height: 4.2em; /* 3 lines × 1.4 line-height */
         }
 
         /* Status Badges */
@@ -966,15 +980,15 @@
                         }
                     });
                     
-                    // TITLE
+                    // TITLE - Multi-line with word wrap (no info icon)
                     cols.push({
                         title: "TITLE", 
                         field: "title", 
-                        width: 200,
+                        width: 300,
+                        variableHeight: true, // Allow row height to expand
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
                             var title = cell.getValue() || '';
-                            var description = rowData.description || '';
                             var taskId = rowData.id;
                             var isOverdue = false;
                             
@@ -988,11 +1002,12 @@
                             
                             var overdueIcon = isOverdue ? '<i class="mdi mdi-alert-circle text-danger me-1" style="font-size: 14px;"></i>' : '';
                             var htmlTitle = String(title).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-                            var isLong = title.length > 30 || description;
-                            var shortTitle = title.length > 32 ? htmlTitle.substring(0, 30) + '...' : htmlTitle;
-                            var expandIcon = isLong ? '<i class="mdi mdi-information-outline text-primary expand-task-info" data-id="' + taskId + '" style="cursor: pointer; font-size: 16px; margin-left: 4px;"></i>' : '';
                             
-                            return '<div style="display: flex; align-items: center; gap: 4px;">' + overdueIcon + '<span style="flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><strong>' + shortTitle + '</strong></span>' + (isLong ? '<span style="flex-shrink: 0;">' + expandIcon + '</span>' : '') + '</div>';
+                            // Multi-line title display with word wrap
+                            return '<div style="display: flex; align-items: flex-start; gap: 4px; padding: 4px 0;">' + 
+                                   overdueIcon + 
+                                   '<div class="title-cell-content"><strong>' + htmlTitle + '</strong></div>' +
+                                   '</div>';
                         }
                     });
                     
