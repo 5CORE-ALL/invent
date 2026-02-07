@@ -2087,10 +2087,11 @@ class OverallAmazonController extends Controller
             
             // Store status based on exact match (or all if no exact match)
             // Only set status if campaign actually exists, otherwise empty string
+            // Initial status from L30 campaigns
             $row['kw_campaign_status'] = $matchedCampaignsKwL30->isNotEmpty() ? ($kwHasEnabled ? 'ENABLED' : 'PAUSED') : '';
             $row['pt_campaign_status'] = $matchedCampaignsPtL30->isNotEmpty() ? ($ptHasEnabled ? 'ENABLED' : 'PAUSED') : '';
             
-            // Check if any campaigns exist for this SKU
+            // Check if any campaigns exist for this SKU (L30 only initially - updated below with L7/L1)
             $row['has_campaigns'] = $matchedCampaignsKwL30->isNotEmpty() || $matchedCampaignsPtL30->isNotEmpty();
             $row['hasCampaign'] = $matchedCampaignsKwL30->isNotEmpty() || $matchedCampaignsPtL30->isNotEmpty();
             
@@ -2220,6 +2221,26 @@ class OverallAmazonController extends Controller
                 ?? ($matchedCampaignPtL1 ? $matchedCampaignPtL1->campaignBudgetAmount : null) 
                 ?? 0;
             $row['pt_campaign_id'] = $firstPtCampaign->campaign_id ?? ($matchedCampaignPtL7->campaign_id ?? null);
+            
+            // Update kw_campaign_status with L7/L1 fallback (same as KW utilized page)
+            // If no L30 KW campaign but L7/L1 exists, use L7/L1 status
+            if ($row['kw_campaign_status'] === '' && ($matchedCampaignL7 || $matchedCampaignL1)) {
+                $kwL7L1Status = $matchedCampaignL7->campaignStatus ?? ($matchedCampaignL1->campaignStatus ?? '');
+                $row['kw_campaign_status'] = $kwL7L1Status ? strtoupper($kwL7L1Status) : '';
+            }
+            
+            // Update pt_campaign_status with L7/L1 fallback (same as PT utilized page)
+            // If no L30 PT campaign but L7/L1 exists, use L7/L1 status
+            if ($row['pt_campaign_status'] === '' && ($matchedCampaignPtL7 || $matchedCampaignPtL1)) {
+                $ptL7L1Status = $matchedCampaignPtL7->campaignStatus ?? ($matchedCampaignPtL1->campaignStatus ?? '');
+                $row['pt_campaign_status'] = $ptL7L1Status ? strtoupper($ptL7L1Status) : '';
+            }
+            
+            // Update hasCampaign to include L7/L1 matches (same as utilized pages)
+            $kwHasCampaign = $matchedCampaignsKwL30->isNotEmpty() || $matchedCampaignL7 || $matchedCampaignL1;
+            $ptHasCampaignFull = $matchedCampaignsPtL30->isNotEmpty() || $matchedCampaignPtL7 || $matchedCampaignPtL1;
+            $row['hasCampaign'] = $kwHasCampaign || $ptHasCampaignFull;
+            $row['has_campaigns'] = $row['hasCampaign'];
             
             // PT CPC fields (same calculation as KW)
             $row['pt_l7_cpc'] = $matchedCampaignPtL7->costPerClick ?? 0;
