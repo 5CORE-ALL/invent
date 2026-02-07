@@ -556,6 +556,80 @@
             fill: #009975 !important;
         }
 
+        /* Daily Chart Modal – full width, compact height, pinned to top */
+        .daily-chart-modal .modal-dialog {
+            max-width: 98vw;
+            width: 98vw;
+            margin: 10px auto 0;
+        }
+        .daily-chart-modal .modal-body {
+            padding: 10px 18px 8px;
+        }
+        .daily-chart-modal .modal-header {
+            padding: 8px 18px;
+        }
+        .daily-chart-modal .modal-header .modal-title {
+            font-size: 15px;
+        }
+        .daily-chart-modal canvas {
+            max-height: 18vh !important;
+        }
+        .daily-chart-modal .chart-stats-panel {
+            padding: 10px 12px;
+            gap: 8px;
+        }
+        .daily-chart-modal .chart-stats-panel .stat-header {
+            font-size: 9px;
+        }
+        .daily-chart-modal .chart-stats-panel .stat-value {
+            font-size: 15px;
+        }
+
+        /* Enhanced Chart Stats Panel */
+        .chart-enhanced-wrapper {
+            display: flex;
+            align-items: stretch;
+            gap: 16px;
+        }
+        .chart-enhanced-wrapper .chart-wrapper {
+            flex: 1 1 0%;
+            min-width: 0;
+        }
+        .chart-stats-panel {
+            min-width: 150px;
+            max-width: 170px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 18px;
+            padding: 18px 14px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            border: 1px solid #e5e7eb;
+        }
+        .chart-stats-panel .stat-block {
+            text-align: center;
+        }
+        .chart-stats-panel .stat-header {
+            display: block;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #6b7280;
+            margin-bottom: 4px;
+        }
+        .chart-stats-panel .stat-value {
+            display: block;
+            font-size: 20px;
+            font-weight: 800;
+            color: #1f2937;
+            line-height: 1.2;
+        }
+        .chart-stats-panel .stat-block.stat-highest .stat-value { color: #dc2626; }
+        .chart-stats-panel .stat-block.stat-median .stat-value { color: #2563eb; }
+        .chart-stats-panel .stat-block.stat-lowest .stat-value { color: #16a34a; }
+
         .label-text {
             font-weight: 700;
             color: var(--text-primary);
@@ -3796,31 +3870,43 @@
     <!-- END Channel Chart Modal -->
 
     <!-- Daily Clicks Chart Modal (eye icon on L30 CLKS column) -->
-    <div class="modal fade" id="dailyClicksModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-xl">
+    <div class="modal fade daily-chart-modal" id="dailyClicksModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="dailyClicksModalTitle">Daily Clicks</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="text-muted small mb-3">Clicks data is saved and stored daily by the system. Use the eye icon on the L30 CLKS column to view this graph.</p>
-                    <div class="row mb-4">
-                        <div class="col-md-3">
-                            <label class="form-label text-muted small mb-2">From Date</label>
-                            <input type="date" class="form-control" id="dailyClicksFromDate" />
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label text-muted small mb-2">To Date</label>
-                            <input type="date" class="form-control" id="dailyClicksToDate" />
-                        </div>
-                        <div class="col-md-3 d-flex align-items-end">
-                            <button class="btn btn-success w-100" id="dailyClicksApplyBtn">Apply Filter</button>
-                        </div>
+                    <div class="d-flex align-items-center gap-3 mb-4">
+                        <span class="text-muted small">Period:</span>
+                        <select class="form-select form-select-sm daily-chart-range" data-chart="clicks" style="width: auto; min-width: 140px;">
+                            <option value="7">Last 7 Days</option>
+                            <option value="30" selected>Last 30 Days</option>
+                            <option value="60">Last 60 Days</option>
+                            <option value="90">Last 90 Days</option>
+                            <option value="lifetime">Lifetime</option>
+                        </select>
                     </div>
                     <div id="dailyClicksNoData" class="alert alert-info mb-0" style="display: none;">No daily clicks data for this period. Data is stored daily when the cron runs.</div>
-                    <div class="chart-wrapper">
-                        <canvas id="dailyClicksCanvas" height="80"></canvas>
+                    <div class="chart-enhanced-wrapper">
+                        <div class="chart-wrapper">
+                            <canvas id="dailyClicksCanvas" height="80"></canvas>
+                        </div>
+                        <div id="dailyClicksStats" class="chart-stats-panel" style="display: none;">
+                            <div class="stat-block stat-highest">
+                                <span class="stat-header">Highest</span>
+                                <span class="stat-value" id="dailyClicksHighest">--</span>
+                            </div>
+                            <div class="stat-block stat-median">
+                                <span class="stat-header">Median</span>
+                                <span class="stat-value" id="dailyClicksMedian">--</span>
+                            </div>
+                            <div class="stat-block stat-lowest">
+                                <span class="stat-header">Lowest</span>
+                                <span class="stat-value" id="dailyClicksLowest">--</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -3829,31 +3915,43 @@
     <!-- END Daily Clicks Chart Modal -->
 
     <!-- Daily Spend Chart Modal (eye icon on L30 SPENT column) -->
-    <div class="modal fade" id="dailySpendModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-xl">
+    <div class="modal fade daily-chart-modal" id="dailySpendModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="dailySpendModalTitle">Daily Spend</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="text-muted small mb-3">Spend data is saved and stored daily by the system. Use the eye icon on the L30 SPENT column to view this graph.</p>
-                    <div class="row mb-4">
-                        <div class="col-md-3">
-                            <label class="form-label text-muted small mb-2">From Date</label>
-                            <input type="date" class="form-control" id="dailySpendFromDate" />
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label text-muted small mb-2">To Date</label>
-                            <input type="date" class="form-control" id="dailySpendToDate" />
-                        </div>
-                        <div class="col-md-3 d-flex align-items-end">
-                            <button class="btn btn-success w-100" id="dailySpendApplyBtn">Apply Filter</button>
-                        </div>
+                    <div class="d-flex align-items-center gap-3 mb-4">
+                        <span class="text-muted small">Period:</span>
+                        <select class="form-select form-select-sm daily-chart-range" data-chart="spend" style="width: auto; min-width: 140px;">
+                            <option value="7">Last 7 Days</option>
+                            <option value="30" selected>Last 30 Days</option>
+                            <option value="60">Last 60 Days</option>
+                            <option value="90">Last 90 Days</option>
+                            <option value="lifetime">Lifetime</option>
+                        </select>
                     </div>
                     <div id="dailySpendNoData" class="alert alert-info mb-0" style="display: none;">No daily spend data for this period. Data is stored daily when the cron runs.</div>
-                    <div class="chart-wrapper">
-                        <canvas id="dailySpendCanvas" height="80"></canvas>
+                    <div class="chart-enhanced-wrapper">
+                        <div class="chart-wrapper">
+                            <canvas id="dailySpendCanvas" height="80"></canvas>
+                        </div>
+                        <div id="dailySpendStats" class="chart-stats-panel" style="display: none;">
+                            <div class="stat-block stat-highest">
+                                <span class="stat-header">Highest</span>
+                                <span class="stat-value" id="dailySpendHighest">--</span>
+                            </div>
+                            <div class="stat-block stat-median">
+                                <span class="stat-header">Median</span>
+                                <span class="stat-value" id="dailySpendMedian">--</span>
+                            </div>
+                            <div class="stat-block stat-lowest">
+                                <span class="stat-header">Lowest</span>
+                                <span class="stat-value" id="dailySpendLowest">--</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -3862,31 +3960,43 @@
     <!-- END Daily Spend Chart Modal -->
 
     <!-- Daily Ad Sales Chart Modal (eye icon on AD SALES column) -->
-    <div class="modal fade" id="dailyAdSalesModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-xl">
+    <div class="modal fade daily-chart-modal" id="dailyAdSalesModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="dailyAdSalesModalTitle">Daily Ad Sales</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="text-muted small mb-3">Ad sales data is saved and stored daily by the system. Use the eye icon on the AD SALES column to view this graph.</p>
-                    <div class="row mb-4">
-                        <div class="col-md-3">
-                            <label class="form-label text-muted small mb-2">From Date</label>
-                            <input type="date" class="form-control" id="dailyAdSalesFromDate" />
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label text-muted small mb-2">To Date</label>
-                            <input type="date" class="form-control" id="dailyAdSalesToDate" />
-                        </div>
-                        <div class="col-md-3 d-flex align-items-end">
-                            <button class="btn btn-success w-100" id="dailyAdSalesApplyBtn">Apply Filter</button>
-                        </div>
+                    <div class="d-flex align-items-center gap-3 mb-4">
+                        <span class="text-muted small">Period:</span>
+                        <select class="form-select form-select-sm daily-chart-range" data-chart="adsales" style="width: auto; min-width: 140px;">
+                            <option value="7">Last 7 Days</option>
+                            <option value="30" selected>Last 30 Days</option>
+                            <option value="60">Last 60 Days</option>
+                            <option value="90">Last 90 Days</option>
+                            <option value="lifetime">Lifetime</option>
+                        </select>
                     </div>
                     <div id="dailyAdSalesNoData" class="alert alert-info mb-0" style="display: none;">No daily ad sales data for this period. Data is stored daily when the cron runs.</div>
-                    <div class="chart-wrapper">
-                        <canvas id="dailyAdSalesCanvas" height="80"></canvas>
+                    <div class="chart-enhanced-wrapper">
+                        <div class="chart-wrapper">
+                            <canvas id="dailyAdSalesCanvas" height="80"></canvas>
+                        </div>
+                        <div id="dailyAdSalesStats" class="chart-stats-panel" style="display: none;">
+                            <div class="stat-block stat-highest">
+                                <span class="stat-header">Highest</span>
+                                <span class="stat-value" id="dailyAdSalesHighest">--</span>
+                            </div>
+                            <div class="stat-block stat-median">
+                                <span class="stat-header">Median</span>
+                                <span class="stat-value" id="dailyAdSalesMedian">--</span>
+                            </div>
+                            <div class="stat-block stat-lowest">
+                                <span class="stat-header">Lowest</span>
+                                <span class="stat-value" id="dailyAdSalesLowest">--</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -3895,31 +4005,43 @@
     <!-- END Daily Ad Sales Chart Modal -->
 
     <!-- Daily ACOS Chart Modal (eye icon on L30 ACOS% column) -->
-    <div class="modal fade" id="dailyAcosModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-xl">
+    <div class="modal fade daily-chart-modal" id="dailyAcosModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="dailyAcosModalTitle">Daily ACOS</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="text-muted small mb-3">ACOS data is saved and stored daily by the system. Use the eye icon on the L30 ACOS% column to view this graph.</p>
-                    <div class="row mb-4">
-                        <div class="col-md-3">
-                            <label class="form-label text-muted small mb-2">From Date</label>
-                            <input type="date" class="form-control" id="dailyAcosFromDate" />
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label text-muted small mb-2">To Date</label>
-                            <input type="date" class="form-control" id="dailyAcosToDate" />
-                        </div>
-                        <div class="col-md-3 d-flex align-items-end">
-                            <button class="btn btn-success w-100" id="dailyAcosApplyBtn">Apply Filter</button>
-                        </div>
+                    <div class="d-flex align-items-center gap-3 mb-4">
+                        <span class="text-muted small">Period:</span>
+                        <select class="form-select form-select-sm daily-chart-range" data-chart="acos" style="width: auto; min-width: 140px;">
+                            <option value="7">Last 7 Days</option>
+                            <option value="30" selected>Last 30 Days</option>
+                            <option value="60">Last 60 Days</option>
+                            <option value="90">Last 90 Days</option>
+                            <option value="lifetime">Lifetime</option>
+                        </select>
                     </div>
                     <div id="dailyAcosNoData" class="alert alert-info mb-0" style="display: none;">No daily ACOS data for this period. Data is stored daily when the cron runs.</div>
-                    <div class="chart-wrapper">
-                        <canvas id="dailyAcosCanvas" height="80"></canvas>
+                    <div class="chart-enhanced-wrapper">
+                        <div class="chart-wrapper">
+                            <canvas id="dailyAcosCanvas" height="80"></canvas>
+                        </div>
+                        <div id="dailyAcosStats" class="chart-stats-panel" style="display: none;">
+                            <div class="stat-block stat-highest">
+                                <span class="stat-header">Highest</span>
+                                <span class="stat-value" id="dailyAcosHighest">--</span>
+                            </div>
+                            <div class="stat-block stat-median">
+                                <span class="stat-header">Median</span>
+                                <span class="stat-value" id="dailyAcosMedian">--</span>
+                            </div>
+                            <div class="stat-block stat-lowest">
+                                <span class="stat-header">Lowest</span>
+                                <span class="stat-value" id="dailyAcosLowest">--</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -4620,334 +4742,301 @@ $(document).ready(function() {
 
     /** End Channel Chart Modal **/
 
-    /** Daily Clicks Chart Modal (eye icon on L30 CLKS) **/
-    var dailyClicksCurrentChannel = null;
-    var dailyClicksChartInstance = null;
-    // Store channel when eye icon is clicked (works for both static table and Tabulator)
-    $(document).on('click', '.clicks-chart-btn', function() {
-        dailyClicksCurrentChannel = $(this).data('channel') || null;
-    });
-    $('#dailyClicksModal').on('shown.bs.modal', function(e) {
-        var btn = e.relatedTarget ? $(e.relatedTarget) : $();
-        if (btn.length && btn.hasClass('clicks-chart-btn')) dailyClicksCurrentChannel = btn.data('channel') || dailyClicksCurrentChannel;
-        if (dailyClicksCurrentChannel) {
-            $('#dailyClicksModalTitle').text('Daily Clicks - ' + dailyClicksCurrentChannel);
-            var today = new Date();
-            var d30 = new Date(today);
-            d30.setDate(d30.getDate() - 30);
-            $('#dailyClicksFromDate').val(d30.toISOString().slice(0, 10));
-            $('#dailyClicksToDate').val(today.toISOString().slice(0, 10));
-            $('#dailyClicksApplyBtn').trigger('click');
+    /**
+     * Shared Enhanced Chart Builder
+     * - Dynamic Y-axis based on data min/max
+     * - Right-side stats panel (Highest / Median / Lowest)
+     * - Median horizontal dotted line
+     * - Dot color: green if value < previous day, red if value > previous day, gray if equal or first
+     * - Value label color: green if decreased vs 7 days prior, red if increased, gray otherwise
+     */
+    function buildEnhancedChart(canvasId, labels, dataArr, opts) {
+        var ctx = document.getElementById(canvasId);
+        if (!ctx) return null;
+        var data = dataArr.map(function(v) { return parseFloat(v) || 0; });
+        var len = data.length;
+
+        // Compute stats
+        var sorted = data.slice().sort(function(a, b) { return a - b; });
+        var dataMin = sorted[0];
+        var dataMax = sorted[sorted.length - 1];
+        var median;
+        if (len === 0) { median = 0; }
+        else if (len % 2 === 0) { median = (sorted[len / 2 - 1] + sorted[len / 2]) / 2; }
+        else { median = sorted[Math.floor(len / 2)]; }
+
+        // Update stats panel
+        var fmt = opts.formatValue || function(v) { return v.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 2}); };
+        var suffix = opts.suffix || '';
+        var prefix = opts.prefix || '';
+        if (opts.statsIds) {
+            $('#' + opts.statsIds.panel).show();
+            $('#' + opts.statsIds.highest).text(prefix + fmt(dataMax) + suffix);
+            $('#' + opts.statsIds.median).text(prefix + fmt(median) + suffix);
+            $('#' + opts.statsIds.lowest).text(prefix + fmt(dataMin) + suffix);
         }
-    });
-    $('#dailyClicksApplyBtn').on('click', function() {
-        if (!dailyClicksCurrentChannel) return;
-        var fromDate = $('#dailyClicksFromDate').val();
-        var toDate = $('#dailyClicksToDate').val();
-        if (!fromDate || !toDate) {
-            alert('Please select From Date and To Date.');
-            return;
-        }
-        $.ajax({
+
+        // Dynamic Y-axis: pad 10% above max and below min
+        var range = dataMax - dataMin;
+        var yPad = range > 0 ? range * 0.12 : (dataMax > 0 ? dataMax * 0.12 : 1);
+        var yMin = Math.max(0, dataMin - yPad);
+        var yMax = dataMax + yPad;
+
+        // Dot colors: green if value < previous day, red if value > previous day
+        var pointColors = data.map(function(val, i) {
+            if (i === 0) return '#9ca3af'; // first point: gray
+            if (val < data[i - 1]) return '#16a34a'; // lower = green
+            if (val > data[i - 1]) return '#dc2626'; // higher = red
+            return '#9ca3af'; // equal = gray
+        });
+
+        // Value label colors: green if decreased vs 7 days prior, red if increased
+        var labelColors = data.map(function(val, i) {
+            if (i < 7) return '#6b7280'; // not enough history: gray
+            if (val < data[i - 7]) return '#16a34a'; // decreased = green
+            if (val > data[i - 7]) return '#dc2626'; // increased = red
+            return '#6b7280'; // same = gray
+        });
+
+        // Custom plugin: draw median dotted line
+        var medianLinePlugin = {
+            id: 'medianLine_' + canvasId,
+            afterDraw: function(chart) {
+                var yScale = chart.scales.y;
+                if (!yScale) return;
+                var yPixel = yScale.getPixelForValue(median);
+                var drawCtx = chart.ctx;
+                drawCtx.save();
+                drawCtx.setLineDash([6, 4]);
+                drawCtx.strokeStyle = '#2563eb';
+                drawCtx.lineWidth = 1.5;
+                drawCtx.globalAlpha = 0.6;
+                drawCtx.beginPath();
+                drawCtx.moveTo(chart.chartArea.left, yPixel);
+                drawCtx.lineTo(chart.chartArea.right, yPixel);
+                drawCtx.stroke();
+                // Label for median line
+                drawCtx.setLineDash([]);
+                drawCtx.globalAlpha = 0.8;
+                drawCtx.font = '10px sans-serif';
+                drawCtx.fillStyle = '#2563eb';
+                drawCtx.textAlign = 'right';
+                drawCtx.fillText('Median', chart.chartArea.right - 4, yPixel - 5);
+                drawCtx.restore();
+            }
+        };
+
+        // Custom plugin: draw value labels near dots
+        var dataLabelPlugin = {
+            id: 'dataLabels_' + canvasId,
+            afterDatasetsDraw: function(chart) {
+                var meta = chart.getDatasetMeta(0);
+                if (!meta || !meta.data) return;
+                var drawCtx = chart.ctx;
+                drawCtx.save();
+                drawCtx.font = 'bold 9px sans-serif';
+                drawCtx.textAlign = 'center';
+                meta.data.forEach(function(point, i) {
+                    if (!point || point.skip) return;
+                    var val = data[i];
+                    var displayVal = prefix + Math.round(val).toLocaleString() + suffix;
+                    drawCtx.fillStyle = labelColors[i];
+                    // Position label above/below dot to avoid overlap
+                    var yOffset = -10;
+                    if (i > 0 && val > data[i - 1]) yOffset = 14; // if higher, show below
+                    drawCtx.fillText(displayVal, point.x, point.y + yOffset);
+                });
+                drawCtx.restore();
+            }
+        };
+
+        // Format labels to show only day + month (no year)
+        var shortMonths = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        var displayLabels = labels.map(function(lbl) {
+            var d = new Date(lbl);
+            if (!isNaN(d.getTime())) {
+                return d.getDate() + ' ' + shortMonths[d.getMonth()];
+            }
+            // Fallback: strip year from common formats like "2026-02-07" or "Feb 07, 2026"
+            return String(lbl).replace(/\d{4}[-\/]?/g, '').replace(/,?\s*\d{4}/, '').trim();
+        });
+
+        var baseColor = opts.borderColor || '#00b894';
+        var bgColor = opts.backgroundColor || 'rgba(0, 184, 148, 0.05)';
+
+        var chartInstance = new Chart(ctx.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: displayLabels,
+                datasets: [{
+                    label: opts.label || 'Value',
+                    data: data,
+                    borderColor: baseColor,
+                    backgroundColor: bgColor,
+                    tension: 0.3,
+                    borderWidth: 2,
+                    pointRadius: 5,
+                    pointHoverRadius: 7,
+                    pointBackgroundColor: pointColors,
+                    pointBorderColor: pointColors,
+                    pointBorderWidth: 1.5,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                layout: { padding: { top: 20, bottom: 5 } },
+                plugins: {
+                    legend: { display: true, position: 'top' },
+                    tooltip: {
+                        callbacks: {
+                            title: function(items) {
+                                if (!items.length) return '';
+                                var idx = items[0].dataIndex;
+                                return labels[idx] || displayLabels[idx] || '';
+                            },
+                            label: opts.tooltipLabel || function(c) { return (opts.label || 'Value') + ': ' + c.formattedValue; }
+                        }
+                    }
+                },
+                scales: {
+                    x: { grid: { display: false }, ticks: { color: '#6b7280', maxRotation: 45 } },
+                    y: {
+                        min: yMin,
+                        max: yMax,
+                        grid: { color: '#e5e7eb' },
+                        ticks: {
+                            color: baseColor,
+                            callback: opts.yTickCallback || function(v) { return v; }
+                        }
+                    }
+                }
+            },
+            plugins: [medianLinePlugin, dataLabelPlugin]
+        });
+
+        return chartInstance;
+    }
+
+    /** Daily Chart Modals – unified config-driven handler **/
+    var dailyChartState = { clicks: {}, spend: {}, adsales: {}, acos: {} };
+    var dailyChartCfg = {
+        clicks: {
+            btnClass: 'clicks-chart-btn', modalId: 'dailyClicksModal', titleId: 'dailyClicksModalTitle',
+            canvasId: 'dailyClicksCanvas', noDataId: 'dailyClicksNoData', titlePrefix: 'Daily Clicks',
             url: "{{ route('channel.adv.clicks.chart.data') }}",
-            method: 'GET',
-            data: { channel: dailyClicksCurrentChannel, fromDate: fromDate, toDate: toDate },
-            success: function(response) {
-                if (dailyClicksChartInstance) { dailyClicksChartInstance.destroy(); dailyClicksChartInstance = null; }
-                var ctx = document.getElementById('dailyClicksCanvas');
-                if (!ctx) return;
-                var dateArray = response.dateArray || [];
-                var clicksArray = response.clicksArray || [];
-                $('#dailyClicksNoData').toggle(!dateArray.length);
-                $('#dailyClicksCanvas').closest('.chart-wrapper').toggle(!!dateArray.length);
-                if (!dateArray.length) return;
-                dailyClicksChartInstance = new Chart(ctx.getContext('2d'), {
-                    type: 'line',
-                    data: {
-                        labels: dateArray,
-                        datasets: [{
-                            label: 'Clicks',
-                            data: clicksArray,
-                            borderColor: '#00b894',
-                            backgroundColor: 'rgba(0, 184, 148, 0.1)',
-                            tension: 0.4,
-                            borderWidth: 2,
-                            pointRadius: 3,
-                            pointHoverRadius: 5,
-                            fill: true
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        interaction: { mode: 'index', intersect: false },
-                        plugins: {
-                            legend: { display: true, position: 'top' },
-                            tooltip: { callbacks: { label: function(c) { return 'Clicks: ' + c.formattedValue; } } }
-                        },
-                        scales: {
-                            x: { grid: { display: false }, ticks: { color: '#6b7280', maxRotation: 45 } },
-                            y: {
-                                beginAtZero: true,
-                                grid: { color: '#e5e7eb' },
-                                ticks: { color: '#00b894', callback: function(v) { return v >= 1000 ? (v/1000) + 'K' : v; } }
-                            }
-                        }
-                    }
-                });
-            },
-            error: function(xhr) {
-                var msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Failed to load daily clicks data.';
-                alert(msg);
+            dataKey: 'clicksArray',
+            chartOpts: {
+                label: 'Clicks', borderColor: '#00b894', backgroundColor: 'rgba(0, 184, 148, 0.05)',
+                tooltipLabel: function(c) { return 'Clicks: ' + c.formattedValue; },
+                yTickCallback: function(v) { return v >= 1000 ? (v/1000) + 'K' : v; },
+                formatValue: function(v) { return Math.round(v).toLocaleString(); },
+                statsIds: { panel: 'dailyClicksStats', highest: 'dailyClicksHighest', median: 'dailyClicksMedian', lowest: 'dailyClicksLowest' }
             }
-        });
-    });
-    /** End Daily Clicks Chart Modal **/
-
-    /** Daily Spend Chart Modal (eye icon on L30 SPENT) **/
-    var dailySpendCurrentChannel = null;
-    var dailySpendChartInstance = null;
-    $(document).on('click', '.spend-chart-btn', function() {
-        dailySpendCurrentChannel = $(this).data('channel') || null;
-    });
-    $('#dailySpendModal').on('shown.bs.modal', function(e) {
-        var btn = e.relatedTarget ? $(e.relatedTarget) : $();
-        if (btn.length && btn.hasClass('spend-chart-btn')) dailySpendCurrentChannel = btn.data('channel') || dailySpendCurrentChannel;
-        if (dailySpendCurrentChannel) {
-            $('#dailySpendModalTitle').text('Daily Spend - ' + dailySpendCurrentChannel);
-            var today = new Date();
-            var d30 = new Date(today);
-            d30.setDate(d30.getDate() - 30);
-            $('#dailySpendFromDate').val(d30.toISOString().slice(0, 10));
-            $('#dailySpendToDate').val(today.toISOString().slice(0, 10));
-            $('#dailySpendApplyBtn').trigger('click');
-        }
-    });
-    $('#dailySpendApplyBtn').on('click', function() {
-        if (!dailySpendCurrentChannel) return;
-        var fromDate = $('#dailySpendFromDate').val();
-        var toDate = $('#dailySpendToDate').val();
-        if (!fromDate || !toDate) {
-            alert('Please select From Date and To Date.');
-            return;
-        }
-        $.ajax({
+        },
+        spend: {
+            btnClass: 'spend-chart-btn', modalId: 'dailySpendModal', titleId: 'dailySpendModalTitle',
+            canvasId: 'dailySpendCanvas', noDataId: 'dailySpendNoData', titlePrefix: 'Daily Spend',
             url: "{{ route('channel.adv.spend.chart.data') }}",
-            method: 'GET',
-            data: { channel: dailySpendCurrentChannel, fromDate: fromDate, toDate: toDate },
-            success: function(response) {
-                if (dailySpendChartInstance) { dailySpendChartInstance.destroy(); dailySpendChartInstance = null; }
-                var ctx = document.getElementById('dailySpendCanvas');
-                if (!ctx) return;
-                var dateArray = response.dateArray || [];
-                var spentArray = response.spentArray || [];
-                $('#dailySpendNoData').toggle(!dateArray.length);
-                $('#dailySpendCanvas').closest('.chart-wrapper').toggle(!!dateArray.length);
-                if (!dateArray.length) return;
-                dailySpendChartInstance = new Chart(ctx.getContext('2d'), {
-                    type: 'line',
-                    data: {
-                        labels: dateArray,
-                        datasets: [{
-                            label: 'Spend',
-                            data: spentArray,
-                            borderColor: '#6c2bd9',
-                            backgroundColor: 'rgba(108, 43, 217, 0.1)',
-                            tension: 0.4,
-                            borderWidth: 2,
-                            pointRadius: 3,
-                            pointHoverRadius: 5,
-                            fill: true
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        interaction: { mode: 'index', intersect: false },
-                        plugins: {
-                            legend: { display: true, position: 'top' },
-                            tooltip: { callbacks: { label: function(c) { return 'Spend: $' + parseFloat(c.raw).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); } } }
-                        },
-                        scales: {
-                            x: { grid: { display: false }, ticks: { color: '#6b7280', maxRotation: 45 } },
-                            y: {
-                                beginAtZero: true,
-                                grid: { color: '#e5e7eb' },
-                                ticks: { color: '#6c2bd9', callback: function(v) { return '$' + (v >= 1000 ? (v/1000).toFixed(1) + 'K' : v); } }
-                            }
-                        }
-                    }
-                });
-            },
-            error: function(xhr) {
-                var msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Failed to load daily spend data.';
-                alert(msg);
+            dataKey: 'spentArray',
+            chartOpts: {
+                label: 'Spend', borderColor: '#6c2bd9', backgroundColor: 'rgba(108, 43, 217, 0.05)', prefix: '$',
+                tooltipLabel: function(c) { return 'Spend: $' + parseFloat(c.raw).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); },
+                yTickCallback: function(v) { return '$' + (v >= 1000 ? (v/1000).toFixed(1) + 'K' : parseFloat(v).toFixed(0)); },
+                formatValue: function(v) { return parseFloat(v).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); },
+                statsIds: { panel: 'dailySpendStats', highest: 'dailySpendHighest', median: 'dailySpendMedian', lowest: 'dailySpendLowest' }
             }
-        });
-    });
-    /** End Daily Spend Chart Modal **/
-
-    /** Daily Ad Sales Chart Modal (eye icon on AD SALES) **/
-    var dailyAdSalesCurrentChannel = null;
-    var dailyAdSalesChartInstance = null;
-    $(document).on('click', '.ad-sales-chart-btn', function() {
-        dailyAdSalesCurrentChannel = $(this).data('channel') || null;
-    });
-    $('#dailyAdSalesModal').on('shown.bs.modal', function(e) {
-        var btn = e.relatedTarget ? $(e.relatedTarget) : $();
-        if (btn.length && btn.hasClass('ad-sales-chart-btn')) dailyAdSalesCurrentChannel = btn.data('channel') || dailyAdSalesCurrentChannel;
-        if (dailyAdSalesCurrentChannel) {
-            $('#dailyAdSalesModalTitle').text('Daily Ad Sales - ' + dailyAdSalesCurrentChannel);
-            var today = new Date();
-            var d30 = new Date(today);
-            d30.setDate(d30.getDate() - 30);
-            $('#dailyAdSalesFromDate').val(d30.toISOString().slice(0, 10));
-            $('#dailyAdSalesToDate').val(today.toISOString().slice(0, 10));
-            $('#dailyAdSalesApplyBtn').trigger('click');
-        }
-    });
-    $('#dailyAdSalesApplyBtn').on('click', function() {
-        if (!dailyAdSalesCurrentChannel) return;
-        var fromDate = $('#dailyAdSalesFromDate').val();
-        var toDate = $('#dailyAdSalesToDate').val();
-        if (!fromDate || !toDate) {
-            alert('Please select From Date and To Date.');
-            return;
-        }
-        $.ajax({
+        },
+        adsales: {
+            btnClass: 'ad-sales-chart-btn', modalId: 'dailyAdSalesModal', titleId: 'dailyAdSalesModalTitle',
+            canvasId: 'dailyAdSalesCanvas', noDataId: 'dailyAdSalesNoData', titlePrefix: 'Daily Ad Sales',
             url: "{{ route('channel.adv.adsales.chart.data') }}",
-            method: 'GET',
-            data: { channel: dailyAdSalesCurrentChannel, fromDate: fromDate, toDate: toDate },
-            success: function(response) {
-                if (dailyAdSalesChartInstance) { dailyAdSalesChartInstance.destroy(); dailyAdSalesChartInstance = null; }
-                var ctx = document.getElementById('dailyAdSalesCanvas');
-                if (!ctx) return;
-                var dateArray = response.dateArray || [];
-                var adSalesArray = response.adSalesArray || [];
-                $('#dailyAdSalesNoData').toggle(!dateArray.length);
-                $('#dailyAdSalesCanvas').closest('.chart-wrapper').toggle(!!dateArray.length);
-                if (!dateArray.length) return;
-                dailyAdSalesChartInstance = new Chart(ctx.getContext('2d'), {
-                    type: 'line',
-                    data: {
-                        labels: dateArray,
-                        datasets: [{
-                            label: 'Ad Sales',
-                            data: adSalesArray,
-                            borderColor: '#ed0808fc',
-                            backgroundColor: 'rgba(237, 8, 8, 0.1)',
-                            tension: 0.4,
-                            borderWidth: 2,
-                            pointRadius: 3,
-                            pointHoverRadius: 5,
-                            fill: true
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        interaction: { mode: 'index', intersect: false },
-                        plugins: {
-                            legend: { display: true, position: 'top' },
-                            tooltip: { callbacks: { label: function(c) { return 'Ad Sales: $' + parseFloat(c.raw).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); } } }
-                        },
-                        scales: {
-                            x: { grid: { display: false }, ticks: { color: '#6b7280', maxRotation: 45 } },
-                            y: {
-                                beginAtZero: true,
-                                grid: { color: '#e5e7eb' },
-                                ticks: { color: '#ed0808fc', callback: function(v) { return '$' + (v >= 1000 ? (v/1000).toFixed(1) + 'K' : v); } }
-                            }
-                        }
-                    }
-                });
-            },
-            error: function(xhr) {
-                var msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Failed to load daily ad sales data.';
-                alert(msg);
+            dataKey: 'adSalesArray',
+            chartOpts: {
+                label: 'Ad Sales', borderColor: '#ed0808fc', backgroundColor: 'rgba(237, 8, 8, 0.05)', prefix: '$',
+                tooltipLabel: function(c) { return 'Ad Sales: $' + parseFloat(c.raw).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); },
+                yTickCallback: function(v) { return '$' + (v >= 1000 ? (v/1000).toFixed(1) + 'K' : parseFloat(v).toFixed(0)); },
+                formatValue: function(v) { return parseFloat(v).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}); },
+                statsIds: { panel: 'dailyAdSalesStats', highest: 'dailyAdSalesHighest', median: 'dailyAdSalesMedian', lowest: 'dailyAdSalesLowest' }
             }
-        });
-    });
-    /** End Daily Ad Sales Chart Modal **/
-
-    /** Daily ACOS Chart Modal (eye icon on L30 ACOS%) **/
-    var dailyAcosCurrentChannel = null;
-    var dailyAcosChartInstance = null;
-    $(document).on('click', '.acos-chart-btn', function() {
-        dailyAcosCurrentChannel = $(this).data('channel') || null;
-    });
-    $('#dailyAcosModal').on('shown.bs.modal', function(e) {
-        var btn = e.relatedTarget ? $(e.relatedTarget) : $();
-        if (btn.length && btn.hasClass('acos-chart-btn')) dailyAcosCurrentChannel = btn.data('channel') || dailyAcosCurrentChannel;
-        if (dailyAcosCurrentChannel) {
-            $('#dailyAcosModalTitle').text('Daily ACOS - ' + dailyAcosCurrentChannel);
-            var today = new Date();
-            var d30 = new Date(today);
-            d30.setDate(d30.getDate() - 30);
-            $('#dailyAcosFromDate').val(d30.toISOString().slice(0, 10));
-            $('#dailyAcosToDate').val(today.toISOString().slice(0, 10));
-            $('#dailyAcosApplyBtn').trigger('click');
-        }
-    });
-    $('#dailyAcosApplyBtn').on('click', function() {
-        if (!dailyAcosCurrentChannel) return;
-        var fromDate = $('#dailyAcosFromDate').val();
-        var toDate = $('#dailyAcosToDate').val();
-        if (!fromDate || !toDate) {
-            alert('Please select From Date and To Date.');
-            return;
-        }
-        $.ajax({
+        },
+        acos: {
+            btnClass: 'acos-chart-btn', modalId: 'dailyAcosModal', titleId: 'dailyAcosModalTitle',
+            canvasId: 'dailyAcosCanvas', noDataId: 'dailyAcosNoData', titlePrefix: 'Daily ACOS',
             url: "{{ route('channel.adv.acos.chart.data') }}",
+            dataKey: 'acosArray',
+            chartOpts: {
+                label: 'ACOS %', borderColor: '#0984e3', backgroundColor: 'rgba(9, 132, 227, 0.05)', suffix: '%',
+                tooltipLabel: function(c) { return 'ACOS: ' + parseFloat(c.raw).toFixed(2) + ' %'; },
+                yTickCallback: function(v) { return parseFloat(v).toFixed(1) + ' %'; },
+                formatValue: function(v) { return parseFloat(v).toFixed(2); },
+                statsIds: { panel: 'dailyAcosStats', highest: 'dailyAcosHighest', median: 'dailyAcosMedian', lowest: 'dailyAcosLowest' }
+            }
+        }
+    };
+
+    // Compute from/to dates from a range value
+    function getDateRange(rangeVal) {
+        var today = new Date();
+        var toDate = today.toISOString().slice(0, 10);
+        if (rangeVal === 'lifetime') return { fromDate: '2020-01-01', toDate: toDate };
+        var days = parseInt(rangeVal) || 30;
+        var from = new Date(today);
+        from.setDate(from.getDate() - days);
+        return { fromDate: from.toISOString().slice(0, 10), toDate: toDate };
+    }
+
+    // Load chart data for a given chart type
+    function loadDailyChart(type) {
+        var cfg = dailyChartCfg[type];
+        var state = dailyChartState[type];
+        if (!cfg || !state.channel) return;
+        var rangeVal = $('.daily-chart-range[data-chart="' + type + '"]').val() || '30';
+        var range = getDateRange(rangeVal);
+        if (state.chart) { state.chart.destroy(); state.chart = null; }
+        $.ajax({
+            url: cfg.url,
             method: 'GET',
-            data: { channel: dailyAcosCurrentChannel, fromDate: fromDate, toDate: toDate },
+            data: { channel: state.channel, fromDate: range.fromDate, toDate: range.toDate },
             success: function(response) {
-                if (dailyAcosChartInstance) { dailyAcosChartInstance.destroy(); dailyAcosChartInstance = null; }
-                var ctx = document.getElementById('dailyAcosCanvas');
-                if (!ctx) return;
+                if (state.chart) { state.chart.destroy(); state.chart = null; }
                 var dateArray = response.dateArray || [];
-                var acosArray = response.acosArray || [];
-                $('#dailyAcosNoData').toggle(!dateArray.length);
-                $('#dailyAcosCanvas').closest('.chart-wrapper').toggle(!!dateArray.length);
-                if (!dateArray.length) return;
-                dailyAcosChartInstance = new Chart(ctx.getContext('2d'), {
-                    type: 'line',
-                    data: {
-                        labels: dateArray,
-                        datasets: [{
-                            label: 'ACOS %',
-                            data: acosArray,
-                            borderColor: '#0984e3',
-                            backgroundColor: 'rgba(9, 132, 227, 0.1)',
-                            tension: 0.4,
-                            borderWidth: 2,
-                            pointRadius: 3,
-                            pointHoverRadius: 5,
-                            fill: true
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        interaction: { mode: 'index', intersect: false },
-                        plugins: {
-                            legend: { display: true, position: 'top' },
-                            tooltip: { callbacks: { label: function(c) { return 'ACOS: ' + parseFloat(c.raw).toFixed(2) + ' %'; } } }
-                        },
-                        scales: {
-                            x: { grid: { display: false }, ticks: { color: '#6b7280', maxRotation: 45 } },
-                            y: {
-                                beginAtZero: true,
-                                grid: { color: '#e5e7eb' },
-                                ticks: { color: '#0984e3', callback: function(v) { return v + ' %'; } }
-                            }
-                        }
-                    }
-                });
+                var valArray = response[cfg.dataKey] || [];
+                $('#' + cfg.noDataId).toggle(!dateArray.length);
+                $('#' + cfg.canvasId).closest('.chart-enhanced-wrapper').toggle(!!dateArray.length);
+                if (!dateArray.length) { $('#' + cfg.chartOpts.statsIds.panel).hide(); return; }
+                state.chart = buildEnhancedChart(cfg.canvasId, dateArray, valArray, cfg.chartOpts);
             },
             error: function(xhr) {
-                var msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Failed to load daily ACOS data.';
+                var msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Failed to load data.';
                 alert(msg);
             }
         });
+    }
+
+    // Bind eye-icon click to capture channel, modal shown to auto-load, dropdown change to reload
+    $.each(dailyChartCfg, function(type, cfg) {
+        $(document).on('click', '.' + cfg.btnClass, function() {
+            dailyChartState[type].channel = $(this).data('channel') || null;
+        });
+        $('#' + cfg.modalId).on('shown.bs.modal', function(e) {
+            var btn = e.relatedTarget ? $(e.relatedTarget) : $();
+            if (btn.length && btn.hasClass(cfg.btnClass)) {
+                dailyChartState[type].channel = btn.data('channel') || dailyChartState[type].channel;
+            }
+            if (dailyChartState[type].channel) {
+                $('#' + cfg.titleId).text(cfg.titlePrefix + ' - ' + dailyChartState[type].channel);
+                loadDailyChart(type);
+            }
+        });
     });
-    /** End Daily ACOS Chart Modal **/
+    $(document).on('change', '.daily-chart-range', function() {
+        var type = $(this).data('chart');
+        if (type && dailyChartState[type] && dailyChartState[type].channel) loadDailyChart(type);
+    });
+    /** End Daily Chart Modals **/
 
     /** Start Ebay Graph Date **/
     const ctxEbay = document.getElementById('advEbayChart').getContext('2d');

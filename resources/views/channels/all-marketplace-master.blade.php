@@ -197,40 +197,40 @@
                         <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">
                             Total Channels: <span id="total-channels">0</span>
                         </span>
-                        <span class="badge bg-success fs-6 p-2" style="color: black; font-weight: bold;">
+                        <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="l30_sales" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
                             L30 Sales: <span id="total-l30-sales">$0</span>
                         </span>
-                        <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;">
+                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="l30_orders" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
                             L30 Orders: <span id="total-l30-orders">0</span>
                         </span>
-                        <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">
+                        <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="qty" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             Total Qty: <span id="total-qty">0</span>
                         </span>
-                        <span class="badge bg-warning fs-6 p-2" style="color: black; font-weight: bold;">
+                        <span class="badge bg-warning fs-6 p-2 badge-chart-link" data-metric="gprofit" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
                             Avg Gprofit%: <span id="avg-gprofit">0%</span>
                         </span>
-                        <span class="badge bg-danger fs-6 p-2" style="color: white; font-weight: bold;">
+                        <span class="badge bg-danger fs-6 p-2 badge-chart-link" data-metric="groi" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             Avg G ROI%: <span id="avg-groi">0%</span>
                         </span>
-                        <span class="badge bg-secondary fs-6 p-2" style="color: white; font-weight: bold;">
+                        <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="ad_spend" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             Total Ad Spend: <span id="total-ad-spend">$0</span>
                         </span>
-                        <span class="badge bg-dark fs-6 p-2" style="color: white; font-weight: bold;">
+                        <span class="badge bg-dark fs-6 p-2 badge-chart-link" data-metric="npft" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             Avg N PFT%: <span id="avg-npft">0%</span>
                         </span>
-                        <span class="badge bg-primary fs-6 p-2" style="color: white; font-weight: bold;">
+                        <span class="badge bg-primary fs-6 p-2 badge-chart-link" data-metric="nroi" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             Avg N ROI%: <span id="avg-nroi">0%</span>
                         </span>
-                        <span class="badge bg-info fs-6 p-2" style="color: black; font-weight: bold;">
+                        <span class="badge bg-info fs-6 p-2 badge-chart-link" data-metric="clicks" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">
                             Total Clicks: <span id="total-clicks">0</span>
                         </span>
                         {{-- <span class="badge bg-warning fs-6 p-2" style="color: black; font-weight: bold;">
                              Map: <span id="total-map">0</span>
                         </span> --}}
-                        <span class="badge bg-danger fs-6 p-2" style="color: white; font-weight: bold;">
+                        <span class="badge bg-danger fs-6 p-2 badge-chart-link" data-metric="nmap" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             N Map: <span id="total-nmap">0</span>
                         </span>
-                        <span class="badge bg-danger fs-6 p-2" style="color: white; font-weight: bold;">
+                        <span class="badge bg-danger fs-6 p-2 badge-chart-link" data-metric="missing_l" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             Missing L : <span id="total-miss">0</span>
                         </span>
                     </div>
@@ -530,47 +530,54 @@
 
     <!-- Ad Breakdown Chart Modal -->
     <div class="modal fade" id="adBreakdownChartModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-xl modal-dialog-centered shadow-none">
-            <div class="modal-content">
-                <div class="modal-header bg-info text-white">
-                    <h5 class="modal-title">
-                        <i class="fas fa-chart-area me-2"></i>
+        <div class="modal-dialog shadow-none" style="max-width: 98vw; width: 98vw; margin: 10px auto 0;">
+            <div class="modal-content" style="border-radius: 8px; overflow: hidden;">
+                <div class="modal-header bg-info text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size: 13px;">
+                        <i class="fas fa-chart-area me-1"></i>
                         <span id="adChartModalTitle">Ad Breakdown - Rolling L30</span>
-                    </h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="adChartRangeSelect" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
+                            <option value="7">7 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                            <option value="0">Lifetime</option>
+                        </select>
+                        <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal"></button>
+                    </div>
                 </div>
-                <div class="modal-body">
-                    <div class="row mb-3">
-                        <div class="col-md-4">
-                            <label class="form-label small text-muted mb-1">Start Date</label>
-                            <input type="date" id="adChartStartDate" class="form-control form-control-sm">
+                <div class="modal-body p-2">
+                    <div id="adBreakdownChartContainer" style="height: 20vh; display: flex; align-items: stretch;">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="adBreakdownChart"></canvas>
                         </div>
-                        <div class="col-md-4">
-                            <label class="form-label small text-muted mb-1">End Date</label>
-                            <input type="date" id="adChartEndDate" class="form-control form-control-sm">
-                        </div>
-                        <div class="col-md-4 d-flex align-items-end">
-                            <button type="button" class="btn btn-info btn-sm w-100" id="adChartFilterBtn">
-                                <i class="fas fa-filter me-1"></i> Apply Filter
-                            </button>
+                        <div id="adChartRefPanel" style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #dc3545; margin-bottom: 1px;">Highest</div>
+                                <div id="adChartHighest" style="font-size: 13px; font-weight: 700; color: #dc3545;">-</div>
+                            </div>
+                            <div style="text-align: center; border-top: 1px dashed #adb5bd; border-bottom: 1px dashed #adb5bd; padding: 4px 0;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; margin-bottom: 1px;">Median</div>
+                                <div id="adChartMedian" style="font-size: 13px; font-weight: 700; color: #6c757d;">-</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #198754; margin-bottom: 1px;">Lowest</div>
+                                <div id="adChartLowest" style="font-size: 13px; font-weight: 700; color: #198754;">-</div>
+                            </div>
                         </div>
                     </div>
-                    <div id="adBreakdownChartContainer" style="height: 400px;">
-                        <canvas id="adBreakdownChart"></canvas>
-                    </div>
-                    <div id="adChartLoading" class="text-center py-5" style="display: none;">
-                        <div class="spinner-border text-primary" role="status">
+                    <div id="adChartLoading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status">
                             <span class="visually-hidden">Loading...</span>
                         </div>
-                        <p class="mt-2 text-muted">Loading chart data...</p>
+                        <p class="mt-1 text-muted small mb-0">Loading chart data...</p>
                     </div>
-                    <div id="adChartNoData" class="text-center py-5" style="display: none;">
-                        <i class="fas fa-exclamation-circle text-warning fa-3x mb-3"></i>
-                        <p class="text-muted">Daily data is not available for this channel/ad type.</p>
+                    <div id="adChartNoData" class="text-center py-3" style="display: none;">
+                        <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
+                        <p class="text-muted small mb-0">Daily data is not available for this channel/ad type.</p>
                     </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
                 </div>
             </div>
         </div>
@@ -848,16 +855,22 @@
                             const value = parseNumber(cell.getValue());
                             const rowData = cell.getRow().getData();
                             const missingLink = rowData['missing_link'] || '';
+                            const channel = (rowData['Channel '] || '').trim();
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="missing_l" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
 
-                            // Simple black text - no background colors
                             const style = 'color:black;font-weight:600;';
 
-                            // Make clickable if missing_link exists
                             if (missingLink && value > 0) {
-                                return `<a href="${missingLink}" target="_blank" style="${style}text-decoration:none;cursor:pointer;" title="Click to view missing items details">${value}</a>`;
+                                return `<a href="${missingLink}" target="_blank" style="${style}text-decoration:none;cursor:pointer;" title="Click to view missing items details">${value}</a>${chartIcon}`;
                             }
 
-                            return `<span style="${style}">${value}</span>`;
+                            return `<span style="${style}">${value}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -891,14 +904,21 @@
                         sorter: "number",
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="nmap" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
 
-                            // Text color logic
                             let color = 'red';
                             if (value === 0) {
                                 color = 'green';
                             }
 
-                            return `<span style="color:${color};font-weight:bold;">${value}</span>`;
+                            return `<span style="color:${color};font-weight:bold;">${value}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -925,7 +945,15 @@
                         width: 100,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
-                            return `<span style="font-weight: 600;">$${value.toLocaleString('en-US')}</span>`;
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="l30_sales" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                            return `<span style="font-weight: 600;">$${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -941,12 +969,18 @@
                         visible: false,
                         formatter: function(cell) {
                             const totalSpent = parseNumber(cell.getValue() || 0);
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
                             if (totalSpent === 0) return '-';
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="ad_spend" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             const infoIcon =
-                                `<i class="fas fa-info-circle ad-spend-breakdown-toggle ms-1" style="cursor:pointer;color:#17a2b8;font-size:12px;" title="Toggle Spend Breakdown"></i>`;
-                            return `<span style="font-weight:600;">$${Math.round(totalSpent).toLocaleString('en-US')}</span>${infoIcon}`;
+                                `<i class="fas fa-chevron-right ad-spend-breakdown-toggle ms-1" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="Toggle Spend Breakdown"></i>`;
+                            return `<span style="font-weight:600;">$${Math.round(totalSpent).toLocaleString('en-US')}</span>${chartIcon}${infoIcon}`;
                         },
                         cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                            }
                             if (e.target.classList.contains('ad-spend-breakdown-toggle')) {
                                 e.stopPropagation();
                                 toggleAdSpendBreakdownColumns();
@@ -969,7 +1003,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#198754;">$${value.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -996,7 +1030,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#0d6efd;">$${value.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1023,7 +1057,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#dc3545;">$${value.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1050,7 +1084,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#ffc107;">$${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1077,7 +1111,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#4285f4;">$${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1104,7 +1138,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#6f42c1;">$${value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1128,12 +1162,18 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
                             if (value === 0) return '-';
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="clicks" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             const infoIcon =
-                                `<i class="fas fa-info-circle clicks-breakdown-toggle ms-1" style="cursor:pointer;color:#17a2b8;font-size:12px;" title="Toggle Clicks Breakdown"></i>`;
-                            return `<span style="font-weight:600;">${value.toLocaleString('en-US')}</span>${infoIcon}`;
+                                `<i class="fas fa-chevron-right clicks-breakdown-toggle ms-1" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="Toggle Clicks Breakdown"></i>`;
+                            return `<span style="font-weight:600;">${value.toLocaleString('en-US')}</span>${chartIcon}${infoIcon}`;
                         },
                         cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                            }
                             if (e.target.classList.contains('clicks-breakdown-toggle')) {
                                 e.stopPropagation();
                                 toggleClicksBreakdownColumns();
@@ -1157,7 +1197,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" data-metric="clicks" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" data-metric="clicks" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#198754;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1183,7 +1223,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" data-metric="clicks" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" data-metric="clicks" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#0d6efd;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1209,7 +1249,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" data-metric="clicks" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" data-metric="clicks" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#dc3545;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1235,7 +1275,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" data-metric="clicks" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" data-metric="clicks" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#ffc107;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1261,7 +1301,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" data-metric="clicks" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" data-metric="clicks" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#4285f4;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1287,7 +1327,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" data-metric="clicks" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" data-metric="clicks" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#6f42c1;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1312,8 +1352,9 @@
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
                             if (!value || value === 0) return '-';
+                            // AD SALES doesn't have its own snapshot field, so no metric chart icon here
                             const infoIcon =
-                                `<i class="fas fa-info-circle ad-sales-breakdown-toggle ms-1" style="cursor:pointer;color:#17a2b8;font-size:12px;" title="Toggle Ad Sales Breakdown"></i>`;
+                                `<i class="fas fa-chevron-right ad-sales-breakdown-toggle ms-1" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="Toggle Ad Sales Breakdown"></i>`;
                             return `<span style="font-weight:600;">$${Math.round(value).toLocaleString('en-US')}</span>${infoIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1341,7 +1382,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" data-metric="sales" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" data-metric="sales" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#198754;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1367,7 +1408,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" data-metric="sales" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" data-metric="sales" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#0d6efd;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1393,7 +1434,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" data-metric="sales" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" data-metric="sales" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#dc3545;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1419,7 +1460,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" data-metric="sales" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" data-metric="sales" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#ffc107;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1445,7 +1486,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" data-metric="sales" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" data-metric="sales" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#4285f4;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1471,7 +1512,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" data-metric="sales" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" data-metric="sales" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#6f42c1;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1497,7 +1538,7 @@
                             const value = parseNumber(cell.getValue());
                             if (value === 0) return '-';
                             const infoIcon =
-                                `<i class="fas fa-info-circle ad-sold-breakdown-toggle ms-1" style="cursor:pointer;color:#17a2b8;font-size:12px;" title="Toggle Ad Sold Breakdown"></i>`;
+                                `<i class="fas fa-chevron-right ad-sold-breakdown-toggle ms-1" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="Toggle Ad Sold Breakdown"></i>`;
                             return `<span style="font-weight:600;">${value.toLocaleString('en-US')}</span>${infoIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1524,7 +1565,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" data-metric="sold" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" data-metric="sold" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#198754;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1550,7 +1591,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" data-metric="sold" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" data-metric="sold" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#0d6efd;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1576,7 +1617,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" data-metric="sold" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" data-metric="sold" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#dc3545;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1602,7 +1643,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" data-metric="sold" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" data-metric="sold" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#ffc107;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1628,7 +1669,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" data-metric="sold" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" data-metric="sold" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#4285f4;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1654,7 +1695,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" data-metric="sold" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" data-metric="sold" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             return `<span style="font-weight:600;color:#6f42c1;">${value.toLocaleString('en-US')}</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1678,12 +1719,18 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
                             if (!value || value === 0) return '-';
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="acos" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             const infoIcon =
-                                `<i class="fas fa-info-circle acos-breakdown-toggle ms-1" style="cursor:pointer;color:#17a2b8;font-size:12px;" title="Toggle ACOS Breakdown"></i>`;
-                            return `<span style="font-weight:600;">${value.toFixed(1)}%</span>${infoIcon}`;
+                                `<i class="fas fa-chevron-right acos-breakdown-toggle ms-1" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="Toggle ACOS Breakdown"></i>`;
+                            return `<span style="font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}${infoIcon}`;
                         },
                         cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                            }
                             if (e.target.classList.contains('acos-breakdown-toggle')) {
                                 e.stopPropagation();
                                 toggleAcosBreakdownColumns();
@@ -1716,7 +1763,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" data-metric="acos" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View ACOS Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" data-metric="acos" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View ACOS Chart"></i>`;
                             return `<span style="font-weight:600;color:#198754;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1738,7 +1785,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" data-metric="acos" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View ACOS Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" data-metric="acos" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View ACOS Chart"></i>`;
                             return `<span style="font-weight:600;color:#0d6efd;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1760,7 +1807,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" data-metric="acos" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View ACOS Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" data-metric="acos" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View ACOS Chart"></i>`;
                             return `<span style="font-weight:600;color:#dc3545;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1782,7 +1829,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" data-metric="acos" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View ACOS Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" data-metric="acos" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View ACOS Chart"></i>`;
                             return `<span style="font-weight:600;color:#ffc107;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1804,7 +1851,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" data-metric="acos" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View ACOS Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" data-metric="acos" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View ACOS Chart"></i>`;
                             return `<span style="font-weight:600;color:#4285f4;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1826,7 +1873,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" data-metric="acos" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View ACOS Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" data-metric="acos" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View ACOS Chart"></i>`;
                             return `<span style="font-weight:600;color:#6f42c1;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1848,7 +1895,7 @@
                             const value = parseNumber(cell.getValue());
                             if (!value || value === 0) return '-';
                             const infoIcon =
-                                `<i class="fas fa-info-circle cvr-breakdown-toggle ms-1" style="cursor:pointer;color:#17a2b8;font-size:12px;" title="Toggle CVR Breakdown"></i>`;
+                                `<i class="fas fa-chevron-right cvr-breakdown-toggle ms-1" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="Toggle CVR Breakdown"></i>`;
                             return `<span style="font-weight:600;">${Math.round(value)}%</span>${infoIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1884,7 +1931,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" data-metric="cvr" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View CVR Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="kw" data-metric="cvr" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View CVR Chart"></i>`;
                             return `<span style="font-weight:600;color:#198754;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1906,7 +1953,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" data-metric="cvr" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View CVR Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pt" data-metric="cvr" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View CVR Chart"></i>`;
                             return `<span style="font-weight:600;color:#0d6efd;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1928,7 +1975,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" data-metric="cvr" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View CVR Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="hl" data-metric="cvr" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View CVR Chart"></i>`;
                             return `<span style="font-weight:600;color:#dc3545;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1950,7 +1997,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" data-metric="cvr" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View CVR Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="pmt" data-metric="cvr" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View CVR Chart"></i>`;
                             return `<span style="font-weight:600;color:#ffc107;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1972,7 +2019,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" data-metric="cvr" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View CVR Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="shopping" data-metric="cvr" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View CVR Chart"></i>`;
                             return `<span style="font-weight:600;color:#4285f4;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -1994,7 +2041,7 @@
                             const channel = (rowData['Channel '] || '').trim();
                             if (value === 0) return '-';
                             const chartIcon =
-                                `<i class="fas fa-chart-line ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" data-metric="cvr" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="View CVR Chart"></i>`;
+                                `<i class="fas fa-circle ad-chart-icon ms-1" data-channel="${channel}" data-adtype="serp" data-metric="cvr" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View CVR Chart"></i>`;
                             return `<span style="font-weight:600;color:#6f42c1;">${value.toFixed(1)}%</span>${chartIcon}`;
                         },
                         cellClick: function(e, cell) {
@@ -2050,7 +2097,15 @@
                         width: 100,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
-                            return `<span>${value.toLocaleString('en-US')}</span>`;
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="l30_orders" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                            return `<span>${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -2066,7 +2121,15 @@
                         width: 90,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
-                            return `<span>${value.toLocaleString('en-US')}</span>`;
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="qty" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
+                            return `<span>${value.toLocaleString('en-US')}</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                            }
                         },
                         bottomCalc: "sum",
                         bottomCalcFormatter: function(cell) {
@@ -2082,22 +2145,30 @@
                         sorter: "number",
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="gprofit" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             let style = '';
 
                             if (value >= 0 && value <= 10) {
-                                style = 'color:#a00211;'; // Red text
+                                style = 'color:#a00211;';
                             } else if (value > 10 && value <= 18) {
                                 style =
-                                    'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;'; // Yellow bg with black text
+                                    'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;';
                             } else if (value > 18 && value <= 25) {
-                                style = 'color:#3591dc;'; // Blue text
+                                style = 'color:#3591dc;';
                             } else if (value > 25 && value <= 40) {
-                                style = 'color:#28a745;'; // Green text
+                                style = 'color:#28a745;';
                             } else {
-                                style = 'color:#e83e8c;'; // Pink text
+                                style = 'color:#e83e8c;';
                             }
 
-                            return `<span style="${style}font-weight:600;">${value.toFixed(1)}%</span>`;
+                            return `<span style="${style}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                            }
                         }
                     },
                     {
@@ -2107,20 +2178,27 @@
                         sorter: "number",
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="groi" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             let style = '';
 
                             if (value <= 50) {
-                                style = 'color:#a00211;'; // Red text
+                                style = 'color:#a00211;';
                             } else if (value > 50 && value <= 75) {
-                                style =
-                                    'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;'; // Yellow bg with black text
+                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;';
                             } else if (value > 75 && value <= 125) {
-                                style = 'color:#28a745;'; // Green text
+                                style = 'color:#28a745;';
                             } else {
-                                style = 'color:#8000ff;'; // Purple text
+                                style = 'color:#8000ff;';
                             }
 
-                            return `<span style="${style}font-weight:600;">${value.toFixed(0)}%</span>`;
+                            return `<span style="${style}font-weight:600;">${value.toFixed(0)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                            }
                         }
                     },
 
@@ -2131,9 +2209,10 @@
                         sorter: "number",
                         formatter: function(cell) {
                             const rowData = cell.getRow().getData();
-                            const channel = (rowData['Channel '] || '').trim().toLowerCase();
+                            const channelRaw = (rowData['Channel '] || '').trim();
+                            const channel = channelRaw.toLowerCase();
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channelRaw}" data-metric="ads_pct" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
 
-                            // For Walmart, Temu, and Shopify B2C, use TACOS %
                             let adsPercent = 0;
                             if (channel === 'walmart' || channel === 'temu' || channel ===
                                 'shopifyb2c') {
@@ -2144,14 +2223,20 @@
 
                             let style = '';
                             if (adsPercent < 5) {
-                                style = 'color:#e83e8c;'; // Pink text
+                                style = 'color:#e83e8c;';
                             } else if (adsPercent >= 5 && adsPercent <= 10) {
-                                style = 'color:#28a745;'; // Green text
+                                style = 'color:#28a745;';
                             } else {
-                                style = 'color:#a00211;'; // Red text
+                                style = 'color:#a00211;';
                             }
 
-                            return `<span style="${style}font-weight:600;">${adsPercent.toFixed(1)}%</span>`;
+                            return `<span style="${style}font-weight:600;">${adsPercent.toFixed(1)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                            }
                         }
                     },
                     {
@@ -2161,22 +2246,29 @@
                         sorter: "number",
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="npft" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             let style = '';
 
                             if (value >= 0 && value <= 10) {
-                                style = 'color:#a00211;'; // Red text
+                                style = 'color:#a00211;';
                             } else if (value > 10 && value <= 18) {
-                                style =
-                                    'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;'; // Yellow bg with black text
+                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;';
                             } else if (value > 18 && value <= 25) {
-                                style = 'color:#3591dc;'; // Blue text
+                                style = 'color:#3591dc;';
                             } else if (value > 25 && value <= 40) {
-                                style = 'color:#28a745;'; // Green text
+                                style = 'color:#28a745;';
                             } else {
-                                style = 'color:#e83e8c;'; // Pink text
+                                style = 'color:#e83e8c;';
                             }
 
-                            return `<span style="${style}font-weight:600;">${value.toFixed(1)}%</span>`;
+                            return `<span style="${style}font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                            }
                         }
                     },
                     {
@@ -2186,20 +2278,27 @@
                         sorter: "number",
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="nroi" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             let style = '';
 
                             if (value <= 50) {
-                                style = 'color:#a00211;'; // Red text
+                                style = 'color:#a00211;';
                             } else if (value > 50 && value <= 75) {
-                                style =
-                                    'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;'; // Yellow bg with black text
+                                style = 'background:#ffc107;color:black;padding:4px 8px;border-radius:4px;';
                             } else if (value > 75 && value <= 125) {
-                                style = 'color:#28a745;'; // Green text
+                                style = 'color:#28a745;';
                             } else {
-                                style = 'color:#8000ff;'; // Purple text
+                                style = 'color:#8000ff;';
                             }
 
-                            return `<span style="${style}font-weight:600;">${value.toFixed(0)}%</span>`;
+                            return `<span style="${style}font-weight:600;">${value.toFixed(0)}%</span>${chartIcon}`;
+                        },
+                        cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                            }
                         }
                     },
                     {
@@ -2878,58 +2977,68 @@
             let currentChartChannel = '';
             let currentChartAdType = '';
             let currentChartMetric = 'spend';
+            let currentChartDays = 30;
+            let adChartAjax = null; // track in-flight request
+            let currentChartMode = 'ad'; // 'ad' = ad breakdown, 'metric' = channel metric
+            let currentMetricKey = ''; // metric key for channel metric mode
+
+            // Channels that have daily data
+            const channelsWithDailyData = ['amazon', 'amazonfba', 'ebay', 'ebaytwo', 'ebaythree', 'shopifyb2c'];
+            const adTypesForChannel = {
+                'amazon': ['kw', 'pt', 'hl'],
+                'amazonfba': ['kw', 'pt'],
+                'ebay': ['kw', 'pmt'],
+                'ebaytwo': ['kw', 'pmt'],
+                'ebaythree': ['kw', 'pmt'],
+                'shopifyb2c': ['shopping', 'serp']
+            };
+
+            // Date helper — YYYY-MM-DD in local time
+            const adChartFmtDate = (d) => {
+                return d.getFullYear() + '-' +
+                    String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                    String(d.getDate()).padStart(2, '0');
+            };
+
+            // Compute start/end from days selection
+            function adChartDateRange(days) {
+                const today = new Date();
+                const end = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 2);
+                if (days === 0) {
+                    // Lifetime — send no start_date so backend returns all available data
+                    return { start: null, end: adChartFmtDate(end) };
+                }
+                const start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - days + 1);
+                return { start: adChartFmtDate(start), end: adChartFmtDate(end) };
+            }
+
+            // Range label for modal title
+            function adChartRangeLabel(days) {
+                if (days === 0) return 'Lifetime';
+                return 'L' + days;
+            }
 
             // Show Ad Breakdown Chart Modal
             function showAdBreakdownChart(channel, adType, metricType = 'spend') {
+                currentChartMode = 'ad';
                 currentChartChannel = channel.toLowerCase().replace(/[^a-z0-9]/g, '');
                 currentChartAdType = adType.toLowerCase();
                 currentChartMetric = metricType;
+                currentChartDays = 30; // reset to default
 
-                // Channels with daily data (daily date in report_range or date column)
-                const channelsWithDailyData = ['amazon', 'amazonfba', 'ebay', 'ebaytwo', 'ebaythree', 'shopifyb2c'];
-                const adTypesForChannel = {
-                    'amazon': ['kw', 'pt', 'hl'],
-                    'amazonfba': ['kw', 'pt'],
-                    'ebay': ['kw', 'pmt'],
-                    'ebaytwo': ['kw', 'pmt'],
-                    'ebaythree': ['kw', 'pmt'],
-                    'shopifyb2c': ['shopping', 'serp']
-                };
-
-                // Check if daily data is available
                 const hasData = channelsWithDailyData.includes(currentChartChannel) &&
                     (adTypesForChannel[currentChartChannel] || []).includes(currentChartAdType);
 
-                // Set default dates (last 30 days ending 2 days ago)
-                // Use local date formatting to avoid timezone issues
-                const today = new Date();
-                const endDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 2);
-                const startDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 31);
-
-                // Format as YYYY-MM-DD using local time (not UTC)
-                const formatDate = (d) => {
-                    const year = d.getFullYear();
-                    const month = String(d.getMonth() + 1).padStart(2, '0');
-                    const day = String(d.getDate()).padStart(2, '0');
-                    return `${year}-${month}-${day}`;
-                };
-
-                $('#adChartStartDate').val(formatDate(startDate));
-                $('#adChartEndDate').val(formatDate(endDate));
+                // Reset dropdown to 30D
+                $('#adChartRangeSelect').val('30');
 
                 // Set modal title
                 const adTypeLabel = currentChartAdType.toUpperCase();
-                const channelLabel = channel;
-                // Handle special metric labels
                 let metricLabel;
-                if (metricType === 'acos') {
-                    metricLabel = 'ACOS %';
-                } else if (metricType === 'cvr') {
-                    metricLabel = 'CVR %';
-                } else {
-                    metricLabel = metricType.charAt(0).toUpperCase() + metricType.slice(1);
-                }
-                $('#adChartModalTitle').text(`${channelLabel} - ${adTypeLabel} ${metricLabel} (Rolling L30)`);
+                if (metricType === 'acos') metricLabel = 'ACOS %';
+                else if (metricType === 'cvr') metricLabel = 'CVR %';
+                else metricLabel = metricType.charAt(0).toUpperCase() + metricType.slice(1);
+                $('#adChartModalTitle').text(`${channel} - ${adTypeLabel} ${metricLabel} (Rolling ${adChartRangeLabel(currentChartDays)})`);
 
                 // Show modal
                 const modal = new bootstrap.Modal(document.getElementById('adBreakdownChartModal'));
@@ -2945,26 +3054,44 @@
                 loadAdBreakdownChart();
             }
 
-            // Load chart data
+            // Load chart data (handles both ad-breakdown and channel-metric modes)
             function loadAdBreakdownChart() {
+                // Abort any previous in-flight request
+                if (adChartAjax) adChartAjax.abort();
+
                 $('#adChartNoData').hide();
                 $('#adBreakdownChartContainer').hide();
                 $('#adChartLoading').show();
 
-                const startDate = $('#adChartStartDate').val();
-                const endDate = $('#adChartEndDate').val();
+                let url, params;
 
-                $.ajax({
-                    url: '/ad-breakdown-chart-data',
-                    method: 'GET',
-                    data: {
+                if (currentChartMode === 'metric') {
+                    // Channel metric mode — uses ChannelMasterSummary snapshots
+                    url = '/channel-metric-chart-data';
+                    params = {
+                        channel: currentChartChannel,
+                        metric: currentMetricKey,
+                        days: currentChartDays
+                    };
+                } else {
+                    // Ad breakdown mode — uses daily ad campaign reports
+                    url = '/ad-breakdown-chart-data';
+                    const range = adChartDateRange(currentChartDays);
+                    params = {
                         channel: currentChartChannel,
                         ad_type: currentChartAdType,
                         metric: currentChartMetric,
-                        start_date: startDate,
-                        end_date: endDate
-                    },
+                        end_date: range.end
+                    };
+                    if (range.start) params.start_date = range.start;
+                }
+
+                adChartAjax = $.ajax({
+                    url: url,
+                    method: 'GET',
+                    data: params,
                     success: function(response) {
+                        adChartAjax = null;
                         $('#adChartLoading').hide();
 
                         if (response.success && response.data && response.data.length > 0) {
@@ -2974,7 +3101,9 @@
                             $('#adChartNoData').show();
                         }
                     },
-                    error: function(xhr) {
+                    error: function(xhr, status) {
+                        adChartAjax = null;
+                        if (status === 'abort') return;
                         console.error('Error fetching chart data:', xhr);
                         $('#adChartLoading').hide();
                         $('#adChartNoData').show();
@@ -2982,9 +3111,62 @@
                 });
             }
 
-            // Filter button click handler
-            $(document).on('click', '#adChartFilterBtn', function() {
+            // Metric label map for titles
+            const metricLabels = {
+                'l30_sales': 'L30 Sales',
+                'l30_orders': 'L30 Orders',
+                'qty': 'Qty',
+                'gprofit': 'Gprofit%',
+                'groi': 'G ROI%',
+                'ads_pct': 'Ads%',
+                'npft': 'N PFT%',
+                'nroi': 'N ROI%',
+                'missing_l': 'Missing L',
+                'nmap': 'N Map',
+                'ad_spend': 'AD Spend',
+                'clicks': 'AD Clicks',
+                'acos': 'ACOS',
+            };
+
+            // Show metric chart (for non-ad-breakdown columns)
+            function showMetricChart(channel, metricKey) {
+                currentChartMode = 'metric';
+                currentChartChannel = channel.toLowerCase().replace(/[^a-z0-9]/g, '');
+                currentMetricKey = metricKey;
+                currentChartMetric = metricKey; // for fmtVal formatting
+                currentChartDays = 30;
+
+                // Reset dropdown
+                $('#adChartRangeSelect').val('30');
+
+                // Set title
+                const label = metricLabels[metricKey] || metricKey;
+                $('#adChartModalTitle').text(`${channel} - ${label} (Rolling ${adChartRangeLabel(currentChartDays)})`);
+
+                // Show modal
+                const modal = new bootstrap.Modal(document.getElementById('adBreakdownChartModal'));
+                modal.show();
+
                 loadAdBreakdownChart();
+            }
+
+            // Range dropdown change handler
+            $(document).on('change', '#adChartRangeSelect', function() {
+                const days = parseInt($(this).val());
+                if (days === currentChartDays) return;
+                currentChartDays = days;
+
+                // Update modal title range label
+                const titleEl = $('#adChartModalTitle');
+                titleEl.text(titleEl.text().replace(/\(Rolling [^)]+\)/, `(Rolling ${adChartRangeLabel(days)})`));
+
+                loadAdBreakdownChart();
+            });
+
+            // Badge click handler — show overall (all channels) metric trend
+            $(document).on('click', '.badge-chart-link', function() {
+                const metricKey = $(this).data('metric');
+                showMetricChart('All', metricKey);
             });
 
             // Render chart
@@ -2999,37 +3181,100 @@
                 const labels = data.map(d => d.date);
                 const values = data.map(d => d.value);
 
-                // Colors matching the column colors for each ad type
-                const adTypeColors = {
-                    'kw': {
-                        bg: 'rgba(25, 135, 84, 0.2)',
-                        border: 'rgb(25, 135, 84)'
-                    }, // Green
-                    'pt': {
-                        bg: 'rgba(13, 110, 253, 0.2)',
-                        border: 'rgb(13, 110, 253)'
-                    }, // Blue
-                    'hl': {
-                        bg: 'rgba(220, 53, 69, 0.2)',
-                        border: 'rgb(220, 53, 69)'
-                    }, // Red
-                    'pmt': {
-                        bg: 'rgba(255, 193, 7, 0.2)',
-                        border: 'rgb(255, 193, 7)'
-                    }, // Yellow
-                    'shopping': {
-                        bg: 'rgba(66, 133, 244, 0.2)',
-                        border: 'rgb(66, 133, 244)'
-                    }, // Google Blue
-                    'serp': {
-                        bg: 'rgba(111, 66, 193, 0.2)',
-                        border: 'rgb(111, 66, 193)'
-                    } // Purple
+                // --- Compute stats ---
+                const dataMin = Math.min(...values);
+                const dataMax = Math.max(...values);
+                const sorted = [...values].sort((a, b) => a - b);
+                const mid = Math.floor(sorted.length / 2);
+                const median = sorted.length % 2 !== 0
+                    ? sorted[mid]
+                    : (sorted[mid - 1] + sorted[mid]) / 2;
+
+                // Dynamic Y-axis range with 10% padding
+                const range = dataMax - dataMin || 1;
+                const yMin = Math.max(0, dataMin - range * 0.1);
+                const yMax = dataMax + range * 0.1;
+
+                // --- Format helper (no decimals for spend/sales) ---
+                const fmtVal = (v) => {
+                    const m = currentChartMetric;
+                    if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'ad_spend') {
+                        return '$' + Math.round(v).toLocaleString('en-US');
+                    }
+                    if (m === 'acos' || m === 'cvr' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'nroi') {
+                        return v.toFixed(1) + '%';
+                    }
+                    return Math.round(v).toLocaleString('en-US');
                 };
 
-                const color = adTypeColors[currentChartAdType] || {
-                    bg: 'rgba(220, 53, 69, 0.2)',
-                    border: 'rgb(220, 53, 69)'
+                // --- Populate right-side reference panel ---
+                document.getElementById('adChartHighest').textContent = fmtVal(dataMax);
+                document.getElementById('adChartMedian').textContent = fmtVal(median);
+                document.getElementById('adChartLowest').textContent = fmtVal(dataMin);
+
+                // --- Dot colors: green if value < previous day, red if higher, grey if first ---
+                const dotColors = values.map((v, i) => {
+                    if (i === 0) return '#6c757d';           // neutral for first point
+                    return v < values[i - 1] ? '#198754' :   // green = lower than yesterday
+                           v > values[i - 1] ? '#dc3545' :   // red   = higher than yesterday
+                           '#6c757d';                         // neutral = same
+                });
+
+                // --- Value label colors: green if value < 7 days ago, red if higher ---
+                const labelColors = values.map((v, i) => {
+                    if (i < 7) return '#6c757d';              // not enough history
+                    return v < values[i - 7] ? '#198754' :    // green = decreased vs 7d ago
+                           v > values[i - 7] ? '#dc3545' :    // red   = increased vs 7d ago
+                           '#6c757d';                          // neutral = same
+                });
+
+                // --- Median line plugin ---
+                const medianLinePlugin = {
+                    id: 'medianLine',
+                    afterDraw(chart) {
+                        const yScale = chart.scales.y;
+                        const xScale = chart.scales.x;
+                        const ctx = chart.ctx;
+                        const yPixel = yScale.getPixelForValue(median);
+
+                        ctx.save();
+                        ctx.setLineDash([6, 4]);
+                        ctx.strokeStyle = '#6c757d';
+                        ctx.lineWidth = 1.2;
+                        ctx.beginPath();
+                        ctx.moveTo(xScale.left, yPixel);
+                        ctx.lineTo(xScale.right, yPixel);
+                        ctx.stroke();
+                        ctx.restore();
+                    }
+                };
+
+                // --- Value labels plugin (draws value near each dot) ---
+                const valueLabelsPlugin = {
+                    id: 'valueLabels',
+                    afterDatasetsDraw(chart) {
+                        const dataset = chart.data.datasets[0];
+                        const meta = chart.getDatasetMeta(0);
+                        const ctx = chart.ctx;
+
+                        ctx.save();
+                        ctx.font = 'bold 7px Inter, system-ui, sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'bottom';
+
+                        meta.data.forEach((point, i) => {
+                            const val = dataset.data[i];
+                            const x = point.x;
+                            const y = point.y;
+
+                            // Alternate label position to reduce overlap
+                            const offsetY = (i % 2 === 0) ? -7 : -14;
+
+                            ctx.fillStyle = labelColors[i];
+                            ctx.fillText(fmtVal(val), x, y + offsetY);
+                        });
+                        ctx.restore();
+                    }
                 };
 
                 adBreakdownChartInstance = new Chart(ctx, {
@@ -3037,51 +3282,61 @@
                     data: {
                         labels: labels,
                         datasets: [{
-                            label: currentChartMetric.charAt(0).toUpperCase() + currentChartMetric
-                                .slice(1),
+                            label: currentChartMetric.charAt(0).toUpperCase() + currentChartMetric.slice(1),
                             data: values,
-                            backgroundColor: color.bg,
-                            borderColor: color.border,
-                            borderWidth: 2,
+                            backgroundColor: 'rgba(108,117,125,0.08)',
+                            borderColor: '#adb5bd',
+                            borderWidth: 1.5,
                             fill: true,
                             tension: 0.3,
                             pointRadius: 3,
-                            pointHoverRadius: 5
+                            pointHoverRadius: 5,
+                            pointBackgroundColor: dotColors,
+                            pointBorderColor: dotColors,
+                            pointBorderWidth: 1.5
                         }]
                     },
+                    plugins: [medianLinePlugin, valueLabelsPlugin],
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
+                        layout: {
+                            padding: { top: 18, left: 2, right: 2, bottom: 2 }
+                        },
                         plugins: {
-                            legend: {
-                                display: false
-                            },
+                            legend: { display: false },
                             tooltip: {
+                                titleFont: { size: 10 },
+                                bodyFont: { size: 10 },
+                                padding: 6,
                                 callbacks: {
                                     label: function(context) {
-                                        let val = context.raw;
-                                        if (currentChartMetric === 'spend' || currentChartMetric ===
-                                            'sales') {
-                                            return '$' + val.toLocaleString('en-US', {
-                                                minimumFractionDigits: 2,
-                                                maximumFractionDigits: 2
-                                            });
+                                        const idx = context.dataIndex;
+                                        let parts = [];
+                                        parts.push('Value: ' + fmtVal(context.raw));
+                                        if (idx > 0) {
+                                            const diff = context.raw - values[idx - 1];
+                                            const arrow = diff < 0 ? '▼' : diff > 0 ? '▲' : '▬';
+                                            parts.push('vs Yesterday: ' + arrow + ' ' + fmtVal(Math.abs(diff)));
                                         }
-                                        return val.toLocaleString('en-US');
+                                        if (idx >= 7) {
+                                            const diff7 = context.raw - values[idx - 7];
+                                            const arrow7 = diff7 < 0 ? '▼' : diff7 > 0 ? '▲' : '▬';
+                                            parts.push('vs 7d Ago: ' + arrow7 + ' ' + fmtVal(Math.abs(diff7)));
+                                        }
+                                        return parts;
                                     }
                                 }
                             }
                         },
                         scales: {
                             y: {
-                                beginAtZero: true,
+                                min: yMin,
+                                max: yMax,
                                 ticks: {
+                                    font: { size: 9 },
                                     callback: function(value) {
-                                        if (currentChartMetric === 'spend' || currentChartMetric ===
-                                            'sales') {
-                                            return '$' + value.toLocaleString('en-US');
-                                        }
-                                        return value.toLocaleString('en-US');
+                                        return fmtVal(value);
                                     }
                                 }
                             },
@@ -3089,10 +3344,9 @@
                                 ticks: {
                                     maxRotation: 45,
                                     minRotation: 45,
-                                    autoSkip: false,
-                                    font: {
-                                        size: 10
-                                    }
+                                    autoSkip: true,
+                                    maxTicksLimit: 30,
+                                    font: { size: 8 }
                                 }
                             }
                         }

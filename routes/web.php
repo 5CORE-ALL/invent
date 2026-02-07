@@ -336,6 +336,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/channel-master-history/{channel}', [ChannelMasterController::class, 'getChannelHistory']);
     Route::get('/channel-clicks-breakdown', [ChannelMasterController::class, 'getClicksBreakdown']);
     Route::get('/ad-breakdown-chart-data', [ChannelMasterController::class, 'getAdBreakdownChartData']);
+    Route::get('/channel-metric-chart-data', [ChannelMasterController::class, 'getChannelMetricChartData']);
     Route::post('/channel-archive', [ChannelMasterController::class, 'archiveChannel'])->name('channel.archive');
     Route::get('/all-marketplace-master', [ChannelMasterController::class, 'allMarketplaceMaster'])->name('all.marketplace.master');
     // Route::get('/get-channel-sales-data', [ChannelMasterController::class, 'getChannelSalesData']);
@@ -960,6 +961,8 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/amazonpricing-cvr-tabular', action: [OverallAmazonController::class, 'amazonPricingCvrTabular'])->name('amazon.pricing.cvr.tabular');
     Route::get('/amazon-column-visibility', [OverallAmazonController::class, 'getAmazonColumnVisibility'])->name('amazon.column.visibility');
     Route::post('/amazon-column-visibility', [OverallAmazonController::class, 'saveAmazonColumnVisibility'])->name('amazon.column.visibility.save');
+    Route::post('/amazon-badge-stats-save', [OverallAmazonController::class, 'saveAmazonBadgeStats']);
+    Route::get('/amazon-badge-chart-data', [OverallAmazonController::class, 'getAmazonBadgeChartData']);
     Route::get('/amazon-data-json', action: [OverallAmazonController::class, 'amazonDataJson'])->name('amazon.data.json');
     Route::get('/amazon-campaign-data-by-sku', action: [OverallAmazonController::class, 'getCampaignDataBySku'])->name('amazon.campaign.data.by.sku');
     Route::post('/amazon/refresh-links', [OverallAmazonController::class, 'refreshAmazonLinks'])->name('amazon.refresh.links');

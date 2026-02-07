@@ -6078,6 +6078,141 @@ class ChannelMasterController extends Controller
     }
 
     /**
+     * Get channel metric chart data from ChannelMasterSummary snapshots
+     */
+    public function getChannelMetricChartData(Request $request)
+    {
+        try {
+            $channel = strtolower(str_replace([' ', '-', '&', '/'], '', trim($request->input('channel', ''))));
+            $metric = $request->input('metric', 'l30_sales');
+            $days = intval($request->input('days', 30));
+
+            if (!$channel) {
+                return response()->json(['success' => false, 'message' => 'Channel is required'], 400);
+            }
+
+            // Map frontend metric names to summary_data keys
+            $metricMap = [
+                'l30_sales' => 'l30_sales',
+                'l30_orders' => 'l30_orders',
+                'qty' => 'total_quantity',
+                'gprofit' => 'gprofit_percent',
+                'groi' => 'groi_percent',
+                'ads_pct' => 'tcos_percent',
+                'npft' => 'npft_percent',
+                'nroi' => null,      // computed: npft / tcos * 100
+                'missing_l' => 'miss_count',
+                'nmap' => 'nmap_count',
+                'ad_spend' => 'total_ad_spend',
+                'clicks' => 'clicks',
+                'acos' => null,      // computed: (ad_spend / l30_sales) * 100
+            ];
+
+            $metricKey = $metricMap[$metric] ?? $metric;
+            $isAll = ($channel === 'all');
+
+            // Metrics that should be averaged (percentages) vs summed (counts/amounts)
+            $avgMetrics = ['gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'acos'];
+            $shouldAvg = in_array($metric, $avgMetrics);
+
+            // Determine date range
+            $query = \App\Models\ChannelMasterSummary::orderBy('snapshot_date', 'asc');
+
+            if (!$isAll) {
+                $query->where('channel', $channel);
+            }
+
+            if ($days > 0) {
+                $startDate = now('America/Los_Angeles')->subDays($days)->toDateString();
+                $query->where('snapshot_date', '>=', $startDate);
+            }
+
+            $history = $query->get();
+
+            if ($history->isEmpty()) {
+                return response()->json(['success' => true, 'data' => []]);
+            }
+
+            // Group by snapshot_date for "all" aggregation
+            $grouped = $history->groupBy(function ($row) {
+                return Carbon::parse($row->snapshot_date)->format('Y-m-d');
+            })->sortKeys();
+
+            $chartData = [];
+            foreach ($grouped as $dateKey => $rows) {
+                $date = Carbon::parse($dateKey)->format('M d');
+
+                if ($isAll) {
+                    // Aggregate across all channels for this date
+                    $totalVal = 0;
+                    $totalSpend = 0;
+                    $totalSales = 0;
+                    $totalNpft = 0;
+                    $totalTcos = 0;
+                    $count = 0;
+
+                    foreach ($rows as $row) {
+                        $sd = $row->summary_data ?? [];
+                        $count++;
+
+                        if ($metric === 'acos') {
+                            $totalSpend += floatval($sd['total_ad_spend'] ?? 0);
+                            $totalSales += floatval($sd['l30_sales'] ?? 0);
+                        } elseif ($metric === 'nroi') {
+                            $totalNpft += floatval($sd['npft_percent'] ?? 0);
+                            $totalTcos += floatval($sd['tcos_percent'] ?? 0);
+                        } elseif ($shouldAvg) {
+                            $totalVal += floatval($sd[$metricKey] ?? 0);
+                        } else {
+                            $totalVal += floatval($sd[$metricKey] ?? 0);
+                        }
+                    }
+
+                    if ($metric === 'acos') {
+                        $value = $totalSales > 0 ? round(($totalSpend / $totalSales) * 100, 1) : 0;
+                    } elseif ($metric === 'nroi') {
+                        $value = $totalTcos > 0 ? round(($totalNpft / $totalTcos) * 100, 1) : 0;
+                    } elseif ($shouldAvg && $count > 0) {
+                        $value = round($totalVal / $count, 1);
+                    } else {
+                        $value = round($totalVal, 2);
+                    }
+                } else {
+                    // Single channel
+                    $row = $rows->first();
+                    $summaryData = $row->summary_data ?? [];
+
+                    if ($metric === 'acos') {
+                        $spend = floatval($summaryData['total_ad_spend'] ?? 0);
+                        $sales = floatval($summaryData['l30_sales'] ?? 0);
+                        $value = $sales > 0 ? round(($spend / $sales) * 100, 1) : 0;
+                    } elseif ($metric === 'nroi') {
+                        $npft = floatval($summaryData['npft_percent'] ?? 0);
+                        $tcos = floatval($summaryData['tcos_percent'] ?? 0);
+                        $value = $tcos > 0 ? round(($npft / $tcos) * 100, 1) : 0;
+                    } else {
+                        $value = floatval($summaryData[$metricKey] ?? 0);
+                    }
+                }
+
+                $chartData[] = [
+                    'date' => $date,
+                    'value' => $value,
+                ];
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $chartData,
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('getChannelMetricChartData error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Error fetching chart data'], 500);
+        }
+    }
+
+    /**
      * Get channel name as it appears in marketplace_daily_metrics table
      */
     private function getChannelNameForMetrics($normalizedChannelName)
@@ -6351,14 +6486,15 @@ class ChannelMasterController extends Controller
             // Get date filter from request or use defaults
             $inputStartDate = $request->input('start_date');
             $inputEndDate = $request->input('end_date');
+            $isLifetime = empty($inputStartDate);
             
             // Rolling 30-day calculation: For each date, show sum of last 30 days
-            if ($inputStartDate && $inputEndDate) {
+            $chartEndDate = $inputEndDate ? Carbon::parse($inputEndDate) : Carbon::today()->subDays(2);
+            if (!$isLifetime) {
                 $chartStartDate = Carbon::parse($inputStartDate);
-                $chartEndDate = Carbon::parse($inputEndDate);
             } else {
-                $chartEndDate = Carbon::today()->subDays(2);   // Last date on chart (e.g., Feb 4 if today is Feb 6)
-                $chartStartDate = Carbon::today()->subDays(31); // First date on chart (e.g., Jan 6 for 30 days)
+                // Lifetime placeholder — will be recalculated after data is fetched
+                $chartStartDate = $chartEndDate->copy()->subYears(3);
             }
             // Need data from 30 days before chart start for rolling calc
             $dataStartDate = $chartStartDate->copy()->subDays(30);
@@ -6589,6 +6725,17 @@ class ChannelMasterController extends Controller
                 foreach ($rows2 as $row) {
                     $dateKey = Carbon::parse($row->date)->format('Y-m-d');
                     $dailyData2[$dateKey] = (float) $row->val;
+                }
+            }
+
+            // For Lifetime: set chart start to the earliest date with actual data
+            if ($isLifetime) {
+                $allDates = array_merge(array_keys($dailyData), array_keys($dailyData2 ?? []));
+                if (!empty($allDates)) {
+                    sort($allDates);
+                    $chartStartDate = Carbon::parse($allDates[0]);
+                } else {
+                    $chartStartDate = $chartEndDate->copy();
                 }
             }
 

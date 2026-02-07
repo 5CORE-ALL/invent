@@ -436,77 +436,77 @@
                 <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
                     <h6 class="mb-3">Summary (INV > 0)</h6>
                     <div class="d-flex flex-wrap gap-2">
-                        <!-- Sold Filter Badges (Clickable) -->
-                        <span class="badge bg-success fs-6 p-2 sold-filter-badge" data-filter="all" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter sold items">
+                        <!-- Sold Filter Badges (Clickable + Hover for chart) -->
+                        <span class="badge bg-success fs-6 p-2 sold-filter-badge amz-hover-chart" data-filter="all" data-metric="sold_count" data-source="badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
                             Sold (>0): <span id="total-sold-count">0</span>
                         </span>
-                        <span class="badge bg-danger fs-6 p-2 sold-filter-badge" data-filter="zero" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter 0 sold items">
+                        <span class="badge bg-danger fs-6 p-2 sold-filter-badge amz-hover-chart" data-filter="zero" data-metric="zero_sold_count" data-source="badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
                             0 Sold: <span id="zero-sold-count">0</span>
                         </span>
                         
-                        <!-- Inventory Mapping Badges (Clickable) -->
-                        <span class="badge bg-success fs-6 p-2 map-filter-badge" data-filter="mapped" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter items where INV = INV AMZ">
+                        <!-- Inventory Mapping Badges (Clickable + Hover for chart) -->
+                        <span class="badge bg-success fs-6 p-2 map-filter-badge amz-hover-chart" data-filter="mapped" data-metric="map_count" data-source="badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
                             Map: <span id="map-count">0</span>
                         </span>
-                        <span class="badge bg-danger fs-6 p-2 map-filter-badge" data-filter="nmapped" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter items where INV ≠ INV AMZ">
+                        <span class="badge bg-danger fs-6 p-2 map-filter-badge amz-hover-chart" data-filter="nmapped" data-metric="nmap_count" data-source="badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
                              N Map: <span id="nmap-count">0</span>
                         </span>
-                        <span class="badge bg-warning fs-6 p-2 missing-amz-filter-badge" data-filter="missing-amazon" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter items missing from Amazon table">
+                        <span class="badge bg-warning fs-6 p-2 missing-amz-filter-badge amz-hover-chart" data-filter="missing-amazon" data-metric="missing_count" data-source="badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
                             Missing: <span id="missing-amazon-count">0</span>
                         </span>
                         
                         <!-- Price Comparison Badge -->
-                        <span class="badge bg-danger fs-6 p-2 price-filter-badge" data-filter="prc-gt-lmp" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter items where Prc > LMP">
+                        <span class="badge bg-danger fs-6 p-2 price-filter-badge amz-hover-chart" data-filter="prc-gt-lmp" data-metric="prc_gt_lmp_count" data-source="badge" style="color: white; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
                             Prc > LMP: <span id="prc-gt-lmp-count">0</span>
                         </span>
                         
                         <!-- Financial Metrics -->
-                        <span class="badge bg-success fs-6 p-2" id="total-pft-amt-badge" style="color: black; font-weight: bold;">Total PFT: $0.00</span>
-                        <span class="badge bg-primary fs-6 p-2" id="total-sales-amt-badge" style="color: black; font-weight: bold;">Total Sales: $0.00</span>
-                        <span class="badge bg-warning fs-6 p-2" id="total-spend-l30-badge" style="color: black; font-weight: bold;">Spend L30: $0.00</span>
+                        <span class="badge bg-success fs-6 p-2 amz-badge-chart" data-metric="l30_sales" id="total-pft-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">Total PFT: $0.00</span>
+                        <span class="badge bg-primary fs-6 p-2 amz-badge-chart" data-metric="l30_sales" id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">Total Sales: $0.00</span>
+                        <span class="badge bg-warning fs-6 p-2 amz-badge-chart" data-metric="ad_spend" id="total-spend-l30-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">Spend L30: $0.00</span>
                         
                         <!-- Percentage Metrics -->
-                        <span class="badge bg-info fs-6 p-2" id="avg-gpft-badge" style="color: black; font-weight: bold;">GPFT: 0%</span>
-                        <span class="badge bg-info fs-6 p-2" id="avg-pft-badge" style="color: black; font-weight: bold;">PFT: 0%</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="groi-percent-badge" style="color: black; font-weight: bold;">GROI: 0%</span>
-                        <span class="badge bg-primary fs-6 p-2" id="nroi-percent-badge" style="color: black; font-weight: bold;">NROI: 0%</span>
-                        <span class="badge bg-danger fs-6 p-2" id="tcos-percent-badge" style="color: black; font-weight: bold;">TCOS: 0%</span>
+                        <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="gprofit" id="avg-gpft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">GPFT: 0%</span>
+                        <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="npft" id="avg-pft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">PFT: 0%</span>
+                        <span class="badge bg-secondary fs-6 p-2 amz-badge-chart" data-metric="groi" id="groi-percent-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">GROI: 0%</span>
+                        <span class="badge bg-primary fs-6 p-2 amz-badge-chart" data-metric="nroi" id="nroi-percent-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">NROI: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2 amz-badge-chart" data-metric="ads_pct" id="tcos-percent-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">TCOS: 0%</span>
                         
                         <!-- Amazon Metrics -->
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
                         <span class="badge bg-info fs-6 p-2" id="avg-views-badge" style="color: black; font-weight: bold;">Avg Views: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-amazon-l30-badge" style="color: black; font-weight: bold;">A L30: 0</span>
+                        <span class="badge bg-success fs-6 p-2 amz-badge-chart" data-metric="l30_orders" id="total-amazon-l30-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">A L30: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-amazon-l7-badge" style="color: black; font-weight: bold;">A L7: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">Avg CVR: 0%</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-amazon-inv-badge" style="color: black; font-weight: bold;">INV: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-amazon-inv-amz-badge" style="color: black; font-weight: bold;">INV AMZ: 0</span>
                         
                         <!-- Ad Spend Breakdown -->
-                        <span class="badge bg-dark fs-6 p-2" id="kw-spend-badge" style="color: white; font-weight: bold;">KW Ads: $0</span>
-                        <span class="badge bg-secondary fs-6 p-2" id="hl-spend-badge" style="color: white; font-weight: bold;">HL Ads: $0</span>
-                        <span class="badge bg-dark fs-6 p-2" id="pt-spend-badge" style="color: white; font-weight: bold;">PT Ads: $0</span>
+                        <span class="badge bg-dark fs-6 p-2 amz-badge-chart" data-metric="ad_spend" id="kw-spend-badge" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">KW Ads: $0</span>
+                        <span class="badge bg-secondary fs-6 p-2 amz-badge-chart" data-metric="ad_spend" id="hl-spend-badge" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">HL Ads: $0</span>
+                        <span class="badge bg-dark fs-6 p-2 amz-badge-chart" data-metric="ad_spend" id="pt-spend-badge" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">PT Ads: $0</span>
                         
                         <!-- Campaign Statistics (from KW page) -->
-                        <span class="badge fs-6 p-2 campaign-count-badge" id="campaign-count-badge" style="background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); color: black; font-weight: bold; cursor: pointer;" title="Total campaigns">
+                        <span class="badge fs-6 p-2 campaign-count-badge amz-hover-chart" id="campaign-count-badge" data-metric="campaign_count" data-source="badge" style="background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
                             Campaign: <span id="campaign-count">0</span>
                         </span>
-                        <span class="badge fs-6 p-2 missing-campaign-badge" id="missing-campaign-badge" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: black; font-weight: bold; cursor: pointer;" title="Missing campaigns">
+                        <span class="badge fs-6 p-2 missing-campaign-badge amz-hover-chart" id="missing-campaign-badge" data-metric="missing_campaign_count" data-source="badge" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
                             Missing Camp: <span id="missing-campaign-count">0</span>
                         </span>
-                        <span class="badge fs-6 p-2 nra-count-badge" id="nra-count-badge" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: black; font-weight: bold; cursor: pointer;" title="NRA count">
+                        <span class="badge fs-6 p-2 nra-count-badge amz-hover-chart" id="nra-count-badge" data-metric="nra_count" data-source="badge" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
                             NRA: <span id="nra-count">0</span>
                         </span>
-                        <span class="badge fs-6 p-2 ra-count-badge" id="ra-count-badge" style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color: black; font-weight: bold; cursor: pointer;" title="RA count">
+                        <span class="badge fs-6 p-2 ra-count-badge amz-hover-chart" id="ra-count-badge" data-metric="ra_count" data-source="badge" style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
                             RA: <span id="ra-count">0</span>
                         </span>
-                        <span class="badge fs-6 p-2 paused-campaigns-badge" id="paused-campaigns-badge" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: black; font-weight: bold; cursor: pointer;" title="Paused campaigns">
+                        <span class="badge fs-6 p-2 paused-campaigns-badge amz-hover-chart" id="paused-campaigns-badge" data-metric="paused_count" data-source="badge" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
                             Paused: <span id="paused-campaigns-count">0</span>
                         </span>
-                        <span class="badge fs-6 p-2 7ub-count-badge" id="7ub-count-badge" style="background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%); color: black; font-weight: bold; cursor: pointer;" title="7UB count">
+                        <span class="badge fs-6 p-2 7ub-count-badge amz-hover-chart" id="7ub-count-badge" data-metric="ub7_count" data-source="badge" style="background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%); color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
                             7UB: <span id="7ub-count">0</span>
                         </span>
-                        <span class="badge fs-6 p-2 7ub-1ub-count-badge" id="7ub-1ub-count-badge" style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); color: black; font-weight: bold; cursor: pointer;" title="7UB+1UB count">
+                        <span class="badge fs-6 p-2 7ub-1ub-count-badge amz-hover-chart" id="7ub-1ub-count-badge" data-metric="ub7_ub1_count" data-source="badge" style="background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
                             7UB+1UB: <span id="7ub-1ub-count">0</span>
                         </span>
                     </div>
@@ -685,6 +685,59 @@
             </div>
         </div>
     </div>
+
+    <!-- Amazon Metric Trend Chart Modal -->
+    <div class="modal fade" id="amzMetricChartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog shadow-none" style="max-width: 98vw; width: 98vw; margin: 10px auto 0;">
+            <div class="modal-content" style="border-radius: 8px; overflow: hidden;">
+                <div class="modal-header bg-info text-white py-1 px-3">
+                    <h6 class="modal-title mb-0" style="font-size: 13px;">
+                        <i class="fas fa-chart-area me-1"></i>
+                        <span id="amzChartModalTitle">Amazon - Metric Trend</span>
+                    </h6>
+                    <div class="d-flex align-items-center gap-2">
+                        <select id="amzChartRangeSelect" class="form-select form-select-sm bg-white" style="width: 110px; height: 26px; font-size: 11px; padding: 1px 8px;">
+                            <option value="7">7 Days</option>
+                            <option value="30" selected>30 Days</option>
+                            <option value="60">60 Days</option>
+                            <option value="90">90 Days</option>
+                            <option value="0">Lifetime</option>
+                        </select>
+                        <button type="button" class="btn-close btn-close-white" style="font-size: 10px;" data-bs-dismiss="modal"></button>
+                    </div>
+                </div>
+                <div class="modal-body p-2">
+                    <div id="amzChartContainer" style="height: 20vh; display: flex; align-items: stretch;">
+                        <div style="flex: 1; min-width: 0; position: relative;">
+                            <canvas id="amzMetricChart"></canvas>
+                        </div>
+                        <div id="amzChartRefPanel" style="width: 100px; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 6px 8px; border-left: 1px solid #e9ecef; background: #f8f9fa; border-radius: 0 4px 4px 0;">
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #dc3545; margin-bottom: 1px;">Highest</div>
+                                <div id="amzChartHighest" style="font-size: 13px; font-weight: 700; color: #dc3545;">-</div>
+                            </div>
+                            <div style="text-align: center; border-top: 1px dashed #adb5bd; border-bottom: 1px dashed #adb5bd; padding: 4px 0;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #6c757d; margin-bottom: 1px;">Median</div>
+                                <div id="amzChartMedian" style="font-size: 13px; font-weight: 700; color: #6c757d;">-</div>
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #198754; margin-bottom: 1px;">Lowest</div>
+                                <div id="amzChartLowest" style="font-size: 13px; font-weight: 700; color: #198754;">-</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="amzChartLoading" class="text-center py-3" style="display: none;">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        <p class="mt-1 text-muted small mb-0">Loading chart data...</p>
+                    </div>
+                    <div id="amzChartNoData" class="text-center py-3" style="display: none;">
+                        <i class="fas fa-exclamation-circle text-warning fa-2x mb-2"></i>
+                        <p class="text-muted small mb-0">No historical data available for this metric.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @section('script-bottom')
@@ -700,6 +753,216 @@
         let priceFilterActive = false; // Track price filter state: true = show only Prc > LMP
         let mapFilterActive = 'all'; // Track map filter state: 'all', 'mapped', 'missing'
         let seoModeActive = false; // Track SEO mode state
+
+        // === Amazon Metric Trend Chart ===
+        let amzChartInstance = null;
+        let amzChartDays = 30;
+        let amzChartMetricKey = '';
+        let amzChartAjax = null;
+
+        const amzMetricLabels = {
+            'l30_sales': 'L30 Sales', 'l30_orders': 'L30 Orders', 'qty': 'Total Qty',
+            'gprofit': 'Gprofit%', 'groi': 'G ROI%', 'ads_pct': 'Ads%/TCOS',
+            'npft': 'N PFT%', 'nroi': 'N ROI%', 'ad_spend': 'Ad Spend',
+            'clicks': 'Clicks', 'acos': 'ACOS', 'missing_l': 'Missing',
+            'nmap': 'N Map',
+            // Badge-stat metrics (daily snapshot counts)
+            'sold_count': 'Sold (>0)', 'zero_sold_count': '0 Sold',
+            'map_count': 'Map', 'nmap_count': 'N Map', 'missing_count': 'Missing',
+            'prc_gt_lmp_count': 'Prc > LMP', 'campaign_count': 'Campaign',
+            'missing_campaign_count': 'Missing Camp', 'nra_count': 'NRA',
+            'ra_count': 'RA', 'paused_count': 'Paused',
+            'ub7_count': '7UB', 'ub7_ub1_count': '7UB+1UB',
+        };
+
+        // Metrics stored in badge stats table (daily counts)
+        const amzBadgeStatMetrics = [
+            'sold_count', 'zero_sold_count', 'map_count', 'nmap_count',
+            'missing_count', 'prc_gt_lmp_count', 'campaign_count',
+            'missing_campaign_count', 'nra_count', 'ra_count',
+            'paused_count', 'ub7_count', 'ub7_ub1_count',
+        ];
+
+        const amzPctMetrics = ['gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'acos'];
+        const amzDollarMetrics = ['l30_sales', 'ad_spend'];
+
+        function amzFmtVal(v) {
+            if (amzDollarMetrics.includes(amzChartMetricKey)) return '$' + Math.round(v).toLocaleString('en-US');
+            if (amzPctMetrics.includes(amzChartMetricKey)) return v.toFixed(1) + '%';
+            return Math.round(v).toLocaleString('en-US');
+        }
+
+        function showAmzMetricChart(metricKey) {
+            amzChartMetricKey = metricKey;
+            amzChartDays = 30;
+            $('#amzChartRangeSelect').val('30');
+            const label = amzMetricLabels[metricKey] || metricKey;
+            const isBadge = amzBadgeStatMetrics.includes(metricKey);
+            $('#amzChartModalTitle').text(`Amazon - ${label} (${isBadge ? 'Daily Count' : 'Rolling L30'})`);
+            const modal = new bootstrap.Modal(document.getElementById('amzMetricChartModal'));
+            modal.show();
+            loadAmzMetricChart();
+        }
+
+        function loadAmzMetricChart() {
+            if (amzChartAjax) amzChartAjax.abort();
+            $('#amzChartNoData').hide();
+            $('#amzChartContainer').hide();
+            $('#amzChartLoading').show();
+
+            // Determine endpoint based on metric type
+            const isBadgeStat = amzBadgeStatMetrics.includes(amzChartMetricKey);
+            const ajaxUrl = isBadgeStat ? '/amazon-badge-chart-data' : '/channel-metric-chart-data';
+            const ajaxData = isBadgeStat
+                ? { metric: amzChartMetricKey, days: amzChartDays }
+                : { channel: 'amazon', metric: amzChartMetricKey, days: amzChartDays };
+
+            amzChartAjax = $.ajax({
+                url: ajaxUrl,
+                method: 'GET',
+                data: ajaxData,
+                success: function(resp) {
+                    amzChartAjax = null;
+                    $('#amzChartLoading').hide();
+                    if (resp.success && resp.data && resp.data.length > 0) {
+                        $('#amzChartContainer').show();
+                        renderAmzMetricChart(resp.data);
+                    } else {
+                        $('#amzChartNoData').show();
+                    }
+                },
+                error: function(xhr, status) {
+                    amzChartAjax = null;
+                    if (status === 'abort') return;
+                    $('#amzChartLoading').hide();
+                    $('#amzChartNoData').show();
+                }
+            });
+        }
+
+        $(document).on('change', '#amzChartRangeSelect', function() {
+            const days = parseInt($(this).val());
+            if (days === amzChartDays) return;
+            amzChartDays = days;
+            const rangeLabel = days === 0 ? 'Lifetime' : 'L' + days;
+            const titleEl = $('#amzChartModalTitle');
+            titleEl.text(titleEl.text().replace(/\(Rolling [^)]+\)/, `(Rolling ${rangeLabel})`));
+            loadAmzMetricChart();
+        });
+
+        // Badge click handler
+        $(document).on('click', '.amz-badge-chart', function() {
+            showAmzMetricChart($(this).data('metric'));
+        });
+
+        // Hover-to-chart for filter-toggle badges (500ms delay to avoid accidental triggers)
+        let amzHoverTimer = null;
+        $(document).on('mouseenter', '.amz-hover-chart', function() {
+            const metric = $(this).data('metric');
+            if (!metric) return;
+            amzHoverTimer = setTimeout(() => {
+                showAmzMetricChart(metric);
+            }, 500);
+        });
+        $(document).on('mouseleave', '.amz-hover-chart', function() {
+            if (amzHoverTimer) { clearTimeout(amzHoverTimer); amzHoverTimer = null; }
+        });
+
+        function renderAmzMetricChart(data) {
+            const ctx = document.getElementById('amzMetricChart').getContext('2d');
+            if (amzChartInstance) amzChartInstance.destroy();
+
+            const labels = data.map(d => d.date);
+            const values = data.map(d => d.value);
+
+            const dataMin = Math.min(...values);
+            const dataMax = Math.max(...values);
+            const sorted = [...values].sort((a, b) => a - b);
+            const mid = Math.floor(sorted.length / 2);
+            const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+            const range = dataMax - dataMin || 1;
+            const yMin = Math.max(0, dataMin - range * 0.1);
+            const yMax = dataMax + range * 0.1;
+
+            document.getElementById('amzChartHighest').textContent = amzFmtVal(dataMax);
+            document.getElementById('amzChartMedian').textContent = amzFmtVal(median);
+            document.getElementById('amzChartLowest').textContent = amzFmtVal(dataMin);
+
+            const dotColors = values.map((v, i) => i === 0 ? '#6c757d' : v < values[i - 1] ? '#198754' : v > values[i - 1] ? '#dc3545' : '#6c757d');
+            const labelColors = values.map((v, i) => i < 7 ? '#6c757d' : v < values[i - 7] ? '#198754' : v > values[i - 7] ? '#dc3545' : '#6c757d');
+
+            const medianLinePlugin = {
+                id: 'medianLine',
+                afterDraw(chart) {
+                    const yScale = chart.scales.y, xScale = chart.scales.x, ctx = chart.ctx;
+                    const yPixel = yScale.getPixelForValue(median);
+                    ctx.save(); ctx.setLineDash([6, 4]); ctx.strokeStyle = '#6c757d'; ctx.lineWidth = 1.2;
+                    ctx.beginPath(); ctx.moveTo(xScale.left, yPixel); ctx.lineTo(xScale.right, yPixel); ctx.stroke(); ctx.restore();
+                }
+            };
+
+            const valueLabelsPlugin = {
+                id: 'valueLabels',
+                afterDatasetsDraw(chart) {
+                    const dataset = chart.data.datasets[0], meta = chart.getDatasetMeta(0), ctx = chart.ctx;
+                    ctx.save(); ctx.font = 'bold 7px Inter, system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+                    meta.data.forEach((point, i) => {
+                        const offsetY = (i % 2 === 0) ? -7 : -14;
+                        ctx.fillStyle = labelColors[i];
+                        ctx.fillText(amzFmtVal(dataset.data[i]), point.x, point.y + offsetY);
+                    });
+                    ctx.restore();
+                }
+            };
+
+            amzChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: values,
+                        backgroundColor: 'rgba(108,117,125,0.08)',
+                        borderColor: '#adb5bd',
+                        borderWidth: 1.5,
+                        fill: true, tension: 0.3,
+                        pointRadius: 3, pointHoverRadius: 5,
+                        pointBackgroundColor: dotColors,
+                        pointBorderColor: dotColors,
+                        pointBorderWidth: 1.5
+                    }]
+                },
+                plugins: [medianLinePlugin, valueLabelsPlugin],
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    layout: { padding: { top: 18, left: 2, right: 2, bottom: 2 } },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            titleFont: { size: 10 }, bodyFont: { size: 10 }, padding: 6,
+                            callbacks: {
+                                label: function(context) {
+                                    const idx = context.dataIndex;
+                                    let parts = ['Value: ' + amzFmtVal(context.raw)];
+                                    if (idx > 0) {
+                                        const diff = context.raw - values[idx - 1];
+                                        parts.push('vs Yesterday: ' + (diff < 0 ? '▼' : diff > 0 ? '▲' : '▬') + ' ' + amzFmtVal(Math.abs(diff)));
+                                    }
+                                    if (idx >= 7) {
+                                        const diff7 = context.raw - values[idx - 7];
+                                        parts.push('vs 7d Ago: ' + (diff7 < 0 ? '▼' : diff7 > 0 ? '▲' : '▬') + ' ' + amzFmtVal(Math.abs(diff7)));
+                                    }
+                                    return parts;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: { min: yMin, max: yMax, ticks: { font: { size: 9 }, callback: v => amzFmtVal(v) } },
+                        x: { ticks: { maxRotation: 45, minRotation: 45, autoSkip: true, maxTicksLimit: 30, font: { size: 8 } } }
+                    }
+                }
+            });
+        }
 
         // SKU-specific chart
         function initSkuMetricsChart() {
@@ -1060,7 +1323,6 @@
                     table.getColumn('NROI').hide();
                     table.getColumn('AD%').hide();
                     table.getColumn('ACOS').hide();
-                    table.getColumn('ad_pause').hide();
                     table.getColumn('SALES_L30').hide();
                     
                     // Hide SPFT and SROI columns
@@ -1084,7 +1346,6 @@
                     table.getColumn('NROI').show();
                     table.getColumn('AD%').show();
                     table.getColumn('ACOS').show();
-                    table.getColumn('ad_pause').show();
                     table.getColumn('SALES_L30').show();
                     
                     // Show SPFT and SROI columns
@@ -3206,46 +3467,6 @@
                             if (!hasCampaign) return '-';
                             return cell.getValue() || '-';
                         }
-                    },
-
-                    {
-                        title: "Ad Pause",
-                        field: "ad_pause",
-                        hozAlign: "center",
-                        formatter: function(cell) {
-                            const rowData = cell.getRow().getData();
-                            const sku = rowData['(Child) sku'];
-                            
-                            // Empty for parent rows
-                            if (rowData.is_parent_summary) return '';
-                            
-                            // Don't show toggle if no campaigns exist for this SKU
-                            const hasCampaigns = rowData.has_campaigns === true || rowData.has_campaigns === 1;
-                            if (!hasCampaigns) return '';
-                            
-                            // Check campaign status - if either KW or PT is ENABLED, ads are enabled
-                            const kwStatus = (rowData.kw_campaign_status || '').toUpperCase();
-                            const ptStatus = (rowData.pt_campaign_status || '').toUpperCase();
-                            const isEnabled = kwStatus === 'ENABLED' || ptStatus === 'ENABLED';
-                            
-                            return `
-                                <div class="form-check form-switch d-flex justify-content-center">
-                                    <input class="form-check-input ad-pause-toggle" 
-                                           type="checkbox" 
-                                           role="switch" 
-                                           data-sku="${sku}"
-                                           ${isEnabled ? 'checked' : ''}
-                                           style="cursor: pointer; width: 3rem; height: 1.5rem;">
-                                </div>
-                            `;
-                        },
-                        cellClick: function(e, cell) {
-                            // Prevent row click event but allow checkbox to toggle
-                            if (e.target.classList.contains('ad-pause-toggle')) {
-                                e.stopPropagation();
-                            }
-                        },
-                        width: 90
                     },
 
                     {
@@ -5438,6 +5659,27 @@
                 $('#paused-campaigns-count').text(pausedCampaignsCount.toLocaleString());
                 $('#7ub-count').text(ub7Count.toLocaleString());
                 $('#7ub-1ub-count').text(ub7Ub1Count.toLocaleString());
+
+                // Save badge stats daily (fire-and-forget, once per page load)
+                if (!window._badgeStatsSaved) {
+                    window._badgeStatsSaved = true;
+                    $.post('/amazon-badge-stats-save', {
+                        _token: $('meta[name="csrf-token"]').attr('content'),
+                        sold_count: totalSoldCount,
+                        zero_sold_count: zeroSoldCount,
+                        map_count: mapCount,
+                        nmap_count: missingCount,
+                        missing_count: missingAmazonCount,
+                        prc_gt_lmp_count: prcGtLmpCount,
+                        campaign_count: campaignCount,
+                        missing_campaign_count: missingCampaignCount,
+                        nra_count: nraCount,
+                        ra_count: raCount,
+                        paused_count: pausedCampaignsCount,
+                        ub7_count: ub7Count,
+                        ub7_ub1_count: ub7Ub1Count
+                    });
+                }
             }
 
             // Build Column Visibility Dropdown
@@ -5698,8 +5940,7 @@
                                 row.update({
                                     kw_campaign_status: newStatus,
                                     pt_campaign_status: newStatus,
-                                    campaignStatus: newStatus,
-                                    ad_pause: newStatus === 'PAUSED'
+                                    campaignStatus: newStatus
                                 });
                                 row.reformat();
                             });
@@ -5933,26 +6174,11 @@
                                     // Update campaign status fields
                                     rows[i].update({
                                         kw_campaign_status: newStatus,
-                                        pt_campaign_status: newStatus,
-                                        ad_pause: !isEnabled
+                                        pt_campaign_status: newStatus
                                     });
                                     
                                     // Reformat the row to update the toggle button with new status
-                                    // This will re-run the formatter with the updated row data
                                     rows[i].reformat();
-                                    
-                                    // Also directly update the checkbox state to ensure it's correct
-                                    setTimeout(() => {
-                                        const adPauseCell = rows[i].getCell('ad_pause');
-                                        if (adPauseCell) {
-                                            const cellElement = adPauseCell.getElement();
-                                            const checkbox = cellElement.querySelector('.ad-pause-toggle');
-                                            if (checkbox) {
-                                                // Set checkbox state based on new status
-                                                checkbox.checked = isEnabled;
-                                            }
-                                        }
-                                    }, 100);
                                     
                                     showToast('success', `Ads ${newStatus === 'ENABLED' ? 'enabled' : 'paused'} for SKU: ${sku}`);
                                     break;

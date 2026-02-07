@@ -5437,4 +5437,81 @@ class OverallAmazonController extends Controller
             'hl_campaigns' => []
         ]);
     }
+
+    /**
+     * Save daily badge stats (called from frontend after stats are computed)
+     */
+    public function saveAmazonBadgeStats(Request $request)
+    {
+        try {
+            $today = now('America/Los_Angeles')->toDateString();
+
+            \App\Models\AmazonDailyBadgeStat::updateOrCreate(
+                ['snapshot_date' => $today],
+                [
+                    'sold_count' => intval($request->input('sold_count', 0)),
+                    'zero_sold_count' => intval($request->input('zero_sold_count', 0)),
+                    'map_count' => intval($request->input('map_count', 0)),
+                    'nmap_count' => intval($request->input('nmap_count', 0)),
+                    'missing_count' => intval($request->input('missing_count', 0)),
+                    'prc_gt_lmp_count' => intval($request->input('prc_gt_lmp_count', 0)),
+                    'campaign_count' => intval($request->input('campaign_count', 0)),
+                    'missing_campaign_count' => intval($request->input('missing_campaign_count', 0)),
+                    'nra_count' => intval($request->input('nra_count', 0)),
+                    'ra_count' => intval($request->input('ra_count', 0)),
+                    'paused_count' => intval($request->input('paused_count', 0)),
+                    'ub7_count' => intval($request->input('ub7_count', 0)),
+                    'ub7_ub1_count' => intval($request->input('ub7_ub1_count', 0)),
+                ]
+            );
+
+            return response()->json(['success' => true]);
+        } catch (\Exception $e) {
+            Log::error('saveAmazonBadgeStats error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Error saving badge stats'], 500);
+        }
+    }
+
+    /**
+     * Get badge stat chart data for a specific metric
+     */
+    public function getAmazonBadgeChartData(Request $request)
+    {
+        try {
+            $metric = $request->input('metric', 'sold_count');
+            $days = intval($request->input('days', 30));
+
+            $allowedMetrics = [
+                'sold_count', 'zero_sold_count', 'map_count', 'nmap_count',
+                'missing_count', 'prc_gt_lmp_count', 'campaign_count',
+                'missing_campaign_count', 'nra_count', 'ra_count',
+                'paused_count', 'ub7_count', 'ub7_ub1_count',
+            ];
+
+            if (!in_array($metric, $allowedMetrics)) {
+                return response()->json(['success' => false, 'message' => 'Invalid metric'], 400);
+            }
+
+            $query = \App\Models\AmazonDailyBadgeStat::orderBy('snapshot_date', 'asc');
+
+            if ($days > 0) {
+                $startDate = now('America/Los_Angeles')->subDays($days)->toDateString();
+                $query->where('snapshot_date', '>=', $startDate);
+            }
+
+            $rows = $query->get();
+
+            $chartData = $rows->map(function ($row) use ($metric) {
+                return [
+                    'date' => \Carbon\Carbon::parse($row->snapshot_date)->format('M d'),
+                    'value' => floatval($row->$metric),
+                ];
+            })->values()->toArray();
+
+            return response()->json(['success' => true, 'data' => $chartData]);
+        } catch (\Exception $e) {
+            Log::error('getAmazonBadgeChartData error: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Error fetching chart data'], 500);
+        }
+    }
 }
