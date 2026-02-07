@@ -483,9 +483,9 @@
                         <span class="badge bg-success fs-6 p-2" id="total-amazon-inv-amz-badge" style="color: black; font-weight: bold;">INV AMZ: 0</span>
                         
                         <!-- Ad Spend Breakdown -->
-                        <span class="badge bg-dark fs-6 p-2 amz-badge-chart" data-metric="ad_spend" id="kw-spend-badge" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">KW Ads: $0</span>
-                        <span class="badge bg-secondary fs-6 p-2 amz-badge-chart" data-metric="ad_spend" id="hl-spend-badge" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">HL Ads: $0</span>
-                        <span class="badge bg-dark fs-6 p-2 amz-badge-chart" data-metric="ad_spend" id="pt-spend-badge" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">PT Ads: $0</span>
+                        <span class="badge bg-dark fs-6 p-2 amz-badge-chart" data-metric="kw_spend" data-source="badge" id="kw-spend-badge" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">KW Ads: $0</span>
+                        <span class="badge bg-secondary fs-6 p-2 amz-badge-chart" data-metric="hl_spend" data-source="badge" id="hl-spend-badge" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">HL Ads: $0</span>
+                        <span class="badge bg-dark fs-6 p-2 amz-badge-chart" data-metric="pt_spend" data-source="badge" id="pt-spend-badge" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">PT Ads: $0</span>
                         
                         <!-- Campaign Statistics (from KW page) -->
                         <span class="badge fs-6 p-2 campaign-count-badge amz-hover-chart" id="campaign-count-badge" data-metric="campaign_count" data-source="badge" style="background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%); color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
@@ -773,18 +773,20 @@
             'missing_campaign_count': 'Missing Camp', 'nra_count': 'NRA',
             'ra_count': 'RA', 'paused_count': 'Paused',
             'ub7_count': '7UB', 'ub7_ub1_count': '7UB+1UB',
+            'kw_spend': 'KW Ads Spend', 'hl_spend': 'HL Ads Spend', 'pt_spend': 'PT Ads Spend',
         };
 
-        // Metrics stored in badge stats table (daily counts)
+        // Metrics stored in badge stats table (daily counts/amounts)
         const amzBadgeStatMetrics = [
             'sold_count', 'zero_sold_count', 'map_count', 'nmap_count',
             'missing_count', 'prc_gt_lmp_count', 'campaign_count',
             'missing_campaign_count', 'nra_count', 'ra_count',
             'paused_count', 'ub7_count', 'ub7_ub1_count',
+            'kw_spend', 'hl_spend', 'pt_spend',
         ];
 
         const amzPctMetrics = ['gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'acos'];
-        const amzDollarMetrics = ['l30_sales', 'ad_spend'];
+        const amzDollarMetrics = ['l30_sales', 'ad_spend', 'kw_spend', 'hl_spend', 'pt_spend'];
 
         function amzFmtVal(v) {
             if (amzDollarMetrics.includes(amzChartMetricKey)) return '$' + Math.round(v).toLocaleString('en-US');
@@ -5677,7 +5679,10 @@
                         ra_count: raCount,
                         paused_count: pausedCampaignsCount,
                         ub7_count: ub7Count,
-                        ub7_ub1_count: ub7Ub1Count
+                        ub7_ub1_count: ub7Ub1Count,
+                        kw_spend: Math.round(campaignTotals.kw_spend_L30 || 0),
+                        hl_spend: Math.round(campaignTotals.hl_spend_L30 || 0),
+                        pt_spend: Math.round(campaignTotals.pt_spend_L30 || 0)
                     });
                 }
             }

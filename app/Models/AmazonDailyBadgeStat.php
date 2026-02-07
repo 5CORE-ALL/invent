@@ -23,6 +23,9 @@ class AmazonDailyBadgeStat extends Model
         'paused_count',
         'ub7_count',
         'ub7_ub1_count',
+        'kw_spend',
+        'hl_spend',
+        'pt_spend',
     ];
 
     protected $casts = [

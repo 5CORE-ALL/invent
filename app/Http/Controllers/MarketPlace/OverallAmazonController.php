@@ -5462,6 +5462,9 @@ class OverallAmazonController extends Controller
                     'paused_count' => intval($request->input('paused_count', 0)),
                     'ub7_count' => intval($request->input('ub7_count', 0)),
                     'ub7_ub1_count' => intval($request->input('ub7_ub1_count', 0)),
+                    'kw_spend' => floatval($request->input('kw_spend', 0)),
+                    'hl_spend' => floatval($request->input('hl_spend', 0)),
+                    'pt_spend' => floatval($request->input('pt_spend', 0)),
                 ]
             );
 
@@ -5486,6 +5489,7 @@ class OverallAmazonController extends Controller
                 'missing_count', 'prc_gt_lmp_count', 'campaign_count',
                 'missing_campaign_count', 'nra_count', 'ra_count',
                 'paused_count', 'ub7_count', 'ub7_ub1_count',
+                'kw_spend', 'hl_spend', 'pt_spend',
             ];
 
             if (!in_array($metric, $allowedMetrics)) {
