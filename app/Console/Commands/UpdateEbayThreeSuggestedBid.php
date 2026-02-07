@@ -170,21 +170,21 @@ class UpdateEbayThreeSuggestedBid extends Command
                             // 0-50: use ESBID
                             $newBid = $esbid;
                         } elseif ($l7Views >= 50 && $l7Views < 100) {
-                            $newBid = 9;
+                            $newBid = 10;
                         } elseif ($l7Views >= 100 && $l7Views < 150) {
-                            $newBid = 8;
+                            $newBid = 9;
                         } elseif ($l7Views >= 150 && $l7Views < 200) {
-                            $newBid = 7;
+                            $newBid = 8;
                         } elseif ($l7Views >= 200 && $l7Views < 250) {
-                            $newBid = 6;
+                            $newBid = 7;
                         } elseif ($l7Views >= 250 && $l7Views < 300) {
-                            $newBid = 5;
+                            $newBid = 6;
                         } elseif ($l7Views >= 300 && $l7Views < 350) {
-                            $newBid = 4;
+                            $newBid = 5;
                         } elseif ($l7Views >= 350 && $l7Views < 400) {
-                            $newBid = 3;
+                            $newBid = 4;
                         } elseif ($l7Views >= 400) {
-                            $newBid = 2;
+                            $newBid = 3;
                         } else {
                             // Fallback: use ESBID
                             $newBid = $esbid;
