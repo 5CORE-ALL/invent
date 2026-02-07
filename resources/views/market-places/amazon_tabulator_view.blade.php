@@ -3827,6 +3827,7 @@
                         width: 60,
                         formatter: function(cell) {
                             var row = cell.getRow().getData();
+                            var currentSection = $('#section-filter').val();
                             
                             // First check NRA status (from KW NRA column)
                             var nraValue = (row.NRA || '').toString().trim();
@@ -3840,8 +3841,15 @@
                                 return '<span style="display: inline-block; width: 20px; height: 20px; border-radius: 50%; background-color: #ffc107;"></span>';
                             }
                             
-                            // Check if has campaign
-                            var hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            // Check if has campaign - section-aware
+                            var hasCampaign = false;
+                            if (currentSection === 'pt-ads') {
+                                // PT Ads: check PT campaign existence
+                                hasCampaign = row.pt_campaignName || row.pt_spend_L30 > 0 || (row.pt_campaign_status && row.pt_campaign_status !== '');
+                            } else {
+                                // KW Ads or default: check KW campaign existence
+                                hasCampaign = row.hasCampaign !== undefined ? row.hasCampaign : (row.campaign_id && row.campaignName);
+                            }
                             
                             if (hasCampaign) {
                                 // Has campaign and not NRA - Green dot
@@ -4590,6 +4598,29 @@
             $('#section-filter').on('change', function() {
                 var section = $(this).val();
                 
+                // Show loading overlay
+                $('#section-loading-overlay').remove();
+                var sectionLabel = section === 'kw-ads' ? 'KW Ads' : section === 'pt-ads' ? 'PT Ads' : section === 'hl-ads' ? 'HL Ads' : section === 'pricing' ? 'Pricing' : 'All';
+                var sectionColor = section === 'kw-ads' ? '#4361ee' : section === 'pt-ads' ? '#7209b7' : section === 'hl-ads' ? '#f72585' : section === 'pricing' ? '#2ec4b6' : '#4361ee';
+                $('body').append(
+                    '<div id="section-loading-overlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,0.45);backdrop-filter:blur(3px);z-index:99999;display:flex;align-items:center;justify-content:center;animation:secFadeIn .15s ease;">' +
+                        '<div style="background:#fff;border-radius:16px;padding:36px 52px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.15);border-top:4px solid ' + sectionColor + ';">' +
+                            '<div style="position:relative;width:48px;height:48px;margin:0 auto 16px;">' +
+                                '<div style="width:48px;height:48px;border:4px solid #e2e8f0;border-top-color:' + sectionColor + ';border-radius:50%;animation:secSpin .7s linear infinite;"></div>' +
+                            '</div>' +
+                            '<p style="margin:0 0 4px;font-weight:700;font-size:15px;color:#1e293b;letter-spacing:-.2px;">Switching to ' + sectionLabel + '</p>' +
+                            '<p style="margin:0;font-size:12px;color:#94a3b8;">Updating columns & filters</p>' +
+                        '</div>' +
+                    '</div>' +
+                    '<style>' +
+                        '@keyframes secSpin{to{transform:rotate(360deg)}}' +
+                        '@keyframes secFadeIn{from{opacity:0}to{opacity:1}}' +
+                    '</style>'
+                );
+                
+                // Use setTimeout to allow the overlay to render before heavy operations
+                setTimeout(function() {
+                
                 // Define column groups for each section
                 // KW Ads columns as specified by user:
                 // Active, SKU, Ratings, Missing, INV, OV L30, DIL %, AL 30, A DIL %, NRL, NRA, Price, 
@@ -4820,6 +4851,15 @@
                     table.clearFilter();
                     applyFilters(); // Re-apply all filters including section-specific rules
                 }
+                
+                // Remove loading overlay after operations complete
+                setTimeout(function() {
+                    var $overlay = $('#section-loading-overlay');
+                    $overlay.css({transition: 'opacity .25s ease', opacity: 0});
+                    setTimeout(function() { $overlay.remove(); }, 260);
+                }, 150);
+                
+                }, 50); // End of setTimeout for loading overlay
             });
 
             // ACOS info icon: toggle detail columns (Clicks L7, Clicks L30, Spend L30, Sales L30, Ad Sold L30)

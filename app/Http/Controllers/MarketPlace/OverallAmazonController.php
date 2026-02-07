@@ -2028,12 +2028,16 @@ class OverallAmazonController extends Controller
                     return $cleanName === $cleanSkuL30 . ' PT' || $cleanName === $cleanSkuL30 . ' PT.';
                 }
                 
-                // For child rows: Match PT campaigns that end with SKU PT or start with SKU and end with PT
-                // Also check parent SKU
-                return (str_ends_with($cleanName, $cleanSkuL30 . ' PT') || str_ends_with($cleanName, $cleanSkuL30 . ' PT.'))
-                    || (str_starts_with($cleanName, $cleanSkuL30 . ' ') && (str_ends_with($cleanName, ' PT') || str_ends_with($cleanName, ' PT.')))
-                    || (str_ends_with($cleanName, $cleanParentL30 . ' PT') || str_ends_with($cleanName, $cleanParentL30 . ' PT.'))
-                    || (str_starts_with($cleanName, $cleanParentL30 . ' ') && (str_ends_with($cleanName, ' PT') || str_ends_with($cleanName, ' PT.')));
+                // For child rows: Match PT campaigns by exact SKU match only
+                // e.g., SKU "INSTRU MIC 100 GREY" should match "INSTRU MIC 100 GREY PT" not "INSTRU MIC 100 BLK PT"
+                // Also check exact parent PT campaign (e.g., "INSTRU MIC PT") as fallback
+                $cleanNameNoDot = rtrim($cleanName, '.');
+                return $cleanName === $cleanSkuL30 . ' PT' 
+                    || $cleanName === $cleanSkuL30 . ' PT.'
+                    || $cleanNameNoDot === $cleanSkuL30 . ' PT'
+                    || $cleanName === $cleanParentL30 . ' PT' 
+                    || $cleanName === $cleanParentL30 . ' PT.'
+                    || $cleanNameNoDot === $cleanParentL30 . ' PT';
             });
 
             $matchedCampaignHlL30 = $amazonHlL30->first(function ($item) use ($cleanSkuL30, $cleanParentL30) {
@@ -2082,9 +2086,9 @@ class OverallAmazonController extends Controller
             $row['ad_pause'] = !($kwHasEnabled || $ptHasEnabled);
             
             // Store status based on exact match (or all if no exact match)
-            // This matches the behavior in acos-kw-control where individual campaign status is shown
-            $row['kw_campaign_status'] = $kwHasEnabled ? 'ENABLED' : 'PAUSED';
-            $row['pt_campaign_status'] = $ptHasEnabled ? 'ENABLED' : 'PAUSED';
+            // Only set status if campaign actually exists, otherwise empty string
+            $row['kw_campaign_status'] = $matchedCampaignsKwL30->isNotEmpty() ? ($kwHasEnabled ? 'ENABLED' : 'PAUSED') : '';
+            $row['pt_campaign_status'] = $matchedCampaignsPtL30->isNotEmpty() ? ($ptHasEnabled ? 'ENABLED' : 'PAUSED') : '';
             
             // Check if any campaigns exist for this SKU
             $row['has_campaigns'] = $matchedCampaignsKwL30->isNotEmpty() || $matchedCampaignsPtL30->isNotEmpty();
