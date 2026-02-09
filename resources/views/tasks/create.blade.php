@@ -58,11 +58,11 @@
     <div class="container-fluid">
         
         <!-- Mobile View - Simple Form (Only visible on phones) -->
-        <div class="mobile-view d-md-none">
-            <div class="card border-0 shadow-sm">
-                <div class="card-header bg-gradient text-white" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-                    <h5 class="mb-0 text-center">
-                        <i class="mdi mdi-plus-circle me-2"></i>Quick Create Task
+        <div class="mobile-view d-md-none" style="padding: 0;">
+            <div class="card border-0 shadow-sm" style="border-radius: 0; margin: 0;">
+                <div class="card-header bg-gradient text-white" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 0;">
+                    <h5 class="mb-0">
+                        <i class="mdi mdi-plus-circle me-2"></i>Create New Task
                     </h5>
                 </div>
                 <div class="card-body p-3">
