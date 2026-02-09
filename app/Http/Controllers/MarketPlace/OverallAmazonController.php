@@ -1432,8 +1432,14 @@ class OverallAmazonController extends Controller
 
         $skus = $productMasters->pluck('sku')->filter()->unique()->values()->all();
 
-        $amazonDatasheetsBySku = AmazonDatasheet::whereIn('sku', $skus)->get()->keyBy(function ($item) {
-            return strtoupper($item->sku);
+        // Also build cleaned SKUs (non-breaking spaces → regular spaces) for amazon_datsheets lookup
+        $cleanedSkus = array_map(function ($s) {
+            return str_replace("\xC2\xA0", ' ', $s);
+        }, $skus);
+        $allSkusForLookup = array_values(array_unique(array_merge($skus, $cleanedSkus)));
+
+        $amazonDatasheetsBySku = AmazonDatasheet::whereIn('sku', $allSkusForLookup)->get()->keyBy(function ($item) {
+            return strtoupper(str_replace("\xC2\xA0", ' ', $item->sku));
         });
 
         $shopifyData = ShopifySku::whereIn('sku', $skus)->get()->keyBy('sku');
@@ -1861,13 +1867,14 @@ class OverallAmazonController extends Controller
 
         foreach ($productMasters as $pm) {
             $sku = strtoupper($pm->sku);
+            $skuClean = strtoupper(str_replace("\xC2\xA0", ' ', $pm->sku));
 
             if (str_starts_with($sku, 'PARENT ')) {
                 continue;
             }
 
             $parent = $pm->parent;
-            $amazonSheet = $amazonDatasheetsBySku[$sku] ?? null;
+            $amazonSheet = $amazonDatasheetsBySku[$skuClean] ?? ($amazonDatasheetsBySku[$sku] ?? null);
             $shopify = $shopifyData[$pm->sku] ?? null;
 
             $row = [];

@@ -261,7 +261,7 @@
                     <!-- KW Page Filters -->
                     <select id="utilization-type-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
-                        <option value="all">Utilization</option>
+                        <option value="all">All Utilization</option>
                         <option value="gg">Green+Green</option>
                         <option value="gp">Green+Pink</option>
                         <option value="gr">Green+Red</option>
@@ -4444,7 +4444,7 @@
                     // Reset counts when not in KW/PT section
                     $('#utilization-type-filter option').each(function() {
                         var val = $(this).val();
-                        $(this).text(val === 'all' ? 'All' : (comboLabels[val] || val));
+                        $(this).text(val === 'all' ? 'All Utilization' : (comboLabels[val] || val));
                     });
                     return;
                 }
@@ -4553,7 +4553,7 @@
                 $('#utilization-type-filter option').each(function() {
                     var val = $(this).val();
                     if (val === 'all') {
-                        $(this).text('All');
+                        $(this).text('All Utilization');
                     } else if (comboLabels[val]) {
                         $(this).text(comboLabels[val] + ' (' + (comboCounts[val] || 0) + ')');
                     }
@@ -4605,9 +4605,13 @@
                 }
 
                 if (inventoryFilter === 'zero') {
-                    table.addFilter('INV', '=', 0);
+                    table.addFilter(function(data) {
+                        return parseFloat(data.INV) === 0 || !data.INV;
+                    });
                 } else if (inventoryFilter === 'more') {
-                    table.addFilter('INV', '>', 0);
+                    table.addFilter(function(data) {
+                        return parseFloat(data.INV) > 0;
+                    });
                 }
 
                 if (nrlFilter !== 'all') {
