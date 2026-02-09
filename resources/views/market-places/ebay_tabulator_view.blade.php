@@ -155,6 +155,14 @@
             <div class="card-body py-3">
                 <h4>eBay Data</h4>
                 <div class="d-flex align-items-center flex-wrap gap-2">
+                    <select id="section-filter" class="form-select form-select-sm"
+                        style="width: auto; display: inline-block;">
+                        <option value="all" selected>Section Filter</option>
+                        <option value="pricing">Pricing</option>
+                        <option value="kw_ads">KW Ads</option>
+                        <option value="pmt_ads">PMT Ads</option>
+                    </select>
+
                     <select id="inventory-filter" class="form-select form-select-sm"
                         style="width: auto; display: inline-block;">
                         <option value="all">All Inventory</option>
@@ -2039,7 +2047,7 @@
                         }
                     },
                     {
-                        title: "Missing",
+                        title: "Missing L",
                         field: "Missing",
                         hozAlign: "center",
                         width: 70,
@@ -2790,6 +2798,364 @@
                         width: 110
                     },
 
+                    // ========== KW Ads Section Columns (hidden by default) ==========
+                    {
+                        title: "Missing Ad",
+                        field: "kw_hasCampaign",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var hasCampaign = row.kw_campaign_id && row.kw_campaign_id !== '';
+                            var nrReq = (row.nr_req || '').trim();
+
+                            var dotColor, title;
+                            if (nrReq === 'NR' || nrReq === 'NRL') {
+                                dotColor = '#ffc107'; // yellow
+                                title = 'NR - Not Required';
+                            } else if (hasCampaign) {
+                                dotColor = '#28a745'; // green
+                                title = 'Campaign Exists';
+                            } else {
+                                dotColor = '#dc3545'; // red
+                                title = 'Campaign Missing';
+                            }
+
+                            return '<div style="display: flex; align-items: center; justify-content: center;">' +
+                                '<span style="width: 12px; height: 12px; border-radius: 50%; display: inline-block; background-color: ' + dotColor + ';" title="' + title + '"></span>' +
+                                '</div>';
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "L7 VIEWS",
+                        field: "l7_views",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseInt(cell.getValue() || 0);
+                            return value.toLocaleString();
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "BGT",
+                        field: "kw_campaignBudgetAmount",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            return parseFloat(cell.getValue() || 0).toFixed(0);
+                        },
+                        width: 60
+                    },
+                    {
+                        title: "SBGT",
+                        field: "kw_sbgt",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            var rowData = cell.getRow().getData();
+                            var acos = parseFloat(rowData.kw_acos || 0);
+                            if (isNaN(acos) || acos === 0) {
+                                acos = 100;
+                            }
+                            var suggestedBudget = 0;
+                            if (acos < 4) {
+                                suggestedBudget = 9;
+                            } else if (acos >= 4 && acos < 8) {
+                                suggestedBudget = 6;
+                            } else {
+                                suggestedBudget = 3;
+                            }
+                            return suggestedBudget.toFixed(0);
+                        },
+                        width: 60
+                    },
+                    {
+                        title: "ACOS",
+                        field: "kw_acos",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            var rowData = cell.getRow().getData();
+                            var kwSpend = parseFloat(rowData.kw_spend_L30 || 0);
+                            var acos = parseFloat(cell.getValue() || 0);
+                            
+                            if (kwSpend === 0) {
+                                return '-';
+                            }
+                            
+                            var td = cell.getElement();
+                            td.style.removeProperty('background-color');
+                            
+                            if (acos === 0) {
+                                td.style.backgroundColor = '#f8d7da';
+                                return '100%';
+                            } else if (acos < 7) {
+                                td.style.backgroundColor = '#f8d7f8';
+                                return acos.toFixed(0) + '%';
+                            } else if (acos >= 7 && acos <= 14) {
+                                td.style.backgroundColor = '#d4edda';
+                                return acos.toFixed(0) + '%';
+                            } else {
+                                td.style.backgroundColor = '#f8d7da';
+                                return acos.toFixed(0) + '%';
+                            }
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "CLICKS",
+                        field: "kw_clicks",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            return parseInt(cell.getValue() || 0).toLocaleString();
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "AD SOLD",
+                        field: "kw_ad_sold",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            return parseInt(cell.getValue() || 0).toLocaleString();
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "7UB%",
+                        field: "kw_l7_spend",
+                        hozAlign: "center",
+                        visible: false,
+                        sorter: function(a, b, aRow, bRow) {
+                            var aData = aRow.getData();
+                            var bData = bRow.getData();
+                            var aUb7 = parseFloat(aData.kw_campaignBudgetAmount) > 0 ? (parseFloat(aData.kw_l7_spend || 0) / (parseFloat(aData.kw_campaignBudgetAmount) * 7)) * 100 : 0;
+                            var bUb7 = parseFloat(bData.kw_campaignBudgetAmount) > 0 ? (parseFloat(bData.kw_l7_spend || 0) / (parseFloat(bData.kw_campaignBudgetAmount) * 7)) * 100 : 0;
+                            return aUb7 - bUb7;
+                        },
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var l7_spend = parseFloat(row.kw_l7_spend) || 0;
+                            var budget = parseFloat(row.kw_campaignBudgetAmount) || 0;
+                            var ub7 = budget > 0 ? (l7_spend / (budget * 7)) * 100 : 0;
+                            var td = cell.getElement();
+                            td.style.removeProperty('background-color');
+                            if (ub7 >= 66 && ub7 <= 99) {
+                                td.style.backgroundColor = '#d4edda';
+                            } else if (ub7 > 99) {
+                                td.style.backgroundColor = '#f8d7f8';
+                            } else if (ub7 < 66 && budget > 0) {
+                                td.style.backgroundColor = '#f8d7da';
+                            }
+                            return ub7.toFixed(0) + '%';
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "1UB%",
+                        field: "kw_l1_spend",
+                        hozAlign: "center",
+                        visible: false,
+                        sorter: function(a, b, aRow, bRow) {
+                            var aData = aRow.getData();
+                            var bData = bRow.getData();
+                            var aUb1 = parseFloat(aData.kw_campaignBudgetAmount) > 0 ? (parseFloat(aData.kw_l1_spend || 0) / parseFloat(aData.kw_campaignBudgetAmount)) * 100 : 0;
+                            var bUb1 = parseFloat(bData.kw_campaignBudgetAmount) > 0 ? (parseFloat(bData.kw_l1_spend || 0) / parseFloat(bData.kw_campaignBudgetAmount)) * 100 : 0;
+                            return aUb1 - bUb1;
+                        },
+                        formatter: function(cell) {
+                            var row = cell.getRow().getData();
+                            var l1_spend = parseFloat(row.kw_l1_spend) || 0;
+                            var budget = parseFloat(row.kw_campaignBudgetAmount) || 0;
+                            var ub1 = budget > 0 ? (l1_spend / budget) * 100 : 0;
+                            var td = cell.getElement();
+                            td.style.removeProperty('background-color');
+                            if (ub1 >= 66 && ub1 <= 99) {
+                                td.style.backgroundColor = '#d4edda';
+                            } else if (ub1 > 99) {
+                                td.style.backgroundColor = '#f8d7f8';
+                            } else if (ub1 < 66 && budget > 0) {
+                                td.style.backgroundColor = '#f8d7da';
+                            }
+                            return ub1.toFixed(0) + '%';
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "L7 CPC",
+                        field: "kw_l7_cpc",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return value > 0 ? value.toFixed(2) : '-';
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "L1 CPC",
+                        field: "kw_l1_cpc",
+                        hozAlign: "center",
+                        sorter: "number",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = parseFloat(cell.getValue() || 0);
+                            return value > 0 ? value.toFixed(2) : '-';
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "LBID",
+                        field: "kw_last_sbid",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            if (!value || value === '' || value === '0' || value === 0) {
+                                return '-';
+                            }
+                            return parseFloat(value).toFixed(2);
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "SBID",
+                        field: "kw_sbid_calc",
+                        hozAlign: "center",
+                        visible: false,
+                        sorter: function(a, b, aRow, bRow) {
+                            function calcSbid(rowData) {
+                                var l1Cpc = parseFloat(rowData.kw_l1_cpc) || 0;
+                                var l7Cpc = parseFloat(rowData.kw_l7_cpc) || 0;
+                                var budget = parseFloat(rowData.kw_campaignBudgetAmount) || 0;
+                                var inv = parseFloat(rowData.INV || 0);
+                                var price = parseFloat(rowData['eBay Price'] || 0);
+                                var ub7 = budget > 0 ? (parseFloat(rowData.kw_l7_spend) || 0) / (budget * 7) * 100 : 0;
+                                var ub1 = budget > 0 ? (parseFloat(rowData.kw_l1_spend) || 0) / budget * 100 : 0;
+                                var lastSbidRaw = rowData.kw_last_sbid;
+                                var lastSbid = (!lastSbidRaw || lastSbidRaw === '' || lastSbidRaw === '0') ? 0 : parseFloat(lastSbidRaw) || 0;
+
+                                if (ub7 > 99 && ub1 > 99) {
+                                    if (l1Cpc > 1.25) return Math.floor(l1Cpc * 0.80 * 100) / 100;
+                                    if (l1Cpc > 0) return Math.floor(l1Cpc * 0.90 * 100) / 100;
+                                    if (l7Cpc > 0) return Math.floor(l7Cpc * 0.90 * 100) / 100;
+                                    return 0;
+                                }
+                                var isOver = ub7 > 99 && ub1 > 99;
+                                var isUnder = !isOver && budget > 0 && ub7 < 66 && ub1 < 66 && inv > 0;
+                                if (isOver) {
+                                    var sbid = l1Cpc > 1.25 ? Math.floor(l1Cpc * 0.80 * 100) / 100 : (l1Cpc > 0 ? Math.floor(l1Cpc * 0.90 * 100) / 100 : 0);
+                                    if (price < 20 && sbid > 0.20) sbid = 0.20;
+                                    return sbid;
+                                }
+                                if (isUnder) {
+                                    var baseBid = lastSbid > 0 ? lastSbid : (l1Cpc > 0 ? l1Cpc : (l7Cpc > 0 ? l7Cpc : 0));
+                                    if (ub1 < 33) return Math.floor((baseBid + 0.10) * 100) / 100;
+                                    if (ub1 >= 33 && ub1 < 66) return Math.floor(baseBid * 1.10 * 100) / 100;
+                                    return Math.floor(baseBid * 100) / 100;
+                                }
+                                if (l1Cpc > 0) return Math.floor(l1Cpc * 0.90 * 100) / 100;
+                                if (l7Cpc > 0) return Math.floor(l7Cpc * 0.90 * 100) / 100;
+                                return 0;
+                            }
+                            return calcSbid(aRow.getData()) - calcSbid(bRow.getData());
+                        },
+                        formatter: function(cell) {
+                            var rowData = cell.getRow().getData();
+                            var l1Cpc = parseFloat(rowData.kw_l1_cpc) || 0;
+                            var l7Cpc = parseFloat(rowData.kw_l7_cpc) || 0;
+                            var budget = parseFloat(rowData.kw_campaignBudgetAmount) || 0;
+                            var inv = parseFloat(rowData.INV || 0);
+                            var price = parseFloat(rowData['eBay Price'] || 0);
+                            var ub7 = budget > 0 ? (parseFloat(rowData.kw_l7_spend) || 0) / (budget * 7) * 100 : 0;
+                            var ub1 = budget > 0 ? (parseFloat(rowData.kw_l1_spend) || 0) / budget * 100 : 0;
+                            var lastSbidRaw = rowData.kw_last_sbid;
+                            var lastSbid = (!lastSbidRaw || lastSbidRaw === '' || lastSbidRaw === '0') ? 0 : parseFloat(lastSbidRaw) || 0;
+
+                            var sbid = 0;
+                            if (ub7 > 99 && ub1 > 99) {
+                                if (l1Cpc > 1.25) sbid = Math.floor(l1Cpc * 0.80 * 100) / 100;
+                                else if (l1Cpc > 0) sbid = Math.floor(l1Cpc * 0.90 * 100) / 100;
+                                else if (l7Cpc > 0) sbid = Math.floor(l7Cpc * 0.90 * 100) / 100;
+                                if (price < 20 && sbid > 0.20) sbid = 0.20;
+                            } else {
+                                var isUnder = budget > 0 && ub7 < 66 && ub1 < 66 && inv > 0;
+                                if (isUnder) {
+                                    var baseBid = lastSbid > 0 ? lastSbid : (l1Cpc > 0 ? l1Cpc : (l7Cpc > 0 ? l7Cpc : 0));
+                                    if (ub1 < 33) sbid = Math.floor((baseBid + 0.10) * 100) / 100;
+                                    else if (ub1 >= 33 && ub1 < 66) sbid = Math.floor(baseBid * 1.10 * 100) / 100;
+                                    else sbid = Math.floor(baseBid * 100) / 100;
+                                } else {
+                                    if (l1Cpc > 0) sbid = Math.floor(l1Cpc * 0.90 * 100) / 100;
+                                    else if (l7Cpc > 0) sbid = Math.floor(l7Cpc * 0.90 * 100) / 100;
+                                }
+                            }
+                            return sbid > 0 ? sbid.toFixed(2) : '-';
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "SBID M",
+                        field: "kw_sbid_m",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var value = cell.getValue();
+                            if (!value || value === '' || value === '0' || value === 0) {
+                                return '-';
+                            }
+                            return parseFloat(value).toFixed(2);
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "APR BID",
+                        field: "kw_apr_bid",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var rowData = cell.getRow().getData();
+                            var apprSbid = rowData.kw_apprSbid || '';
+                            if (apprSbid && apprSbid !== '' && parseFloat(apprSbid) > 0) {
+                                return `<div style="display: flex; justify-content: center; align-items: center;">
+                                    <i class="fa-solid fa-circle-check" style="color: #28a745; font-size: 20px;" title="Bid pushed: ${apprSbid}"></i>
+                                </div>`;
+                            } else {
+                                return `<div style="display: flex; justify-content: center; align-items: center;">
+                                    <i class="fa-solid fa-check" style="color: #6c757d; font-size: 18px;" title="Not pushed"></i>
+                                </div>`;
+                            }
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "Status",
+                        field: "kw_campaignStatus",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var status = cell.getValue() || '';
+                            if (!status || status === '') {
+                                return '<span style="color: #999;">-</span>';
+                            }
+                            var isRunning = status === 'RUNNING';
+                            var color = isRunning ? '#28a745' : '#dc3545';
+                            var icon = isRunning ? 'fa-circle' : 'fa-circle-pause';
+                            return `<span style="color: ${color};" title="${status}"><i class="fa-solid ${icon}"></i></span>`;
+                        },
+                        width: 60
+                    },
+
                   
                     // {
                     //     title: "Listed",
@@ -3181,6 +3547,68 @@
 
             $('#inventory-filter, #nrl-filter, #gpft-filter, #cvr-filter, #status-filter, #ads-filter').on('change', function() {
                 applyFilters();
+            });
+
+            // Section Filter: show/hide column groups
+            // Define column groups for each section
+            // Columns that are ONLY in pricing section (will be hidden when KW Ads is selected)
+            var pricingOnlyColumns = [
+                'image_path', 'L30', 'E Dil%', 'eBay Stock', 'MAP', 'nr_req',
+                'A Price', 'GPFT%', 'AD%', 'PFT %', 'ROI%', '_select',
+                'lmp_price', 'SPRICE', '_accept', 'SGPFT', 'SPFT', 'SROI',
+                'AD_Spend_L30', 'pmt_spend_L30'
+            ];
+            // Columns that are ONLY in KW Ads section (will be hidden in pricing view)
+            var kwAdsOnlyColumns = [
+                'kw_hasCampaign', 'l7_views', 'kw_campaignBudgetAmount', 'kw_sbgt', 'kw_acos', 'kw_clicks',
+                'kw_ad_sold', 'kw_l7_spend', 'kw_l1_spend', 'kw_l7_cpc', 'kw_l1_cpc',
+                'kw_last_sbid', 'kw_sbid_calc', 'kw_sbid_m', 'kw_apr_bid', 'kw_campaignStatus'
+            ];
+            // Columns shared between sections
+            var sharedColumns = [
+                'Missing', 'INV', 'eBay Price', 'eBay L30', 'views', 'SCVR', 'kw_spend_L30'
+            ];
+
+            $('#section-filter').on('change', function() {
+                var sectionVal = $(this).val();
+
+                if (sectionVal === 'all' || sectionVal === 'pricing') {
+                    // Show pricing columns, hide KW-only columns
+                    kwAdsOnlyColumns.forEach(function(col) {
+                        try { table.hideColumn(col); } catch(e) {}
+                    });
+                    pricingOnlyColumns.forEach(function(col) {
+                        try { table.showColumn(col); } catch(e) {}
+                    });
+                    sharedColumns.forEach(function(col) {
+                        try { table.showColumn(col); } catch(e) {}
+                    });
+                    // Hide kw_spend_L30 in pricing (it shows as part of AD_Spend_L30)
+                    try { table.hideColumn('kw_spend_L30'); } catch(e) {}
+                } else if (sectionVal === 'kw_ads') {
+                    // Hide pricing-only columns, show KW Ads columns
+                    pricingOnlyColumns.forEach(function(col) {
+                        try { table.hideColumn(col); } catch(e) {}
+                    });
+                    kwAdsOnlyColumns.forEach(function(col) {
+                        try { table.showColumn(col); } catch(e) {}
+                    });
+                    sharedColumns.forEach(function(col) {
+                        try { table.showColumn(col); } catch(e) {}
+                    });
+                } else if (sectionVal === 'pmt_ads') {
+                    // For now PMT Ads shows same as pricing (can be expanded later)
+                    kwAdsOnlyColumns.forEach(function(col) {
+                        try { table.hideColumn(col); } catch(e) {}
+                    });
+                    pricingOnlyColumns.forEach(function(col) {
+                        try { table.showColumn(col); } catch(e) {}
+                    });
+                    sharedColumns.forEach(function(col) {
+                        try { table.showColumn(col); } catch(e) {}
+                    });
+                    try { table.hideColumn('kw_spend_L30'); } catch(e) {}
+                }
             });
 
             // Range filter event listeners (E L30, Views)

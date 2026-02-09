@@ -2471,23 +2471,8 @@
                     const missCount = parseNumber(row['Miss'] || 0);
                     const nmapCount = parseNumber(row['NMap'] || 0);
 
-                    // Ad spend - handle Walmart, Temu, Shopify B2C, Tiktok Shop separately to avoid double counting
-                    const kwSpent = parseNumber(row['KW Spent'] || 0);
-                    const pmtSpent = parseNumber(row['PMT Spent'] || 0);
-                    const hlSpent = parseNumber(row['HL Spent'] || 0);
-                    const walmartSpent = parseNumber(row['Walmart Spent'] || 0);
-                    const tiktokAdSpend = parseNumber(row['TikTok Ad Spend'] || 0);
-
-                    let adSpend = 0;
-                    if (channel === 'walmart') {
-                        adSpend = walmartSpent;
-                    } else if (channel === 'temu' || channel === 'shopifyb2c') {
-                        adSpend = kwSpent; // Temu/Google Ads spend is stored in KW Spent
-                    } else if (channel === 'tiktok shop') {
-                        adSpend = tiktokAdSpend; // TikTok Ad Spend from tiktok_campaign_reports
-                    } else {
-                        adSpend = kwSpent + pmtSpent + hlSpent;
-                    }
+                    // Use Total Ad Spend directly (already computed correctly per channel)
+                    const adSpend = parseNumber(row['Total Ad Spend'] || 0);
 
                     totalL30Sales += l30Sales;
                     totalL30Orders += l30Orders;
@@ -3212,21 +3197,23 @@
                 document.getElementById('adChartMedian').textContent = fmtVal(median);
                 document.getElementById('adChartLowest').textContent = fmtVal(dataMin);
 
-                // --- Dot colors: green if value < previous day, red if higher, grey if first ---
+                // --- Dot colors: green=UP red=DOWN, but INVERTED for ACOS & Ads% (lower is better) ---
+                const invertedMetrics = ['acos', 'ads_pct'];
+                const isInverted = invertedMetrics.includes(currentChartMetric);
                 const dotColors = values.map((v, i) => {
                     if (i === 0) return '#6c757d';           // neutral for first point
-                    return v < values[i - 1] ? '#198754' :   // green = lower than yesterday
-                           v > values[i - 1] ? '#dc3545' :   // red   = higher than yesterday
+                    if (isInverted) {
+                        return v < values[i - 1] ? '#28a745' :   // green = lower (good for ACOS/Ads%)
+                               v > values[i - 1] ? '#dc3545' :   // red   = higher (bad for ACOS/Ads%)
+                               '#6c757d';
+                    }
+                    return v > values[i - 1] ? '#28a745' :   // green = higher than yesterday (UP)
+                           v < values[i - 1] ? '#dc3545' :   // red   = lower than yesterday (DOWN)
                            '#6c757d';                         // neutral = same
                 });
 
-                // --- Value label colors: green if value < 7 days ago, red if higher ---
-                const labelColors = values.map((v, i) => {
-                    if (i < 7) return '#6c757d';              // not enough history
-                    return v < values[i - 7] ? '#198754' :    // green = decreased vs 7d ago
-                           v > values[i - 7] ? '#dc3545' :    // red   = increased vs 7d ago
-                           '#6c757d';                          // neutral = same
-                });
+                // --- Value label colors: same as dot colors (match previous day comparison) ---
+                const labelColors = dotColors;
 
                 // --- Median line plugin ---
                 const medianLinePlugin = {
