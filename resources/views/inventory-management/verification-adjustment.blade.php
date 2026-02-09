@@ -1,7 +1,7 @@
 @extends('layouts.vertical', ['title' => 'Verification Adjustment', 'mode' => $mode ?? '', 'demo' => $demo ?? ''])
-<meta name="csrf-token" content="{{ csrf_token() }}">
 
 @section('css')
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <style>
@@ -1884,6 +1884,55 @@
     <script>
         document.body.style.zoom = "80%";
         $(document).ready(function() {
+            // Global AJAX setup for CSRF token - ensures all AJAX requests include CSRF token
+            $.ajaxSetup({
+                headers: {
+                    'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
+                },
+                beforeSend: function(xhr, settings) {
+                    // Only add CSRF token for non-GET requests
+                    if (settings.type !== 'GET') {
+                        var token = $('meta[name="csrf-token"]').attr('content');
+                        if (token) {
+                            xhr.setRequestHeader('X-CSRF-TOKEN', token);
+                        }
+                    }
+                },
+                error: function(xhr, status, error) {
+                    // Handle CSRF token mismatch errors globally
+                    if (xhr.status === 419) {
+                        console.error('CSRF token mismatch detected. The page may need to be refreshed.');
+                        alert('Your session has expired. The page will now reload to refresh your session.');
+                        location.reload();
+                    }
+                }
+            });
+
+            // Function to refresh CSRF token (can be called manually if needed)
+            window.refreshCSRFToken = function() {
+                return $.ajax({
+                    url: '{{ route("verify-adjust") }}',
+                    type: 'GET',
+                    success: function(response) {
+                        // Extract and update CSRF token from response
+                        var html = $(response);
+                        var newToken = html.find('meta[name="csrf-token"]').attr('content');
+                        if (newToken) {
+                            $('meta[name="csrf-token"]').attr('content', newToken);
+                            console.log('CSRF token refreshed successfully');
+                        }
+                    },
+                    error: function() {
+                        console.error('Failed to refresh CSRF token');
+                    }
+                });
+            };
+
+            // Periodically refresh CSRF token (every 30 minutes) to prevent timeout issues
+            setInterval(function() {
+                window.refreshCSRFToken();
+            }, 30 * 60 * 1000); // 30 minutes
+
             $('#updateAllSkusBtn').click(function() {
                 // Disable button and show loading state
                 $(this).prop('disabled', true);
