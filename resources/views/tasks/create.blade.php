@@ -93,15 +93,15 @@
                             @enderror
                         </div>
 
-                        <!-- Assign To -->
+                        <!-- Assign To (Simple Dropdown - Works with existing backend) -->
                         <div class="mb-3">
-                            <label for="mobile_assignee_id" class="form-label fw-bold">
+                            <label for="assignee_id" class="form-label fw-bold">
                                 Assign To
                             </label>
                             <select class="form-select form-select-lg @error('assignee_id') is-invalid @enderror" 
-                                    id="mobile_assignee_id" 
+                                    id="assignee_id" 
                                     name="assignee_id">
-                                <option value="">Select Person</option>
+                                <option value="">Select Person (Optional)</option>
                                 @foreach($users as $user)
                                     <option value="{{ $user->id }}" {{ old('assignee_id') == $user->id ? 'selected' : '' }}>
                                         {{ $user->name }}
@@ -111,6 +111,35 @@
                             @error('assignee_id')
                                 <div class="invalid-feedback">{{ $message }}</div>
                             @enderror
+                            
+                            <!-- Multiple Assignment Option -->
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="checkbox" id="enable_multiple_assign" style="width: 18px; height: 18px;">
+                                <label class="form-check-label" for="enable_multiple_assign" style="margin-left: 8px;">
+                                    <small>Assign to multiple users (creates separate tasks)</small>
+                                </label>
+                            </div>
+                            
+                            <!-- Multiple Assignees (Hidden by default) -->
+                            <div id="multiple-assignees-section" style="display: none; margin-top: 10px;">
+                                <label class="form-label fw-bold">Select Multiple Users:</label>
+                                <div class="border rounded p-3" style="background: #f8f9fa; max-height: 200px; overflow-y: auto;">
+                                    @foreach($users as $user)
+                                        <div class="form-check mb-2">
+                                            <input class="form-check-input multi-assignee-check" 
+                                                   type="checkbox" 
+                                                   name="assignee_ids[]" 
+                                                   value="{{ $user->id }}" 
+                                                   id="multi_assignee_{{ $user->id }}"
+                                                   style="width: 18px; height: 18px;">
+                                            <label class="form-check-label" for="multi_assignee_{{ $user->id }}" style="font-size: 14px; margin-left: 8px; cursor: pointer;">
+                                                {{ $user->name }}
+                                            </label>
+                                        </div>
+                                    @endforeach
+                                </div>
+                                <div id="multi-selected-count" class="mt-2"></div>
+                            </div>
                         </div>
 
                         <!-- Image Upload with Camera & Paste -->
@@ -283,9 +312,10 @@
                                     @enderror
                                 </div>
                                 <div class="col-md-6 mb-3">
-                                    <label for="assignee_id" class="form-label">Assign To (Assignee)</label>
+                                    <label for="desktop_assignee_id" class="form-label">Assign To (Assignee)</label>
                                     <select class="form-select select2 @error('assignee_id') is-invalid @enderror" 
-                                            id="assignee_id" name="assignee_id">
+                                            id="desktop_assignee_id" 
+                                            name="assignee_id">
                                         <option value="">Please Select</option>
                                         @foreach($users as $user)
                                             <option value="{{ $user->id }}" {{ old('assignee_id') == $user->id ? 'selected' : '' }}>
@@ -296,6 +326,38 @@
                                     @error('assignee_id')
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror
+                                    
+                                    <!-- Multiple Assignment Option -->
+                                    <div class="form-check mt-2">
+                                        <input class="form-check-input" type="checkbox" id="desktop_enable_multiple_assign">
+                                        <label class="form-check-label" for="desktop_enable_multiple_assign">
+                                            <small>Assign to multiple users (shows all names comma-separated)</small>
+                                        </label>
+                                    </div>
+                                    
+                                    <!-- Multiple Assignees Section -->
+                                    <div id="desktop-multiple-assignees-section" style="display: none; margin-top: 10px;">
+                                        <label class="form-label fw-bold">Select Multiple Users:</label>
+                                        <div class="border rounded p-3" style="background: #f8f9fa; max-height: 300px; overflow-y: auto;">
+                                            <div class="row">
+                                                @foreach($users as $user)
+                                                    <div class="col-md-6 mb-2">
+                                                        <div class="form-check">
+                                                            <input class="form-check-input desktop-multi-assignee-check" 
+                                                                   type="checkbox" 
+                                                                   name="assignee_ids[]" 
+                                                                   value="{{ $user->id }}" 
+                                                                   id="desktop_multi_assignee_{{ $user->id }}">
+                                                            <label class="form-check-label" for="desktop_multi_assignee_{{ $user->id }}">
+                                                                {{ $user->name }}
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                @endforeach
+                                            </div>
+                                        </div>
+                                        <div id="desktop-multi-selected-count" class="mt-2"></div>
+                                    </div>
                                 </div>
                             </div>
 
@@ -732,6 +794,104 @@
                 
                 console.log('✓ Camera, Paste, and File upload ready!');
             }
+            
+            // ==========================================
+            // TOGGLE MULTIPLE ASSIGNEE MODE (MOBILE)
+            // ==========================================
+            $('#enable_multiple_assign').on('change', function() {
+                if ($(this).is(':checked')) {
+                    // Show multiple selection
+                    $('#multiple-assignees-section').slideDown();
+                    $('#assignee_id').prop('disabled', true).val('');
+                    console.log('✓ Multiple assignee mode enabled');
+                } else {
+                    // Show single selection
+                    $('#multiple-assignees-section').slideUp();
+                    $('#assignee_id').prop('disabled', false);
+                    $('.multi-assignee-check').prop('checked', false);
+                    $('#multi-selected-count').html('');
+                    console.log('✓ Single assignee mode');
+                }
+            });
+            
+            // Multiple assignee selection counter
+            $('.multi-assignee-check').on('change', function() {
+                const selected = $('.multi-assignee-check:checked');
+                const count = selected.length;
+                const names = selected.map(function() {
+                    return $(this).next('label').text().trim();
+                }).get();
+                
+                if (count > 0) {
+                    $('#multi-selected-count').html(`
+                        <div class="alert alert-success p-2 mb-0">
+                            <small>
+                                <i class="mdi mdi-account-multiple-check"></i> 
+                                <strong>${count} user(s) selected:</strong> ${names.join(', ')}
+                                <br><em>One task assigned to all ${count} users</em>
+                            </small>
+                        </div>
+                    `);
+                } else {
+                    $('#multi-selected-count').html('');
+                }
+                
+                console.log('✓ Multiple assignees:', names, '| IDs:', selected.map(function() { return $(this).val(); }).get());
+            });
+            
+            // ==========================================
+            // TOGGLE MULTIPLE ASSIGNEE MODE (DESKTOP)
+            // ==========================================
+            $('#desktop_enable_multiple_assign').on('change', function() {
+                if ($(this).is(':checked')) {
+                    $('#desktop-multiple-assignees-section').slideDown();
+                    $('#desktop_assignee_id').prop('disabled', true).val('').trigger('change');
+                    console.log('✓ Desktop multiple assignee mode enabled');
+                } else {
+                    $('#desktop-multiple-assignees-section').slideUp();
+                    $('#desktop_assignee_id').prop('disabled', false);
+                    $('.desktop-multi-assignee-check').prop('checked', false);
+                    $('#desktop-multi-selected-count').html('');
+                    console.log('✓ Desktop single assignee mode');
+                }
+            });
+            
+            // Desktop multiple assignee selection counter
+            $('.desktop-multi-assignee-check').on('change', function() {
+                const selected = $('.desktop-multi-assignee-check:checked');
+                const count = selected.length;
+                const names = selected.map(function() {
+                    return $(this).next('label').text().trim();
+                }).get();
+                
+                if (count > 0) {
+                    $('#desktop-multi-selected-count').html(`
+                        <div class="alert alert-success p-2 mb-0">
+                            <small>
+                                <i class="mdi mdi-account-multiple-check"></i> 
+                                <strong>${count} user(s) selected:</strong> ${names.join(', ')}
+                                <br><em>One task assigned to all ${count} users (comma-separated)</em>
+                            </small>
+                        </div>
+                    `);
+                } else {
+                    $('#desktop-multi-selected-count').html('');
+                }
+                
+                console.log('✓ Desktop multiple assignees:', names);
+            });
+            
+            // Form submission logging
+            $('form').on('submit', function(e) {
+                const singleAssignee = $('#assignee_id').val() || $('#desktop_assignee_id').val();
+                const multipleAssignees = $('.multi-assignee-check:checked, .desktop-multi-assignee-check:checked')
+                    .map(function() { return $(this).val(); }).get();
+                
+                console.log('📤 FORM SUBMITTING...');
+                console.log('Single assignee:', singleAssignee);
+                console.log('Multiple assignees:', multipleAssignees);
+                console.log('Form data:', $(this).serialize());
+            });
 
             // Store pasted file globally
             let pastedFile = null;

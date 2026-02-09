@@ -84,12 +84,30 @@ class TaskController extends Controller
             }
             
             if ($task->assign_to) {
-                $assigneeUser = User::where('email', $task->assign_to)->first();
-                $task->assignee_name = $assigneeUser ? $assigneeUser->name : $task->assign_to;
-                $task->assignee_id = $assigneeUser ? $assigneeUser->id : null;
+                // Handle multiple assignees (comma-separated emails)
+                $assigneeEmails = array_map('trim', explode(',', $task->assign_to));
+                $assigneeNames = [];
+                $assigneeIds = [];
+                
+                foreach ($assigneeEmails as $email) {
+                    $assigneeUser = User::where('email', $email)->first();
+                    if ($assigneeUser) {
+                        $assigneeNames[] = $assigneeUser->name;
+                        $assigneeIds[] = $assigneeUser->id;
+                    } else {
+                        $assigneeNames[] = $email;
+                    }
+                }
+                
+                $task->assignee_name = implode(', ', $assigneeNames);
+                $task->assignee_id = !empty($assigneeIds) ? $assigneeIds[0] : null; // First ID for compatibility
+                $task->assignee_ids = $assigneeIds; // All IDs
+                $task->assignee_count = count($assigneeNames);
             } else {
                 $task->assignee_name = '-';
                 $task->assignee_id = null;
+                $task->assignee_ids = [];
+                $task->assignee_count = 0;
             }
             
             // For permission checks
@@ -108,6 +126,13 @@ class TaskController extends Controller
 
     public function store(Request $request)
     {
+        // Log what we receive
+        \Log::info('Task Create Request:', [
+            'assignee_id' => $request->assignee_id,
+            'assignee_ids' => $request->assignee_ids,
+            'all_data' => $request->all()
+        ]);
+        
         $validated = $request->validate([
             'title' => 'required|string|max:1000',
             'description' => 'nullable|string',
@@ -115,6 +140,8 @@ class TaskController extends Controller
             'priority' => 'required|in:low,normal,high',
             'assignor_id' => 'nullable|exists:users,id',
             'assignee_id' => 'nullable|exists:users,id',
+            'assignee_ids' => 'nullable|array',
+            'assignee_ids.*' => 'exists:users,id',
             'split_tasks' => 'nullable|boolean',
             'flag_raise' => 'nullable|boolean',
             'etc_minutes' => 'nullable|integer',
@@ -143,11 +170,22 @@ class TaskController extends Controller
             $assignorEmail = $user->email;
         }
         
-        // Get assignee email
+        // Get assignee email(s) - can be multiple, comma-separated
         $assigneeEmail = null;
-        if ($request->has('assignee_id') && $validated['assignee_id']) {
+        $assigneeIds = $request->assignee_ids ?? [];
+        
+        if (!empty($assigneeIds) && count($assigneeIds) > 0) {
+            // Multiple assignees - store as comma-separated emails
+            $assigneeEmails = User::whereIn('id', $assigneeIds)->pluck('email')->toArray();
+            $assigneeEmail = implode(', ', $assigneeEmails);
+            \Log::info('Multiple assignees:', ['ids' => $assigneeIds, 'emails' => $assigneeEmail]);
+        } elseif ($request->has('assignee_id') && $validated['assignee_id']) {
+            // Single assignee
             $assigneeUser = User::find($validated['assignee_id']);
             $assigneeEmail = $assigneeUser ? $assigneeUser->email : null;
+            \Log::info('Single assignee:', ['id' => $validated['assignee_id'], 'email' => $assigneeEmail]);
+        } else {
+            \Log::warning('No assignee provided');
         }
         
         // Handle image upload
@@ -1011,4 +1049,5 @@ class TaskController extends Controller
 
         return response()->json($deletedTasks);
     }
+    
 }

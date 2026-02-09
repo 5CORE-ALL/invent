@@ -1635,12 +1635,39 @@
                 let html = '';
                 
                 tasks.forEach(task => {
-                    const statusClass = `status-${task.status.toLowerCase().replace(' ', '')}`;
+                    // OVERDUE BASED ON completion_day
+                    let isOverdue = false;
+                    let statusText = task.status;
+                    
+                    if (task.status !== 'Archived' && task.start_date && task.due_date) {
+                        const startDate = new Date(task.start_date);
+                        const dueDate = new Date(task.due_date);
+                        const expectedDays = Math.ceil((dueDate - startDate) / (1000 * 60 * 60 * 24));
+                        
+                        if (task.completion_date && task.completion_date !== '0000-00-00' && task.completion_day) {
+                            const actualDays = parseInt(task.completion_day);
+                            isOverdue = actualDays > expectedDays;
+                            if (isOverdue) {
+                                statusText = `OVERDUE (${actualDays}/${expectedDays}d)`;
+                            }
+                        } else {
+                            const now = new Date();
+                            if (now > dueDate) {
+                                isOverdue = true;
+                                const daysLate = Math.ceil((now - dueDate) / (1000 * 60 * 60 * 24));
+                                statusText = `OVERDUE ${daysLate}d`;
+                            }
+                        }
+                    }
+                    
+                    const statusClass = isOverdue ? 'status-overdue' : `status-${task.status.toLowerCase().replace(' ', '')}`;
                     const priorityClass = `mobile-priority-${task.priority.toLowerCase()}`;
                     
-                    // Status badge color - FIXED with better contrast
-                    let statusBadge = '';
-                    switch(task.status) {
+                    // Status badge color - RED if overdue!
+                    let statusBadge = isOverdue ? 'bg-danger text-white' : '';
+                    
+                    if (!isOverdue) {
+                        switch(task.status) {
                         case 'Todo':
                             statusBadge = 'bg-primary text-white';
                             break;
@@ -1670,6 +1697,7 @@
                             break;
                         default:
                             statusBadge = 'bg-secondary text-white';
+                        }
                     }
                     
                     html += `
@@ -1678,7 +1706,7 @@
                                 <div style="flex: 1;">
                                     <div class="mobile-task-title">${task.title || 'No Title'}</div>
                                     <div class="mobile-task-meta">
-                                        <span class="badge ${statusBadge} mobile-task-badge">${task.status}</span>
+                                        <span class="badge ${statusBadge} mobile-task-badge">${statusText}</span>
                                         <span class="badge ${priorityClass} mobile-task-badge">${task.priority}</span>
                                     </div>
                                 </div>
@@ -1795,13 +1823,40 @@
                 rowFormatter: function(row) {
                     var data = row.getData();
                     
-                    // Check if automated task
-                    if (data.is_automate_task) {
-                        // Add class and set background
+                    // OVERDUE BASED ON completion_day
+                    let isOverdue = false;
+                    
+                    if (data.status !== 'Archived' && data.start_date && data.due_date) {
+                        const startDate = new Date(data.start_date);
+                        const dueDate = new Date(data.due_date);
+                        const expectedDays = Math.ceil((dueDate - startDate) / (1000 * 60 * 60 * 24));
+                        
+                        if (data.completion_date && data.completion_date !== '0000-00-00' && data.completion_day) {
+                            // Task completed - check if took longer than expected
+                            isOverdue = parseInt(data.completion_day) > expectedDays;
+                        } else {
+                            // Task not completed - check if past due date
+                            const now = new Date();
+                            isOverdue = now > dueDate;
+                        }
+                    }
+                    
+                    // Apply styling based on overdue status
+                    if (isOverdue) {
+                        row.getElement().style.backgroundColor = "#ffe5e5";
+                        row.getElement().style.borderLeft = "4px solid #dc3545";
+                        row.getElement().classList.add('overdue-task');
+                        row.getElement().classList.remove('automated-task');
+                    } else if (data.is_automate_task) {
                         row.getElement().classList.add('automated-task');
+                        row.getElement().classList.remove('overdue-task');
                         row.getElement().style.backgroundColor = "#fffbea";
+                        row.getElement().style.borderLeft = "4px solid #ffc107";
                     } else {
                         row.getElement().classList.remove('automated-task');
+                        row.getElement().classList.remove('overdue-task');
+                        row.getElement().style.backgroundColor = "";
+                        row.getElement().style.borderLeft = "";
                     }
                 },
                 layout: "fitData",
@@ -1978,14 +2033,41 @@
                             var assignorId = rowData.assignor_id;
                             var assigneeId = rowData.assignee_id;
                             
+                            // CALCULATE OVERDUE BASED ON completion_day
+                            let isOverdue = false;
+                            let displayText = value;
+                            
+                            if (value !== 'Archived' && rowData.start_date && rowData.due_date) {
+                                const startDate = new Date(rowData.start_date);
+                                const dueDate = new Date(rowData.due_date);
+                                const expectedDays = Math.ceil((dueDate - startDate) / (1000 * 60 * 60 * 24));
+                                
+                                if (rowData.completion_date && rowData.completion_date !== '0000-00-00' && rowData.completion_day) {
+                                    // Task completed - check if took longer
+                                    const actualDays = parseInt(rowData.completion_day);
+                                    isOverdue = actualDays > expectedDays;
+                                    if (isOverdue) {
+                                        displayText = `🔴 ${value} (${actualDays}/${expectedDays}d)`;
+                                    }
+                                } else {
+                                    // Not completed - check if past due
+                                    const now = new Date();
+                                    if (now > dueDate) {
+                                        isOverdue = true;
+                                        const daysLate = Math.ceil((now - dueDate) / (1000 * 60 * 60 * 24));
+                                        displayText = `OVERDUE ${daysLate}d`;
+                                    }
+                                }
+                            }
+                            
                             // Check if user can update status
                             var canUpdateStatus = isAdmin || assignorId === currentUserId || assigneeId === currentUserId;
                             
                             var statuses = {
                                 'Todo': {bg: '#0dcaf0', text: '#000'},
                                 'Working': {bg: '#ffc107', text: '#000'},
-                                'Archived': {bg: '#6c757d', text: '#000'},
-                                'Done': {bg: '#28a745', text: '#000'},
+                                'Archived': {bg: '#6c757d', text: '#fff'},
+                                'Done': {bg: '#28a745', text: '#fff'},
                                 'Need Help': {bg: '#fd7e14', text: '#000'},
                                 'Need Approval': {bg: '#6610f2', text: '#fff'},
                                 'Dependent': {bg: '#d63384', text: '#fff'},
@@ -1993,17 +2075,21 @@
                                 'Hold': {bg: '#495057', text: '#fff'},
                                 'Rework': {bg: '#f5576c', text: '#fff'}
                             };
-                            var currentStatus = statuses[value] || {bg: '#6c757d', text: '#000'};
+                            
+                            // OVERRIDE WITH RED IF OVERDUE!
+                            var currentStatus = isOverdue 
+                                ? {bg: '#dc3545', text: '#fff'} 
+                                : (statuses[value] || {bg: '#6c757d', text: '#fff'});
                             
                             if (!canUpdateStatus) {
-                                return '<span style="background: ' + currentStatus.bg + '; color: ' + currentStatus.text + '; padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; display: inline-block;">' + value + '</span>';
+                                return '<span style="background: ' + currentStatus.bg + '; color: ' + currentStatus.text + '; padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; display: inline-block;">' + displayText + '</span>';
                             }
                             
                             return `
                                 <select class="form-select form-select-sm status-select" 
                                         data-task-id="${taskId}" 
                                         data-current-status="${value}"
-                                        style="background: ${currentStatus.bg}; color: ${currentStatus.text}; border: none; font-weight: 600; font-size: 11px; border-radius: 20px; padding: 6px 12px;">
+                                        style="background: ${currentStatus.bg}; color: ${currentStatus.text}; border: none; font-weight: 700; font-size: 11px; border-radius: 20px; padding: 6px 12px;">
                                     <option value="Todo" ${value === 'Todo' ? 'selected' : ''}>Todo</option>
                                     <option value="Working" ${value === 'Working' ? 'selected' : ''}>Working</option>
                                     <option value="Archived" ${value === 'Archived' ? 'selected' : ''}>Archived</option>

@@ -6099,6 +6099,7 @@ class ChannelMasterController extends Controller
                 'gprofit' => 'gprofit_percent',
                 'groi' => 'groi_percent',
                 'ads_pct' => 'tcos_percent',
+                'pft' => null,       // computed: total profit amount from gprofit%
                 'npft' => 'npft_percent',
                 'nroi' => null,      // computed: npft / tcos * 100
                 'missing_l' => 'miss_count',
@@ -6168,7 +6169,7 @@ class ChannelMasterController extends Controller
                         if ($metric === 'acos') {
                             $totalSpend += $channelAdSpend;
                             $totalSales += $channelL30Sales;
-                        } elseif ($metric === 'gprofit' || $metric === 'npft') {
+                        } elseif ($metric === 'gprofit' || $metric === 'npft' || $metric === 'pft') {
                             $totalPft += $channelPft;
                             $totalSales += $channelL30Sales;
                             $totalSpend += $channelAdSpend;
@@ -6191,6 +6192,9 @@ class ChannelMasterController extends Controller
                     } elseif ($metric === 'gprofit') {
                         // Weighted avg: total profit / total sales * 100
                         $value = $totalSales > 0 ? round(($totalPft / $totalSales) * 100, 1) : 0;
+                    } elseif ($metric === 'pft') {
+                        // Total Pft amount (sum of all profit)
+                        $value = round($totalPft, 2);
                     } elseif ($metric === 'npft') {
                         // N PFT = G PFT% - Ads%
                         $gpft = $totalSales > 0 ? ($totalPft / $totalSales) * 100 : 0;
@@ -6219,6 +6223,11 @@ class ChannelMasterController extends Controller
                         $spend = floatval($summaryData['total_ad_spend'] ?? 0);
                         $sales = floatval($summaryData['l30_sales'] ?? 0);
                         $value = $sales > 0 ? round(($spend / $sales) * 100, 1) : 0;
+                    } elseif ($metric === 'pft') {
+                        // Calculate profit amount from gprofit%
+                        $gprofitPercent = floatval($summaryData['gprofit_percent'] ?? 0);
+                        $sales = floatval($summaryData['l30_sales'] ?? 0);
+                        $value = round(($gprofitPercent / 100) * $sales, 2);
                     } elseif ($metric === 'nroi') {
                         $npft = floatval($summaryData['npft_percent'] ?? 0);
                         $tcos = floatval($summaryData['tcos_percent'] ?? 0);
