@@ -452,7 +452,7 @@
                              N Map: <span id="nmap-count">0</span>
                         </span>
                         <span class="badge bg-warning fs-6 p-2 missing-amz-filter-badge amz-hover-chart" data-filter="missing-amazon" data-metric="missing_count" data-source="badge" style="color: black; font-weight: bold; cursor: pointer;" title="Click to filter · Hover for trend">
-                            Missing: <span id="missing-amazon-count">0</span>
+                            Missing L: <span id="missing-amazon-count">0</span>
                         </span>
                         
                         <!-- Price Comparison Badge -->
@@ -768,7 +768,7 @@
             'nmap': 'N Map',
             // Badge-stat metrics (daily snapshot counts)
             'sold_count': 'Sold (>0)', 'zero_sold_count': '0 Sold',
-            'map_count': 'Map', 'nmap_count': 'N Map', 'missing_count': 'Missing',
+            'map_count': 'Map', 'nmap_count': 'N Map', 'missing_count': 'Missing L',
             'prc_gt_lmp_count': 'Prc > LMP', 'campaign_count': 'Campaign',
             'missing_campaign_count': 'Missing Camp', 'nra_count': 'NRA',
             'ra_count': 'RA', 'paused_count': 'Paused',
@@ -2382,10 +2382,11 @@
                             const inv = parseFloat(rowData.INV) || 0;
                             const nrValue = rowData.NR || '';
                             const isMissingAmazon = rowData.is_missing_amazon || false;
+                            const rowPrice = parseFloat(rowData.price || 0);
                             
                             // Only check for INV > 0 and NR = REQ
                             if (inv > 0 && nrValue === 'REQ') {
-                                if (isMissingAmazon) {
+                                if (isMissingAmazon || rowPrice <= 0) {
                                     return `<span style="font-size: 16px; color: #dc3545; font-weight: bold;">M</span>`;
                                 }
                             }
@@ -2409,12 +2410,13 @@
                             const inv = parseFloat(rowData.INV) || 0;
                             const nrValue = rowData.NR || '';
                             const isMissingAmazon = rowData.is_missing_amazon || false;
+                            const rowPrice = parseFloat(rowData.price || 0);
                             
                             // Only show for INV > 0 and NR = REQ
                             if (inv <= 0 || nrValue !== 'REQ') return '';
                             
-                            // If item is missing from Amazon, leave Map blank
-                            if (isMissingAmazon) return '';
+                            // If item is missing from Amazon or has blank/zero price, leave Map blank
+                            if (isMissingAmazon || rowPrice <= 0) return '';
                             
                             const invAmz = parseFloat(rowData.INV_AMZ) || 0;
                             const difference = Math.abs(inv - invAmz);
@@ -2727,10 +2729,21 @@
                             const rowData = cell.getRow().getData();
 
                             // Empty for parent rows
-                            if (rowData.is_parent_summary || !value) return '';
+                            if (rowData.is_parent_summary) return '';
 
-                            const price = parseFloat(value);
+                            const price = parseFloat(value || 0);
                             const lmpPrice = parseFloat(rowData.lmp_price || 0);
+                            const lmpaPrice = parseFloat(rowData.price_lmpa || 0);
+
+                            // If no Amazon price, show best available fallback price (in gray italic)
+                            if (price <= 0) {
+                                const fallback = lmpPrice > 0 ? lmpPrice : (lmpaPrice > 0 ? lmpaPrice : 0);
+                                if (fallback > 0) {
+                                    return `<span style="color: #6c757d; font-style: italic;" title="Reference price (no Amazon listing price)">$${fallback.toFixed(2)}</span>`;
+                                }
+                                return '';
+                            }
+
                             const priceFormatted = '$' + price.toFixed(2);
                             
                             // Color red if price > lmp_price
@@ -4768,9 +4781,10 @@
                         const inv = parseFloat(data.INV) || 0;
                         const nrValue = data.NR || '';
                         const isMissingAmazon = data.is_missing_amazon || false;
+                        const price = parseFloat(data.price || 0);
                         
-                        // Only apply to INV > 0, NR = REQ, and not missing from Amazon
-                        if (inv <= 0 || nrValue !== 'REQ' || isMissingAmazon) return false;
+                        // Only apply to INV > 0, NR = REQ, not missing from Amazon, and has valid price
+                        if (inv <= 0 || nrValue !== 'REQ' || isMissingAmazon || price <= 0) return false;
                         
                         const invAmz = parseFloat(data.INV_AMZ) || 0;
                         const difference = Math.abs(inv - invAmz);
@@ -4784,7 +4798,7 @@
                     });
                 }
 
-                // Missing Amazon filter - for items not in amazon_datsheets table
+                // Missing L filter - items not in amazon_datsheets OR with blank/zero price
                 if (missingAmazonFilterActive) {
                     table.addFilter(function(data) {
                         if (data.is_parent_summary) return false;
@@ -4792,9 +4806,10 @@
                         const inv = parseFloat(data.INV) || 0;
                         const nrValue = data.NR || '';
                         const isMissingAmazon = data.is_missing_amazon || false;
+                        const price = parseFloat(data.price || 0);
                         
-                        // Show only REQ items with INV > 0 that are missing from Amazon
-                        return isMissingAmazon && inv > 0 && nrValue === 'REQ';
+                        // Show REQ items with INV > 0 that are missing from Amazon OR have blank/zero price
+                        return inv > 0 && nrValue === 'REQ' && (isMissingAmazon || price <= 0);
                     });
                 }
 
@@ -5500,18 +5515,19 @@
                             prcGtLmpCount++;
                         }
                         
-                        // Count Missing from Amazon and Map/Missing inventory sync
+                        // Count Missing L, Map, N Map
                         // Only count for INV > 0 and NR = REQ
                         const inv = parseFloat(row['INV'] || 0);
                         const nrValue = row['NR'] || '';
                         const isMissingAmazon = row['is_missing_amazon'] || false;
+                        const rowPrice = parseFloat(row['price'] || 0);
                         
                         if (inv > 0 && nrValue === 'REQ') {
-                            if (isMissingAmazon) {
-                                // SKU doesn't exist in amazon_datsheets
+                            if (isMissingAmazon || rowPrice <= 0) {
+                                // SKU doesn't exist in amazon_datsheets OR has blank/zero price
                                 missingAmazonCount++;
                             } else {
-                                // SKU exists in amazon_datsheets, check inventory sync
+                                // SKU exists in amazon_datsheets with a valid price, check inventory sync
                                 const invAmzNum = parseFloat(row['INV_AMZ'] || 0);
                                 const invDifference = Math.abs(inv - invAmzNum);
                                 
@@ -5663,7 +5679,8 @@
                 $('#7ub-1ub-count').text(ub7Ub1Count.toLocaleString());
 
                 // Save badge stats daily (fire-and-forget, once per page load)
-                if (!window._badgeStatsSaved) {
+                // Only save when totalSkuCount > 0 (proof that real data was processed)
+                if (!window._badgeStatsSaved && totalSkuCount > 0) {
                     window._badgeStatsSaved = true;
                     $.post('/amazon-badge-stats-save', {
                         _token: $('meta[name="csrf-token"]').attr('content'),
@@ -5781,6 +5798,7 @@
                     updateSelectAllCheckbox();
                     updateApplyAllButton();
                 }, 100);
+
             });
 
             table.on('renderComplete', function() {
