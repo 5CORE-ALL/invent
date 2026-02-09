@@ -197,15 +197,17 @@
                 background: white;
                 border: 2px solid #e3e6f0;
                 font-size: 13px;
-                font-weight: 500;
-                color: #6c757d;
+                font-weight: 600;
+                color: #495057;
                 white-space: nowrap;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.08);
             }
             
             .quick-filter-chip.active {
                 background: #667eea;
                 color: white;
                 border-color: #667eea;
+                box-shadow: 0 4px 8px rgba(102,126,234,0.3);
             }
             
             /* Mobile Action Buttons Grid */
@@ -395,9 +397,46 @@
         
         .mobile-task-badge {
             font-size: 11px;
-            padding: 3px 8px;
+            padding: 4px 10px;
             border-radius: 12px;
-            font-weight: 500;
+            font-weight: 600;
+            text-shadow: none;
+        }
+        
+        /* Better badge colors with good contrast */
+        .badge.bg-info {
+            background-color: #0dcaf0 !important;
+            color: #000 !important; /* Dark text for light blue */
+        }
+        
+        .badge.bg-warning {
+            background-color: #ffc107 !important;
+            color: #000 !important; /* Dark text for yellow */
+        }
+        
+        .badge.bg-success {
+            background-color: #198754 !important; /* Darker green */
+            color: #fff !important;
+        }
+        
+        .badge.bg-primary {
+            background-color: #0d6efd !important;
+            color: #fff !important;
+        }
+        
+        .badge.bg-danger {
+            background-color: #dc3545 !important;
+            color: #fff !important;
+        }
+        
+        .badge.bg-secondary {
+            background-color: #6c757d !important;
+            color: #fff !important;
+        }
+        
+        .badge.bg-dark {
+            background-color: #212529 !important;
+            color: #fff !important;
         }
         
         .mobile-task-info {
@@ -426,19 +465,26 @@
             border-radius: 8px;
         }
         
+        /* Priority badges with STRONG contrast */
         .mobile-priority-high {
-            background: #fff5f5;
-            color: #dc3545;
+            background: #dc3545 !important;
+            color: #ffffff !important;
+            font-weight: 700 !important;
+            box-shadow: 0 2px 4px rgba(220, 53, 69, 0.3);
         }
         
         .mobile-priority-normal {
-            background: #f0f9ff;
-            color: #0dcaf0;
+            background: #0d6efd !important;
+            color: #ffffff !important;
+            font-weight: 600 !important;
+            box-shadow: 0 2px 4px rgba(13, 110, 253, 0.3);
         }
         
         .mobile-priority-low {
-            background: #f0fdf4;
-            color: #28a745;
+            background: #198754 !important;
+            color: #ffffff !important;
+            font-weight: 600 !important;
+            box-shadow: 0 2px 4px rgba(25, 135, 84, 0.3);
         }
         
         /* Pull to refresh hint */
@@ -1592,20 +1638,35 @@
                     const statusClass = `status-${task.status.toLowerCase().replace(' ', '')}`;
                     const priorityClass = `mobile-priority-${task.priority.toLowerCase()}`;
                     
-                    // Status badge color
+                    // Status badge color - FIXED with better contrast
                     let statusBadge = '';
-                    switch(task.status.toLowerCase()) {
-                        case 'pending':
-                            statusBadge = 'bg-info text-white';
+                    switch(task.status) {
+                        case 'Todo':
+                            statusBadge = 'bg-primary text-white';
                             break;
-                        case 'in progress':
+                        case 'Working':
                             statusBadge = 'bg-warning text-dark';
                             break;
-                        case 'done':
+                        case 'Done':
                             statusBadge = 'bg-success text-white';
                             break;
-                        case 'overdue':
+                        case 'Need Help':
                             statusBadge = 'bg-danger text-white';
+                            break;
+                        case 'Need Approval':
+                            statusBadge = 'bg-info text-white';
+                            break;
+                        case 'Approved':
+                            statusBadge = 'bg-success text-white';
+                            break;
+                        case 'Hold':
+                            statusBadge = 'bg-secondary text-white';
+                            break;
+                        case 'Cancelled':
+                            statusBadge = 'bg-dark text-white';
+                            break;
+                        case 'Archived':
+                            statusBadge = 'bg-secondary text-white';
                             break;
                         default:
                             statusBadge = 'bg-secondary text-white';
