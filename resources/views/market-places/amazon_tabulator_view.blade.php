@@ -461,22 +461,22 @@
                         </span>
                         
                         <!-- Financial Metrics -->
-                        <span class="badge bg-success fs-6 p-2 amz-badge-chart" data-metric="l30_sales" id="total-pft-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">Total PFT: $0.00</span>
-                        <span class="badge bg-primary fs-6 p-2 amz-badge-chart" data-metric="l30_sales" id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">Total Sales: $0.00</span>
-                        <span class="badge bg-warning fs-6 p-2 amz-badge-chart" data-metric="ad_spend" id="total-spend-l30-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">Spend L30: $0.00</span>
+                        <span class="badge bg-success fs-6 p-2 amz-badge-chart" data-metric="total_pft" id="total-pft-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">Total PFT: $0.00</span>
+                        <span class="badge bg-primary fs-6 p-2 amz-badge-chart" data-metric="total_sales" id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">Total Sales: $0.00</span>
+                        <span class="badge bg-warning fs-6 p-2 amz-badge-chart" data-metric="total_spend" id="total-spend-l30-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">Spend L30: $0.00</span>
                         
                         <!-- Percentage Metrics -->
-                        <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="gprofit" id="avg-gpft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">GPFT: 0%</span>
-                        <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="npft" id="avg-pft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">PFT: 0%</span>
-                        <span class="badge bg-secondary fs-6 p-2 amz-badge-chart" data-metric="groi" id="groi-percent-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">GROI: 0%</span>
-                        <span class="badge bg-primary fs-6 p-2 amz-badge-chart" data-metric="nroi" id="nroi-percent-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">NROI: 0%</span>
-                        <span class="badge bg-danger fs-6 p-2 amz-badge-chart" data-metric="ads_pct" id="tcos-percent-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">TCOS: 0%</span>
+                        <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="gpft_pct" id="avg-gpft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">GPFT: 0%</span>
+                        <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="npft_pct" id="avg-pft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">PFT: 0%</span>
+                        <span class="badge bg-secondary fs-6 p-2 amz-badge-chart" data-metric="groi_pct" id="groi-percent-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">GROI: 0%</span>
+                        <span class="badge bg-primary fs-6 p-2 amz-badge-chart" data-metric="nroi_pct" id="nroi-percent-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">NROI: 0%</span>
+                        <span class="badge bg-danger fs-6 p-2 amz-badge-chart" data-metric="tcos_pct" id="tcos-percent-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">TCOS: 0%</span>
                         
                         <!-- Amazon Metrics -->
                         <span class="badge bg-warning fs-6 p-2" id="avg-price-badge" style="color: black; font-weight: bold;">Avg Price: $0.00</span>
                         <span class="badge bg-info fs-6 p-2" id="total-views-badge" style="color: black; font-weight: bold;">Views: 0</span>
                         <span class="badge bg-info fs-6 p-2" id="avg-views-badge" style="color: black; font-weight: bold;">Avg Views: 0</span>
-                        <span class="badge bg-success fs-6 p-2 amz-badge-chart" data-metric="l30_orders" id="total-amazon-l30-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">A L30: 0</span>
+                        <span class="badge bg-success fs-6 p-2 amz-badge-chart" data-metric="total_l30_orders" id="total-amazon-l30-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">A L30: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="total-amazon-l7-badge" style="color: black; font-weight: bold;">A L7: 0</span>
                         <span class="badge bg-success fs-6 p-2" id="avg-cvr-badge" style="color: black; font-weight: bold;">Avg CVR: 0%</span>
                         <span class="badge bg-primary fs-6 p-2" id="total-amazon-inv-badge" style="color: black; font-weight: bold;">INV: 0</span>
@@ -774,6 +774,9 @@
             'ra_count': 'RA', 'paused_count': 'Paused',
             'ub7_count': '7UB', 'ub7_ub1_count': '7UB+1UB',
             'kw_spend': 'KW Ads Spend', 'hl_spend': 'HL Ads Spend', 'pt_spend': 'PT Ads Spend',
+            'total_pft': 'Total Profit', 'total_sales': 'Total Sales', 'total_spend': 'Ad Spend',
+            'gpft_pct': 'GPFT%', 'npft_pct': 'PFT%', 'groi_pct': 'GROI%', 'nroi_pct': 'NROI%', 'tcos_pct': 'TCOS%',
+            'total_l30_orders': 'L30 Orders',
         };
 
         // Metrics stored in badge stats table (daily counts/amounts)
@@ -783,10 +786,13 @@
             'missing_campaign_count', 'nra_count', 'ra_count',
             'paused_count', 'ub7_count', 'ub7_ub1_count',
             'kw_spend', 'hl_spend', 'pt_spend',
+            'total_pft', 'total_sales', 'total_spend',
+            'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct',
+            'total_l30_orders',
         ];
 
-        const amzPctMetrics = ['gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'acos'];
-        const amzDollarMetrics = ['l30_sales', 'ad_spend', 'kw_spend', 'hl_spend', 'pt_spend'];
+        const amzPctMetrics = ['gprofit', 'groi', 'ads_pct', 'npft', 'nroi', 'acos', 'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct'];
+        const amzDollarMetrics = ['l30_sales', 'ad_spend', 'kw_spend', 'hl_spend', 'pt_spend', 'total_pft', 'total_sales', 'total_spend'];
 
         function amzFmtVal(v) {
             if (amzDollarMetrics.includes(amzChartMetricKey)) return '$' + Math.round(v).toLocaleString('en-US');
@@ -800,7 +806,9 @@
             $('#amzChartRangeSelect').val('30');
             const label = amzMetricLabels[metricKey] || metricKey;
             const isBadge = amzBadgeStatMetrics.includes(metricKey);
-            $('#amzChartModalTitle').text(`Amazon - ${label} (${isBadge ? 'Daily Count' : 'Rolling L30'})`);
+            const badgeSnapshotMetrics = ['total_pft', 'total_sales', 'total_spend', 'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct', 'total_l30_orders'];
+            const suffix = isBadge ? (badgeSnapshotMetrics.includes(metricKey) ? 'Daily Snapshot' : 'Daily Count') : 'Rolling L30';
+            $('#amzChartModalTitle').text(`Amazon - ${label} (${suffix})`);
             const modal = new bootstrap.Modal(document.getElementById('amzMetricChartModal'));
             modal.show();
             loadAmzMetricChart();
@@ -890,8 +898,8 @@
             document.getElementById('amzChartMedian').textContent = amzFmtVal(median);
             document.getElementById('amzChartLowest').textContent = amzFmtVal(dataMin);
 
-            const dotColors = values.map((v, i) => i === 0 ? '#6c757d' : v < values[i - 1] ? '#198754' : v > values[i - 1] ? '#dc3545' : '#6c757d');
-            const labelColors = values.map((v, i) => i < 7 ? '#6c757d' : v < values[i - 7] ? '#198754' : v > values[i - 7] ? '#dc3545' : '#6c757d');
+            const dotColors = values.map((v, i) => i === 0 ? '#6c757d' : v < values[i - 1] ? '#dc3545' : v > values[i - 1] ? '#198754' : '#6c757d');
+            const labelColors = values.map((v, i) => i < 7 ? '#6c757d' : v < values[i - 7] ? '#dc3545' : v > values[i - 7] ? '#198754' : '#6c757d');
 
             const medianLinePlugin = {
                 id: 'medianLine',
@@ -5703,7 +5711,16 @@
                         ub7_ub1_count: ub7Ub1Count,
                         kw_spend: Math.round(campaignTotals.kw_spend_L30 || 0),
                         hl_spend: Math.round(campaignTotals.hl_spend_L30 || 0),
-                        pt_spend: Math.round(campaignTotals.pt_spend_L30 || 0)
+                        pt_spend: Math.round(campaignTotals.pt_spend_L30 || 0),
+                        total_pft: Math.round(totalPftAmt),
+                        total_sales: Math.round(totalSalesAmt),
+                        total_spend: Math.round(totalSpendL30),
+                        gpft_pct: parseFloat(avgGpft.toFixed(2)),
+                        npft_pct: parseFloat(avgPft.toFixed(2)),
+                        groi_pct: parseFloat(groiPercent.toFixed(2)),
+                        nroi_pct: parseFloat(nroiPercent.toFixed(2)),
+                        tcos_pct: parseFloat(tcosPercent.toFixed(2)),
+                        total_l30_orders: Math.round(totalAmazonL30)
                     });
                 }
             }
