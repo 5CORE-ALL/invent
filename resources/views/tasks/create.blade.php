@@ -113,36 +113,61 @@
                             @enderror
                         </div>
 
-                        <!-- Image Upload -->
+                        <!-- Image Upload with Camera & Paste -->
                         <div class="mb-3">
                             <label class="form-label fw-bold">
                                 <i class="mdi mdi-image me-1"></i>Image (Optional)
                             </label>
                             
-                            <div class="border rounded p-3 text-center" style="border: 2px dashed #dee2e6; background-color: #f8f9fa;">
-                                <input type="file" 
-                                       class="form-control @error('image') is-invalid @enderror" 
-                                       id="mobile_image" 
-                                       name="image" 
-                                       accept="image/*"
-                                       style="display: none;">
-                                
-                                <div class="mb-2">
-                                    <i class="mdi mdi-camera" style="font-size: 36px; color: #667eea;"></i>
-                                </div>
-                                
-                                <button type="button" 
-                                        class="btn btn-outline-primary btn-sm mb-2 w-100" 
-                                        onclick="document.getElementById('mobile_image').click()">
-                                    <i class="mdi mdi-folder-open me-1"></i> Choose Image
+                            <!-- Hidden file inputs -->
+                            <input type="file" 
+                                   id="task_image_input" 
+                                   name="image" 
+                                   accept="image/*"
+                                   class="@error('image') is-invalid @enderror"
+                                   style="display: none;">
+                            
+                            <input type="file" 
+                                   id="task_camera_input" 
+                                   accept="image/*"
+                                   capture="environment"
+                                   style="display: none;">
+                            
+                            <!-- Action Buttons -->
+                            <div class="d-grid gap-2 mb-2">
+                                <button type="button" class="btn btn-success btn-lg" id="take-photo-btn">
+                                    <i class="mdi mdi-camera me-2"></i>📷 Take Photo with Camera
                                 </button>
-                                
-                                <div class="text-muted small">
-                                    or press Ctrl+V to paste
-                                </div>
-                                
-                                <div id="mobile-image-preview" class="mt-2"></div>
+                                <button type="button" class="btn btn-outline-secondary btn-lg" id="choose-file-btn">
+                                    <i class="mdi mdi-folder-open me-2"></i>📁 Choose from Files
+                                </button>
                             </div>
+                            
+                            <!-- Paste Area - SIMPLE & RELIABLE -->
+                            <div id="paste-box" 
+                                 class="border rounded p-4 text-center" 
+                                 style="border: 2px dashed #667eea; background-color: #f8f9fa; cursor: pointer; min-height: 150px;"
+                                 contenteditable="true">
+                                <div id="paste-instructions" style="pointer-events: none;">
+                                    <i class="mdi mdi-content-paste" style="font-size: 48px; color: #667eea;"></i>
+                                    <p class="mb-1 mt-2" style="color: #667eea; font-weight: 600; font-size: 16px;">
+                                        Click here, then press Ctrl+V
+                                    </p>
+                                    <div style="background: #e7f3ff; padding: 10px; border-radius: 8px; margin-top: 10px;">
+                                        <small style="color: #0d6efd; font-weight: 600;">
+                                            <i class="mdi mdi-information"></i> How to take screenshot:
+                                        </small><br>
+                                        <small class="text-muted">
+                                            <strong>Windows:</strong> Win+Shift+S (auto-copies!)<br>
+                                            <strong>Mac:</strong> Cmd+Shift+4, then Cmd+C to copy<br>
+                                            <strong>Then:</strong> Click this box and press Ctrl+V
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Image Preview -->
+                            <div id="task-preview-area" style="display: none; margin-top: 10px;"></div>
                             
                             @error('image')
                                 <div class="invalid-feedback d-block">{{ $message }}</div>
@@ -488,12 +513,224 @@
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
         $(document).ready(function() {
-            // Initialize Select2 only on desktop
-            if (window.innerWidth >= 768) {
-                $('.select2').select2({
-                    theme: 'bootstrap-5',
-                    placeholder: 'Please Select'
+            // Initialize Select2
+            $('.select2').select2({
+                theme: 'bootstrap-5',
+                placeholder: 'Please Select'
+            });
+
+            // ==========================================
+            // SIMPLE IMAGE UPLOAD: CAMERA + PASTE + FILE
+            // ==========================================
+            
+            const taskImageInput = document.getElementById('task_image_input');
+            const taskCameraInput = document.getElementById('task_camera_input');
+            const previewArea = document.getElementById('task-image-preview');
+            const previewPlaceholder = document.getElementById('preview-placeholder');
+            const previewImage = document.getElementById('preview-image');
+            
+            // Check if elements exist (mobile view)
+            if (taskImageInput && taskCameraInput) {
+                console.log('✓ Image upload initialized');
+                
+                const pasteBox = document.getElementById('paste-box');
+                const pasteInstructions = document.getElementById('paste-instructions');
+                const previewArea = document.getElementById('task-preview-area');
+                
+                // Take Photo Button - Opens Camera
+                $('#take-photo-btn').on('click', function() {
+                    console.log('📷 Camera button clicked!');
+                    const btn = $(this);
+                    const originalHtml = btn.html();
+                    
+                    // Show loading state
+                    btn.html('<i class="mdi mdi-loading mdi-spin me-2"></i>Opening camera...').prop('disabled', true);
+                    
+                    // Trigger camera input
+                    console.log('✓ Triggering camera input...');
+                    taskCameraInput.click();
+                    
+                    // Reset button after 2 seconds (in case user cancels)
+                    setTimeout(() => {
+                        btn.html(originalHtml).prop('disabled', false);
+                    }, 2000);
                 });
+                
+                // Paste Box - Click to activate
+                pasteBox.addEventListener('click', function() {
+                    this.style.borderColor = '#28a745';
+                    this.style.backgroundColor = '#f0fff4';
+                    console.log('✓ Paste box activated - Press Ctrl+V now');
+                });
+                
+                pasteBox.addEventListener('blur', function() {
+                    if (!taskImageInput.files.length) {
+                        this.style.borderColor = '#667eea';
+                        this.style.backgroundColor = '#f8f9fa';
+                    }
+                });
+                
+                // Paste Box - Handle paste event (SIMPLE & WORKING!)
+                pasteBox.addEventListener('paste', function(e) {
+                    console.log('📋 PASTE EVENT DETECTED IN BOX!');
+                    e.preventDefault();
+                    
+                    const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+                    console.log('Items:', items.length);
+                    
+                    for (let i = 0; i < items.length; i++) {
+                        console.log(`Item ${i}: ${items[i].type} (${items[i].kind})`);
+                        
+                        if (items[i].type.indexOf('image') !== -1) {
+                            console.log('✓ IMAGE FOUND!');
+                            
+                            const blob = items[i].getAsFile();
+                            const file = new File([blob], `screenshot_${Date.now()}.png`, { type: 'image/png' });
+                            
+                            console.log('✓ File created:', file.name, file.size, 'bytes');
+                            
+                            // Set to file input
+                            const dt = new DataTransfer();
+                            dt.items.add(file);
+                            taskImageInput.files = dt.files;
+                            
+                            // Show preview
+                            showTaskPreview(file);
+                            
+                            // Success notification
+                            const notification = $('<div class="alert alert-success alert-dismissible position-fixed" style="top: 70px; left: 20px; right: 20px; z-index: 9999;">')
+                                .html('<i class="mdi mdi-check-circle me-2"></i><strong>✓ Screenshot Pasted!</strong><button type="button" class="btn-close" data-bs-dismiss="alert"></button>');
+                            $('body').append(notification);
+                            setTimeout(() => notification.fadeOut(() => notification.remove()), 2000);
+                            
+                            console.log('✓ PASTE COMPLETE!');
+                            return;
+                        }
+                    }
+                    
+                    // No image found - show helpful guidance
+                    const foundTypes = Array.from(items).map(i => i.type).join(', ');
+                    console.log('⚠️ No image in paste - only found:', foundTypes);
+                    
+                    alert(`⚠️ NO IMAGE IN CLIPBOARD\n\nYour clipboard has: ${foundTypes}\n\n✅ HOW TO FIX:\n\n` +
+                          `WINDOWS:\n` +
+                          `• Press Win + Shift + S\n` +
+                          `• Select area\n` +
+                          `• Image copies to clipboard automatically\n\n` +
+                          `MAC:\n` +
+                          `• Press Cmd + Shift + 4\n` +
+                          `• Select area\n` +
+                          `• Then press Cmd + C to copy\n\n` +
+                          `OR USE:\n` +
+                          `• "Take Photo" button (opens camera)\n` +
+                          `• "Choose File" button (select from files)\n\n` +
+                          `Then try pasting again!`);
+                    
+                    // Reset paste box
+                    pasteBox.blur();
+                });
+                
+                // Choose File Button
+                $('#choose-file-btn').on('click', function() {
+                    console.log('📁 Choose file clicked');
+                    taskImageInput.click();
+                });
+                
+                // Handle camera photo
+                taskCameraInput.addEventListener('change', function(e) {
+                    console.log('📷 Camera input changed!');
+                    const file = e.target.files[0];
+                    if (file) {
+                        console.log('✓ Photo captured:', file.name, 'Size:', file.size, 'bytes');
+                        console.log('✓ File type:', file.type);
+                        
+                        // Transfer to main input
+                        const dt = new DataTransfer();
+                        dt.items.add(file);
+                        taskImageInput.files = dt.files;
+                        console.log('✓ File transferred to main input');
+                        
+                        // Show preview
+                        showTaskPreview(file);
+                        
+                        // Success notification
+                        const notification = $('<div class="alert alert-success alert-dismissible position-fixed" style="top: 70px; left: 20px; right: 20px; z-index: 9999;">')
+                            .html('<i class="mdi mdi-check-circle me-2"></i><strong>✓ Photo Captured!</strong><button type="button" class="btn-close" data-bs-dismiss="alert"></button>');
+                        $('body').append(notification);
+                        setTimeout(() => notification.fadeOut(() => notification.remove()), 2000);
+                    } else {
+                        console.log('⚠️ No file selected from camera');
+                    }
+                });
+                
+                // Handle file selection
+                taskImageInput.addEventListener('change', function(e) {
+                    const file = e.target.files[0];
+                    if (file) {
+                        console.log('✓ File selected:', file.name);
+                        showTaskPreview(file);
+                    }
+                });
+                
+                // Show image preview
+                function showTaskPreview(file) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        // Update paste box
+                        pasteBox.contentEditable = 'false';
+                        pasteBox.style.borderColor = '#28a745';
+                        pasteBox.style.backgroundColor = '#f0fff4';
+                        pasteBox.style.minHeight = 'auto';
+                        pasteBox.style.cursor = 'default';
+                        pasteBox.innerHTML = `
+                            <div class="text-center">
+                                <img src="${e.target.result}" class="img-thumbnail mb-3" style="max-width: 100%; max-height: 300px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+                                <div class="text-success mb-2">
+                                    <i class="mdi mdi-check-circle-outline"></i> <strong>${file.name}</strong>
+                                    <br><small>${formatBytes(file.size)}</small>
+                                </div>
+                                <button type="button" class="btn btn-danger btn-sm" onclick="clearTaskImage()">
+                                    <i class="mdi mdi-delete me-1"></i>Remove Image
+                                </button>
+                            </div>
+                        `;
+                    };
+                    reader.readAsDataURL(file);
+                }
+                
+                // Clear image
+                window.clearTaskImage = function() {
+                    taskImageInput.value = '';
+                    taskCameraInput.value = '';
+                    pasteBox.contentEditable = 'true';
+                    pasteBox.style.borderColor = '#667eea';
+                    pasteBox.style.backgroundColor = '#f8f9fa';
+                    pasteBox.style.minHeight = '150px';
+                    pasteBox.style.cursor = 'pointer';
+                    pasteBox.innerHTML = `
+                        <div id="paste-instructions" style="pointer-events: none;">
+                            <i class="mdi mdi-content-paste" style="font-size: 48px; color: #667eea;"></i>
+                            <p class="mb-1 mt-2" style="color: #667eea; font-weight: 600; font-size: 15px;">
+                                Click here, then press Ctrl+V to paste screenshot
+                            </p>
+                            <small class="text-muted">
+                                Take screenshot (Win+Shift+S / Cmd+Shift+4) then paste here
+                            </small>
+                        </div>
+                    `;
+                    console.log('✓ Image cleared, paste box reset');
+                };
+                
+                // Format bytes helper
+                function formatBytes(bytes) {
+                    if (bytes === 0) return '0 Bytes';
+                    const k = 1024;
+                    const sizes = ['Bytes', 'KB', 'MB'];
+                    const i = Math.floor(Math.log(bytes) / Math.log(k));
+                    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+                }
+                
+                console.log('✓ Camera, Paste, and File upload ready!');
             }
 
             // Store pasted file globally
