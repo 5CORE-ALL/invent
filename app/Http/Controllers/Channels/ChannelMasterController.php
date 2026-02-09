@@ -6147,6 +6147,8 @@ class ChannelMasterController extends Controller
                     $totalVal = 0;
                     $totalSpend = 0;
                     $totalSales = 0;
+                    $totalCogs = 0;
+                    $totalPft = 0;
                     $totalNpft = 0;
                     $totalTcos = 0;
                     $count = 0;
@@ -6155,12 +6157,28 @@ class ChannelMasterController extends Controller
                         $sd = $row->summary_data ?? [];
                         $count++;
 
+                        $channelL30Sales = floatval($sd['l30_sales'] ?? 0);
+                        $channelAdSpend = floatval($sd['total_ad_spend'] ?? 0);
+                        $channelGprofit = floatval($sd['gprofit_percent'] ?? 0);
+
+                        $channelCogs = floatval($sd['cogs'] ?? 0);
+                        // Always derive profit from gprofit% (matches badge calculation exactly)
+                        $channelPft = ($channelGprofit / 100) * $channelL30Sales;
+
                         if ($metric === 'acos') {
-                            $totalSpend += floatval($sd['total_ad_spend'] ?? 0);
-                            $totalSales += floatval($sd['l30_sales'] ?? 0);
-                        } elseif ($metric === 'nroi') {
-                            $totalNpft += floatval($sd['npft_percent'] ?? 0);
-                            $totalTcos += floatval($sd['tcos_percent'] ?? 0);
+                            $totalSpend += $channelAdSpend;
+                            $totalSales += $channelL30Sales;
+                        } elseif ($metric === 'gprofit' || $metric === 'npft') {
+                            $totalPft += $channelPft;
+                            $totalSales += $channelL30Sales;
+                            $totalSpend += $channelAdSpend;
+                        } elseif ($metric === 'groi' || $metric === 'nroi') {
+                            $totalPft += $channelPft;
+                            $totalCogs += $channelCogs;
+                            $totalSpend += $channelAdSpend;
+                        } elseif ($metric === 'ads_pct') {
+                            $totalSpend += $channelAdSpend;
+                            $totalSales += $channelL30Sales;
                         } elseif ($shouldAvg) {
                             $totalVal += floatval($sd[$metricKey] ?? 0);
                         } else {
@@ -6170,8 +6188,23 @@ class ChannelMasterController extends Controller
 
                     if ($metric === 'acos') {
                         $value = $totalSales > 0 ? round(($totalSpend / $totalSales) * 100, 1) : 0;
+                    } elseif ($metric === 'gprofit') {
+                        // Weighted avg: total profit / total sales * 100
+                        $value = $totalSales > 0 ? round(($totalPft / $totalSales) * 100, 1) : 0;
+                    } elseif ($metric === 'npft') {
+                        // N PFT = G PFT% - Ads%
+                        $gpft = $totalSales > 0 ? ($totalPft / $totalSales) * 100 : 0;
+                        $adsPct = $totalSales > 0 ? ($totalSpend / $totalSales) * 100 : 0;
+                        $value = round($gpft - $adsPct, 1);
+                    } elseif ($metric === 'groi') {
+                        // G ROI = total profit / total cogs * 100
+                        $value = $totalCogs > 0 ? round(($totalPft / $totalCogs) * 100, 1) : 0;
                     } elseif ($metric === 'nroi') {
-                        $value = $totalTcos > 0 ? round(($totalNpft / $totalTcos) * 100, 1) : 0;
+                        // N ROI = (total profit - total ad spend) / total cogs * 100
+                        $netProfit = $totalPft - $totalSpend;
+                        $value = $totalCogs > 0 ? round(($netProfit / $totalCogs) * 100, 1) : 0;
+                    } elseif ($metric === 'ads_pct') {
+                        $value = $totalSales > 0 ? round(($totalSpend / $totalSales) * 100, 1) : 0;
                     } elseif ($shouldAvg && $count > 0) {
                         $value = round($totalVal / $count, 1);
                     } else {
@@ -6291,11 +6324,17 @@ class ChannelMasterController extends Controller
                     // Profit & ROI Metrics
                     'gprofit_percent' => $gprofitPercent,
                     'gprofit_l60' => floatval($row['gprofitL60'] ?? 0),
-                    'groi_percent' => floatval($row['G Roi%'] ?? 0),
+                    'groi_percent' => floatval($row['G Roi'] ?? 0),
                     'groi_l60' => floatval($row['G RoiL60'] ?? 0),
                     'npft_percent' => round($npftPercent, 2),
+                    'nroi_percent' => floatval($row['N ROI'] ?? 0),
                     'tcos_percent' => round($tcosPercent, 2),
                     'total_ad_spend' => $adSpend,
+                    'ad_sales' => floatval($row['Ad Sales'] ?? 0),
+                    'ad_sold' => intval($row['ad_sold'] ?? 0),
+                    'ads_cvr' => floatval($row['Ads CVR'] ?? 0),
+                    'cogs' => floatval($row['cogs'] ?? 0),
+                    'total_pft' => floatval($row['Total PFT'] ?? 0),
                     
                     // Counts
                     'missing_listing' => intval($row['Missing Listing'] ?? 0),
