@@ -13,6 +13,15 @@
     @include('layouts.shared/title-meta', ['title' => $title])
     @yield('css')
     @include('layouts.shared/head-css', ['mode' => $mode ?? '', 'demo' => $demo ?? ''])
+    
+    <!-- PWA Meta Tags -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#667eea">
+    <link rel="apple-touch-icon" href="/icon-192.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Invent">
+    <meta name="mobile-web-app-capable" content="yes">
 </head>
 
 <body>
@@ -47,6 +56,45 @@
     @include('layouts.shared/footer-scripts')
 
     @vite(['resources/js/layout.js', 'resources/js/main.js'])
+
+    <!-- PWA Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(function(registration) {
+                        console.log('✓ ServiceWorker registered:', registration.scope);
+                    })
+                    .catch(function(error) {
+                        console.log('✗ ServiceWorker registration failed:', error);
+                    });
+            });
+        }
+
+        // PWA Install Prompt
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            console.log('✓ PWA Install prompt ready');
+            
+            // Show custom install button/banner if needed
+            // You can add a button here to trigger the install
+        });
+
+        // Function to trigger PWA install (call this from a button)
+        function installPWA() {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then((choiceResult) => {
+                    if (choiceResult.outcome === 'accepted') {
+                        console.log('✓ User accepted PWA install');
+                    }
+                    deferredPrompt = null;
+                });
+            }
+        }
+    </script>
 
 </body>
 
