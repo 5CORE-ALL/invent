@@ -3,30 +3,187 @@
 @section('css')
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" rel="stylesheet" />
+    <style>
+        /* Mobile View Styles */
+        @media (max-width: 767.98px) {
+            .mobile-view {
+                padding: 10px;
+            }
+            
+            .mobile-view .card {
+                border-radius: 15px;
+                overflow: hidden;
+            }
+            
+            .mobile-view .form-control,
+            .mobile-view .form-select {
+                font-size: 16px; /* Prevents zoom on iOS */
+                border-radius: 8px;
+            }
+            
+            .mobile-view .btn {
+                border-radius: 8px;
+                font-weight: 500;
+            }
+            
+            .mobile-view .card-header h5 {
+                font-size: 18px;
+            }
+            
+            /* Container fluid padding adjustment for mobile */
+            .container-fluid {
+                padding-left: 5px;
+                padding-right: 5px;
+            }
+        }
+        
+        /* Desktop View - ensure it's hidden on mobile */
+        @media (max-width: 767.98px) {
+            .desktop-view {
+                display: none !important;
+            }
+        }
+        
+        /* Ensure mobile view is hidden on desktop */
+        @media (min-width: 768px) {
+            .mobile-view {
+                display: none !important;
+            }
+        }
+    </style>
 @endsection
 
 @section('content')
     <!-- Start Content-->
     <div class="container-fluid">
         
-        <!-- start page title -->
-        <div class="row">
-            <div class="col-12">
-                <div class="page-title-box">
-                    <div class="page-title-right">
-                        <ol class="breadcrumb m-0">
-                            <li class="breadcrumb-item"><a href="{{ url('/') }}">Home</a></li>
-                            <li class="breadcrumb-item"><a href="{{ route('tasks.index') }}">Task Manager</a></li>
-                            <li class="breadcrumb-item active">Create Task</li>
-                        </ol>
-                    </div>
-                    <h4 class="page-title">Create Single Task</h4>
+        <!-- Mobile View - Simple Form (Only visible on phones) -->
+        <div class="mobile-view d-md-none">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-gradient text-white" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                    <h5 class="mb-0 text-center">
+                        <i class="mdi mdi-plus-circle me-2"></i>Quick Create Task
+                    </h5>
+                </div>
+                <div class="card-body p-3">
+                    <form action="{{ route('tasks.store') }}" method="POST" enctype="multipart/form-data">
+                        @csrf
+                        
+                        <!-- Hidden default values for mobile -->
+                        <input type="hidden" name="priority" value="normal">
+                        <input type="hidden" name="assignor_id" value="{{ Auth::id() }}">
+                        <input type="hidden" name="etc_minutes" value="10">
+                        <input type="hidden" name="tid" value="{{ now()->format('Y-m-d\TH:i') }}">
+                        
+                        <!-- Task Input -->
+                        <div class="mb-3">
+                            <label for="mobile_title" class="form-label fw-bold">
+                                Task <span class="text-danger">*</span>
+                            </label>
+                            <input type="text" 
+                                   class="form-control form-control-lg @error('title') is-invalid @enderror" 
+                                   id="mobile_title" 
+                                   name="title" 
+                                   placeholder="Enter task description" 
+                                   value="{{ old('title') }}" 
+                                   required
+                                   autofocus>
+                            @error('title')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        <!-- Assign To -->
+                        <div class="mb-3">
+                            <label for="mobile_assignee_id" class="form-label fw-bold">
+                                Assign To
+                            </label>
+                            <select class="form-select form-select-lg @error('assignee_id') is-invalid @enderror" 
+                                    id="mobile_assignee_id" 
+                                    name="assignee_id">
+                                <option value="">Select Person</option>
+                                @foreach($users as $user)
+                                    <option value="{{ $user->id }}" {{ old('assignee_id') == $user->id ? 'selected' : '' }}>
+                                        {{ $user->name }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            @error('assignee_id')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        <!-- Image Upload -->
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">
+                                <i class="mdi mdi-image me-1"></i>Image (Optional)
+                            </label>
+                            
+                            <div class="border rounded p-3 text-center" style="border: 2px dashed #dee2e6; background-color: #f8f9fa;">
+                                <input type="file" 
+                                       class="form-control @error('image') is-invalid @enderror" 
+                                       id="mobile_image" 
+                                       name="image" 
+                                       accept="image/*"
+                                       style="display: none;">
+                                
+                                <div class="mb-2">
+                                    <i class="mdi mdi-camera" style="font-size: 36px; color: #667eea;"></i>
+                                </div>
+                                
+                                <button type="button" 
+                                        class="btn btn-outline-primary btn-sm mb-2 w-100" 
+                                        onclick="document.getElementById('mobile_image').click()">
+                                    <i class="mdi mdi-folder-open me-1"></i> Choose Image
+                                </button>
+                                
+                                <div class="text-muted small">
+                                    or press Ctrl+V to paste
+                                </div>
+                                
+                                <div id="mobile-image-preview" class="mt-2"></div>
+                            </div>
+                            
+                            @error('image')
+                                <div class="invalid-feedback d-block">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-lg btn-danger">
+                                <i class="mdi mdi-check-circle me-1"></i> Save Task
+                            </button>
+                            <a href="{{ route('tasks.index') }}" class="btn btn-lg btn-outline-secondary">
+                                <i class="mdi mdi-close-circle me-1"></i> Cancel
+                            </a>
+                        </div>
+                    </form>
                 </div>
             </div>
-        </div>     
-        <!-- end page title --> 
+        </div>
+        <!-- End Mobile View -->
+        
+        <!-- Desktop View (Hidden on phones) -->
+        <div class="desktop-view d-none d-md-block">
+            <!-- start page title -->
+            <div class="row">
+                <div class="col-12">
+                    <div class="page-title-box">
+                        <div class="page-title-right">
+                            <ol class="breadcrumb m-0">
+                                <li class="breadcrumb-item"><a href="{{ url('/') }}">Home</a></li>
+                                <li class="breadcrumb-item"><a href="{{ route('tasks.index') }}">Task Manager</a></li>
+                                <li class="breadcrumb-item active">Create Task</li>
+                            </ol>
+                        </div>
+                        <h4 class="page-title">Create Single Task</h4>
+                    </div>
+                </div>
+            </div>     
+            <!-- end page title --> 
 
-        <div class="row">
+            <div class="row">
             <div class="col-12">
                 <div class="card" style="border: 2px solid #667eea; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.15);">
                     <div class="card-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
@@ -319,8 +476,10 @@
                     </div> <!-- end card-body-->
                 </div> <!-- end card-->
             </div> <!-- end col -->
+            </div>
+            <!-- end row -->
         </div>
-        <!-- end row -->
+        <!-- End Desktop View -->
 
     </div> <!-- container -->
 @endsection
@@ -329,10 +488,13 @@
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
         $(document).ready(function() {
-            $('.select2').select2({
-                theme: 'bootstrap-5',
-                placeholder: 'Please Select'
-            });
+            // Initialize Select2 only on desktop
+            if (window.innerWidth >= 768) {
+                $('.select2').select2({
+                    theme: 'bootstrap-5',
+                    placeholder: 'Please Select'
+                });
+            }
 
             // Store pasted file globally
             let pastedFile = null;
@@ -551,6 +713,72 @@
             });
 
             console.log('Paste functionality ready! Use the green button or press Ctrl+V');
+
+            // ==========================================
+            // MOBILE IMAGE PREVIEW AND PASTE
+            // ==========================================
+            let mobilePastedFile = null;
+
+            // Mobile image file input preview
+            $('#mobile_image').on('change', function(e) {
+                const file = e.target.files[0];
+                if (file && file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        $('#mobile-image-preview').html(`
+                            <img src="${e.target.result}" class="img-thumbnail" style="max-width: 100%; max-height: 200px;">
+                            <div class="mt-2 text-success small">
+                                <i class="mdi mdi-check-circle"></i> ${file.name}
+                            </div>
+                        `);
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+
+            // Mobile paste handler
+            if (window.innerWidth < 768) {
+                window.addEventListener('paste', function(e) {
+                    const clipboardData = e.clipboardData || window.clipboardData;
+                    if (!clipboardData) return;
+                    
+                    const items = clipboardData.items;
+                    for (let i = 0; i < items.length; i++) {
+                        if (items[i].type.indexOf('image') !== -1) {
+                            e.preventDefault();
+                            
+                            const blob = items[i].getAsFile();
+                            const timestamp = new Date().getTime();
+                            const fileName = `screenshot_${timestamp}.png`;
+                            
+                            mobilePastedFile = new File([blob], fileName, { type: blob.type || 'image/png' });
+                            
+                            // Set file to input
+                            try {
+                                const dataTransfer = new DataTransfer();
+                                dataTransfer.items.add(mobilePastedFile);
+                                document.getElementById('mobile_image').files = dataTransfer.files;
+                            } catch (error) {
+                                console.log('DataTransfer not supported');
+                            }
+                            
+                            // Show preview
+                            const reader = new FileReader();
+                            reader.onload = function(e) {
+                                $('#mobile-image-preview').html(`
+                                    <img src="${e.target.result}" class="img-thumbnail" style="max-width: 100%; max-height: 200px;">
+                                    <div class="mt-2 text-success small">
+                                        <i class="mdi mdi-check-circle"></i> Screenshot pasted!
+                                    </div>
+                                `);
+                            };
+                            reader.readAsDataURL(blob);
+                            
+                            break;
+                        }
+                    }
+                }, true);
+            }
         });
     </script>
 @endsection
