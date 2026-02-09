@@ -95,7 +95,7 @@
                             </a>
                         </li>
                         <li>
-                            <a href="{{ route('tasks.index') }}">
+                            <a href="{{ url('tasks/create') }}">
                                 <i class="ri-task-line me-2"></i>Task Manager
                             </a>
                         </li>

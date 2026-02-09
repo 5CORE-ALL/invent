@@ -267,15 +267,36 @@
                             <div class="row">
                                 <div class="col-12 mb-3">
                                     <label for="image" class="form-label">Image</label>
-                                    <div class="border rounded p-3 text-center" style="border: 2px dashed #dee2e6;">
+                                    
+                                    <div class="border rounded p-4 text-center" id="paste-zone" style="border: 2px dashed #dee2e6; background-color: #f8f9fa;">
                                         <input type="file" class="form-control @error('image') is-invalid @enderror" 
                                                id="image" name="image" accept="image/*" style="display: none;">
-                                        <button type="button" class="btn btn-danger" onclick="document.getElementById('image').click()">
-                                            Choose File
-                                        </button>
-                                        <span class="ms-2">or drag & drop, or paste image</span>
+                                        
+                                        <div class="mb-3">
+                                            <i class="mdi mdi-cloud-upload" style="font-size: 48px; color: #667eea;"></i>
+                                        </div>
+                                        
+                                        <!-- Upload Buttons -->
+                                        <div class="d-flex gap-2 justify-content-center flex-wrap mb-3">
+                                            <button type="button" class="btn btn-danger" onclick="document.getElementById('image').click()">
+                                                <i class="mdi mdi-folder-open me-1"></i> Choose File
+                                            </button>
+                                            <button type="button" class="btn btn-success" id="pasteButton">
+                                                <i class="mdi mdi-content-paste me-1"></i> Paste Screenshot
+                                            </button>
+                                        </div>
+                                        
+                                        <div class="text-muted mb-2">
+                                            or drag & drop image here • or press Ctrl+V
+                                        </div>
+                                        
+                                        <div id="paste-status" class="text-success small">
+                                            <i class="mdi mdi-check-circle"></i> Ready to paste
+                                        </div>
+                                        
                                         <div id="image-preview" class="mt-3"></div>
                                     </div>
+                                    
                                     @error('image')
                                         <div class="invalid-feedback d-block">{{ $message }}</div>
                                     @enderror
@@ -313,17 +334,223 @@
                 placeholder: 'Please Select'
             });
 
-            // Image preview
+            // Store pasted file globally
+            let pastedFile = null;
+
+            // Helper function to format bytes
+            function formatBytes(bytes) {
+                if (bytes === 0) return '0 Bytes';
+                const k = 1024;
+                const sizes = ['Bytes', 'KB', 'MB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+            }
+
+            // Function to show image preview
+            function showImagePreview(blob, fileName) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    $('#image-preview').html(`
+                        <img src="${e.target.result}" class="img-thumbnail" style="max-width: 300px; max-height: 300px;">
+                        <div class="mt-2 text-success">
+                            <i class="mdi mdi-check-circle"></i> Image loaded successfully!
+                            <br>
+                            <small>${fileName} (${formatBytes(blob.size)})</small>
+                        </div>
+                    `);
+                    $('#paste-status').html('<i class="mdi mdi-check-circle text-success"></i> Image ready to upload!');
+                };
+                reader.readAsDataURL(blob);
+            }
+
+            // Function to set file to input
+            function setFileToInput(file) {
+                try {
+                    const dataTransfer = new DataTransfer();
+                    dataTransfer.items.add(file);
+                    document.getElementById('image').files = dataTransfer.files;
+                    console.log('File set to input:', file.name);
+                    return true;
+                } catch (error) {
+                    console.warn('DataTransfer not supported:', error);
+                    pastedFile = file; // Store for form submission
+                    return false;
+                }
+            }
+
+            // Image preview from file input
             $('#image').on('change', function(e) {
                 const file = e.target.files[0];
                 if (file) {
-                    const reader = new FileReader();
-                    reader.onload = function(e) {
-                        $('#image-preview').html('<img src="' + e.target.result + '" class="img-thumbnail" style="max-width: 300px;">');
-                    }
-                    reader.readAsDataURL(file);
+                    showImagePreview(file, file.name);
                 }
             });
+
+            // ==========================================
+            // PASTE BUTTON CLICK HANDLER
+            // ==========================================
+            $('#pasteButton').on('click', async function() {
+                console.log('Paste button clicked!');
+                const btn = $(this);
+                const originalHtml = btn.html();
+                
+                btn.html('<i class="mdi mdi-loading mdi-spin me-1"></i> Reading clipboard...').prop('disabled', true);
+                $('#paste-status').html('<i class="mdi mdi-loading mdi-spin text-primary"></i> Reading clipboard...');
+                
+                try {
+                    // Check if Clipboard API is supported
+                    if (!navigator.clipboard || !navigator.clipboard.read) {
+                        throw new Error('Clipboard API not supported. Please use Ctrl+V or upgrade your browser.');
+                    }
+                    
+                    console.log('Reading clipboard...');
+                    const clipboardItems = await navigator.clipboard.read();
+                    console.log('Clipboard items found:', clipboardItems.length);
+                    
+                    let imageFound = false;
+                    
+                    for (const clipboardItem of clipboardItems) {
+                        for (const type of clipboardItem.types) {
+                            console.log('Clipboard type:', type);
+                            
+                            if (type.startsWith('image/')) {
+                                console.log('Image found!');
+                                imageFound = true;
+                                
+                                const blob = await clipboardItem.getType(type);
+                                const timestamp = new Date().getTime();
+                                const fileName = `screenshot_${timestamp}.png`;
+                                
+                                pastedFile = new File([blob], fileName, { type: blob.type || 'image/png' });
+                                console.log('File created:', fileName, blob.size, 'bytes');
+                                
+                                setFileToInput(pastedFile);
+                                showImagePreview(blob, fileName);
+                                
+                                btn.html(originalHtml).prop('disabled', false);
+                                
+                                // Show success notification
+                                const notification = $('<div class="alert alert-success alert-dismissible position-fixed" style="top: 20px; right: 20px; z-index: 9999; min-width: 300px;">')
+                                    .html(`
+                                        <i class="mdi mdi-check-circle me-2"></i>
+                                        <strong>Screenshot Pasted!</strong>
+                                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                                    `);
+                                $('body').append(notification);
+                                setTimeout(() => notification.fadeOut(() => notification.remove()), 3000);
+                                
+                                return;
+                            }
+                        }
+                    }
+                    
+                    if (!imageFound) {
+                        throw new Error('No image found in clipboard. Please take a screenshot first!');
+                    }
+                    
+                } catch (error) {
+                    console.error('Clipboard error:', error);
+                    btn.html(originalHtml).prop('disabled', false);
+                    $('#paste-status').html('<i class="mdi mdi-alert-circle text-danger"></i> Failed to read clipboard');
+                    
+                    let errorMsg = 'Failed to paste screenshot!\n\n';
+                    
+                    if (error.name === 'NotAllowedError') {
+                        errorMsg += 'Permission denied. Please allow clipboard access when prompted.\n\nOr try pressing Ctrl+V instead.';
+                    } else if (error.message.includes('not supported')) {
+                        errorMsg += error.message + '\n\nTry:\n• Press Ctrl+V instead\n• Or use "Choose File" button';
+                    } else if (error.message.includes('No image')) {
+                        errorMsg += error.message + '\n\nHow to take screenshot:\n• Windows: Win+Shift+S\n• Mac: Cmd+Shift+4';
+                    } else {
+                        errorMsg += error.message;
+                    }
+                    
+                    alert(errorMsg);
+                }
+            });
+
+            // ==========================================
+            // CTRL+V KEYBOARD PASTE HANDLER
+            // ==========================================
+            window.addEventListener('paste', function(e) {
+                console.log('Paste event detected!');
+                
+                const clipboardData = e.clipboardData || window.clipboardData;
+                if (!clipboardData) {
+                    console.log('No clipboard data');
+                    return;
+                }
+                
+                const items = clipboardData.items;
+                console.log('Clipboard items:', items.length);
+                
+                for (let i = 0; i < items.length; i++) {
+                    if (items[i].type.indexOf('image') !== -1) {
+                        console.log('Image found in paste event!');
+                        e.preventDefault();
+                        
+                        const blob = items[i].getAsFile();
+                        const timestamp = new Date().getTime();
+                        const fileName = `screenshot_${timestamp}.png`;
+                        
+                        pastedFile = new File([blob], fileName, { type: blob.type || 'image/png' });
+                        
+                        setFileToInput(pastedFile);
+                        showImagePreview(blob, fileName);
+                        
+                        // Show notification
+                        const notification = $('<div class="alert alert-success alert-dismissible position-fixed" style="top: 20px; right: 20px; z-index: 9999; min-width: 300px;">')
+                            .html(`
+                                <i class="mdi mdi-check-circle me-2"></i>
+                                <strong>Screenshot Pasted (Ctrl+V)!</strong>
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            `);
+                        $('body').append(notification);
+                        setTimeout(() => notification.fadeOut(() => notification.remove()), 3000);
+                        
+                        break;
+                    }
+                }
+            }, true);
+
+            // Drag and drop
+            const dropZone = $('#paste-zone');
+            
+            dropZone.on('dragover', function(e) {
+                e.preventDefault();
+                $(this).css('background-color', '#e7f3ff');
+            });
+            
+            dropZone.on('dragleave', function(e) {
+                $(this).css('background-color', '#f8f9fa');
+            });
+            
+            dropZone.on('drop', function(e) {
+                e.preventDefault();
+                $(this).css('background-color', '#f8f9fa');
+                
+                const files = e.originalEvent.dataTransfer.files;
+                if (files.length > 0 && files[0].type.indexOf('image') !== -1) {
+                    document.getElementById('image').files = files;
+                    pastedFile = files[0];
+                    showImagePreview(files[0], files[0].name);
+                }
+            });
+
+            // Ensure pasted file is included in form submission
+            $('form').on('submit', function(e) {
+                if (pastedFile && (!document.getElementById('image').files || document.getElementById('image').files.length === 0)) {
+                    try {
+                        const dataTransfer = new DataTransfer();
+                        dataTransfer.items.add(pastedFile);
+                        document.getElementById('image').files = dataTransfer.files;
+                    } catch (error) {
+                        console.error('Could not add file:', error);
+                    }
+                }
+            });
+
+            console.log('Paste functionality ready! Use the green button or press Ctrl+V');
         });
     </script>
 @endsection
