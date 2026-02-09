@@ -5489,6 +5489,15 @@ class OverallAmazonController extends Controller
                     'kw_spend' => floatval($request->input('kw_spend', 0)),
                     'hl_spend' => floatval($request->input('hl_spend', 0)),
                     'pt_spend' => floatval($request->input('pt_spend', 0)),
+                    'total_pft' => floatval($request->input('total_pft', 0)),
+                    'total_sales' => floatval($request->input('total_sales', 0)),
+                    'total_spend' => floatval($request->input('total_spend', 0)),
+                    'gpft_pct' => floatval($request->input('gpft_pct', 0)),
+                    'npft_pct' => floatval($request->input('npft_pct', 0)),
+                    'groi_pct' => floatval($request->input('groi_pct', 0)),
+                    'nroi_pct' => floatval($request->input('nroi_pct', 0)),
+                    'tcos_pct' => floatval($request->input('tcos_pct', 0)),
+                    'total_l30_orders' => intval($request->input('total_l30_orders', 0)),
                 ]
             );
 
@@ -5514,6 +5523,9 @@ class OverallAmazonController extends Controller
                 'missing_campaign_count', 'nra_count', 'ra_count',
                 'paused_count', 'ub7_count', 'ub7_ub1_count',
                 'kw_spend', 'hl_spend', 'pt_spend',
+                'total_pft', 'total_sales', 'total_spend',
+                'gpft_pct', 'npft_pct', 'groi_pct', 'nroi_pct', 'tcos_pct',
+                'total_l30_orders',
             ];
 
             if (!in_array($metric, $allowedMetrics)) {

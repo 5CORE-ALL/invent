@@ -26,6 +26,15 @@ class AmazonDailyBadgeStat extends Model
         'kw_spend',
         'hl_spend',
         'pt_spend',
+        'total_pft',
+        'total_sales',
+        'total_spend',
+        'gpft_pct',
+        'npft_pct',
+        'groi_pct',
+        'nroi_pct',
+        'tcos_pct',
+        'total_l30_orders',
     ];
 
     protected $casts = [
