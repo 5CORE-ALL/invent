@@ -360,6 +360,12 @@ class OverallAmazonController extends Controller
                 $row['price_lmpa'] = $amazonSheet->price_lmpa;
                 $row['sessions_l60'] = $amazonSheet->sessions_l60;
                 $row['units_ordered_l60'] = $amazonSheet->units_ordered_l60;
+            } else {
+                $row['price'] = 0;
+                $row['price_lmpa'] = 0;
+                $row['Sess30'] = 0;
+                $row['sessions_l60'] = 0;
+                $row['units_ordered_l60'] = 0;
             }
 
             $values = is_array($pm->Values) ? $pm->Values : (is_string($pm->Values) ? json_decode($pm->Values, true) : []);
@@ -1902,6 +1908,16 @@ class OverallAmazonController extends Controller
                 $row['price_lmpa'] = $amazonSheet->price_lmpa;
                 $row['sessions_l60'] = $amazonSheet->sessions_l60 ?? 0;
                 $row['units_ordered_l60'] = $amazonSheet->units_ordered_l60 ?? 0;
+            } else {
+                $row['A_L30'] = 0;
+                $row['A_L15'] = 0;
+                $row['A_L7'] = 0;
+                $row['Sess30'] = 0;
+                $row['Sess7'] = 0;
+                $row['price'] = 0;
+                $row['price_lmpa'] = 0;
+                $row['sessions_l60'] = 0;
+                $row['units_ordered_l60'] = 0;
             }
 
             $row['INV'] = $shopify->inv ?? 0;
@@ -4186,17 +4202,18 @@ class OverallAmazonController extends Controller
                     $prcGtLmpCount++;
                 }
                 
-                // Count Missing Amazon and Map/N Map (same logic as frontend)
+                // Count Missing L, Map, N Map (same logic as frontend)
                 $inv = floatval($row['INV'] ?? 0);
                 $nrValue = $row['NR'] ?? '';
                 $isMissingAmazon = $row['is_missing_amazon'] ?? false;
+                $rowPrice = floatval($row['price'] ?? 0);
                 
                 if ($inv > 0 && $nrValue === 'REQ') {
-                    if ($isMissingAmazon) {
-                        // SKU doesn't exist in amazon_datsheets
+                    if ($isMissingAmazon || $rowPrice <= 0) {
+                        // SKU doesn't exist in amazon_datsheets OR has blank/zero price
                         $missingAmazonCount++;
                     } else {
-                        // SKU exists in amazon_datsheets, check inventory sync
+                        // SKU exists with valid price, check inventory sync
                         $invAmzNum = floatval($row['INV_AMZ'] ?? 0);
                         $invDifference = abs($inv - $invAmzNum);
                         
