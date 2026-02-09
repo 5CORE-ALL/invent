@@ -3,6 +3,495 @@
 @section('css')
     <link href="https://unpkg.com/tabulator-tables@6.3.1/dist/css/tabulator.min.css" rel="stylesheet">
     <style>
+        /* ========================================
+           MOBILE OPTIMIZED STYLES
+           ======================================== */
+        @media (max-width: 767.98px) {
+            /* Statistics Cards - Mobile Grid Layout */
+            .stats-row {
+                display: grid !important;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 12px;
+                padding: 15px;
+                margin-bottom: 15px !important;
+            }
+            
+            .stats-row > div {
+                width: 100%;
+            }
+            
+            .stat-card {
+                padding: 18px 15px !important;
+                margin-bottom: 0 !important;
+                border-radius: 16px !important;
+                flex-direction: column !important;
+                text-align: center !important;
+                height: auto !important;
+                min-height: 135px;
+                justify-content: center !important;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.08) !important;
+                border-left: 0 !important;
+                border-top: 4px solid !important;
+                background: white !important;
+                position: relative;
+                overflow: hidden;
+            }
+            
+            .stat-card::before {
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                opacity: 0.05;
+                pointer-events: none;
+            }
+            
+            .stat-card-blue::before {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            }
+            
+            .stat-card-cyan::before {
+                background: linear-gradient(135deg, #0dcaf0 0%, #0891b2 100%);
+            }
+            
+            .stat-card-red::before {
+                background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            }
+            
+            .stat-card-green::before {
+                background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            }
+            
+            .stat-card-yellow::before {
+                background: linear-gradient(135deg, #f7b733 0%, #fc4a1a 100%);
+            }
+            
+            .stat-card:hover {
+                transform: none !important;
+            }
+            
+            .stat-card:active {
+                transform: scale(0.98) !important;
+            }
+            
+            .stat-icon {
+                width: 55px !important;
+                height: 55px !important;
+                font-size: 26px !important;
+                margin: 0 auto 10px auto !important;
+                border-radius: 14px !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+            }
+            
+            .stat-content {
+                text-align: center !important;
+                width: 100%;
+                position: relative;
+                z-index: 1;
+            }
+            
+            .stat-label {
+                font-size: 11px !important;
+                margin-bottom: 6px !important;
+                font-weight: 700 !important;
+                letter-spacing: 0.5px !important;
+            }
+            
+            .stat-value {
+                font-size: 28px !important;
+                margin-bottom: 2px !important;
+                font-weight: 800 !important;
+                line-height: 1 !important;
+            }
+            
+            .stat-unit {
+                font-size: 10px !important;
+                font-weight: 600 !important;
+                color: #8094ae !important;
+                margin-top: 4px !important;
+            }
+            
+            /* Hide desktop table on mobile */
+            #tasks-table {
+                display: none !important;
+            }
+            
+            /* Show mobile card view */
+            #mobile-tasks-view {
+                display: block !important;
+            }
+            
+            /* Mobile Filters - Better Layout */
+            .filter-section {
+                padding: 15px !important;
+            }
+            
+            .filter-section .row {
+                margin: 0 !important;
+            }
+            
+            .filter-section .row > div {
+                padding: 0 !important;
+                margin-bottom: 12px !important;
+            }
+            
+            .filter-section .form-label {
+                font-size: 12px !important;
+                font-weight: 600 !important;
+                color: #667eea !important;
+                margin-bottom: 6px !important;
+            }
+            
+            .filter-section .form-select,
+            .filter-section .form-control {
+                font-size: 15px !important;
+                padding: 12px 15px !important;
+                border-radius: 10px !important;
+                border: 2px solid #e3e6f0 !important;
+                min-height: 48px !important;
+            }
+            
+            .filter-section .form-select:focus,
+            .filter-section .form-control:focus {
+                border-color: #667eea !important;
+                box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1) !important;
+            }
+            
+            /* Mobile Search Box */
+            #filter-search {
+                font-size: 16px !important;
+                padding: 14px 20px !important;
+                border-radius: 25px !important;
+                border: 2px solid #667eea !important;
+                background: #f8f9fa !important;
+            }
+            
+            #filter-search::placeholder {
+                color: #adb5bd !important;
+            }
+            
+            /* Quick Filter Chips */
+            .mobile-quick-filters {
+                display: flex;
+                gap: 8px;
+                overflow-x: auto;
+                padding: 10px 15px;
+                margin-bottom: 15px;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+            }
+            
+            .mobile-quick-filters::-webkit-scrollbar {
+                display: none;
+            }
+            
+            .quick-filter-chip {
+                flex: 0 0 auto;
+                padding: 8px 16px;
+                border-radius: 20px;
+                background: white;
+                border: 2px solid #e3e6f0;
+                font-size: 13px;
+                font-weight: 500;
+                color: #6c757d;
+                white-space: nowrap;
+            }
+            
+            .quick-filter-chip.active {
+                background: #667eea;
+                color: white;
+                border-color: #667eea;
+            }
+            
+            /* Mobile Action Buttons Grid */
+            .mobile-action-buttons {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
+                padding: 15px;
+                margin-bottom: 15px;
+            }
+            
+            .mobile-action-btn {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                padding: 16px 12px;
+                border-radius: 12px;
+                border: none;
+                text-decoration: none;
+                color: white;
+                font-weight: 500;
+                transition: all 0.3s ease;
+                min-height: 85px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            }
+            
+            .mobile-action-btn:active {
+                transform: scale(0.95);
+            }
+            
+            .mobile-action-btn i {
+                font-size: 28px;
+                margin-bottom: 6px;
+            }
+            
+            .mobile-action-btn span {
+                font-size: 13px;
+                text-align: center;
+                line-height: 1.2;
+            }
+            
+            .mobile-action-btn.btn-primary {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            }
+            
+            .mobile-action-btn.btn-success {
+                background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            }
+            
+            .mobile-action-btn.btn-warning {
+                background: linear-gradient(135deg, #f7b733 0%, #fc4a1a 100%);
+                color: white;
+            }
+            
+            .mobile-action-btn.btn-secondary {
+                background: linear-gradient(135deg, #4a5568 0%, #6b7280 100%);
+            }
+            
+            .mobile-action-btn.btn-info {
+                background: linear-gradient(135deg, #0dcaf0 0%, #0891b2 100%);
+            }
+            
+            /* Selected count badge on mobile */
+            #selected-count-mobile {
+                display: none;
+                background: #667eea;
+                color: white;
+                padding: 8px 15px;
+                border-radius: 20px;
+                font-size: 13px;
+                text-align: center;
+                margin: 0 15px 10px 15px;
+            }
+            
+            /* Hide page title box on mobile (we have mobile header) */
+            .page-title-box {
+                display: none !important;
+            }
+            
+            /* Card with action buttons */
+            .task-card {
+                border-radius: 0 !important;
+                box-shadow: none !important;
+                margin-bottom: 0 !important;
+                border: none !important;
+            }
+            
+            .task-card .card-body {
+                padding: 0 !important;
+                background: #f8f9fa !important;
+            }
+            
+            /* Mobile page sections */
+            .mobile-section-header {
+                background: linear-gradient(90deg, rgba(102,126,234,0.1) 0%, rgba(118,75,162,0.1) 100%);
+                padding: 8px 15px;
+                margin: 0 -15px 10px -15px;
+            }
+            
+            /* Improve filter section mobile */
+            .filter-section {
+                background: white !important;
+                border-radius: 16px !important;
+                margin: 0 15px 15px 15px !important;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
+            }
+            
+            /* Content background */
+            @media (max-width: 767.98px) {
+                .content-page .content {
+                    background: #f0f2f5 !important;
+                }
+            }
+            
+            /* Card adjustments */
+            .card {
+                border-radius: 12px !important;
+                margin-bottom: 15px !important;
+            }
+            
+            .card-header {
+                padding: 12px 15px !important;
+            }
+            
+            .card-body {
+                padding: 15px !important;
+            }
+        }
+        
+        /* Mobile Task Cards */
+        #mobile-tasks-view {
+            display: none; /* Hidden on desktop */
+        }
+        
+        .mobile-task-card {
+            background: white;
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-left: 4px solid;
+            transition: all 0.3s ease;
+        }
+        
+        .mobile-task-card:active {
+            transform: scale(0.98);
+        }
+        
+        .mobile-task-card.status-pending {
+            border-left-color: #0dcaf0;
+        }
+        
+        .mobile-task-card.status-inprogress {
+            border-left-color: #ffc107;
+        }
+        
+        .mobile-task-card.status-done {
+            border-left-color: #28a745;
+        }
+        
+        .mobile-task-card.status-overdue {
+            border-left-color: #dc3545;
+        }
+        
+        .mobile-task-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 10px;
+        }
+        
+        .mobile-task-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 5px;
+            line-height: 1.4;
+        }
+        
+        .mobile-task-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+        
+        .mobile-task-badge {
+            font-size: 11px;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-weight: 500;
+        }
+        
+        .mobile-task-info {
+            font-size: 13px;
+            color: #6c757d;
+            margin-bottom: 8px;
+        }
+        
+        .mobile-task-info i {
+            margin-right: 5px;
+            font-size: 14px;
+        }
+        
+        .mobile-task-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #f0f0f0;
+        }
+        
+        .mobile-task-actions .btn {
+            flex: 1;
+            font-size: 13px;
+            padding: 8px 12px;
+            border-radius: 8px;
+        }
+        
+        .mobile-priority-high {
+            background: #fff5f5;
+            color: #dc3545;
+        }
+        
+        .mobile-priority-normal {
+            background: #f0f9ff;
+            color: #0dcaf0;
+        }
+        
+        .mobile-priority-low {
+            background: #f0fdf4;
+            color: #28a745;
+        }
+        
+        /* Pull to refresh hint */
+        .pull-to-refresh-hint {
+            text-align: center;
+            padding: 10px;
+            color: #6c757d;
+            font-size: 12px;
+        }
+        
+        /* Loading spinner for mobile */
+        .mobile-loading {
+            text-align: center;
+            padding: 40px 20px;
+        }
+        
+        .mobile-loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Empty state for mobile */
+        .mobile-empty-state {
+            text-align: center;
+            padding: 60px 20px;
+        }
+        
+        .mobile-empty-state i {
+            font-size: 64px;
+            color: #e0e0e0;
+            margin-bottom: 20px;
+        }
+        
+        .mobile-empty-state h5 {
+            color: #6c757d;
+            margin-bottom: 10px;
+        }
+        
+        .mobile-empty-state p {
+            color: #adb5bd;
+            font-size: 14px;
+        }
+        
         /* Statistics Cards */
         .stat-card {
             background: white;
@@ -493,8 +982,15 @@
         </div>     
         <!-- end page title --> 
 
+        <!-- Mobile Stats Header -->
+        <div class="d-md-none text-center mb-2" style="padding: 10px 15px 0 15px;">
+            <h6 class="mb-0" style="color: #667eea; font-weight: 700; font-size: 14px;">
+                <i class="mdi mdi-chart-box"></i> STATISTICS
+            </h6>
+        </div>
+        
         <!-- Statistics Cards -->
-        <div class="row mb-4">
+        <div class="row mb-4 stats-row">
             <!-- Total Tasks -->
             <div class="col-xl-3 col-md-6">
                 <div class="stat-card stat-card-blue">
@@ -549,7 +1045,7 @@
         </div>
 
         <!-- Time Statistics Cards -->
-        <div class="row mb-4">
+        <div class="row mb-4 stats-row">
             <!-- Total ETC -->
             <div class="col-xl-3 col-md-6">
                 <div class="stat-card stat-card-yellow">
@@ -612,33 +1108,71 @@
                 <div class="card task-card">
                     <div class="card-body">
                         <div class="row mb-3">
-                            <div class="col-sm-12 d-flex justify-content-between align-items-center">
-                                <div>
-                                    <a href="{{ route('tasks.create') }}" class="btn btn-danger btn-create-task">
-                                        <i class="mdi mdi-plus-circle me-2"></i> Create Task
-                                    </a>
+                            <div class="col-sm-12">
+                                <!-- Desktop Action Buttons -->
+                                <div class="d-none d-md-flex justify-content-between align-items-center">
+                                    <div>
+                                        <a href="{{ route('tasks.create') }}" class="btn btn-danger btn-create-task">
+                                            <i class="mdi mdi-plus-circle me-2"></i> Create Task
+                                        </a>
+                                        
+                                        <button type="button" class="btn btn-success ms-2" id="upload-csv-btn">
+                                            <i class="mdi mdi-file-upload me-2"></i> Upload CSV
+                                        </button>
+                                        
+                                        <a href="{{ route('tasks.automated') }}" class="btn btn-warning ms-2">
+                                            <i class="mdi mdi-robot me-2"></i> Automated Tasks
+                                        </a>
+                                        
+                                        <a href="{{ route('tasks.deleted') }}" class="btn btn-secondary ms-2">
+                                            <i class="mdi mdi-delete-forever me-2"></i> Deletion Record
+                                        </a>
+                                        
+                                        <button type="button" class="btn btn-info ms-2" id="bulk-actions-btn">
+                                            <i class="mdi mdi-format-list-checks me-2"></i> Bulk Actions
+                                        </button>
+                                    </div>
                                     
-                                    <button type="button" class="btn btn-success ms-2" id="upload-csv-btn">
-                                        <i class="mdi mdi-file-upload me-2"></i> Upload CSV
-                                    </button>
-                                    
-                                    <a href="{{ route('tasks.automated') }}" class="btn btn-warning ms-2">
-                                        <i class="mdi mdi-robot me-2"></i> Automated Tasks
-                                    </a>
-                                    
-                                    <a href="{{ route('tasks.deleted') }}" class="btn btn-secondary ms-2">
-                                        <i class="mdi mdi-delete-forever me-2"></i> Deletion Record
-                                    </a>
-                                    
-                                    <button type="button" class="btn btn-info ms-2" id="bulk-actions-btn">
-                                        <i class="mdi mdi-format-list-checks me-2"></i> Bulk Actions
-                                    </button>
+                                    <div>
+                                        <span id="selected-count" class="text-muted" style="display: none;">
+                                            <strong id="count-number">0</strong> task(s) selected
+                                        </span>
+                                    </div>
                                 </div>
                                 
-                                <div>
-                                    <span id="selected-count" class="text-muted" style="display: none;">
-                                        <strong id="count-number">0</strong> task(s) selected
-                                    </span>
+                                <!-- Mobile Action Buttons Header -->
+                                <div class="d-md-none text-center mb-2" style="padding: 15px 15px 0 15px;">
+                                    <h6 class="mb-0" style="color: #667eea; font-weight: 700; font-size: 14px;">
+                                        <i class="mdi mdi-lightning-bolt"></i> QUICK ACTIONS
+                                    </h6>
+                                </div>
+                                
+                                <!-- Mobile Action Buttons Grid -->
+                                <div class="d-md-none mobile-action-buttons">
+                                    <a href="{{ route('tasks.create') }}" class="mobile-action-btn btn-primary">
+                                        <i class="mdi mdi-plus-circle"></i>
+                                        <span>Create Task</span>
+                                    </a>
+                                    
+                                    <button type="button" class="mobile-action-btn btn-success" id="upload-csv-btn-mobile">
+                                        <i class="mdi mdi-file-upload"></i>
+                                        <span>Upload CSV</span>
+                                    </button>
+                                    
+                                    <a href="{{ route('tasks.automated') }}" class="mobile-action-btn btn-warning">
+                                        <i class="mdi mdi-robot"></i>
+                                        <span>Automated</span>
+                                    </a>
+                                    
+                                    <a href="{{ route('tasks.deleted') }}" class="mobile-action-btn btn-secondary">
+                                        <i class="mdi mdi-delete-forever"></i>
+                                        <span>Deleted</span>
+                                    </a>
+                                    
+                                    <button type="button" class="mobile-action-btn btn-info" id="bulk-actions-btn-mobile">
+                                        <i class="mdi mdi-format-list-checks"></i>
+                                        <span>Bulk Actions</span>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -656,8 +1190,40 @@
                             </div>
                         @endif
 
+                        <!-- Mobile Quick Filters Header -->
+                        <div class="d-md-none text-center mb-1" style="padding: 15px 15px 5px 15px;">
+                            <h6 class="mb-0" style="color: #667eea; font-weight: 700; font-size: 14px;">
+                                <i class="mdi mdi-filter-variant"></i> QUICK FILTERS
+                            </h6>
+                            <small class="text-muted" style="font-size: 11px;">
+                                <i class="mdi mdi-gesture-swipe-horizontal"></i> Swipe to see more
+                            </small>
+                        </div>
+                        
+                        <!-- Mobile Quick Filters (Only on mobile) -->
+                        <div class="mobile-quick-filters d-md-none">
+                            <div class="quick-filter-chip active" data-filter="all">
+                                <i class="mdi mdi-view-list"></i> All
+                            </div>
+                            <div class="quick-filter-chip" data-filter="pending">
+                                <i class="mdi mdi-clock-outline"></i> Pending
+                            </div>
+                            <div class="quick-filter-chip" data-filter="inprogress">
+                                <i class="mdi mdi-progress-clock"></i> In Progress
+                            </div>
+                            <div class="quick-filter-chip" data-filter="done">
+                                <i class="mdi mdi-check-circle"></i> Done
+                            </div>
+                            <div class="quick-filter-chip" data-filter="overdue">
+                                <i class="mdi mdi-alert-circle"></i> Overdue
+                            </div>
+                            <div class="quick-filter-chip" data-filter="high">
+                                <i class="mdi mdi-alert"></i> High Priority
+                            </div>
+                        </div>
+
                         <!-- Search/Filter Bar -->
-                        <div class="row mb-3 p-3" style="background: #f8f9fa; border-radius: 8px;">
+                        <div class="row mb-3 p-3 filter-section" style="background: #f8f9fa; border-radius: 8px;">
                             <div class="col-md-2 mb-2">
                                 <label class="form-label fw-bold">Search</label>
                                 <input type="text" id="filter-search" class="form-control form-control-sm" placeholder="Search all">
@@ -717,6 +1283,21 @@
 
                         <div class="table-wrapper">
                             <div id="tasks-table"></div>
+                        </div>
+
+                        <!-- Mobile Tasks View -->
+                        <div id="mobile-tasks-view">
+                            <div class="pull-to-refresh-hint d-md-none">
+                                <i class="mdi mdi-chevron-down"></i> Pull down to refresh
+                            </div>
+                            
+                            <div id="mobile-tasks-container">
+                                <!-- Tasks will be loaded here via JavaScript -->
+                                <div class="mobile-loading">
+                                    <div class="mobile-loading-spinner"></div>
+                                    <p>Loading tasks...</p>
+                                </div>
+                            </div>
                         </div>
 
                     </div> <!-- end card-body-->
@@ -984,6 +1565,137 @@
             var isAdmin = {{ $isAdmin ? 'true' : 'false' }};
             var currentUserId = {{ Auth::id() }};
             var currentUserEmail = '{{ Auth::user()->email }}';
+            
+            // ==========================================
+            // MOBILE TASK CARDS RENDERER
+            // ==========================================
+            function renderMobileTasks(tasks) {
+                const container = $('#mobile-tasks-container');
+                
+                if (!tasks || tasks.length === 0) {
+                    container.html(`
+                        <div class="mobile-empty-state">
+                            <i class="mdi mdi-clipboard-text-outline"></i>
+                            <h5>No Tasks Found</h5>
+                            <p>Create your first task or adjust filters</p>
+                        </div>
+                    `);
+                    return;
+                }
+                
+                let html = '';
+                
+                tasks.forEach(task => {
+                    const statusClass = `status-${task.status.toLowerCase().replace(' ', '')}`;
+                    const priorityClass = `mobile-priority-${task.priority.toLowerCase()}`;
+                    
+                    // Status badge color
+                    let statusBadge = '';
+                    switch(task.status.toLowerCase()) {
+                        case 'pending':
+                            statusBadge = 'bg-info text-white';
+                            break;
+                        case 'in progress':
+                            statusBadge = 'bg-warning text-dark';
+                            break;
+                        case 'done':
+                            statusBadge = 'bg-success text-white';
+                            break;
+                        case 'overdue':
+                            statusBadge = 'bg-danger text-white';
+                            break;
+                        default:
+                            statusBadge = 'bg-secondary text-white';
+                    }
+                    
+                    html += `
+                        <div class="mobile-task-card ${statusClass}">
+                            <div class="mobile-task-header">
+                                <div style="flex: 1;">
+                                    <div class="mobile-task-title">${task.title || 'No Title'}</div>
+                                    <div class="mobile-task-meta">
+                                        <span class="badge ${statusBadge} mobile-task-badge">${task.status}</span>
+                                        <span class="badge ${priorityClass} mobile-task-badge">${task.priority}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="mobile-task-info">
+                                <div><i class="mdi mdi-account-circle"></i> ${task.assignee_name || 'Unassigned'}</div>
+                                ${task.etc_minutes ? `<div><i class="mdi mdi-clock-outline"></i> ${task.etc_minutes} min</div>` : ''}
+                                ${task.tid ? `<div><i class="mdi mdi-calendar"></i> ${new Date(task.tid).toLocaleDateString()}</div>` : ''}
+                            </div>
+                            
+                            <div class="mobile-task-actions">
+                                <button class="btn btn-sm btn-outline-primary" onclick="viewTask(${task.id})">
+                                    <i class="mdi mdi-eye"></i> View
+                                </button>
+                                ${task.status !== 'Done' ? `
+                                    <button class="btn btn-sm btn-outline-success" onclick="markAsDone(${task.id})">
+                                        <i class="mdi mdi-check"></i> Done
+                                    </button>
+                                ` : ''}
+                                <button class="btn btn-sm btn-outline-secondary" onclick="editTask(${task.id})">
+                                    <i class="mdi mdi-pencil"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                container.html(html);
+            }
+            
+            // Helper functions for mobile actions
+            window.viewTask = function(id) {
+                const task = table.searchData('id', '=', id)[0];
+                if (task) {
+                    // Trigger existing view modal
+                    $(`button[data-task-id="${id}"]`).first().click();
+                }
+            };
+            
+            window.markAsDone = function(id) {
+                currentTaskId = id;
+                $('#doneModal').modal('show');
+            };
+            
+            window.editTask = function(id) {
+                window.location.href = `/tasks/${id}/edit`;
+            };
+            
+            // Pull to refresh for mobile
+            if (window.innerWidth < 768) {
+                let startY = 0;
+                let pullDistance = 0;
+                
+                document.addEventListener('touchstart', function(e) {
+                    if (window.scrollY === 0) {
+                        startY = e.touches[0].clientY;
+                    }
+                });
+                
+                document.addEventListener('touchmove', function(e) {
+                    if (startY > 0) {
+                        pullDistance = e.touches[0].clientY - startY;
+                        if (pullDistance > 80 && window.scrollY === 0) {
+                            $('.pull-to-refresh-hint').html('<i class="mdi mdi-loading mdi-spin"></i> Release to refresh');
+                        }
+                    }
+                });
+                
+                document.addEventListener('touchend', function(e) {
+                    if (pullDistance > 80 && window.scrollY === 0) {
+                        $('.pull-to-refresh-hint').html('<i class="mdi mdi-loading mdi-spin"></i> Refreshing...');
+                        table.replaceData();
+                        setTimeout(() => {
+                            $('.pull-to-refresh-hint').html('<i class="mdi mdi-chevron-down"></i> Pull down to refresh');
+                        }, 1000);
+                    }
+                    startY = 0;
+                    pullDistance = 0;
+                });
+            }
 
             // Initialize Tabulator
             var table = new Tabulator("#tasks-table", {
@@ -997,6 +1709,12 @@
                     console.log('Current User ID:', currentUserId);
                     console.log('Is Admin:', isAdmin);
                     console.log('==============================');
+                    
+                    // Render mobile view
+                    if (window.innerWidth < 768) {
+                        renderMobileTasks(response);
+                    }
+                    
                     return response;
                 },
                 rowFormatter: function(row) {
@@ -1460,6 +2178,12 @@
                 // Update statistics after filtering
                 setTimeout(function() {
                     updateStatistics();
+                    
+                    // Update mobile view
+                    if (window.innerWidth < 768) {
+                        const filteredData = table.getData('active');
+                        renderMobileTasks(filteredData);
+                    }
                 }, 100);
             }
 
@@ -1471,6 +2195,59 @@
             $('#filter-assignee').on('change', applyFilters);
             $('#filter-status').on('change', applyFilters);
             $('#filter-priority').on('change', applyFilters);
+            
+            // ==========================================
+            // MOBILE ACTION BUTTONS
+            // ==========================================
+            // Connect mobile buttons to desktop functionality
+            $('#upload-csv-btn-mobile').on('click', function() {
+                $('#upload-csv-btn').click();
+            });
+            
+            $('#bulk-actions-btn-mobile').on('click', function() {
+                $('#bulk-actions-btn').click();
+            });
+            
+            // ==========================================
+            // MOBILE QUICK FILTER CHIPS
+            // ==========================================
+            $('.quick-filter-chip').on('click', function() {
+                const filterType = $(this).data('filter');
+                
+                // Update active state
+                $('.quick-filter-chip').removeClass('active');
+                $(this).addClass('active');
+                
+                console.log('Quick filter:', filterType);
+                
+                // Apply filter
+                switch(filterType) {
+                    case 'all':
+                        $('#filter-status').val('').trigger('change');
+                        $('#filter-priority').val('').trigger('change');
+                        break;
+                    case 'pending':
+                        $('#filter-status').val('pending').trigger('change');
+                        break;
+                    case 'inprogress':
+                        $('#filter-status').val('in_progress').trigger('change');
+                        break;
+                    case 'done':
+                        $('#filter-status').val('done').trigger('change');
+                        break;
+                    case 'overdue':
+                        $('#filter-status').val('overdue').trigger('change');
+                        break;
+                    case 'high':
+                        $('#filter-priority').val('high').trigger('change');
+                        break;
+                }
+                
+                // Haptic feedback if available
+                if (navigator.vibrate) {
+                    navigator.vibrate(10);
+                }
+            });
 
             // Handle Row Selection
             table.on("rowSelectionChanged", function(data, rows) {
