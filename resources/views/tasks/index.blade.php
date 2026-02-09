@@ -1205,20 +1205,23 @@
                             <div class="quick-filter-chip active" data-filter="all">
                                 <i class="mdi mdi-view-list"></i> All
                             </div>
-                            <div class="quick-filter-chip" data-filter="pending">
-                                <i class="mdi mdi-clock-outline"></i> Pending
+                            <div class="quick-filter-chip" data-filter="Todo">
+                                <i class="mdi mdi-clock-outline"></i> Todo
                             </div>
-                            <div class="quick-filter-chip" data-filter="inprogress">
-                                <i class="mdi mdi-progress-clock"></i> In Progress
+                            <div class="quick-filter-chip" data-filter="Working">
+                                <i class="mdi mdi-progress-clock"></i> Working
                             </div>
-                            <div class="quick-filter-chip" data-filter="done">
+                            <div class="quick-filter-chip" data-filter="Done">
                                 <i class="mdi mdi-check-circle"></i> Done
                             </div>
-                            <div class="quick-filter-chip" data-filter="overdue">
-                                <i class="mdi mdi-alert-circle"></i> Overdue
+                            <div class="quick-filter-chip" data-filter="Need Help">
+                                <i class="mdi mdi-help-circle"></i> Need Help
+                            </div>
+                            <div class="quick-filter-chip" data-filter="Need Approval">
+                                <i class="mdi mdi-alert-circle"></i> Approval
                             </div>
                             <div class="quick-filter-chip" data-filter="high">
-                                <i class="mdi mdi-alert"></i> High Priority
+                                <i class="mdi mdi-alert"></i> High
                             </div>
                         </div>
 
@@ -1258,16 +1261,16 @@
                                 <label class="form-label fw-bold">Status</label>
                                 <select id="filter-status" class="form-select form-select-sm">
                                     <option value="">All</option>
-                                    <option value="pending">Todo</option>
-                                    <option value="in_progress">Working</option>
-                                    <option value="archived">Archived</option>
-                                    <option value="completed">Done</option>
-                                    <option value="need_help">Need Help</option>
-                                    <option value="need_approval">Need Approval</option>
-                                    <option value="dependent">Dependent</option>
-                                    <option value="approved">Approved</option>
-                                    <option value="hold">Hold</option>
-                                    <option value="cancelled">Cancelled</option>
+                                    <option value="Todo">Todo</option>
+                                    <option value="Working">Working</option>
+                                    <option value="Done">Done</option>
+                                    <option value="Archived">Archived</option>
+                                    <option value="Need Help">Need Help</option>
+                                    <option value="Need Approval">Need Approval</option>
+                                    <option value="Dependent">Dependent</option>
+                                    <option value="Approved">Approved</option>
+                                    <option value="Hold">Hold</option>
+                                    <option value="Cancelled">Cancelled</option>
                                 </select>
                             </div>
                             <div class="col-md-1 mb-2">
@@ -1708,6 +1711,17 @@
                     console.log('Tasks loaded:', response.length);
                     console.log('Current User ID:', currentUserId);
                     console.log('Is Admin:', isAdmin);
+                    
+                    // Debug: Show unique status values
+                    const uniqueStatuses = [...new Set(response.map(t => t.status))];
+                    console.log('📊 Unique status values in data:', uniqueStatuses);
+                    
+                    // Debug: Show first 3 tasks with status
+                    console.log('Sample tasks:', response.slice(0, 3).map(t => ({
+                        id: t.id,
+                        title: t.title?.substring(0, 30),
+                        status: t.status
+                    })));
                     console.log('==============================');
                     
                     // Render mobile view
@@ -2117,6 +2131,8 @@
 
             // Combined filter function (proper AND logic)
             function applyFilters() {
+                console.log('🔍 Applying filters...');
+                
                 // Clear existing filters first
                 table.clearFilter();
                 
@@ -2127,36 +2143,44 @@
                 var groupValue = $('#filter-group').val();
                 if (groupValue) {
                     filters.push({field:"group", type:"like", value:groupValue});
+                    console.log('Filter - Group:', groupValue);
                 }
                 
                 // Task filter
                 var taskValue = $('#filter-task').val();
                 if (taskValue) {
                     filters.push({field:"title", type:"like", value:taskValue});
+                    console.log('Filter - Task:', taskValue);
                 }
                 
                 // Assignor filter
                 var assignorValue = $('#filter-assignor').val();
                 if (assignorValue) {
                     filters.push({field:"assignor_name", type:"=", value:assignorValue});
+                    console.log('Filter - Assignor:', assignorValue);
                 }
                 
                 // Assignee filter
                 var assigneeValue = $('#filter-assignee').val();
                 if (assigneeValue) {
                     filters.push({field:"assignee_name", type:"=", value:assigneeValue});
+                    console.log('Filter - Assignee:', assigneeValue);
                 }
                 
-                // Status filter
+                // Status filter - Try case-insensitive
                 var statusValue = $('#filter-status').val();
                 if (statusValue) {
-                    filters.push({field:"status", type:"=", value:statusValue});
+                    // Try both exact match and like match
+                    filters.push({field:"status", type:"like", value:statusValue});
+                    console.log('✓ Filter - Status (like):', statusValue);
+                    console.log('Sample task statuses:', table.getData().slice(0, 3).map(t => t.status));
                 }
                 
                 // Priority filter
                 var priorityValue = $('#filter-priority').val();
                 if (priorityValue) {
                     filters.push({field:"priority", type:"=", value:priorityValue});
+                    console.log('Filter - Priority:', priorityValue);
                 }
                 
                 // Search filter (OR logic within search - add last)
@@ -2221,27 +2245,48 @@
                 console.log('Quick filter:', filterType);
                 
                 // Apply filter
+                console.log('🔍 Quick filter clicked:', filterType);
+                
                 switch(filterType) {
                     case 'all':
-                        $('#filter-status').val('').trigger('change');
-                        $('#filter-priority').val('').trigger('change');
+                        $('#filter-status').val('');
+                        $('#filter-priority').val('');
+                        console.log('✓ Showing all tasks');
                         break;
-                    case 'pending':
-                        $('#filter-status').val('pending').trigger('change');
+                    case 'Todo':
+                        $('#filter-status').val('Todo');
+                        $('#filter-priority').val('');
+                        console.log('✓ Filtering: Todo');
                         break;
-                    case 'inprogress':
-                        $('#filter-status').val('in_progress').trigger('change');
+                    case 'Working':
+                        $('#filter-status').val('Working');
+                        $('#filter-priority').val('');
+                        console.log('✓ Filtering: Working');
                         break;
-                    case 'done':
-                        $('#filter-status').val('done').trigger('change');
+                    case 'Done':
+                        $('#filter-status').val('Done');
+                        $('#filter-priority').val('');
+                        console.log('✓ Filtering: Done');
                         break;
-                    case 'overdue':
-                        $('#filter-status').val('overdue').trigger('change');
+                    case 'Need Help':
+                        $('#filter-status').val('Need Help');
+                        $('#filter-priority').val('');
+                        console.log('✓ Filtering: Need Help');
+                        break;
+                    case 'Need Approval':
+                        $('#filter-status').val('Need Approval');
+                        $('#filter-priority').val('');
+                        console.log('✓ Filtering: Need Approval');
                         break;
                     case 'high':
-                        $('#filter-priority').val('high').trigger('change');
+                        $('#filter-status').val('');
+                        $('#filter-priority').val('high');
+                        console.log('✓ Filtering: High Priority');
                         break;
                 }
+                
+                // Manually trigger applyFilters (don't trigger change to avoid recursion)
+                applyFilters();
                 
                 // Haptic feedback if available
                 if (navigator.vibrate) {
