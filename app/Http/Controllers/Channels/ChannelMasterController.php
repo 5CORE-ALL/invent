@@ -960,11 +960,11 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // Get metrics from marketplace_daily_metrics table (pre-calculated, 30 days of L30 data)
+        // Get metrics from marketplace_daily_metrics table (pre-calculated, 31 days of L30 data to match Amazon Seller Central)
         $metrics = MarketplaceDailyMetric::where('channel', 'Amazon')->latest('date')->first();
         
-        // Amazon shows 30 days of L30 data - L60 data disabled
-        // Set L60 values to 0 (no historical comparison beyond 30 days)
+        // Amazon shows 31 days of L30 data - L60 data disabled
+        // Set L60 values to 0 (no historical comparison beyond 31 days)
         $l60Orders = 0;
         $l60Sales = 0;
         
