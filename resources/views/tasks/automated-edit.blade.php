@@ -91,14 +91,14 @@
                                         <select class="form-select select2 @error('assignor_id') is-invalid @enderror" 
                                                 id="assignor_id" name="assignor_id">
                                             @foreach($users as $user)
-                                                <option value="{{ $user->id }}" {{ old('assignor_id', Auth::id()) == $user->id ? 'selected' : '' }}>
+                                                <option value="{{ $user->id }}" {{ old('assignor_id', $task->assignor_id) == $user->id ? 'selected' : '' }}>
                                                     {{ $user->name }}
                                                 </option>
                                             @endforeach
                                         </select>
                                     @else
                                         <input type="text" class="form-control" value="{{ Auth::user()->name }}" readonly>
-                                        <input type="hidden" name="assignor_id" value="{{ Auth::id() }}">
+                                        <input type="hidden" name="assignor_id" value="{{ $task->assignor_id }}">
                                     @endif
                                     @error('assignor_id')
                                         <div class="invalid-feedback">{{ $message }}</div>
@@ -110,7 +110,7 @@
                                             id="assignee_id" name="assignee_id">
                                         <option value="">Please Select</option>
                                         @foreach($users as $user)
-                                            <option value="{{ $user->id }}" {{ old('assignee_id') == $user->id ? 'selected' : '' }}>
+                                            <option value="{{ $user->id }}" {{ old('assignee_id', $task->assignee_id) == $user->id ? 'selected' : '' }}>
                                                 {{ $user->name }}
                                             </option>
                                         @endforeach
@@ -153,7 +153,7 @@
                                 <div class="col-md-6 mb-3">
                                     <label for="etc_minutes" class="form-label">ETC (Min) <span class="text-danger">*</span></label>
                                     <input type="number" class="form-control @error('etc_minutes') is-invalid @enderror" 
-                                           id="etc_minutes" name="etc_minutes" placeholder="10" value="{{ old('etc_minutes', 10) }}">
+                                           id="etc_minutes" name="etc_minutes" placeholder="10" value="{{ old('etc_minutes', $task->etc_minutes) }}">
                                     @error('etc_minutes')
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror
@@ -162,7 +162,7 @@
                                 <div class="col-md-6 mb-3">
                                     <label for="tid" class="form-label">TID (Task Initiation Date) <span class="text-danger">*</span></label>
                                     <input type="datetime-local" class="form-control @error('tid') is-invalid @enderror" 
-                                           id="tid" name="tid" value="{{ old('tid', now()->format('Y-m-d\TH:i')) }}">
+                                           id="tid" name="tid" value="{{ old('tid', $task->tid ? \Carbon\Carbon::parse($task->tid)->format('Y-m-d\TH:i') : now()->format('Y-m-d\TH:i')) }}">
                                     @error('tid')
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror
@@ -173,7 +173,7 @@
                                 <div class="col-md-4 mb-3">
                                     <label for="l1" class="form-label">L1</label>
                                     <input type="text" class="form-control @error('l1') is-invalid @enderror" 
-                                           id="l1" name="l1" placeholder="Enter L1" value="{{ old('l1') }}">
+                                           id="l1" name="l1" placeholder="Enter L1" value="{{ old('l1', $task->l1) }}">
                                     @error('l1')
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror
@@ -182,7 +182,7 @@
                                 <div class="col-md-4 mb-3">
                                     <label for="l2" class="form-label">L2</label>
                                     <input type="text" class="form-control @error('l2') is-invalid @enderror" 
-                                           id="l2" name="l2" placeholder="Enter L2" value="{{ old('l2') }}">
+                                           id="l2" name="l2" placeholder="Enter L2" value="{{ old('l2', $task->l2) }}">
                                     @error('l2')
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror
@@ -191,7 +191,7 @@
                                 <div class="col-md-4 mb-3">
                                     <label for="training_link" class="form-label">Training Link</label>
                                     <input type="text" class="form-control @error('training_link') is-invalid @enderror" 
-                                           id="training_link" name="training_link" placeholder="Enter training Note" value="{{ old('training_link') }}">
+                                           id="training_link" name="training_link" placeholder="Enter training Note" value="{{ old('training_link', $task->training_link) }}">
                                     @error('training_link')
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror
@@ -202,7 +202,7 @@
                                 <div class="col-md-4 mb-3">
                                     <label for="video_link" class="form-label">Video Link</label>
                                     <input type="text" class="form-control @error('video_link') is-invalid @enderror" 
-                                           id="video_link" name="video_link" placeholder="Enter video Note" value="{{ old('video_link') }}">
+                                           id="video_link" name="video_link" placeholder="Enter video Note" value="{{ old('video_link', $task->video_link) }}">
                                     @error('video_link')
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror
@@ -211,7 +211,7 @@
                                 <div class="col-md-4 mb-3">
                                     <label for="form_link" class="form-label">Form Link</label>
                                     <input type="text" class="form-control @error('form_link') is-invalid @enderror" 
-                                           id="form_link" name="form_link" placeholder="Enter form Note" value="{{ old('form_link') }}">
+                                           id="form_link" name="form_link" placeholder="Enter form Note" value="{{ old('form_link', $task->form_link) }}">
                                     @error('form_link')
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror
@@ -220,7 +220,7 @@
                                 <div class="col-md-4 mb-3">
                                     <label for="form_report_link" class="form-label">Form Report Link</label>
                                     <input type="text" class="form-control @error('form_report_link') is-invalid @enderror" 
-                                           id="form_report_link" name="form_report_link" placeholder="Enter form Note" value="{{ old('form_report_link') }}">
+                                           id="form_report_link" name="form_report_link" placeholder="Enter form Note" value="{{ old('form_report_link', $task->form_report_link) }}">
                                     @error('form_report_link')
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror
@@ -231,7 +231,7 @@
                                 <div class="col-md-4 mb-3">
                                     <label for="checklist_link" class="form-label">Checklist Link</label>
                                     <input type="text" class="form-control @error('checklist_link') is-invalid @enderror" 
-                                           id="checklist_link" name="checklist_link" placeholder="Enter checklist link" value="{{ old('checklist_link') }}">
+                                           id="checklist_link" name="checklist_link" placeholder="Enter checklist link" value="{{ old('checklist_link', $task->checklist_link) }}">
                                     @error('checklist_link')
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror
@@ -240,7 +240,7 @@
                                 <div class="col-md-4 mb-3">
                                     <label for="pl" class="form-label">PL</label>
                                     <input type="text" class="form-control @error('pl') is-invalid @enderror" 
-                                           id="pl" name="pl" placeholder="Enter PL link" value="{{ old('pl') }}">
+                                           id="pl" name="pl" placeholder="Enter PL link" value="{{ old('pl', $task->pl) }}">
                                     @error('pl')
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror
@@ -249,7 +249,7 @@
                                 <div class="col-md-4 mb-3">
                                     <label for="process" class="form-label">PROCESS</label>
                                     <input type="text" class="form-control @error('process') is-invalid @enderror" 
-                                           id="process" name="process" placeholder="Enter form Note" value="{{ old('process') }}">
+                                           id="process" name="process" placeholder="Enter form Note" value="{{ old('process', $task->process) }}">
                                     @error('process')
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror
@@ -261,7 +261,7 @@
                                     <label for="description" class="form-label">Description</label>
                                     <textarea class="form-control @error('description') is-invalid @enderror" 
                                               id="description" name="description" rows="3" 
-                                              placeholder="Enter Description">{{ old('description') }}</textarea>
+                                              placeholder="Enter Description">{{ old('description', $task->description) }}</textarea>
                                     @error('description')
                                         <div class="invalid-feedback">{{ $message }}</div>
                                     @enderror
@@ -374,10 +374,26 @@
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
         $(document).ready(function() {
-            $('.select2').select2({
+            // Initialize Select2
+            $('#assignor_id').select2({
                 theme: 'bootstrap-5',
                 placeholder: 'Please Select'
             });
+            
+            $('#assignee_id').select2({
+                theme: 'bootstrap-5',
+                placeholder: 'Please Select',
+                allowClear: true
+            });
+
+            // Ensure the selected values are preserved
+            @if(isset($task->assignor_id) && $task->assignor_id)
+                $('#assignor_id').val('{{ $task->assignor_id }}').trigger('change');
+            @endif
+
+            @if(isset($task->assignee_id) && $task->assignee_id)
+                $('#assignee_id').val('{{ $task->assignee_id }}').trigger('change');
+            @endif
 
             var selectedDays = [];
             var selectedDates = [];

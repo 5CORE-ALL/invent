@@ -942,13 +942,64 @@ class TaskController extends Controller
 
     public function automatedEdit($id)
     {
-        $task = \DB::table('automate_tasks')->where('id', $id)->first();
+        $taskModel = \DB::table('automate_tasks')->where('id', $id)->first();
         
-        if (!$task) {
+        if (!$taskModel) {
             return redirect()->route('tasks.automated')->with('error', 'Automated task not found');
         }
         
         $users = User::all();
+        
+        // Create a data object with all mapped fields for the form
+        $task = (object)[
+            'id' => $taskModel->id,
+            'title' => $taskModel->title,
+            'description' => $taskModel->description,
+            'group' => $taskModel->group,
+            'priority' => $taskModel->priority,
+            'assignor_id' => null,
+            'assignee_id' => null,
+            'split_tasks' => $taskModel->split_tasks,
+            'flag_raise' => $taskModel->flag_raise ?? 0,
+            'etc_minutes' => $taskModel->eta_time ?? 10,
+            'tid' => $taskModel->start_date,
+            'l1' => $taskModel->link1 ?? '',
+            'l2' => $taskModel->link2 ?? '',
+            'training_link' => $taskModel->link3 ?? '',
+            'video_link' => $taskModel->link4 ?? '',
+            'form_link' => $taskModel->link5 ?? '',
+            'form_report_link' => $taskModel->link6 ?? '',
+            'checklist_link' => $taskModel->link7 ?? '',
+            'pl' => $taskModel->link8 ?? '',
+            'process' => $taskModel->link9 ?? '',
+            'image' => $taskModel->image ?? null,
+            'assignor' => $taskModel->assignor,
+            'assign_to' => $taskModel->assign_to,
+            'schedule_type' => $taskModel->schedule_type ?? 'daily',
+            'schedule_days' => $taskModel->schedule_days ?? '',
+            'schedule_time' => $taskModel->schedule_time ?? '12:01',
+        ];
+        
+        // Map email addresses to user IDs for the form
+        if ($taskModel->assignor) {
+            $assignorEmail = trim($taskModel->assignor);
+            $assignorUser = User::where('email', $assignorEmail)->first();
+            $task->assignor_id = $assignorUser ? $assignorUser->id : null;
+        }
+        
+        if ($taskModel->assign_to) {
+            $assignToEmail = trim($taskModel->assign_to);
+            
+            // If there are multiple emails, take the first one
+            if (strpos($assignToEmail, ',') !== false) {
+                $emails = array_map('trim', explode(',', $assignToEmail));
+                $assignToEmail = $emails[0];
+            }
+            
+            $assigneeUser = User::where('email', $assignToEmail)->first();
+            $task->assignee_id = $assigneeUser ? $assigneeUser->id : null;
+        }
+        
         return view('tasks.automated-edit', compact('task', 'users'));
     }
 
