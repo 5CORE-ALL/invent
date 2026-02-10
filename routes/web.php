@@ -3004,4 +3004,21 @@ Route::prefix('shopify/meta-campaigns')->middleware(['auth'])->group(function ()
     Route::post('/fetch', [\App\Http\Controllers\ShopifyMetaCampaignController::class, 'fetch'])->name('shopify.meta.campaigns.fetch');
 });
 
+// AI Chat (authenticated users only)
+Route::prefix('ai')->middleware(['auth'])->group(function () {
+    Route::post('/chat', [\App\Http\Controllers\AiChatController::class, 'chat'])->name('ai.chat');
+    Route::post('/feedback', [\App\Http\Controllers\AiChatController::class, 'feedback'])->name('ai.feedback');
+});
+
+// Internal AI Knowledge Assistant - Admin panel
+Route::prefix('ai-admin')->middleware(['auth', 'isAdmin'])->name('ai.admin.')->group(function () {
+    Route::get('/', [\App\Http\Controllers\Ai\AiAdminController::class, 'index'])->name('index');
+    Route::get('/escalations', [\App\Http\Controllers\Ai\AiAdminController::class, 'escalations'])->name('escalations');
+    Route::post('/escalations/{id}/answer', [\App\Http\Controllers\Ai\AiAdminController::class, 'answerEscalation'])->name('escalations.answer');
+    Route::get('/knowledge', [\App\Http\Controllers\Ai\AiAdminController::class, 'knowledge'])->name('knowledge');
+    Route::post('/knowledge/upload', [\App\Http\Controllers\Ai\AiAdminController::class, 'uploadKnowledge'])->name('knowledge.upload');
+    Route::post('/reindex-website', [\App\Http\Controllers\Ai\AiAdminController::class, 'reindexWebsite'])->name('reindex-website');
+    Route::get('/analytics', [\App\Http\Controllers\Ai\AiAdminController::class, 'analytics'])->name('analytics');
+});
+
 // AI Title Manager Routes
