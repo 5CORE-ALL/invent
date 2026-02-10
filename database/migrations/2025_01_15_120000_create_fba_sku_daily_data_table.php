@@ -11,18 +11,17 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('fba_sku_daily_data', function (Blueprint $table) {
-            $table->id();
-            $table->string('sku', 255);
-            $table->date('record_date');
-            $table->json('daily_data'); // JSON format for all metrics
-            $table->timestamps();
-            
-            $table->index('sku');
-            $table->index('record_date');
-            $table->unique(['sku', 'record_date']);
-        });
+        if (!Schema::hasTable('fba_sku_daily_data')) {
+            Schema::create('fba_sku_daily_data', function (Blueprint $table) {
+                $table->id();
+                $table->string('sku');
+                $table->date('record_date');
+                $table->json('daily_data');
+                $table->timestamps();
+            });
+        }
     }
+    
 
     /**
      * Reverse the migrations.

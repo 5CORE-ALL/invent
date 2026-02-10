@@ -11,18 +11,19 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('amazon_sku_daily_data', function (Blueprint $table) {
-            $table->id();
-            $table->string('sku', 255);
-            $table->date('record_date');
-            $table->json('daily_data'); // JSON format for all metrics
-            $table->timestamps();
-            
-            $table->index('sku');
-            $table->index('record_date');
-            $table->unique(['sku', 'record_date']);
-        });
+        if (!Schema::hasTable('amazon_sku_daily_data')) {
+            Schema::create('amazon_sku_daily_data', function (Blueprint $table) {
+                $table->id();
+                $table->string('sku');
+                $table->date('record_date');
+                $table->json('daily_data');
+                $table->timestamps();
+    
+                $table->unique(['sku', 'record_date']);
+            });
+        }
     }
+    
 
     /** 
      * Reverse the migrations.

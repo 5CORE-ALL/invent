@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<html lang="en" data-layout="topnav" data-menu-color="{{ $menuColor ?? 'light' }}" data-topbar-color="{{ $topbarColor ?? 'light' }}">
+<html lang="en" data-layout="topnav" data-menu-color="{{ $menuColor ?? 'light' }}"
+    data-topbar-color="{{ $topbarColor ?? 'light' }}">
 
 <head>
     @include('layouts.shared/title-meta', ['title' => $title])
@@ -39,6 +40,8 @@
     @include('layouts.shared/footer-scripts')
 
     @vite(['resources/js/layout.js', 'resources/js/main.js'])
+
+    @include('components.ai-chat-widget')
 
 </body>
 

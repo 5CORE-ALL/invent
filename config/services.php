@@ -98,6 +98,15 @@ return [
         'key' => env('SERPAPI_KEY'),
     ],
 
+    'openai' => [
+        'key' => env('OPENAI_API_KEY'),
+    ],
+    
+    'anthropic' => [
+    'key' => env('ANTHROPIC_API_KEY'),
+    ],
+
+
     /*
     | Task Manager WhatsApp (Gupshup). Two modes:
     | 1) Wa/Sm API: GUPSHUP_API_KEY + GUPSHUP_SOURCE (+ GUPSHUP_SRC_NAME). Endpoint: wa/api/v1/msg.
