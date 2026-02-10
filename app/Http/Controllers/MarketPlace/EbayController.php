@@ -2003,19 +2003,15 @@ class EbayController extends Controller
     public function getKwPmtSpendTotals()
     {
         try {
-            $thirtyDaysAgo = \Carbon\Carbon::now()->subDays(30);
-
-            // KW Spend: From ebay_priority_reports (L30 range)
+            // KW Spend: From ebay_priority_reports (L30 range - 31 day aggregated from eBay API)
             $kwSpend = DB::table('ebay_priority_reports')
                 ->where('report_range', 'L30')
-                ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
                 ->selectRaw('SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")) as total_spend')
                 ->value('total_spend') ?? 0;
 
-            // PMT Spend: From ebay_general_reports (L30 range)
+            // PMT Spend: From ebay_general_reports (L30 range - 31 day aggregated from eBay API)
             $pmtSpend = DB::table('ebay_general_reports')
                 ->where('report_range', 'L30')
-                ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
                 ->selectRaw('SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")) as total_spend')
                 ->value('total_spend') ?? 0;
 
