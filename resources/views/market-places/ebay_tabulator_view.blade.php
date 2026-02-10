@@ -141,39 +141,7 @@
             background-color: #e83e8c;
         }
 
-        .acos-info-icon {
-            transition: color 0.2s;
-        }
 
-        .acos-info-icon:hover {
-            color: #007bff !important;
-        }
-
-        #campaignModal .table {
-            font-size: 0.875rem;
-        }
-
-        #campaignModal .table th {
-            background-color: #f8f9fa;
-            font-weight: 600;
-            white-space: nowrap;
-            writing-mode: vertical-rl;
-            text-orientation: mixed;
-            transform: rotate(180deg);
-            height: 60px;
-            width: 40px;
-            min-width: 40px;
-            font-size: 11px;
-            vertical-align: middle;
-            text-align: center;
-            padding: 5px;
-        }
-
-        #campaignModal .table td {
-            white-space: nowrap;
-            vertical-align: middle;
-            text-align: center;
-        }
 
         .green-bg {
             color: #05bd30 !important;
@@ -743,23 +711,6 @@
         </div>
     </div>
 
-    <!-- Campaign Details Modal (ACOS info icon) -->
-    <div class="modal fade" id="campaignModal" tabindex="-1" aria-labelledby="campaignModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-xl">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="campaignModalLabel">Campaign Details</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body" id="campaignModalBody">
-                    <!-- Content loaded via JS -->
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                </div>
-            </div>
-        </div>
-    </div>
 @endsection
 
     @section('script-bottom')
@@ -2660,15 +2611,13 @@
                             const rowData = cell.getRow().getData();
                             const kwSpend = parseFloat(rowData['kw_spend_L30'] || 0);
                             const adPercent = parseFloat(value || 0);
-                            const sku = rowData["(Child) sku"] || rowData.SKU || rowData.sku || '';
-                            const iconHtml = sku ? ` <i class="fas fa-info-circle acos-info-icon" style="cursor: pointer; color: #6c757d; margin-left: 5px;" data-sku="${sku}" title="View Campaign Details"></i>` : '';
                             
                             // If KW ads spend > 0 but AD% is 0, show red alert
                             if (kwSpend > 0 && adPercent === 0) {
-                                return `<span style="color: #dc3545; font-weight: 600;">100%</span>${iconHtml}`;
+                                return `<span style="color: #dc3545; font-weight: 600;">100%</span>`;
                             }
                             
-                            return `${parseFloat(value).toFixed(0)}%${iconHtml}`;
+                            return `${parseFloat(value).toFixed(0)}%`;
                         },
                         width: 70
                     },
@@ -3598,7 +3547,203 @@
                     //         cell.setValue(!currentValue);
                     //     },
                     //     width: 100
-                    // }
+                    // },
+
+                    // === PMT Ads Columns ===
+                    {
+                        title: "PMT CBID",
+                        field: "pmt_cbid",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var val = cell.getRow().getData().bid_percentage;
+                            if (val === null || val === undefined || val === '') return '-';
+                            return parseFloat(val).toFixed(2);
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "PMT ES BID",
+                        field: "pmt_es_bid",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var val = cell.getRow().getData().suggested_bid;
+                            if (val === null || val === undefined || val === '') return '-';
+                            return parseFloat(val).toFixed(2);
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "PMT S BID",
+                        field: "pmt_s_bid",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var rd = cell.getRow().getData();
+                            var l7 = parseInt(rd.l7_views) || 0;
+                            var es = parseFloat(rd.suggested_bid) || 0;
+                            var v;
+                            if (l7 >= 0 && l7 < 50) v = es;
+                            else if (l7 >= 50 && l7 < 100) v = 9;
+                            else if (l7 >= 100 && l7 < 150) v = 8;
+                            else if (l7 >= 150 && l7 < 200) v = 7;
+                            else if (l7 >= 200 && l7 < 250) v = 6;
+                            else if (l7 >= 250 && l7 < 300) v = 5;
+                            else if (l7 >= 300 && l7 < 350) v = 4;
+                            else if (l7 >= 350 && l7 < 400) v = 3;
+                            else if (l7 >= 400) v = 2;
+                            else v = es;
+                            v = Math.min(v, 15);
+                            return v > 0 ? v.toFixed(2) : '-';
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "PMT T Views",
+                        field: "pmt_t_views",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var val = cell.getRow().getData().views;
+                            return val ? parseInt(val).toLocaleString() : '0';
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "PMT L7 Views",
+                        field: "pmt_l7_views",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var val = cell.getRow().getData().l7_views;
+                            return val ? parseInt(val).toLocaleString() : '0';
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "PMT SCVR",
+                        field: "pmt_scvr",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var rd = cell.getRow().getData();
+                            var views = parseFloat(rd.views) || 0;
+                            var ebayL30 = parseFloat(rd['eBay L30']) || 0;
+                            if (views <= 0) return '0.00%';
+                            var scvr = (ebayL30 / views) * 100;
+                            var color = '#6c757d';
+                            if (scvr <= 4) color = 'red';
+                            else if (scvr > 4 && scvr <= 7) color = '#daa520';
+                            else if (scvr > 7 && scvr <= 10) color = 'green';
+                            else color = '#E83E8C';
+                            return '<span style="color:' + color + '; font-weight: 600;">' + scvr.toFixed(2) + '%</span>';
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "PMT ClkL7",
+                        field: "pmt_clicks_l7",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var val = cell.getValue();
+                            return val ? parseInt(val).toLocaleString() : '0';
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "PMT Clk30",
+                        field: "pmt_clicks_l30",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var val = cell.getValue();
+                            return val ? parseInt(val).toLocaleString() : '0';
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "PMT PFT",
+                        field: "pmt_pft",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var rd = cell.getRow().getData();
+                            // Use GPFT% (same as PMP Ads page PFT - no AD% subtraction)
+                            var gpft = parseFloat(rd['GPFT%']) || 0;
+                            var val = gpft / 100; // Convert to decimal
+                            var color = val >= 0 ? '#198754' : '#dc3545';
+                            return '<span style="color:' + color + '">' + (val * 100).toFixed(2) + '%</span>';
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "PMT ROI",
+                        field: "pmt_roi",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var rd = cell.getRow().getData();
+                            var roi = parseFloat(rd['ROI%']) || 0;
+                            var color = roi >= 0 ? '#198754' : '#dc3545';
+                            return '<span style="color:' + color + '">' + Math.round(roi) + '%</span>';
+                        },
+                        width: 70
+                    },
+                    {
+                        title: "PMT TPFT%",
+                        field: "pmt_tpft",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var rd = cell.getRow().getData();
+                            // TPFT = GPFT_decimal + (ad_updates/100) - bid_percentage (matching PMP Ads formula)
+                            var gpft = parseFloat(rd['GPFT%']) || 0;
+                            var adUpdates = parseFloat(rd.ad_updates) || 0;
+                            var cbid = parseFloat(rd.bid_percentage) || 0;
+                            var tpft = (gpft / 100) + (adUpdates / 100) - cbid;
+                            var color = tpft >= 0 ? '#198754' : '#dc3545';
+                            return '<span style="color:' + color + '">' + tpft.toFixed(2) + '</span>';
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "PMT TROI%",
+                        field: "pmt_troi",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var rd = cell.getRow().getData();
+                            var roi = parseFloat(rd['ROI%']) || 0;
+                            var adUpdates = parseFloat(rd.ad_updates) || 0;
+                            var cbid = parseFloat(rd.bid_percentage) || 0;
+                            var troi = (roi / 100) + (adUpdates / 100) - cbid;
+                            var color = troi >= 0 ? '#198754' : '#dc3545';
+                            return '<span style="color:' + color + '">' + troi.toFixed(2) + '</span>';
+                        },
+                        width: 80
+                    },
+                    {
+                        title: "PMT NRL",
+                        field: "pmt_nrl",
+                        hozAlign: "center",
+                        visible: false,
+                        formatter: function(cell) {
+                            var sku = cell.getRow().getData()['(Child) sku'];
+                            var value = cell.getRow().getData().NRL || 'REQ';
+                            var bgColor = value === 'NRL' ? '#dc3545' : '#28a745';
+                            var label = value === 'NRL' ? 'NRL' : 'REQ';
+                            return `<select class="form-select form-select-sm pmt-nrl-dropdown" 
+                                        data-sku="${sku}" data-field="NRL"
+                                        style="min-width: 70px; background-color: ${bgColor}; color: #fff; padding: 2px 4px; font-size: 11px; border: none; border-radius: 4px;">
+                                    <option value="REQ" ${value === 'REQ' ? 'selected' : ''}>REQ</option>
+                                    <option value="NRL" ${value === 'NRL' ? 'selected' : ''}>NRL</option>
+                                    </select>`;
+                        },
+                        cellClick: function(e, cell) { e.stopPropagation(); },
+                        width: 80
+                    }
                 ]
             });
 
@@ -3683,6 +3828,35 @@
                                         data: JSON.stringify({ sku: sku, field: 'NR', value: 'NRA' })
                                     });
                                 }
+                            }
+                        }
+                    },
+                    error: function(xhr) {
+                        showToast('error', 'Failed to save NRL');
+                    }
+                });
+            });
+
+            // PMT NRL dropdown change handler
+            $(document).on('change', '.pmt-nrl-dropdown', function() {
+                var $select = $(this);
+                var sku = $select.data('sku');
+                var value = $select.val();
+                var bgColor = value === 'NRL' ? '#dc3545' : '#28a745';
+                $select.css({ 'background-color': bgColor, 'color': '#fff' });
+
+                $.ajax({
+                    url: '/update-ebay-nr-data',
+                    method: 'POST',
+                    contentType: 'application/json',
+                    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
+                    data: JSON.stringify({ sku: sku, field: 'NRL', value: value }),
+                    success: function(response) {
+                        if (response.success) {
+                            showToast('success', 'NRL updated');
+                            var rows = table.searchRows('(Child) sku', '=', sku);
+                            if (rows.length > 0) {
+                                rows[0].update({ NRL: value });
                             }
                         }
                     },
@@ -4624,6 +4798,12 @@
                 'kw_spend_L30', 'kw_ad_sold', 'kw_l7_spend', 'kw_l1_spend', 'kw_l7_cpc', 'kw_l1_cpc',
                 'kw_last_sbid', 'kw_sbid_calc', 'kw_sbid_m', 'kw_apr_bid', 'kw_campaignStatus'
             ];
+            // Columns that are ONLY in PMT Ads section
+            var pmtAdsOnlyColumns = [
+                'pmt_cbid', 'pmt_es_bid', 'pmt_s_bid', 'pmt_t_views', 'pmt_l7_views',
+                'pmt_scvr', 'pmt_clicks_l7', 'pmt_clicks_l30',
+                'pmt_pft', 'pmt_roi', 'pmt_tpft', 'pmt_troi', 'pmt_nrl'
+            ];
             // Columns shared between sections (shown in both pricing and KW Ads)
             var sharedColumns = [
                 '_select', 'INV', 'L30', 'E Dil%', 'eBay Price', 'eBay L30', 'views'
@@ -4633,8 +4813,11 @@
                 var sectionVal = $(this).val();
 
                 if (sectionVal === 'all' || sectionVal === 'pricing') {
-                    // Show pricing columns, hide KW-only columns
+                    // Show pricing columns, hide KW-only and PMT-only columns
                     kwAdsOnlyColumns.forEach(function(col) {
+                        try { table.hideColumn(col); } catch(e) {}
+                    });
+                    pmtAdsOnlyColumns.forEach(function(col) {
                         try { table.hideColumn(col); } catch(e) {}
                     });
                     pricingOnlyColumns.forEach(function(col) {
@@ -4649,11 +4832,13 @@
                     $('.kw-ads-filter-item').hide();
                     $('.pricing-filter-item').css('display', '');
                     $('#summary-stats').show();
-                    // Re-apply filters (to remove KW-specific filters)
                     applyFilters();
                 } else if (sectionVal === 'kw_ads') {
-                    // Hide pricing-only columns, show KW Ads columns
+                    // Hide pricing-only and PMT-only columns, show KW Ads columns
                     pricingOnlyColumns.forEach(function(col) {
+                        try { table.hideColumn(col); } catch(e) {}
+                    });
+                    pmtAdsOnlyColumns.forEach(function(col) {
                         try { table.hideColumn(col); } catch(e) {}
                     });
                     kwAdsOnlyColumns.forEach(function(col) {
@@ -4668,15 +4853,17 @@
                     $('.kw-ads-filter-item').css('display', 'inline-block');
                     $('.pricing-filter-item').hide();
                     $('#summary-stats').hide();
-                    // Apply filters including KW-specific ones
                     applyFilters();
                     updateKwAdsStats();
                 } else if (sectionVal === 'pmt_ads') {
-                    // For now PMT Ads shows same as pricing (can be expanded later)
+                    // Hide pricing-only and KW-only columns, show PMT Ads columns
+                    pricingOnlyColumns.forEach(function(col) {
+                        try { table.hideColumn(col); } catch(e) {}
+                    });
                     kwAdsOnlyColumns.forEach(function(col) {
                         try { table.hideColumn(col); } catch(e) {}
                     });
-                    pricingOnlyColumns.forEach(function(col) {
+                    pmtAdsOnlyColumns.forEach(function(col) {
                         try { table.showColumn(col); } catch(e) {}
                     });
                     sharedColumns.forEach(function(col) {
@@ -4686,9 +4873,8 @@
                     $('#kw-ads-stats').hide();
                     $('#kw-ads-range-section').hide();
                     $('.kw-ads-filter-item').hide();
-                    $('.pricing-filter-item').css('display', '');
-                    $('#summary-stats').show();
-                    // Re-apply filters (to remove KW-specific filters)
+                    $('.pricing-filter-item').hide();
+                    $('#summary-stats').hide();
                     applyFilters();
                 }
             });
@@ -5733,129 +5919,6 @@
             });
         });
 
-        // ACOS Info Icon Click Handler – show KW/PMT campaign modal
-        $(document).on('click', '.acos-info-icon', function(e) {
-            e.stopPropagation();
-            const sku = $(this).data('sku');
-            if (!sku) {
-                showToast('error', 'SKU not found');
-                return;
-            }
-            $('#campaignModalLabel').text('Campaign Details - ' + sku);
-            $('#campaignModalBody').html('<div class="text-center"><i class="fa fa-spinner fa-spin"></i> Loading...</div>');
-            $('#campaignModal').modal('show');
-
-            $.ajax({
-                url: '/ebay-campaign-data-by-sku',
-                type: 'GET',
-                data: { sku: sku },
-                headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') },
-                success: function(response) {
-                    function getAcosColorClass(acos) {
-                        if (acos === 0) return '';
-                        if (acos < 7) return 'pink-bg';
-                        if (acos >= 7 && acos <= 14) return 'green-bg';
-                        if (acos > 14) return 'red-bg';
-                        return '';
-                    }
-                    function fmt(val, decimals) {
-                        if (val == null || val === '' || (typeof val === 'number' && isNaN(val))) return '-';
-                        return Number(val).toFixed(decimals || 0);
-                    }
-                    function fmtPct(val) {
-                        if (val == null || val === '' || (typeof val === 'number' && isNaN(val))) return '-';
-                        return Number(val).toFixed(0) + '%';
-                    }
-                    function fmtBid(val) {
-                        if (val == null || val === '' || val === '0') return '-';
-                        const n = parseFloat(val);
-                        return (n > 0) ? n.toFixed(2) : '-';
-                    }
-                    function getUbColorClass(ub) {
-                        if (ub == null || ub === '' || (typeof ub === 'number' && isNaN(ub))) return '';
-                        const n = parseFloat(ub);
-                        if (n >= 66 && n <= 99) return 'green-bg';
-                        if (n > 99) return 'pink-bg';
-                        return 'red-bg';
-                    }
-
-                    let html = '';
-
-                    if (response.kw_campaigns && response.kw_campaigns.length > 0) {
-                        response.kw_campaigns.forEach(function(c) {
-                            const acos = parseFloat(c.acos || 0);
-                            html += '<h5 class="mb-3">KW Campaign - ' + (c.campaign_name || 'N/A') + '</h5>';
-                            html += '<div class="table-responsive mb-4"><table class="table table-bordered table-sm">';
-                            html += '<thead><tr><th>BGT</th><th>SBGT</th><th>ACOS</th><th>Clicks</th><th>Ad Spend</th><th>Ad Sales</th><th>Ad Sold</th>';
-                            html += '<th>AD CVR</th><th>7UB%</th><th>1UB%</th><th>L7CPC</th><th>L1CPC</th><th>L BID</th><th>SBID</th></tr></thead><tbody><tr>';
-                            html += '<td>' + fmt(c.bgt, 0) + '</td><td>' + fmt(c.sbgt, 0) + '</td>';
-                            html += '<td class="' + getAcosColorClass(acos) + '">' + fmtPct(acos) + '</td>';
-                            html += '<td>' + fmt(c.clicks) + '</td><td>' + fmt(c.ad_spend, 2) + '</td><td>' + fmt(c.ad_sales, 2) + '</td><td>' + fmt(c.ad_sold) + '</td>';
-                            html += '<td>' + fmtPct(c.ad_cvr) + '</td>';
-                            html += '<td class="' + getUbColorClass(c['7ub']) + '">' + (c['7ub'] != null ? fmtPct(c['7ub']) : '-') + '</td>';
-                            html += '<td class="' + getUbColorClass(c['1ub']) + '">' + (c['1ub'] != null ? fmtPct(c['1ub']) : '-') + '</td>';
-                            html += '<td>' + (c.l7cpc != null && !isNaN(c.l7cpc) ? fmt(c.l7cpc, 2) : '-') + '</td><td>' + (c.l1cpc != null && !isNaN(c.l1cpc) ? fmt(c.l1cpc, 2) : '-') + '</td>';
-                            html += '<td>' + fmtBid(c.l_bid) + '</td><td>' + (c.sbid != null && c.sbid > 0 ? fmt(c.sbid, 2) : '-') + '</td>';
-                            html += '</tr></tbody></table></div>';
-                        });
-                    } else {
-                        html += '<h5 class="mb-3">KW Campaigns</h5><p class="text-muted">No KW campaigns found</p>';
-                    }
-
-                    function calcSbid(l7Views, esBid) {
-                        const l7 = Number(l7Views || 0) || 0;
-                        const es = parseFloat(esBid) || 0;
-                        let v;
-                        if (l7 >= 0 && l7 < 50) v = es;
-                        else if (l7 >= 50 && l7 < 100) v = 9;
-                        else if (l7 >= 100 && l7 < 150) v = 8;
-                        else if (l7 >= 150 && l7 < 200) v = 7;
-                        else if (l7 >= 200 && l7 < 250) v = 6;
-                        else if (l7 >= 250 && l7 < 300) v = 5;
-                        else if (l7 >= 300 && l7 < 350) v = 4;
-                        else if (l7 >= 350 && l7 < 400) v = 3;
-                        else if (l7 >= 400) v = 2;
-                        else v = es;
-                        return Math.min(v, 15);
-                    }
-                    // SCVR coloring – same rule as ebay/pmp/ads getCvrColor
-                    function getScvrColor(scvr) {
-                        if (scvr == null || scvr === '' || (typeof scvr === 'number' && isNaN(scvr))) return '#6c757d';
-                        const percent = parseFloat(scvr);
-                        if (percent <= 4) return 'red';
-                        if (percent > 4 && percent <= 7) return 'yellow';
-                        if (percent > 7 && percent <= 10) return 'green';
-                        return '#E83E8C';
-                    }
-                    if (response.pt_campaigns && response.pt_campaigns.length > 0) {
-                        response.pt_campaigns.forEach(function(c) {
-                            const sBid = calcSbid(c.l7_views, c.es_bid);
-                            const scvrVal = c.scvr != null ? parseFloat(c.scvr) : null;
-                            const scvrHtml = scvrVal != null && !isNaN(scvrVal)
-                                ? '<span style="color:' + getScvrColor(scvrVal) + '; font-weight: 600;">' + fmt(scvrVal, 1) + '%</span>'
-                                : '-';
-                            html += '<h5 class="mb-3">PMT Campaign - ' + (c.campaign_name || 'N/A') + '</h5>';
-                            html += '<div class="table-responsive mb-4"><table class="table table-bordered table-sm">';
-                            html += '<thead><tr><th>CBID</th><th>ES BID</th><th>S BID</th><th>T VIEWS</th><th>L7 VIEWS</th><th>SCVR</th></tr></thead><tbody><tr>';
-                            html += '<td>' + fmt(c.cbid, 2) + '</td><td>' + fmt(c.es_bid, 2) + '</td><td>' + fmt(sBid, 2) + '</td>';
-                            html += '<td>' + fmt(c.t_views, 0) + '</td><td>' + fmt(c.l7_views, 0) + '</td><td>' + scvrHtml + '</td>';
-                            html += '</tr></tbody></table></div>';
-                        });
-                    } else {
-                        html += '<h5 class="mb-3">PMT Campaigns</h5><p class="text-muted">No PMT campaigns found</p>';
-                    }
-
-                    if (!(response.kw_campaigns && response.kw_campaigns.length) && !(response.pt_campaigns && response.pt_campaigns.length)) {
-                        html = '<p class="text-muted">No campaigns found for this SKU</p>';
-                    }
-                    $('#campaignModalBody').html(html);
-                },
-                error: function(xhr) {
-                    const err = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Failed to load campaign data';
-                    $('#campaignModalBody').html('<div class="alert alert-danger">' + err + '</div>');
-                }
-            });
-        });
 
         // Tooltip functions for eBay links
         function showEbayTooltip(element) {
