@@ -197,15 +197,17 @@
                 background: white;
                 border: 2px solid #e3e6f0;
                 font-size: 13px;
-                font-weight: 500;
-                color: #6c757d;
+                font-weight: 600;
+                color: #495057;
                 white-space: nowrap;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.08);
             }
             
             .quick-filter-chip.active {
                 background: #667eea;
                 color: white;
                 border-color: #667eea;
+                box-shadow: 0 4px 8px rgba(102,126,234,0.3);
             }
             
             /* Mobile Action Buttons Grid */
@@ -395,9 +397,46 @@
         
         .mobile-task-badge {
             font-size: 11px;
-            padding: 3px 8px;
+            padding: 4px 10px;
             border-radius: 12px;
-            font-weight: 500;
+            font-weight: 600;
+            text-shadow: none;
+        }
+        
+        /* Better badge colors with good contrast */
+        .badge.bg-info {
+            background-color: #0dcaf0 !important;
+            color: #000 !important; /* Dark text for light blue */
+        }
+        
+        .badge.bg-warning {
+            background-color: #ffc107 !important;
+            color: #000 !important; /* Dark text for yellow */
+        }
+        
+        .badge.bg-success {
+            background-color: #198754 !important; /* Darker green */
+            color: #fff !important;
+        }
+        
+        .badge.bg-primary {
+            background-color: #0d6efd !important;
+            color: #fff !important;
+        }
+        
+        .badge.bg-danger {
+            background-color: #dc3545 !important;
+            color: #fff !important;
+        }
+        
+        .badge.bg-secondary {
+            background-color: #6c757d !important;
+            color: #fff !important;
+        }
+        
+        .badge.bg-dark {
+            background-color: #212529 !important;
+            color: #fff !important;
         }
         
         .mobile-task-info {
@@ -426,19 +465,26 @@
             border-radius: 8px;
         }
         
+        /* Priority badges with STRONG contrast */
         .mobile-priority-high {
-            background: #fff5f5;
-            color: #dc3545;
+            background: #dc3545 !important;
+            color: #ffffff !important;
+            font-weight: 700 !important;
+            box-shadow: 0 2px 4px rgba(220, 53, 69, 0.3);
         }
         
         .mobile-priority-normal {
-            background: #f0f9ff;
-            color: #0dcaf0;
+            background: #0d6efd !important;
+            color: #ffffff !important;
+            font-weight: 600 !important;
+            box-shadow: 0 2px 4px rgba(13, 110, 253, 0.3);
         }
         
         .mobile-priority-low {
-            background: #f0fdf4;
-            color: #28a745;
+            background: #198754 !important;
+            color: #ffffff !important;
+            font-weight: 600 !important;
+            box-shadow: 0 2px 4px rgba(25, 135, 84, 0.3);
         }
         
         /* Pull to refresh hint */
@@ -1205,20 +1251,23 @@
                             <div class="quick-filter-chip active" data-filter="all">
                                 <i class="mdi mdi-view-list"></i> All
                             </div>
-                            <div class="quick-filter-chip" data-filter="pending">
-                                <i class="mdi mdi-clock-outline"></i> Pending
+                            <div class="quick-filter-chip" data-filter="Todo">
+                                <i class="mdi mdi-clock-outline"></i> Todo
                             </div>
-                            <div class="quick-filter-chip" data-filter="inprogress">
-                                <i class="mdi mdi-progress-clock"></i> In Progress
+                            <div class="quick-filter-chip" data-filter="Working">
+                                <i class="mdi mdi-progress-clock"></i> Working
                             </div>
-                            <div class="quick-filter-chip" data-filter="done">
+                            <div class="quick-filter-chip" data-filter="Done">
                                 <i class="mdi mdi-check-circle"></i> Done
                             </div>
-                            <div class="quick-filter-chip" data-filter="overdue">
-                                <i class="mdi mdi-alert-circle"></i> Overdue
+                            <div class="quick-filter-chip" data-filter="Need Help">
+                                <i class="mdi mdi-help-circle"></i> Need Help
+                            </div>
+                            <div class="quick-filter-chip" data-filter="Need Approval">
+                                <i class="mdi mdi-alert-circle"></i> Approval
                             </div>
                             <div class="quick-filter-chip" data-filter="high">
-                                <i class="mdi mdi-alert"></i> High Priority
+                                <i class="mdi mdi-alert"></i> High
                             </div>
                         </div>
 
@@ -1258,16 +1307,16 @@
                                 <label class="form-label fw-bold">Status</label>
                                 <select id="filter-status" class="form-select form-select-sm">
                                     <option value="">All</option>
-                                    <option value="pending">Todo</option>
-                                    <option value="in_progress">Working</option>
-                                    <option value="archived">Archived</option>
-                                    <option value="completed">Done</option>
-                                    <option value="need_help">Need Help</option>
-                                    <option value="need_approval">Need Approval</option>
-                                    <option value="dependent">Dependent</option>
-                                    <option value="approved">Approved</option>
-                                    <option value="hold">Hold</option>
-                                    <option value="cancelled">Cancelled</option>
+                                    <option value="Todo">Todo</option>
+                                    <option value="Working">Working</option>
+                                    <option value="Done">Done</option>
+                                    <option value="Archived">Archived</option>
+                                    <option value="Need Help">Need Help</option>
+                                    <option value="Need Approval">Need Approval</option>
+                                    <option value="Dependent">Dependent</option>
+                                    <option value="Approved">Approved</option>
+                                    <option value="Hold">Hold</option>
+                                    <option value="Cancelled">Cancelled</option>
                                 </select>
                             </div>
                             <div class="col-md-1 mb-2">
@@ -1586,26 +1635,69 @@
                 let html = '';
                 
                 tasks.forEach(task => {
-                    const statusClass = `status-${task.status.toLowerCase().replace(' ', '')}`;
+                    // OVERDUE BASED ON completion_day
+                    let isOverdue = false;
+                    let statusText = task.status;
+                    
+                    if (task.status !== 'Archived' && task.start_date && task.due_date) {
+                        const startDate = new Date(task.start_date);
+                        const dueDate = new Date(task.due_date);
+                        const expectedDays = Math.ceil((dueDate - startDate) / (1000 * 60 * 60 * 24));
+                        
+                        if (task.completion_date && task.completion_date !== '0000-00-00' && task.completion_day) {
+                            const actualDays = parseInt(task.completion_day);
+                            isOverdue = actualDays > expectedDays;
+                            if (isOverdue) {
+                                statusText = `OVERDUE (${actualDays}/${expectedDays}d)`;
+                            }
+                        } else {
+                            const now = new Date();
+                            if (now > dueDate) {
+                                isOverdue = true;
+                                const daysLate = Math.ceil((now - dueDate) / (1000 * 60 * 60 * 24));
+                                statusText = `OVERDUE ${daysLate}d`;
+                            }
+                        }
+                    }
+                    
+                    const statusClass = isOverdue ? 'status-overdue' : `status-${task.status.toLowerCase().replace(' ', '')}`;
                     const priorityClass = `mobile-priority-${task.priority.toLowerCase()}`;
                     
-                    // Status badge color
-                    let statusBadge = '';
-                    switch(task.status.toLowerCase()) {
-                        case 'pending':
-                            statusBadge = 'bg-info text-white';
+                    // Status badge color - RED if overdue!
+                    let statusBadge = isOverdue ? 'bg-danger text-white' : '';
+                    
+                    if (!isOverdue) {
+                        switch(task.status) {
+                        case 'Todo':
+                            statusBadge = 'bg-primary text-white';
                             break;
-                        case 'in progress':
+                        case 'Working':
                             statusBadge = 'bg-warning text-dark';
                             break;
-                        case 'done':
+                        case 'Done':
                             statusBadge = 'bg-success text-white';
                             break;
-                        case 'overdue':
+                        case 'Need Help':
                             statusBadge = 'bg-danger text-white';
+                            break;
+                        case 'Need Approval':
+                            statusBadge = 'bg-info text-white';
+                            break;
+                        case 'Approved':
+                            statusBadge = 'bg-success text-white';
+                            break;
+                        case 'Hold':
+                            statusBadge = 'bg-secondary text-white';
+                            break;
+                        case 'Cancelled':
+                            statusBadge = 'bg-dark text-white';
+                            break;
+                        case 'Archived':
+                            statusBadge = 'bg-secondary text-white';
                             break;
                         default:
                             statusBadge = 'bg-secondary text-white';
+                        }
                     }
                     
                     html += `
@@ -1614,7 +1706,7 @@
                                 <div style="flex: 1;">
                                     <div class="mobile-task-title">${task.title || 'No Title'}</div>
                                     <div class="mobile-task-meta">
-                                        <span class="badge ${statusBadge} mobile-task-badge">${task.status}</span>
+                                        <span class="badge ${statusBadge} mobile-task-badge">${statusText}</span>
                                         <span class="badge ${priorityClass} mobile-task-badge">${task.priority}</span>
                                     </div>
                                 </div>
@@ -1708,6 +1800,17 @@
                     console.log('Tasks loaded:', response.length);
                     console.log('Current User ID:', currentUserId);
                     console.log('Is Admin:', isAdmin);
+                    
+                    // Debug: Show unique status values
+                    const uniqueStatuses = [...new Set(response.map(t => t.status))];
+                    console.log('📊 Unique status values in data:', uniqueStatuses);
+                    
+                    // Debug: Show first 3 tasks with status
+                    console.log('Sample tasks:', response.slice(0, 3).map(t => ({
+                        id: t.id,
+                        title: t.title?.substring(0, 30),
+                        status: t.status
+                    })));
                     console.log('==============================');
                     
                     // Render mobile view
@@ -1720,13 +1823,40 @@
                 rowFormatter: function(row) {
                     var data = row.getData();
                     
-                    // Check if automated task
-                    if (data.is_automate_task) {
-                        // Add class and set background
+                    // OVERDUE BASED ON completion_day
+                    let isOverdue = false;
+                    
+                    if (data.status !== 'Archived' && data.start_date && data.due_date) {
+                        const startDate = new Date(data.start_date);
+                        const dueDate = new Date(data.due_date);
+                        const expectedDays = Math.ceil((dueDate - startDate) / (1000 * 60 * 60 * 24));
+                        
+                        if (data.completion_date && data.completion_date !== '0000-00-00' && data.completion_day) {
+                            // Task completed - check if took longer than expected
+                            isOverdue = parseInt(data.completion_day) > expectedDays;
+                        } else {
+                            // Task not completed - check if past due date
+                            const now = new Date();
+                            isOverdue = now > dueDate;
+                        }
+                    }
+                    
+                    // Apply styling based on overdue status
+                    if (isOverdue) {
+                        row.getElement().style.backgroundColor = "#ffe5e5";
+                        row.getElement().style.borderLeft = "4px solid #dc3545";
+                        row.getElement().classList.add('overdue-task');
+                        row.getElement().classList.remove('automated-task');
+                    } else if (data.is_automate_task) {
                         row.getElement().classList.add('automated-task');
+                        row.getElement().classList.remove('overdue-task');
                         row.getElement().style.backgroundColor = "#fffbea";
+                        row.getElement().style.borderLeft = "4px solid #ffc107";
                     } else {
                         row.getElement().classList.remove('automated-task');
+                        row.getElement().classList.remove('overdue-task');
+                        row.getElement().style.backgroundColor = "";
+                        row.getElement().style.borderLeft = "";
                     }
                 },
                 layout: "fitData",
@@ -1903,14 +2033,41 @@
                             var assignorId = rowData.assignor_id;
                             var assigneeId = rowData.assignee_id;
                             
+                            // CALCULATE OVERDUE BASED ON completion_day
+                            let isOverdue = false;
+                            let displayText = value;
+                            
+                            if (value !== 'Archived' && rowData.start_date && rowData.due_date) {
+                                const startDate = new Date(rowData.start_date);
+                                const dueDate = new Date(rowData.due_date);
+                                const expectedDays = Math.ceil((dueDate - startDate) / (1000 * 60 * 60 * 24));
+                                
+                                if (rowData.completion_date && rowData.completion_date !== '0000-00-00' && rowData.completion_day) {
+                                    // Task completed - check if took longer
+                                    const actualDays = parseInt(rowData.completion_day);
+                                    isOverdue = actualDays > expectedDays;
+                                    if (isOverdue) {
+                                        displayText = `🔴 ${value} (${actualDays}/${expectedDays}d)`;
+                                    }
+                                } else {
+                                    // Not completed - check if past due
+                                    const now = new Date();
+                                    if (now > dueDate) {
+                                        isOverdue = true;
+                                        const daysLate = Math.ceil((now - dueDate) / (1000 * 60 * 60 * 24));
+                                        displayText = `OVERDUE ${daysLate}d`;
+                                    }
+                                }
+                            }
+                            
                             // Check if user can update status
                             var canUpdateStatus = isAdmin || assignorId === currentUserId || assigneeId === currentUserId;
                             
                             var statuses = {
                                 'Todo': {bg: '#0dcaf0', text: '#000'},
                                 'Working': {bg: '#ffc107', text: '#000'},
-                                'Archived': {bg: '#6c757d', text: '#000'},
-                                'Done': {bg: '#28a745', text: '#000'},
+                                'Archived': {bg: '#6c757d', text: '#fff'},
+                                'Done': {bg: '#28a745', text: '#fff'},
                                 'Need Help': {bg: '#fd7e14', text: '#000'},
                                 'Need Approval': {bg: '#6610f2', text: '#fff'},
                                 'Dependent': {bg: '#d63384', text: '#fff'},
@@ -1918,17 +2075,21 @@
                                 'Hold': {bg: '#495057', text: '#fff'},
                                 'Rework': {bg: '#f5576c', text: '#fff'}
                             };
-                            var currentStatus = statuses[value] || {bg: '#6c757d', text: '#000'};
+                            
+                            // OVERRIDE WITH RED IF OVERDUE!
+                            var currentStatus = isOverdue 
+                                ? {bg: '#dc3545', text: '#fff'} 
+                                : (statuses[value] || {bg: '#6c757d', text: '#fff'});
                             
                             if (!canUpdateStatus) {
-                                return '<span style="background: ' + currentStatus.bg + '; color: ' + currentStatus.text + '; padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; display: inline-block;">' + value + '</span>';
+                                return '<span style="background: ' + currentStatus.bg + '; color: ' + currentStatus.text + '; padding: 6px 12px; border-radius: 20px; font-size: 11px; font-weight: 700; display: inline-block;">' + displayText + '</span>';
                             }
                             
                             return `
                                 <select class="form-select form-select-sm status-select" 
                                         data-task-id="${taskId}" 
                                         data-current-status="${value}"
-                                        style="background: ${currentStatus.bg}; color: ${currentStatus.text}; border: none; font-weight: 600; font-size: 11px; border-radius: 20px; padding: 6px 12px;">
+                                        style="background: ${currentStatus.bg}; color: ${currentStatus.text}; border: none; font-weight: 700; font-size: 11px; border-radius: 20px; padding: 6px 12px;">
                                     <option value="Todo" ${value === 'Todo' ? 'selected' : ''}>Todo</option>
                                     <option value="Working" ${value === 'Working' ? 'selected' : ''}>Working</option>
                                     <option value="Archived" ${value === 'Archived' ? 'selected' : ''}>Archived</option>
@@ -2117,6 +2278,8 @@
 
             // Combined filter function (proper AND logic)
             function applyFilters() {
+                console.log('🔍 Applying filters...');
+                
                 // Clear existing filters first
                 table.clearFilter();
                 
@@ -2127,36 +2290,44 @@
                 var groupValue = $('#filter-group').val();
                 if (groupValue) {
                     filters.push({field:"group", type:"like", value:groupValue});
+                    console.log('Filter - Group:', groupValue);
                 }
                 
                 // Task filter
                 var taskValue = $('#filter-task').val();
                 if (taskValue) {
                     filters.push({field:"title", type:"like", value:taskValue});
+                    console.log('Filter - Task:', taskValue);
                 }
                 
                 // Assignor filter
                 var assignorValue = $('#filter-assignor').val();
                 if (assignorValue) {
                     filters.push({field:"assignor_name", type:"=", value:assignorValue});
+                    console.log('Filter - Assignor:', assignorValue);
                 }
                 
                 // Assignee filter
                 var assigneeValue = $('#filter-assignee').val();
                 if (assigneeValue) {
                     filters.push({field:"assignee_name", type:"=", value:assigneeValue});
+                    console.log('Filter - Assignee:', assigneeValue);
                 }
                 
-                // Status filter
+                // Status filter - Try case-insensitive
                 var statusValue = $('#filter-status').val();
                 if (statusValue) {
-                    filters.push({field:"status", type:"=", value:statusValue});
+                    // Try both exact match and like match
+                    filters.push({field:"status", type:"like", value:statusValue});
+                    console.log('✓ Filter - Status (like):', statusValue);
+                    console.log('Sample task statuses:', table.getData().slice(0, 3).map(t => t.status));
                 }
                 
                 // Priority filter
                 var priorityValue = $('#filter-priority').val();
                 if (priorityValue) {
                     filters.push({field:"priority", type:"=", value:priorityValue});
+                    console.log('Filter - Priority:', priorityValue);
                 }
                 
                 // Search filter (OR logic within search - add last)
@@ -2221,27 +2392,48 @@
                 console.log('Quick filter:', filterType);
                 
                 // Apply filter
+                console.log('🔍 Quick filter clicked:', filterType);
+                
                 switch(filterType) {
                     case 'all':
-                        $('#filter-status').val('').trigger('change');
-                        $('#filter-priority').val('').trigger('change');
+                        $('#filter-status').val('');
+                        $('#filter-priority').val('');
+                        console.log('✓ Showing all tasks');
                         break;
-                    case 'pending':
-                        $('#filter-status').val('pending').trigger('change');
+                    case 'Todo':
+                        $('#filter-status').val('Todo');
+                        $('#filter-priority').val('');
+                        console.log('✓ Filtering: Todo');
                         break;
-                    case 'inprogress':
-                        $('#filter-status').val('in_progress').trigger('change');
+                    case 'Working':
+                        $('#filter-status').val('Working');
+                        $('#filter-priority').val('');
+                        console.log('✓ Filtering: Working');
                         break;
-                    case 'done':
-                        $('#filter-status').val('done').trigger('change');
+                    case 'Done':
+                        $('#filter-status').val('Done');
+                        $('#filter-priority').val('');
+                        console.log('✓ Filtering: Done');
                         break;
-                    case 'overdue':
-                        $('#filter-status').val('overdue').trigger('change');
+                    case 'Need Help':
+                        $('#filter-status').val('Need Help');
+                        $('#filter-priority').val('');
+                        console.log('✓ Filtering: Need Help');
+                        break;
+                    case 'Need Approval':
+                        $('#filter-status').val('Need Approval');
+                        $('#filter-priority').val('');
+                        console.log('✓ Filtering: Need Approval');
                         break;
                     case 'high':
-                        $('#filter-priority').val('high').trigger('change');
+                        $('#filter-status').val('');
+                        $('#filter-priority').val('high');
+                        console.log('✓ Filtering: High Priority');
                         break;
                 }
+                
+                // Manually trigger applyFilters (don't trigger change to avoid recursion)
+                applyFilters();
                 
                 // Haptic feedback if available
                 if (navigator.vibrate) {

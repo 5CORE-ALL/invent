@@ -215,6 +215,9 @@
                         <span class="badge bg-secondary fs-6 p-2 badge-chart-link" data-metric="ad_spend" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             Total Ad Spend: <span id="total-ad-spend">$0</span>
                         </span>
+                        <span class="badge bg-success fs-6 p-2 badge-chart-link" data-metric="pft" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
+                            NPFT: <span id="total-pft">$0</span>
+                        </span>
                         <span class="badge bg-dark fs-6 p-2 badge-chart-link" data-metric="npft" style="color: white; font-weight: bold; cursor:pointer;" title="View trend">
                             Avg N PFT%: <span id="avg-npft">0%</span>
                         </span>
@@ -2419,8 +2422,12 @@
                         sorter: "number",
                         visible: false,
                         formatter: function(cell) {
-                            const value = parseNumber(cell.getValue());
-                            return `<span>$${value.toFixed(0)}</span>`;
+                            // Calculate Total PFT from L30 Sales × NPFT%
+                            const rowData = cell.getRow().getData();
+                            const l30Sales = parseNumber(rowData['L30 Sales'] || 0);
+                            const npftPercent = parseNumber(rowData['N PFT'] || 0);
+                            const totalPft = (l30Sales * npftPercent) / 100;
+                            return `<span>$${totalPft.toFixed(0)}</span>`;
                         }
                     },
                     {
@@ -2520,6 +2527,7 @@
                 $('#avg-gprofit').text(avgGprofit.toFixed(1) + '%');
                 $('#avg-groi').text(avgGroi.toFixed(1) + '%');
                 $('#total-ad-spend').text('$' + Math.round(totalAdSpend).toLocaleString('en-US'));
+                $('#total-pft').text('$' + Math.round(totalPft).toLocaleString('en-US'));
                 $('#avg-npft').text(avgNpft.toFixed(1) + '%');
                 $('#avg-nroi').text(avgNroi.toFixed(1) + '%');
                 $('#total-map').text(Math.round(totalMap).toLocaleString('en-US'));
@@ -3104,6 +3112,7 @@
                 'gprofit': 'Gprofit%',
                 'groi': 'G ROI%',
                 'ads_pct': 'Ads%',
+                'pft': 'Total Pft',
                 'npft': 'N PFT%',
                 'nroi': 'N ROI%',
                 'missing_l': 'Missing L',
@@ -3183,7 +3192,7 @@
                 // --- Format helper (no decimals for spend/sales) ---
                 const fmtVal = (v) => {
                     const m = currentChartMetric;
-                    if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'ad_spend') {
+                    if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'ad_spend' || m === 'pft') {
                         return '$' + Math.round(v).toLocaleString('en-US');
                     }
                     if (m === 'acos' || m === 'cvr' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'nroi') {
