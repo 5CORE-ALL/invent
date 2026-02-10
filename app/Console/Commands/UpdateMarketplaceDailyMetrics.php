@@ -89,8 +89,8 @@ class UpdateMarketplaceDailyMetrics extends Command
 
     private function calculateAmazonMetrics($date)
     {
-        // 31 days: Get latest Amazon order date from inventory database and calculate 31-day range
-        // Uses latest date in DB as end date, then goes back 31 days
+        // 30 days: Get latest Amazon order date from inventory database and calculate 30-day range
+        // Uses latest date in DB as end date, then goes back exactly 30 days
         $latestDate = DB::table('amazon_orders')
             ->max('order_date');
 
@@ -100,7 +100,7 @@ class UpdateMarketplaceDailyMetrics extends Command
 
         $latestDateCarbon = Carbon::parse($latestDate);
         $endDateCarbon = $latestDateCarbon->endOfDay(); // Latest date in DB
-        $startDateCarbon = $latestDateCarbon->copy()->subDays(30)->startOfDay(); // 31 days total
+        $startDateCarbon = $latestDateCarbon->copy()->subDays(29)->startOfDay(); // Exactly 30 days (today + 29 previous days)
 
         // Get order items from inventory database (matching AmazonSalesController exactly)
         $orderItems = DB::table('amazon_orders as o')
