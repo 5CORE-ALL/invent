@@ -263,28 +263,34 @@ class EbayController extends Controller
             });
 
         $ebayCampaignReportsL30 = EbayPriorityReport::where('report_range', 'L30')
+            ->whereIn('campaignStatus', ['RUNNING', 'PAUSED'])
             ->where(function ($q) use ($skus) {
                 foreach ($skus as $sku) {
                     $q->orWhere('campaign_name', 'LIKE', '%' . $sku . '%');
                 }
             })
+            ->orderByRaw("CASE WHEN campaignStatus = 'RUNNING' THEN 0 ELSE 1 END")
             ->get();
 
         // Fetch L7 and L1 campaign reports for KW Ads columns
         $ebayCampaignReportsL7 = EbayPriorityReport::where('report_range', 'L7')
+            ->whereIn('campaignStatus', ['RUNNING', 'PAUSED'])
             ->where(function ($q) use ($skus) {
                 foreach ($skus as $sku) {
                     $q->orWhere('campaign_name', 'LIKE', '%' . $sku . '%');
                 }
             })
+            ->orderByRaw("CASE WHEN campaignStatus = 'RUNNING' THEN 0 ELSE 1 END")
             ->get();
 
         $ebayCampaignReportsL1 = EbayPriorityReport::where('report_range', 'L1')
+            ->whereIn('campaignStatus', ['RUNNING', 'PAUSED'])
             ->where(function ($q) use ($skus) {
                 foreach ($skus as $sku) {
                     $q->orWhere('campaign_name', 'LIKE', '%' . $sku . '%');
                 }
             })
+            ->orderByRaw("CASE WHEN campaignStatus = 'RUNNING' THEN 0 ELSE 1 END")
             ->get();
 
         // Fetch last_sbid from day-before-yesterday records (for KW Ads LBID column)

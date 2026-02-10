@@ -2812,11 +2812,11 @@ class EbayOverUtilizedBgtController extends Controller
 
             // Update eBay campaigns - try yesterday first, then L1, L7, L30 as fallback
             // Clear apprSbid when sbid_m is updated so new bid can be pushed
-            // First try yesterday's date
+            // First try yesterday's date (RUNNING or PAUSED)
             $updated = DB::table('ebay_priority_reports')
                 ->where('campaign_id', $campaignId)
                 ->where('report_range', $yesterday)
-                ->where('campaignStatus', 'RUNNING')
+                ->whereIn('campaignStatus', ['RUNNING', 'PAUSED'])
                 ->where('campaign_name', 'NOT LIKE', 'Campaign %')
                 ->where('campaign_name', 'NOT LIKE', 'General - %')
                 ->where('campaign_name', 'NOT LIKE', 'Default%')
@@ -2830,7 +2830,7 @@ class EbayOverUtilizedBgtController extends Controller
                 $updated = DB::table('ebay_priority_reports')
                     ->where('campaign_id', $campaignId)
                     ->where('report_range', 'L1')
-                    ->where('campaignStatus', 'RUNNING')
+                    ->whereIn('campaignStatus', ['RUNNING', 'PAUSED'])
                     ->where('campaign_name', 'NOT LIKE', 'Campaign %')
                     ->where('campaign_name', 'NOT LIKE', 'General - %')
                     ->where('campaign_name', 'NOT LIKE', 'Default%')
@@ -2845,7 +2845,7 @@ class EbayOverUtilizedBgtController extends Controller
                 DB::table('ebay_priority_reports')
                     ->where('campaign_id', $campaignId)
                     ->whereIn('report_range', ['L7', 'L30'])
-                    ->where('campaignStatus', 'RUNNING')
+                    ->whereIn('campaignStatus', ['RUNNING', 'PAUSED'])
                     ->where('campaign_name', 'NOT LIKE', 'Campaign %')
                     ->where('campaign_name', 'NOT LIKE', 'General - %')
                     ->where('campaign_name', 'NOT LIKE', 'Default%')
