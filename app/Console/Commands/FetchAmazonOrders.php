@@ -304,7 +304,7 @@ class FetchAmazonOrders extends Command
             $shouldStop = false;
             
             while ($attempt < $maxRetries) {
-                $response = Http::withHeaders([
+                $response = Http::timeout(30)->withHeaders([
                     'x-amz-access-token' => $accessToken,
                 ])->get('https://sellingpartnerapi-na.amazon.com/orders/v0/orders', $params);
 
@@ -421,12 +421,29 @@ class FetchAmazonOrders extends Command
                     $items = $this->fetchOrderItemsWithRetry($accessToken, $orderId);
                     
                     foreach ($items as $item) {
-                        // Safely extract ItemPrice - it may not exist for some items
+                        // Calculate total price including all components (matches Amazon Seller Central "Ordered product sales")
                         $itemPrice = 0;
                         $itemCurrency = 'USD';
+                        
+                        // ItemPrice (base product price × quantity)
                         if (isset($item['ItemPrice']) && is_array($item['ItemPrice'])) {
-                            $itemPrice = floatval($item['ItemPrice']['Amount'] ?? 0);
+                            $itemPrice += floatval($item['ItemPrice']['Amount'] ?? 0);
                             $itemCurrency = $item['ItemPrice']['CurrencyCode'] ?? 'USD';
+                        }
+                        
+                        // ShippingPrice (shipping charged to customer)
+                        if (isset($item['ShippingPrice']) && is_array($item['ShippingPrice'])) {
+                            $itemPrice += floatval($item['ShippingPrice']['Amount'] ?? 0);
+                        }
+                        
+                        // GiftWrapPrice (gift wrap fees)
+                        if (isset($item['GiftWrapPrice']) && is_array($item['GiftWrapPrice'])) {
+                            $itemPrice += floatval($item['GiftWrapPrice']['Amount'] ?? 0);
+                        }
+                        
+                        // Subtract PromotionDiscount (discounts reduce the total)
+                        if (isset($item['PromotionDiscount']) && is_array($item['PromotionDiscount'])) {
+                            $itemPrice -= floatval($item['PromotionDiscount']['Amount'] ?? 0);
                         }
                         
                         AmazonOrderItem::updateOrCreate(
@@ -853,14 +870,37 @@ class FetchAmazonOrders extends Command
             $newPrice = 0;
             $source = '';
             
-            // Method 1: Try to re-fetch from API
+            // Method 1: Try to re-fetch from API with all price components
             $order = $item->order;
             if ($order) {
                 $apiItems = $this->fetchOrderItemsWithRetry($accessToken, $order->amazon_order_id);
                 foreach ($apiItems as $apiItem) {
                     if (($apiItem['ASIN'] ?? '') === $item->asin && ($apiItem['SellerSKU'] ?? '') === $item->sku) {
-                        if (isset($apiItem['ItemPrice']['Amount']) && floatval($apiItem['ItemPrice']['Amount']) > 0) {
-                            $newPrice = floatval($apiItem['ItemPrice']['Amount']);
+                        // Calculate total price including all components
+                        $totalPrice = 0;
+                        
+                        // ItemPrice
+                        if (isset($apiItem['ItemPrice']['Amount'])) {
+                            $totalPrice += floatval($apiItem['ItemPrice']['Amount']);
+                        }
+                        
+                        // ShippingPrice
+                        if (isset($apiItem['ShippingPrice']['Amount'])) {
+                            $totalPrice += floatval($apiItem['ShippingPrice']['Amount']);
+                        }
+                        
+                        // GiftWrapPrice
+                        if (isset($apiItem['GiftWrapPrice']['Amount'])) {
+                            $totalPrice += floatval($apiItem['GiftWrapPrice']['Amount']);
+                        }
+                        
+                        // Subtract PromotionDiscount
+                        if (isset($apiItem['PromotionDiscount']['Amount'])) {
+                            $totalPrice -= floatval($apiItem['PromotionDiscount']['Amount']);
+                        }
+                        
+                        if ($totalPrice > 0) {
+                            $newPrice = $totalPrice;
                             $source = 'API';
                             break;
                         }
@@ -931,7 +971,7 @@ class FetchAmazonOrders extends Command
         $attempt = 0;
         
         while ($attempt < $maxRetries) {
-            $response = Http::withHeaders([
+            $response = Http::timeout(30)->withHeaders([
                 'x-amz-access-token' => $accessToken,
             ])->get("https://sellingpartnerapi-na.amazon.com/orders/v0/orders/{$orderId}/orderItems");
 

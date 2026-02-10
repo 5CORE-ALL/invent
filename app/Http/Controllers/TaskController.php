@@ -69,7 +69,7 @@ class TaskController extends Controller
             });
         }
 
-        $tasks = $tasksQuery->orderBy('id', 'desc')->get();
+        $tasks = $tasksQuery->orderBy('start_date', 'asc')->get();
 
         // Map emails to names for display
         $tasks->each(function($task) {
@@ -297,12 +297,61 @@ class TaskController extends Controller
 
     public function edit($id)
     {
-        $task = Task::findOrFail($id);
+        $taskModel = Task::findOrFail($id);
         
         // Check if user can update this task
-        $this->authorize('update', $task);
+        $this->authorize('update', $taskModel);
         
         $users = User::all();
+        
+        // Create a data object with all mapped fields for the form
+        $task = (object)[
+            'id' => $taskModel->id,
+            'title' => $taskModel->title,
+            'description' => $taskModel->description,
+            'group' => $taskModel->group,
+            'priority' => $taskModel->priority,
+            'assignor_id' => null,
+            'assignee_id' => null,
+            'split_tasks' => $taskModel->split_tasks,
+            'flag_raise' => $taskModel->flag_raise ?? 0,
+            'etc_minutes' => $taskModel->eta_time ?? 10,
+            'tid' => $taskModel->start_date,
+            'l1' => $taskModel->link1 ?? '',
+            'l2' => $taskModel->link2 ?? '',
+            'training_link' => $taskModel->link3 ?? '',
+            'video_link' => $taskModel->link4 ?? '',
+            'form_link' => $taskModel->link5 ?? '',
+            'form_report_link' => $taskModel->link6 ?? '',
+            'checklist_link' => $taskModel->link7 ?? '',
+            'pl' => $taskModel->link8 ?? '',
+            'process' => $taskModel->link9 ?? '',
+            'image' => $taskModel->image,
+            'assignor' => $taskModel->assignor,
+            'assign_to' => $taskModel->assign_to,
+        ];
+        
+        // Map email addresses to user IDs for the form
+        if ($taskModel->assignor) {
+            $assignorEmail = trim($taskModel->assignor);
+            $assignorUser = User::where('email', $assignorEmail)->first();
+            $task->assignor_id = $assignorUser ? $assignorUser->id : null;
+        }
+        
+        if ($taskModel->assign_to) {
+            // Handle potentially multiple emails (comma-separated) - take the first one
+            $assignToEmail = trim($taskModel->assign_to);
+            
+            // If there are multiple emails, take the first one
+            if (strpos($assignToEmail, ',') !== false) {
+                $emails = array_map('trim', explode(',', $assignToEmail));
+                $assignToEmail = $emails[0];
+            }
+            
+            $assigneeUser = User::where('email', $assignToEmail)->first();
+            $task->assignee_id = $assigneeUser ? $assigneeUser->id : null;
+        }
+        
         return view('tasks.edit', compact('task', 'users'));
     }
 

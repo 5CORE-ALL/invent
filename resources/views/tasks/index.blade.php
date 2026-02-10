@@ -473,6 +473,13 @@
             box-shadow: 0 2px 4px rgba(220, 53, 69, 0.3);
         }
         
+        .mobile-priority-medium {
+            background: #fd7e14 !important;
+            color: #ffffff !important;
+            font-weight: 600 !important;
+            box-shadow: 0 2px 4px rgba(253, 126, 20, 0.3);
+        }
+        
         .mobile-priority-normal {
             background: #0d6efd !important;
             color: #ffffff !important;
@@ -830,21 +837,31 @@
         }
 
         .priority-low {
-            background-color: #e2e3e5;
-            color: #383d41;
-            border: 1px solid #d6d8db;
+            background-color: #198754;
+            color: #ffffff;
+            border: 1px solid #146c43;
+            box-shadow: 0 2px 4px rgba(25, 135, 84, 0.3);
         }
 
         .priority-normal {
-            background-color: #cfe2ff;
-            color: #084298;
-            border: 1px solid #b6d4fe;
+            background-color: #0d6efd;
+            color: #ffffff;
+            border: 1px solid #0a58ca;
+            box-shadow: 0 2px 4px rgba(13, 110, 253, 0.3);
+        }
+
+        .priority-medium {
+            background-color: #fd7e14;
+            color: #ffffff;
+            border: 1px solid #ca6510;
+            box-shadow: 0 2px 4px rgba(253, 126, 20, 0.3);
         }
 
         .priority-high {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
+            background-color: #dc3545;
+            color: #ffffff;
+            border: 1px solid #b02a37;
+            box-shadow: 0 2px 4px rgba(220, 53, 69, 0.3);
         }
 
         /* Action Icon Buttons */

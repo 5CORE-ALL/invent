@@ -312,10 +312,27 @@
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
         $(document).ready(function() {
-            $('.select2').select2({
+            // Initialize Select2 for assignor
+            $('#assignor_id').select2({
                 theme: 'bootstrap-5',
                 placeholder: 'Please Select'
             });
+
+            // Initialize Select2 for assignee with proper handling
+            $('#assignee_id').select2({
+                theme: 'bootstrap-5',
+                placeholder: 'Please Select',
+                allowClear: true
+            });
+
+            // Ensure the selected values are preserved
+            @if(isset($task->assignor_id) && $task->assignor_id)
+                $('#assignor_id').val('{{ $task->assignor_id }}').trigger('change');
+            @endif
+
+            @if(isset($task->assignee_id) && $task->assignee_id)
+                $('#assignee_id').val('{{ $task->assignee_id }}').trigger('change');
+            @endif
 
             // Image preview
             $('#image').on('change', function(e) {
