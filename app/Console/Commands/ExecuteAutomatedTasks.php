@@ -37,11 +37,8 @@ class ExecuteAutomatedTasks extends Command
             // Check if it's time to run based on schedule_type
             switch ($task->schedule_type) {
                 case 'daily':
-                    // Run every day at schedule_time
-                    if ($task->schedule_time) {
-                        $taskTime = Carbon::parse($task->schedule_time)->format('H:i');
-                        $shouldRun = ($currentTime == $taskTime);
-                    }
+                    // Run all daily tasks when command is executed (at 12:01 AM via scheduler)
+                    $shouldRun = true;
                     break;
                     
                 case 'weekly':
