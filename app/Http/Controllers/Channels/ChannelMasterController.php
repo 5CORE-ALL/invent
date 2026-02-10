@@ -960,11 +960,16 @@ class ChannelMasterController extends Controller
     {
         $result = [];
 
-        // Get metrics from marketplace_daily_metrics table (pre-calculated from ShipHub)
+        // Get metrics from marketplace_daily_metrics table (pre-calculated, 30 days of L30 data)
         $metrics = MarketplaceDailyMetric::where('channel', 'Amazon')->latest('date')->first();
         
-        // Get L60 data from ShipHub (30-59 days ago range)
-        // L30 is latest-29 days (30 days), so L60 is 30-59 days before latest (next 30 days)
+        // Amazon shows 30 days of L30 data - L60 data disabled
+        // Set L60 values to 0 (no historical comparison beyond 30 days)
+        $l60Orders = 0;
+        $l60Sales = 0;
+        
+        // DISABLED: L60 data from ShipHub - Amazon limited to 30 days only
+        /*
         $latestDate = null;
         try {
             $latestDate = DB::connection('shiphub')
@@ -978,10 +983,9 @@ class ChannelMasterController extends Controller
         if ($latestDate) {
             try {
                 $latestDateCarbon = \Carbon\Carbon::parse($latestDate);
-                $l60StartDate = $latestDateCarbon->copy()->subDays(59)->startOfDay(); // 60 days ago
-                $l60EndDate = $latestDateCarbon->copy()->subDays(30)->endOfDay(); // 31 days ago
+                $l60StartDate = $latestDateCarbon->copy()->subDays(59)->startOfDay();
+                $l60EndDate = $latestDateCarbon->copy()->subDays(30)->endOfDay();
 
-                // Get L60 order items from ShipHub
                 $l60OrderItems = DB::connection('shiphub')
                     ->table('orders as o')
                     ->join('order_items as i', 'o.id', '=', 'i.order_id')
@@ -1009,6 +1013,7 @@ class ChannelMasterController extends Controller
             $l60Orders = 0;
             $l60Sales = 0;
         }
+        */
 
         $l30Sales = $metrics?->total_sales ?? 0;
         $l30Orders = $metrics?->total_orders ?? 0;
@@ -1087,6 +1092,7 @@ class ChannelMasterController extends Controller
      * Fetch Amazon FBA channel data.
      * FBA campaigns end with 'FBA' or 'FBA PT', separate from regular Amazon KW/PT campaigns.
      */
+    
     public function getAmazonFbaChannelData(Request $request)
     {
         $result = [];
