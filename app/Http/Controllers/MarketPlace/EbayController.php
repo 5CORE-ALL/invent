@@ -244,9 +244,18 @@ class EbayController extends Controller
         $amazonPrices = AmazonDatasheet::whereIn('sku', $skus)
             ->pluck('price', 'sku');
 
+        // Prioritize COST_PER_SALE rows for bid_percentage (matching PMP Ads controller)
         $campaignListings = DB::connection('apicentral')
-            ->table('ebay_campaign_ads_listings')
-            ->select('listing_id', 'bid_percentage', 'suggested_bid')
+            ->table('ebay_campaign_ads_listings as t')
+            ->join(DB::raw('(SELECT listing_id, 
+                                    MAX(CASE WHEN funding_strategy = "COST_PER_SALE" THEN id END) AS max_cps_id,
+                                    MAX(id) AS max_id
+                             FROM ebay_campaign_ads_listings 
+                             GROUP BY listing_id) x'), 
+                function($join) {
+                    $join->on('t.id', '=', DB::raw('COALESCE(x.max_cps_id, x.max_id)'));
+                })
+            ->select('t.listing_id', 't.bid_percentage', 't.suggested_bid')
             ->get()
             ->keyBy('listing_id')
             ->toArray();
@@ -357,9 +366,47 @@ class EbayController extends Controller
             }
         }
 
+        $itemIds = $ebayMetrics->pluck('item_id')->toArray();
         $ebayGeneralReportsL30 = EbayGeneralReport::where('report_range', 'L30')
-            ->whereIn('listing_id', $ebayMetrics->pluck('item_id')->toArray())
+            ->whereIn('listing_id', $itemIds)
             ->get();
+
+        // Fetch L7 general reports for PMT Ads section
+        $ebayGeneralReportsL7 = EbayGeneralReport::where('report_range', 'L7')
+            ->whereIn('listing_id', $itemIds)
+            ->get();
+
+        // Build item_id → SKU map from ebayMetrics (matching PMP Ads controller logic)
+        $itemIdToSkuMap = [];
+        foreach ($ebayMetrics as $metric) {
+            if (!empty($metric->item_id)) {
+                $itemIdToSkuMap[$metric->item_id] = strtoupper($metric->sku);
+            }
+        }
+
+        // Aggregate PMT metrics by SKU from ALL general reports (matching PMP Ads adMetricsBySku)
+        $pmtAdMetricsBySku = [];
+        foreach ($ebayGeneralReportsL30 as $report) {
+            $reportSku = $itemIdToSkuMap[$report->listing_id] ?? null;
+            if (!$reportSku) continue;
+            $pmtAdMetricsBySku[$reportSku]['Clk'] = ($pmtAdMetricsBySku[$reportSku]['Clk'] ?? 0) + (int) $report->clicks;
+            $pmtAdMetricsBySku[$reportSku]['Imp'] = ($pmtAdMetricsBySku[$reportSku]['Imp'] ?? 0) + (int) $report->impressions;
+            $pmtAdMetricsBySku[$reportSku]['Sls'] = ($pmtAdMetricsBySku[$reportSku]['Sls'] ?? 0) + (int) $report->sales;
+            $pmtAdMetricsBySku[$reportSku]['GENERAL_SPENT'] = ($pmtAdMetricsBySku[$reportSku]['GENERAL_SPENT'] ?? 0) + (float) str_replace('USD ', '', $report->ad_fees ?? 0);
+            $pmtAdMetricsBySku[$reportSku]['SALE_AMOUNT'] = ($pmtAdMetricsBySku[$reportSku]['SALE_AMOUNT'] ?? 0) + (float) str_replace('USD ', '', $report->sale_amount ?? 0);
+        }
+
+        // Aggregate PMT L7 metrics by SKU
+        $pmtAdMetricsBySkuL7 = [];
+        foreach ($ebayGeneralReportsL7 as $report) {
+            $reportSku = $itemIdToSkuMap[$report->listing_id] ?? null;
+            if (!$reportSku) continue;
+            $pmtAdMetricsBySkuL7[$reportSku]['Clk'] = ($pmtAdMetricsBySkuL7[$reportSku]['Clk'] ?? 0) + (int) $report->clicks;
+            $pmtAdMetricsBySkuL7[$reportSku]['GENERAL_SPENT'] = ($pmtAdMetricsBySkuL7[$reportSku]['GENERAL_SPENT'] ?? 0) + (float) str_replace('USD ', '', $report->ad_fees ?? 0);
+        }
+
+        // Extra clicks data by listing_id (matching PMP Ads extraClicksData)
+        $extraClicksData = $ebayGeneralReportsL30->pluck('clicks', 'listing_id')->toArray();
 
         // Fetch LMP data from ebay_sku_competitors table (disconnected from repricer)
         $lmpLowestLookup = collect();
@@ -534,15 +581,34 @@ class EbayController extends Controller
                 return trim((string)$item->listing_id) == trim((string)$ebayMetric->item_id);
             });
 
+            $matchedGeneralL7 = $ebayGeneralReportsL7->first(function ($item) use ($ebayMetric) {
+                if (!$ebayMetric || empty($ebayMetric->item_id)) return false;
+                return trim((string)$item->listing_id) == trim((string)$ebayMetric->item_id);
+            });
+
             // Keyword campaign
             $kw_spend_l30 = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_ad_fees_payout_currency ?? 0);
             $kw_sales_l30 = (float) str_replace('USD ', '', $matchedCampaignL30->cpc_sale_amount_payout_currency ?? 0);
             $kw_sold_l30  = (int) ($matchedCampaignL30->cpc_attributed_sales ?? 0);
 
-            // General ads
-            $pmt_spend_l30 = (float) str_replace('USD ', '', $matchedGeneralL30->ad_fees ?? 0);
-            $pmt_sales_l30 = (float) str_replace('USD ', '', $matchedGeneralL30->sale_amount ?? 0);
-            $pmt_sold_l30  = (int) ($matchedGeneralL30->sales ?? 0);
+            // General ads (PMT) - use aggregated data matching PMP Ads controller
+            $skuUpper = strtoupper($sku);
+            $pmtMetrics = $pmtAdMetricsBySku[$skuUpper] ?? [];
+            $pmt_spend_l30 = $pmtMetrics['GENERAL_SPENT'] ?? (float) str_replace('USD ', '', $matchedGeneralL30->ad_fees ?? 0);
+            $pmt_sales_l30 = $pmtMetrics['SALE_AMOUNT'] ?? (float) str_replace('USD ', '', $matchedGeneralL30->sale_amount ?? 0);
+            $pmt_sold_l30  = $pmtMetrics['Sls'] ?? (int) ($matchedGeneralL30->sales ?? 0);
+            $pmt_impressions_l30 = $pmtMetrics['Imp'] ?? (int) ($matchedGeneralL30->impressions ?? 0);
+
+            // PMT Clicks L30: aggregated SKU clicks + extra clicks from primary listing (matching PMP formula)
+            $pmt_clicks_l30 = $pmtMetrics['Clk'] ?? 0;
+            if ($ebayMetric && isset($extraClicksData[$ebayMetric->item_id])) {
+                $pmt_clicks_l30 += (int) $extraClicksData[$ebayMetric->item_id];
+            }
+
+            // PMT L7 data - use aggregated data matching PMP Ads controller
+            $pmtMetricsL7 = $pmtAdMetricsBySkuL7[$skuUpper] ?? [];
+            $pmt_clicks_l7 = $pmtMetricsL7['Clk'] ?? (int) ($matchedGeneralL7->clicks ?? 0);
+            $pmt_spend_l7 = $pmtMetricsL7['GENERAL_SPENT'] ?? (float) str_replace('USD ', '', $matchedGeneralL7->ad_fees ?? 0);
 
             // Final AD totals
             $AD_Spend_L30 = $kw_spend_l30 + $pmt_spend_l30;
@@ -554,6 +620,14 @@ class EbayController extends Controller
             $row["pmt_spend_L30"] = round($pmt_spend_l30, 2);
             $row["AD_Sales_L30"] = round($AD_Sales_L30, 2);
             $row["AD_Units_L30"] = $AD_Units_L30;
+
+            // === PMT Ads section data ===
+            $row['pmt_clicks_l30'] = $pmt_clicks_l30;
+            $row['pmt_clicks_l7'] = $pmt_clicks_l7;
+            $row['pmt_impressions_l30'] = $pmt_impressions_l30;
+            $row['pmt_sold_l30'] = $pmt_sold_l30;
+            $row['pmt_sales_l30'] = round($pmt_sales_l30, 2);
+            $row['pmt_spend_l7'] = round($pmt_spend_l7, 2);
 
             // === KW Ads section data ===
             $row['l7_views'] = $ebayMetric->l7_views ?? 0;
