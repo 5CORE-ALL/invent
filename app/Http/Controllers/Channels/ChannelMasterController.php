@@ -6350,6 +6350,9 @@ class ChannelMasterController extends Controller
                 ];
             }
 
+            // Smooth out consecutive duplicate values
+            $chartData = $this->interpolateChartData($chartData);
+
             return response()->json([
                 'success' => true,
                 'data' => $chartData,
@@ -6359,6 +6362,53 @@ class ChannelMasterController extends Controller
             \Log::error('getChannelMetricChartData error: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Error fetching chart data'], 500);
         }
+    }
+
+    /**
+     * Smooth out consecutive duplicate values in chart data via linear interpolation.
+     * Finds "transition points" where the value actually changes, then linearly
+     * interpolates between them so there are no flat plateaus.
+     * Preserves the first point, last point, and all transition points exactly.
+     */
+    private function interpolateChartData(array $chartData): array
+    {
+        $n = count($chartData);
+        if ($n <= 2) return $chartData;
+
+        // Step 1: Find transition indices (where value differs from previous value)
+        // Index 0 is always a transition. Any index where value != value[i-1] is a transition.
+        $transitions = [0]; // always include first point
+        for ($i = 1; $i < $n; $i++) {
+            if (abs((float) $chartData[$i]['value'] - (float) $chartData[$i - 1]['value']) > 0.001) {
+                $transitions[] = $i;
+            }
+        }
+        // Always include last point if not already there
+        if (end($transitions) !== $n - 1) {
+            $transitions[] = $n - 1;
+        }
+
+        // If transitions cover most points, no smoothing needed
+        if (count($transitions) >= $n - 1) return $chartData;
+
+        // Step 2: Linearly interpolate between consecutive transition points
+        for ($t = 0; $t < count($transitions) - 1; $t++) {
+            $fromIdx = $transitions[$t];
+            $toIdx = $transitions[$t + 1];
+            $gap = $toIdx - $fromIdx;
+
+            if ($gap <= 1) continue; // adjacent transitions, nothing to fill
+
+            $fromVal = (float) $chartData[$fromIdx]['value'];
+            $toVal = (float) $chartData[$toIdx]['value'];
+
+            for ($k = $fromIdx + 1; $k < $toIdx; $k++) {
+                $frac = ($k - $fromIdx) / $gap;
+                $chartData[$k]['value'] = round($fromVal + ($toVal - $fromVal) * $frac, 2);
+            }
+        }
+
+        return $chartData;
     }
 
     /**
@@ -6892,8 +6942,9 @@ class ChannelMasterController extends Controller
                                 }
                             }
 
-                            // Return ratio-based data
+                            // Return ratio-based data (with interpolation)
                             if (count($chartData) > 0) {
+                                $chartData = $this->interpolateChartData($chartData);
                                 return response()->json([
                                     'success' => true,
                                     'channel' => $channel,
@@ -7291,6 +7342,9 @@ class ChannelMasterController extends Controller
                     }
                 }
             }
+
+            // Smooth out consecutive duplicate values
+            $chartData = $this->interpolateChartData($chartData);
 
             return response()->json([
                 'success' => true,
