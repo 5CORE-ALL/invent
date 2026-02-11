@@ -3004,15 +3004,4 @@ Route::prefix('shopify/meta-campaigns')->middleware(['auth'])->group(function ()
     Route::post('/fetch', [\App\Http\Controllers\ShopifyMetaCampaignController::class, 'fetch'])->name('shopify.meta.campaigns.fetch');
 });
 
-// 5Core AI Chat (authenticated users only)
-Route::prefix('ai')->middleware(['auth'])->group(function () {
-    Route::post('/chat', [\App\Http\Controllers\Api\AiChatController::class, 'chat'])->name('ai.chat');
-    Route::post('/feedback', [\App\Http\Controllers\Api\AiChatController::class, 'feedback'])->name('ai.feedback');
-});
-
-// AI Admin - list recent questions/answers (optional)
-Route::prefix('ai-admin')->middleware(['auth', 'isAdmin'])->name('ai.admin.')->group(function () {
-    Route::get('/', [\App\Http\Controllers\Ai\AiAdminController::class, 'index'])->name('index');
-});
-
 // AI Title Manager Routes

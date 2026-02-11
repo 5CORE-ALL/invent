@@ -268,7 +268,8 @@
                         <span class="badge fs-6 p-2 ads-section-badge" id="zero-inv-count" data-ads-filter="zero-inv" style="color: black; font-weight: bold; background-color: #ffda6a; cursor: pointer;" title="Click to filter: zero inventory">Zero INV: 0</span>
                         <span class="badge fs-6 p-2 ads-section-badge" id="nra-count" data-ads-filter="nra" style="color: black; font-weight: bold; background-color: #f1aeb5; cursor: pointer;" title="Click to filter: NRA">NRA: 0</span>
                         <span class="badge fs-6 p-2 ads-section-badge" id="ra-count" data-ads-filter="ra" style="color: black; font-weight: bold; background-color: #a3cfbb; cursor: pointer;" title="Click to filter: RA">RA: 0</span>
-                        <span class="badge fs-6 p-2 ads-section-badge" id="total-spend-badge" data-ads-filter="total-spend" style="color: black; font-weight: bold; background-color: #9ec5fe; cursor: pointer;" title="Click to filter: has spend">Total Spend: $0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="total-spend-l30-badge" data-ads-filter="total-spend-l30" style="color: black; font-weight: bold; background-color: #9ec5fe; cursor: pointer;" title="Click to filter: has L30 spend">L30 Spend: $0</span>
+                        <span class="badge fs-6 p-2 ads-section-badge" id="total-spend-l7-badge" data-ads-filter="total-spend-l7" style="color: black; font-weight: bold; background-color: #b8cfe5; cursor: pointer;" title="Click to filter: has L7 spend">L7 Spend: $0</span>
                         <span class="badge fs-6 p-2 ads-section-badge" id="total-budget-badge" data-ads-filter="budget" style="color: black; font-weight: bold; background-color: #ced4da; cursor: pointer;" title="Click to filter: has budget">Budget: $0</span>
                         <span class="badge fs-6 p-2 ads-section-badge" id="total-ad-sales-badge" data-ads-filter="ad-sales" style="color: black; font-weight: bold; background-color: #9eeaf9; cursor: pointer;" title="Click to filter: has ad sales">Ad Sales: $0</span>
                         <span class="badge fs-6 p-2 ads-section-badge" id="total-ad-clicks-badge" data-ads-filter="ad-clicks" style="color: black; font-weight: bold; background-color: #a5d6e8; cursor: pointer;" title="Click to filter: has ad clicks">Ad Clicks: 0</span>
@@ -1934,6 +1935,20 @@
                             return spend > 0;
                         });
                         break;
+                    case 'total-spend-l30':
+                        table.addFilter(function(data) {
+                            if (isParentRow(data)) return true;
+                            const spendL30 = parseFloat(data.spend_l30) || 0;
+                            return spendL30 > 0;
+                        });
+                        break;
+                    case 'total-spend-l7':
+                        table.addFilter(function(data) {
+                            if (isParentRow(data)) return true;
+                            const spendL7 = parseFloat(data.spend_l7) || 0;
+                            return spendL7 > 0;
+                        });
+                        break;
                     case 'budget':
                         table.addFilter(function(data) {
                             if (isParentRow(data)) return true;
@@ -2075,7 +2090,7 @@
             const zeroInvSkus = new Set();
             const adSkuSet = new Set(); // SKU active in ads (hasCampaign) with >0 inventory
             let validSkuCount = 0, missingCount = 0, nraMissingCount = 0, nraCount = 0;
-            let totalSpend = 0, totalAdSales = 0, totalBudget = 0, totalAdClicks = 0;
+            let totalSpend = 0, totalSpendL30 = 0, totalSpendL7 = 0, totalAdSales = 0, totalBudget = 0, totalAdClicks = 0;
 
             data.forEach(row => {
                 const sku = row['(Child) sku'] || '';
@@ -2105,6 +2120,8 @@
                     }
                 }
                 totalSpend += parseFloat(row.spend) || 0;
+                totalSpendL30 += parseFloat(row.spend_l30) || 0;
+                totalSpendL7 += parseFloat(row.spend_l7) || 0;
                 totalBudget += parseFloat(row.budget) || 0;
                 totalAdClicks += parseInt(row.ad_clicks, 10) || 0;
                 const outRoas = parseFloat(row.out_roas) || 0;
@@ -2126,7 +2143,8 @@
             $('#zero-inv-count').text('Zero INV: ' + zeroInvCount);
             $('#nra-count').text('NRA: ' + nraCount);
             $('#ra-count').text('RA: ' + raCount);
-            $('#total-spend-badge').text('Total Spend: $' + Math.round(totalSpend).toLocaleString());
+            $('#total-spend-l30-badge').text('L30 Spend: $' + Math.round(totalSpendL30).toLocaleString());
+            $('#total-spend-l7-badge').text('L7 Spend: $' + Math.round(totalSpendL7).toLocaleString());
             $('#total-budget-badge').text('Budget: $' + totalBudget.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
             $('#total-ad-sales-badge').text('Ad Sales: $' + Math.round(totalAdSales).toLocaleString());
             $('#total-ad-clicks-badge').text('Ad Clicks: ' + totalAdClicks.toLocaleString());

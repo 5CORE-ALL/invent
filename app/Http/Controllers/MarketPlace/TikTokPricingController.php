@@ -223,6 +223,8 @@ class TikTokPricingController extends Controller
             foreach ($campaignMetricsL30 as $skuUpper => $metrics) {
                 $campaignMetricsBySku[$skuUpper] = [
                     'cost' => (float)($metrics->total_cost ?? 0),
+                    'cost_l30' => (float)($metrics->total_cost ?? 0),
+                    'cost_l7' => 0,
                     'clicks' => (int)($metrics->total_clicks ?? 0),
                     'revenue' => (float)($metrics->total_revenue ?? 0),
                     'sku_orders' => (int)($metrics->total_sku_orders ?? 0),
@@ -243,8 +245,11 @@ class TikTokPricingController extends Controller
                     if (empty($campaignMetricsBySku[$skuUpper]['custom_status'])) $campaignMetricsBySku[$skuUpper]['custom_status'] = $metrics->custom_status ?? null;
                     if ($campaignMetricsBySku[$skuUpper]['budget'] === null && $metrics->budget !== null) $campaignMetricsBySku[$skuUpper]['budget'] = (float)$metrics->budget;
                 } else {
+                    // For SKUs only in L7, use L7 cost (fallback only)
                     $campaignMetricsBySku[$skuUpper] = [
                         'cost' => (float)($metrics->total_cost ?? 0),
+                        'cost_l30' => 0,
+                        'cost_l7' => (float)($metrics->total_cost ?? 0),
                         'clicks' => (int)($metrics->total_clicks ?? 0),
                         'revenue' => (float)($metrics->total_revenue ?? 0),
                         'sku_orders' => (int)($metrics->total_sku_orders ?? 0),
@@ -423,7 +428,7 @@ class TikTokPricingController extends Controller
             $processedItem["campaign_name"] = $hasCampaign ? implode(', ', array_unique($campaignMapBySku[$skuUpper])) : '';
             $processedItem["hasCampaign"] = $hasCampaign;
             $metrics = $campaignMetricsBySku[$skuUpper] ?? [
-                'cost' => 0, 'clicks' => 0, 'revenue' => 0, 'sku_orders' => 0, 'roi' => 0, 'in_roas' => 0, 'custom_status' => null, 'budget' => null,
+                'cost' => 0, 'cost_l30' => 0, 'cost_l7' => 0, 'clicks' => 0, 'revenue' => 0, 'sku_orders' => 0, 'roi' => 0, 'in_roas' => 0, 'custom_status' => null, 'budget' => null,
             ];
             $outRoas = (float)($metrics['roi'] ?? 0);
             $inRoas = (float)($metrics['in_roas'] ?? 0);
@@ -444,6 +449,8 @@ class TikTokPricingController extends Controller
             $processedItem["ads_price"] = $processedItem["TT Price"] ?? 0;
             $processedItem["budget"] = isset($metrics['budget']) && $metrics['budget'] !== null ? round((float)$metrics['budget'], 2) : null;
             $processedItem["spend"] = round((float)($metrics['cost'] ?? 0), 2);
+            $processedItem["spend_l30"] = round((float)($metrics['cost_l30'] ?? 0), 2);
+            $processedItem["spend_l7"] = round((float)($metrics['cost_l7'] ?? 0), 2);
             // TACOS% = (spend / (TT L30 * TT Price)) * 100
             $spend = (float)$processedItem["spend"];
             $ttL30 = (float)($processedItem["TT L30"] ?? 0);
@@ -462,7 +469,6 @@ class TikTokPricingController extends Controller
             $processedItem["out_roas"] = round($outRoas, 2);
             $processedItem["in_roas"] = round($inRoas, 2);
             $processedItem["status"] = $customStatus;
-
             $processedData[] = $processedItem;
         }
 
