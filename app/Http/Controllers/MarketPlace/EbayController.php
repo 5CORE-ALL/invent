@@ -2003,24 +2003,30 @@ class EbayController extends Controller
     public function getKwPmtSpendTotals()
     {
         try {
-            // KW Spend: From ebay_priority_reports (L30 range - 31 day aggregated from eBay API)
+            $thirtyDaysAgo = Carbon::now()->subDays(30)->format('Y-m-d');
+
+            // KW Spend: From ebay_priority_reports (L30 range, recent data only)
+            // Matches ChannelMasterController::fetchAdMetricsFromTables() exactly
             $kwSpend = DB::table('ebay_priority_reports')
                 ->where('report_range', 'L30')
+                ->whereDate('updated_at', '>=', $thirtyDaysAgo)
                 ->selectRaw('SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")) as total_spend')
                 ->value('total_spend') ?? 0;
 
-            // PMT Spend: From ebay_general_reports (L30 range - 31 day aggregated from eBay API)
+            // PMT Spend: From ebay_general_reports (L30 range, recent data only)
+            // Matches ChannelMasterController::fetchAdMetricsFromTables() exactly
             $pmtSpend = DB::table('ebay_general_reports')
                 ->where('report_range', 'L30')
+                ->whereDate('updated_at', '>=', $thirtyDaysAgo)
                 ->selectRaw('SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")) as total_spend')
                 ->value('total_spend') ?? 0;
 
-            $totalSpend = floatval($kwSpend) + floatval($pmtSpend);
+            $totalSpend = round(floatval($kwSpend) + floatval($pmtSpend), 2);
 
             return response()->json([
                 'success' => true,
-                'kw_spend' => floatval($kwSpend),
-                'pmt_spend' => floatval($pmtSpend),
+                'kw_spend' => round(floatval($kwSpend), 2),
+                'pmt_spend' => round(floatval($pmtSpend), 2),
                 'total_spend' => $totalSpend,
             ]);
         } catch (\Exception $e) {

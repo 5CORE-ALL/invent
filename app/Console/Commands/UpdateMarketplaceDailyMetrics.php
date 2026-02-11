@@ -207,42 +207,44 @@ class UpdateMarketplaceDailyMetrics extends Command
         // ROI = (PFT / COGS) * 100 - but COGS is LP only
         $roiPercentage = $totalCogs > 0 ? ($totalPft / $totalCogs) * 100 : 0;
 
-        // Calculate KW Spent - same logic as amazonKwAdsView
-        // Uses L30 report_date_range, group by campaignName to get MAX(spend), then sum
-        $kwSpentData = DB::table('amazon_sp_campaign_reports')
-            ->selectRaw('campaignName, MAX(spend) as max_spend')
+        // Calculate KW Spent - use LATEST L30 row per campaign (MAX(id)) approach
+        // Matches ChannelMasterController::fetchAdMetricsFromTables() exactly
+        $kwLatestIds = DB::table('amazon_sp_campaign_reports')
+            ->selectRaw('MAX(id) as id')
             ->where('report_date_range', 'L30')
-            ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'") // Exclude PT and FBA campaigns
+            ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'")
+            ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
             ->groupBy('campaignName')
-            ->get();
-        
-        $kwSpent = $kwSpentData->sum('max_spend') ?? 0;
+            ->pluck('id');
+        $kwSpent = $kwLatestIds->isNotEmpty()
+            ? DB::table('amazon_sp_campaign_reports')->whereIn('id', $kwLatestIds)->sum('spend')
+            : 0;
 
-        // Calculate PT Spent - same logic as amazonPtAdsView
-        // Uses L30 report_date_range, group by campaignName to get MAX(spend), then sum
-        $ptSpentData = DB::table('amazon_sp_campaign_reports')
-            ->selectRaw('campaignName, MAX(spend) as max_spend')
+        // Calculate PT Spent - use LATEST L30 row per campaign (MAX(id)) approach
+        $ptLatestIds = DB::table('amazon_sp_campaign_reports')
+            ->selectRaw('MAX(id) as id')
             ->where('report_date_range', 'L30')
             ->where(function($query) {
                 $query->whereRaw("campaignName LIKE '%PT'")
                     ->orWhereRaw("campaignName LIKE '%PT.'");
             })
-            ->whereRaw("campaignName NOT LIKE '%FBA PT%'") // Exclude FBA PT campaigns
-            ->whereRaw("campaignName NOT LIKE '%FBA PT.%'") // Exclude FBA PT. campaigns
+            ->whereRaw("campaignName NOT LIKE '%FBA PT%'")
+            ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
             ->groupBy('campaignName')
-            ->get();
-        
-        $ptSpent = $ptSpentData->sum('max_spend') ?? 0;
+            ->pluck('id');
+        $ptSpent = $ptLatestIds->isNotEmpty()
+            ? DB::table('amazon_sp_campaign_reports')->whereIn('id', $ptLatestIds)->sum('spend')
+            : 0;
 
-        // Calculate HL Spent - same logic as amazonHlAdsView
-        // Uses L30 report_date_range, group by campaignName to get MAX(cost), then sum
-        $hlSpentData = DB::table('amazon_sb_campaign_reports')
-            ->selectRaw('campaignName, MAX(cost) as max_cost')
+        // Calculate HL Spent - use LATEST L30 row per campaign (MAX(id)) approach
+        $hlLatestIds = DB::table('amazon_sb_campaign_reports')
+            ->selectRaw('MAX(id) as id')
             ->where('report_date_range', 'L30')
             ->groupBy('campaignName')
-            ->get();
-        
-        $hlSpent = $hlSpentData->sum('max_cost') ?? 0;
+            ->pluck('id');
+        $hlSpent = $hlLatestIds->isNotEmpty()
+            ? DB::table('amazon_sb_campaign_reports')->whereIn('id', $hlLatestIds)->sum('cost')
+            : 0;
 
         $tacosPercentage = $totalRevenue > 0 ? (($kwSpent + $ptSpent + $hlSpent) / $totalRevenue) * 100 : 0;
         $nPft = $pftPercentage - $tacosPercentage;

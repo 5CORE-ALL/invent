@@ -463,7 +463,7 @@
                         <!-- Financial Metrics -->
                         <span class="badge bg-success fs-6 p-2 amz-badge-chart" data-metric="total_pft" id="total-pft-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">Total PFT: $0.00</span>
                         <span class="badge bg-primary fs-6 p-2 amz-badge-chart" data-metric="total_sales" id="total-sales-amt-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">Total Sales: $0.00</span>
-                        <span class="badge bg-warning fs-6 p-2 amz-badge-chart" data-metric="total_spend" id="total-spend-l30-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">Spend L30: $0.00</span>
+                        <span class="badge bg-warning fs-6 p-2 amz-badge-chart" data-metric="total_spend" id="total-spend-l30-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">Ad Spend L30: $0.00</span>
                         
                         <!-- Percentage Metrics -->
                         <span class="badge bg-info fs-6 p-2 amz-badge-chart" data-metric="gpft_pct" id="avg-gpft-badge" style="color: black; font-weight: bold; cursor:pointer;" title="View trend">GPFT: 0%</span>
@@ -5641,12 +5641,12 @@
                 $('#prc-gt-lmp-count').text(prcGtLmpCount.toLocaleString());
                 
                 // Calculate Total Spend L30 from campaign totals (avoid double-counting)
-                const totalSpendL30 = (campaignTotals.kw_spend_L30 || 0) + (campaignTotals.pt_spend_L30 || 0) + (campaignTotals.hl_spend_L30 || 0);
+                const totalSpendL30 = parseFloat(campaignTotals.kw_spend_L30 || 0) + parseFloat(campaignTotals.pt_spend_L30 || 0) + parseFloat(campaignTotals.hl_spend_L30 || 0);
                 
                 // Calculate TCOS% = (Total Spend L30 / Total Sales) * 100
                 const tcosPercent = totalSalesAmt > 0 ? ((totalSpendL30 / totalSalesAmt) * 100) : 0;
                 
-                $('#total-spend-l30-badge').text('Spend L30: $' + Math.round(totalSpendL30));
+                $('#total-spend-l30-badge').text('Ad Spend L30: $' + Math.round(totalSpendL30));
                 
                 // GROI% = (Total PFT / Total COGS) * 100
                 const groiPercent = totalLpAmt > 0 ? ((totalPftAmt / totalLpAmt) * 100) : 0;

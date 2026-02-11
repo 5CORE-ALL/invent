@@ -943,6 +943,9 @@
         let increaseModeActive = false; // Track increase mode state
         let selectedSkus = new Set(); // Track selected SKUs across all pages
 
+        // Store AJAX-loaded spend totals (from reports - matches KW/PMP ads pages)
+        let ebaySpendTotals = { kw_spend: 0, pmt_spend: 0, total_spend: 0 };
+
         // KW Ads range filter state
         let kwRangeFilters = {
             '1ub': { min: null, max: null },
@@ -1234,11 +1237,17 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
+                        // Store spend totals for TACOS/NPFT/NROI calculation
+                        ebaySpendTotals.kw_spend = parseFloat(data.kw_spend) || 0;
+                        ebaySpendTotals.pmt_spend = parseFloat(data.pmt_spend) || 0;
+                        ebaySpendTotals.total_spend = parseFloat(data.total_spend) || 0;
                         // Update spend badges with grand totals from reports
-                        $('#kw-spend-badge').text('KW Spend: $' + Math.round(data.kw_spend).toLocaleString());
-                        $('#pmt-spend-badge').text('PMT Spend: $' + Math.round(data.pmt_spend).toLocaleString());
-                        $('#total-spend-badge').text('Total Spend: $' + Math.round(data.total_spend).toLocaleString());
+                        $('#kw-spend-badge').text('KW Spend: $' + Math.round(ebaySpendTotals.kw_spend).toLocaleString());
+                        $('#pmt-spend-badge').text('PMT Spend: $' + Math.round(ebaySpendTotals.pmt_spend).toLocaleString());
+                        $('#total-spend-badge').text('Total Spend: $' + Math.round(ebaySpendTotals.total_spend).toLocaleString());
                         console.log('Loaded spend totals:', data);
+                        // Re-run summary to update TACOS/NPFT/NROI with correct spend
+                        if (table) updateSummary();
                     }
                 })
                 .catch(error => {
@@ -5721,20 +5730,11 @@
                 const allData = table.getData("all");
                 const filteredData = table.getData("active");
                 
-                // Grand totals from ALL data (matches KW/PMP ads pages)
-                let grandTotalKwSpend = 0;
-                let grandTotalPmtSpend = 0;
-                let grandTotalSpend = 0;
-                
-                // Calculate grand totals from ALL data (no filters)
-                allData.forEach(row => {
-                    const inv = parseFloat(row.INV || 0);
-                    if (inv > 0) {
-                        grandTotalKwSpend += parseFloat(row['kw_spend_L30'] || 0);
-                        grandTotalPmtSpend += parseFloat(row['pmt_spend_L30'] || 0);
-                        grandTotalSpend += parseFloat(row['AD_Spend_L30'] || 0);
-                    }
-                });
+                // Use AJAX-loaded spend totals from reports (matches KW/PMP ads pages exactly)
+                // These are loaded via loadEbayKwPmtSpendTotals() and avoid double-counting
+                const grandTotalKwSpend = ebaySpendTotals.kw_spend;
+                const grandTotalPmtSpend = ebaySpendTotals.pmt_spend;
+                const grandTotalSpend = ebaySpendTotals.total_spend;
                 
                 // Filtered data metrics (for other badges)
                 let totalPftAmt = 0;

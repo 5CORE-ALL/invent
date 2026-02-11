@@ -2921,34 +2921,53 @@ class OverallAmazonController extends Controller
             }
         }
 
-        // Calculate campaign totals using EXACT same logic as KW/PT/HL Ads pages
-        // This avoids double-counting campaigns that match multiple SKUs
+        // Calculate campaign totals using LATEST L30 row per campaign (MAX(id)) approach
+        // This matches ChannelMasterController::fetchAdMetricsFromTables() exactly
         
-        // Sum ALL KW campaigns (already filtered to exclude PT/FBA in query)
-        $total_kw_spend = $amazonSpCampaignReportsL30->sum('spend');
+        // KW: SP campaigns NOT ending with PT or FBA - get latest L30 row per campaign
+        $kwTotalLatestIds = DB::table('amazon_sp_campaign_reports')
+            ->selectRaw('MAX(id) as id')
+            ->where('report_date_range', 'L30')
+            ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'")
+            ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
+            ->groupBy('campaignName')
+            ->pluck('id');
+        $total_kw_spend = $kwTotalLatestIds->isNotEmpty()
+            ? DB::table('amazon_sp_campaign_reports')->whereIn('id', $kwTotalLatestIds)->sum('spend')
+            : 0;
         
-        // Sum PT campaigns - Use EXACT same logic as AmazonCampaignReportsController::amazonPtAdsView() line 573-578
-        $total_pt_spend = $amazonSpCampaignReportsPtL30
-            ->filter(function ($item) {
-                $cleanName = strtoupper(trim($item->campaignName));
-                // Include campaigns ending with PT or PT. (matching SQL: LIKE '%PT' OR LIKE '%PT.')
-                $endsWithPt = (str_ends_with($cleanName, 'PT') || str_ends_with($cleanName, 'PT.'));
-                // Exclude FBA PT campaigns (matching SQL: NOT LIKE '%FBA PT%')
-                $isFbaPt = (strpos($cleanName, 'FBA PT') !== false);
-                return $endsWithPt && !$isFbaPt;
+        // PT: SP campaigns ending with PT (not FBA PT) - get latest L30 row per campaign
+        $ptTotalLatestIds = DB::table('amazon_sp_campaign_reports')
+            ->selectRaw('MAX(id) as id')
+            ->where('report_date_range', 'L30')
+            ->where(function ($q) {
+                $q->whereRaw("campaignName LIKE '%PT'")->orWhereRaw("campaignName LIKE '%PT.'");
             })
-            ->sum('spend');
+            ->whereRaw("campaignName NOT LIKE '%FBA PT%'")
+            ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
+            ->groupBy('campaignName')
+            ->pluck('id');
+        $total_pt_spend = $ptTotalLatestIds->isNotEmpty()
+            ? DB::table('amazon_sp_campaign_reports')->whereIn('id', $ptTotalLatestIds)->sum('spend')
+            : 0;
         
-        // Sum HL campaigns (already grouped by campaignName with MAX cost)
-        $total_hl_spend = $amazonHlL30->sum('cost');
+        // HL: SB campaigns - get latest L30 row per campaign
+        $hlTotalLatestIds = DB::table('amazon_sb_campaign_reports')
+            ->selectRaw('MAX(id) as id')
+            ->where('report_date_range', 'L30')
+            ->groupBy('campaignName')
+            ->pluck('id');
+        $total_hl_spend = $hlTotalLatestIds->isNotEmpty()
+            ? DB::table('amazon_sb_campaign_reports')->whereIn('id', $hlTotalLatestIds)->sum('cost')
+            : 0;
 
         return response()->json([
             'message' => 'Data fetched successfully',
             'data' => $finalResult,
             'campaign_totals' => [
-                'kw_spend_L30' => $total_kw_spend,
-                'pt_spend_L30' => $total_pt_spend,
-                'hl_spend_L30' => $total_hl_spend,
+                'kw_spend_L30' => round((float) $total_kw_spend, 2),
+                'pt_spend_L30' => round((float) $total_pt_spend, 2),
+                'hl_spend_L30' => round((float) $total_hl_spend, 2),
             ],
             'status' => 200,
         ]);
