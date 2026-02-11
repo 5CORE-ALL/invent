@@ -237,7 +237,6 @@ class TikTokPricingController extends Controller
             foreach ($campaignMetricsL7 as $skuUpper => $metrics) {
                 if (isset($campaignMetricsBySku[$skuUpper])) {
                     $campaignMetricsBySku[$skuUpper]['cost'] += (float)($metrics->total_cost ?? 0);
-                    $campaignMetricsBySku[$skuUpper]['cost_l7'] = (float)($metrics->total_cost ?? 0);
                     $campaignMetricsBySku[$skuUpper]['clicks'] += (int)($metrics->total_clicks ?? 0);
                     $campaignMetricsBySku[$skuUpper]['revenue'] += (float)($metrics->total_revenue ?? 0);
                     $campaignMetricsBySku[$skuUpper]['sku_orders'] += (int)($metrics->total_sku_orders ?? 0);
@@ -246,6 +245,7 @@ class TikTokPricingController extends Controller
                     if (empty($campaignMetricsBySku[$skuUpper]['custom_status'])) $campaignMetricsBySku[$skuUpper]['custom_status'] = $metrics->custom_status ?? null;
                     if ($campaignMetricsBySku[$skuUpper]['budget'] === null && $metrics->budget !== null) $campaignMetricsBySku[$skuUpper]['budget'] = (float)$metrics->budget;
                 } else {
+                    // For SKUs only in L7, use L7 cost (fallback only)
                     $campaignMetricsBySku[$skuUpper] = [
                         'cost' => (float)($metrics->total_cost ?? 0),
                         'cost_l30' => 0,

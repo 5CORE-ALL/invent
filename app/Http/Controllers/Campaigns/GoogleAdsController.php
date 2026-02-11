@@ -206,8 +206,23 @@ class GoogleAdsController extends Controller
                 $sales = array_map(fn($v) => round($v * $ratio, 2), $sales);
             }
             if ($ordersSum > 0 && $ga4Total['purchases'] > 0) {
-                $ratio = $ga4Total['purchases'] / $ordersSum;
-                $orders = array_map(fn($v) => (int) round($v * $ratio), $orders);
+                // Largest-remainder method: per-day integers sum to exact GA4 total
+                $target = (int) $ga4Total['purchases'];
+                $ratio = $target / $ordersSum;
+                $scaled = array_map(fn($v) => $v * $ratio, $orders);
+                $floored = array_map(fn($v) => (int) floor($v), $scaled);
+                $remainders = [];
+                foreach ($scaled as $i => $v) {
+                    $remainders[$i] = $v - $floored[$i];
+                }
+                arsort($remainders);
+                $diff = $target - array_sum($floored);
+                foreach ($remainders as $i => $r) {
+                    if ($diff <= 0) break;
+                    $floored[$i]++;
+                    $diff--;
+                }
+                $orders = $floored;
             }
         }
 
@@ -1367,8 +1382,23 @@ class GoogleAdsController extends Controller
                 $sales = array_map(fn($v) => round($v * $ratio, 2), $sales);
             }
             if ($ordersSum > 0 && $ga4Total['purchases'] > 0) {
-                $ratio = $ga4Total['purchases'] / $ordersSum;
-                $orders = array_map(fn($v) => (int) round($v * $ratio), $orders);
+                // Largest-remainder method: per-day integers sum to exact GA4 total
+                $target = (int) $ga4Total['purchases'];
+                $ratio = $target / $ordersSum;
+                $scaled = array_map(fn($v) => $v * $ratio, $orders);
+                $floored = array_map(fn($v) => (int) floor($v), $scaled);
+                $remainders = [];
+                foreach ($scaled as $i => $v) {
+                    $remainders[$i] = $v - $floored[$i];
+                }
+                arsort($remainders);
+                $diff = $target - array_sum($floored);
+                foreach ($remainders as $i => $r) {
+                    if ($diff <= 0) break;
+                    $floored[$i]++;
+                    $diff--;
+                }
+                $orders = $floored;
             }
         }
 

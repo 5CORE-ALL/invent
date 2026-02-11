@@ -67,15 +67,16 @@ class FetchGoogleAdsCampaigns extends Command
 
             // Step 1: Fetch all active campaigns first (without date/metrics filter)
             // This ensures we capture campaigns even if they have no metrics
-            $this->info("Step 1: Fetching all active campaigns...");
+            $this->info("Step 1: Fetching all active + paused campaigns...");
             $allActiveCampaigns = $this->fetchAllActiveCampaigns($customerId);
-            $this->info("Found " . count($allActiveCampaigns) . " active campaigns");
+            $this->info("Found " . count($allActiveCampaigns) . " campaigns (ENABLED + PAUSED)");
 
             // Step 2: Fetch metrics in 7-day chunks to avoid memory exhaustion (30 days × 400+ campaigns = OOM)
             $this->info("Step 2: Fetching metrics for date range (in 7-day chunks)...");
             $insertedCount = 0;
             $updatedCount = 0;
             $processedCampaignIds = [];
+            $campaignCurrentStatuses = [];
             $chunkDays = 7;
             $cursor = Carbon::parse($startDate);
             $endDateObj = Carbon::parse($endDate);
@@ -96,6 +97,16 @@ class FetchGoogleAdsCampaigns extends Command
                     try {
                         $data = $this->prepareData($row);
                         $processedCampaignIds[$data['campaign_id']] = true;
+
+                        // Collect current status for each campaign (for Step 4b status sync)
+                        if (!isset($campaignCurrentStatuses[$data['campaign_id']])) {
+                            $campaignCurrentStatuses[$data['campaign_id']] = [
+                                'campaign_status' => $data['campaign_status'] ?? null,
+                                'campaign_primary_status' => $data['campaign_primary_status'] ?? null,
+                                'campaign_primary_status_reasons' => $data['campaign_primary_status_reasons'] ?? null,
+                                'campaign_serving_status' => $data['campaign_serving_status'] ?? null,
+                            ];
+                        }
 
                         $campaign = GoogleAdsCampaign::updateOrCreate(
                             [
@@ -127,7 +138,8 @@ class FetchGoogleAdsCampaigns extends Command
 
             $this->info("Found " . ($insertedCount + $updatedCount) . " records with metrics (inserted: {$insertedCount}, updated: {$updatedCount})");
 
-            // Step 4: For active campaigns without metrics, create records with zero metrics
+            // Step 4: For ENABLED campaigns without metrics, create records with zero metrics
+            // (Skip PAUSED campaigns — they're only needed for Step 4b status sync, not zero-metric rows)
             $zeroMetricsCount = 0;
             foreach ($allActiveCampaigns as $campaignData) {
                 $campaign = $campaignData['campaign'] ?? [];
@@ -139,6 +151,12 @@ class FetchGoogleAdsCampaigns extends Command
                 
                 // Skip if we already processed this campaign (it has metrics)
                 if (isset($processedCampaignIds[$campaignId])) {
+                    continue;
+                }
+
+                // Only create zero-metric rows for ENABLED campaigns (not PAUSED)
+                $campaignStatus = $campaign['status'] ?? null;
+                if ($campaignStatus !== 'ENABLED') {
                     continue;
                 }
 
@@ -175,6 +193,51 @@ class FetchGoogleAdsCampaigns extends Command
             }
             Log::info("Google Ads campaign data fetch completed. Inserted: {$insertedCount}, Updated: {$updatedCount}, Zero-metrics: {$zeroMetricsCount}");
 
+            // Step 4b: Sync campaign_status across ALL historical rows for each campaign.
+            // The daily cron (--days=1) only updates yesterday's row, but Google Ads dashboard
+            // shows spend by CURRENT campaign status. So we need all rows for a campaign to
+            // reflect its current status, otherwise the spend total drifts over time.
+            $this->info("");
+            $this->info("Step 4b: Syncing campaign status across all historical rows...");
+            $statusSyncCount = 0;
+
+            // Also include active campaigns (Step 1) that might not have had metrics
+            foreach ($allActiveCampaigns as $campaignData) {
+                $campaign = $campaignData['campaign'] ?? [];
+                $campaignId = (string) ($campaign['id'] ?? '');
+                if (!empty($campaignId) && !isset($campaignCurrentStatuses[$campaignId])) {
+                    $campaignCurrentStatuses[$campaignId] = [
+                        'campaign_status' => $campaign['status'] ?? null,
+                        'campaign_primary_status' => $campaign['primaryStatus'] ?? null,
+                        'campaign_primary_status_reasons' => is_array($campaign['primaryStatusReasons'] ?? null)
+                            ? implode(', ', $campaign['primaryStatusReasons'])
+                            : ($campaign['primaryStatusReasons'] ?? null),
+                        'campaign_serving_status' => $campaign['servingStatus'] ?? null,
+                    ];
+                }
+            }
+
+            // Update all historical rows for each campaign with current status
+            foreach ($campaignCurrentStatuses as $campaignId => $statusData) {
+                $updated = DB::table('google_ads_campaigns')
+                    ->where('campaign_id', $campaignId)
+                    ->where(function ($query) use ($statusData) {
+                        // Only update rows that have a different status (avoid unnecessary writes)
+                        // Also handle NULL values: NULL != 'ENABLED' is NULL in MySQL, not true
+                        foreach ($statusData as $field => $value) {
+                            if ($value === null) {
+                                $query->orWhereNotNull($field);
+                            } else {
+                                $query->orWhere($field, '!=', $value)
+                                      ->orWhereNull($field);
+                            }
+                        }
+                    })
+                    ->update(array_merge($statusData, ['updated_at' => now()]));
+                $statusSyncCount += $updated;
+            }
+            $this->info("Synced status for " . count($campaignCurrentStatuses) . " campaigns, updated {$statusSyncCount} historical rows");
+
             // Step 5: Fetch GA4 actual data for the same date range
             $this->info("");
             $this->info("Step 5: Fetching GA4 actual data...");
@@ -192,7 +255,9 @@ class FetchGoogleAdsCampaigns extends Command
     }
 
     /**
-     * Fetch all active campaigns (without metrics filter)
+     * Fetch all active + paused campaigns (without metrics filter).
+     * Includes PAUSED so Step 4b can sync status across all historical rows
+     * even when a recently-paused campaign has 0 metrics on the cron date.
      */
     private function fetchAllActiveCampaigns($customerId)
     {
@@ -230,7 +295,7 @@ class FetchGoogleAdsCampaigns extends Command
                 campaign_budget.explicitly_shared,
                 campaign_budget.has_recommended_budget
             FROM campaign
-            WHERE campaign.status = 'ENABLED'
+            WHERE campaign.status IN ('ENABLED', 'PAUSED')
         ";
 
         try {

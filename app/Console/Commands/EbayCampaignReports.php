@@ -77,7 +77,7 @@ class EbayCampaignReports extends Command
         $summaryRanges = [
             'L90' => [Carbon::today()->subDays(90), Carbon::today()->subDays(31)->endOfDay()],
             'L60' => [Carbon::today()->subDays(60), Carbon::today()->subDays(31)->endOfDay()],
-            'L30' => [Carbon::today()->subDays(29), Carbon::today()->subDay()->endOfDay()],
+            'L30' => [Carbon::today()->subDays(31), Carbon::today()->subDay()->endOfDay()],
             'L15' => [Carbon::today()->subDays(14), Carbon::today()->subDay()->endOfDay()],
             'L7' => [Carbon::today()->subDays(6), Carbon::today()->subDay()->endOfDay()],
             'L1' => [Carbon::yesterday()->startOfDay(), Carbon::yesterday()->endOfDay()]
@@ -103,9 +103,9 @@ class EbayCampaignReports extends Command
     {
         $this->info("Processing ALL_CAMPAIGN_PERFORMANCE_SUMMARY_REPORT: {$rangeKey} ({$from->toDateString()} → {$to->toDateString()})");
 
-        // Use UTC timezone for eBay API compatibility
-        $dateFrom = $from->copy()->startOfDay()->utc()->format('Y-m-d\TH:i:s.000\Z');
-        $dateTo = $to->copy()->endOfDay()->utc()->format('Y-m-d\TH:i:s.000\Z');
+        // Use clean UTC day boundaries (avoid IST→UTC shift that skews date range)
+        $dateFrom = $from->copy()->format('Y-m-d') . 'T00:00:00.000Z';
+        $dateTo = $to->copy()->format('Y-m-d') . 'T23:59:59.000Z';
 
         $body = ["reportType" => "ALL_CAMPAIGN_PERFORMANCE_SUMMARY_REPORT",
             "dateFrom" => $dateFrom,
@@ -225,9 +225,13 @@ class EbayCampaignReports extends Command
     {
         $this->info("Processing CAMPAIGN_PERFORMANCE_REPORT: {$rangeKey} ({$from->toDateString()} → {$to->toDateString()})");
 
+        // Use clean UTC day boundaries (avoid IST→UTC shift)
+        $dateFrom = $from->copy()->format('Y-m-d') . 'T00:00:00.000Z';
+        $dateTo = $to->copy()->format('Y-m-d') . 'T23:59:59.000Z';
+
         $body = ["reportType" => "CAMPAIGN_PERFORMANCE_REPORT",
-            "dateFrom" => $from,
-            "dateTo" => $to,
+            "dateFrom" => $dateFrom,
+            "dateTo" => $dateTo,
             "marketplaceId" => "EBAY_US",
             "reportFormat" => "TSV_GZIP",
             "fundingModels" => ["COST_PER_SALE"],
@@ -558,17 +562,12 @@ class EbayCampaignReports extends Command
         $clientId = env('EBAY_APP_ID');
         $clientSecret = env('EBAY_CERT_ID');
 
-        // For refresh token, scope is optional - the refresh token already contains the granted scopes
-        // Only specify scope if you want to request additional scopes
-        $scope = 'https://api.ebay.com/oauth/api_scope/sell.marketing.readonly https://api.ebay.com/oauth/api_scope/sell.marketing';
-
         try {
             $response = Http::asForm()
                 ->withBasicAuth($clientId, $clientSecret)
                 ->post('https://api.ebay.com/identity/v1/oauth2/token', [
                     'grant_type' => 'refresh_token',
                     'refresh_token' => env('EBAY_REFRESH_TOKEN'),
-                    'scope' => $scope,
                 ]);
 
             if ($response->successful()) {
