@@ -2662,4 +2662,113 @@ class CvrMasterController extends Controller
             ]);
         }
     }
+
+    /**
+     * Bulk change price for selected SKUs across all marketplaces.
+     * - Doba & Shopify Wholesale: 25% discount (price * 0.75)
+     * - Shopify B2B: 25% discount + shipping deducted (price * 0.75 - ship)
+     * - Others (Amazon, Walmart, Shopify B2C): Full price
+     */
+    public function bulkChangePrice(Request $request)
+    {
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+            'price' => 'required|numeric|min:0.01|max:999999.99',
+            'skus' => 'required|array',
+            'skus.*' => 'string'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed: ' . $validator->errors()->first()
+            ], 400);
+        }
+
+        $basePrice = round(floatval($request->input('price')), 2);
+        $skus = array_map(fn($s) => strtoupper(trim($s)), $request->input('skus', []));
+        $skus = array_values(array_filter(array_unique($skus)));
+
+        if (empty($skus)) {
+            return response()->json(['success' => false, 'message' => 'No valid SKUs provided'], 400);
+        }
+
+        $pushableMarketplaces = ['amazon', 'doba', 'walmart', 'sb2c', 'sb2b'];
+        $updated = 0;
+        $errors = [];
+
+        foreach ($skus as $sku) {
+            $productMaster = ProductMaster::where('sku', $sku)->first();
+            $values = $productMaster && $productMaster->Values
+                ? (is_array($productMaster->Values) ? $productMaster->Values : json_decode($productMaster->Values ?? '{}', true) ?? [])
+                : [];
+            $ship = floatval($values['ship'] ?? $productMaster->ship ?? 0);
+
+            $dobaPrice = round($basePrice * 0.75, 2);
+            $sb2bPrice = max(0.01, round($basePrice * 0.75 - $ship, 2));
+
+            foreach ($pushableMarketplaces as $mp) {
+                $price = match ($mp) {
+                    'doba' => $dobaPrice,
+                    'sb2b' => $sb2bPrice,
+                    default => $basePrice
+                };
+
+                try {
+                    $req = Request::create('/cvr-master-push-price', 'POST', [
+                        'sku' => $sku,
+                        'price' => $price,
+                        'marketplace' => $mp,
+                        '_token' => $request->input('_token')
+                    ]);
+                    $req->setUserResolver($request->getUserResolver());
+                    $response = $this->pushPriceToAmazon($req);
+                    $data = json_decode($response->getContent(), true);
+                    if ($data['success'] ?? false) {
+                        $this->saveSpriceToView($sku, $mp, $price);
+                        $updated++;
+                    } else {
+                        $errors[] = "{$sku}/{$mp}: " . ($data['message'] ?? 'Failed');
+                    }
+                } catch (\Exception $e) {
+                    $errors[] = "{$sku}/{$mp}: " . $e->getMessage();
+                    Log::error('Bulk change price error', ['sku' => $sku, 'mp' => $mp, 'error' => $e->getMessage()]);
+                }
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'updated' => $updated,
+            'errors' => array_slice($errors, 0, 10),
+            'message' => "Price \${$basePrice} applied. " . count($skus) . " SKU(s) processed across marketplaces."
+        ]);
+    }
+
+    private function saveSpriceToView($sku, $marketplace, $sprice)
+    {
+        $dataView = null;
+        if ($marketplace === 'amazon') {
+            $dataView = AmazonDataView::firstOrNew(['sku' => $sku]);
+        } elseif ($marketplace === 'doba') {
+            $dataView = DobaDataView::firstOrNew(['sku' => $sku]);
+        } elseif ($marketplace === 'walmart') {
+            $dataView = WalmartDataView::firstOrNew(['sku' => $sku]);
+        } elseif ($marketplace === 'sb2c' || $marketplace === 'shopifyb2c') {
+            $dataView = Shopifyb2cDataView::firstOrNew(['sku' => $sku]);
+        } elseif ($marketplace === 'sb2b' || $marketplace === 'shopifyb2b') {
+            $dataView = ShopifyB2BDataView::firstOrNew(['sku' => $sku]);
+        }
+
+        if ($dataView) {
+            $value = is_array($dataView->value) ? $dataView->value : (json_decode($dataView->value ?? '{}', true) ?? []);
+            if (!is_array($value)) $value = [];
+            if ($marketplace === 'walmart') {
+                $value['sprice'] = $sprice;
+            } else {
+                $value['SPRICE'] = $sprice;
+            }
+            $dataView->value = $value;
+            $dataView->save();
+        }
+    }
 }

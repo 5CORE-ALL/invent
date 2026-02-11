@@ -351,6 +351,13 @@
                 <span class="summary-item"><strong>Total Views:</strong> <span id="total-views-badge">0</span></span>
                 <span class="summary-item"><strong>CVR:</strong> <span id="avg-cvr-badge">0%</span></span>
                 <span class="summary-item"><strong>Avg Price:</strong> <span id="avg-price-badge">$0.00</span></span>
+                <span class="summary-item d-flex align-items-center gap-2 ms-auto">
+                    <label class="mb-0 fw-semibold">Change Price:</label>
+                    <input type="number" id="change-price-input" class="form-control form-control-sm" placeholder="Enter price" step="0.01" min="0" style="width: 100px;">
+                    <button type="button" id="apply-change-price-btn" class="btn btn-sm btn-primary">
+                        <i class="fas fa-check"></i> Apply
+                    </button>
+                </span>
             </div>
             <div class="card-body py-3">
              
@@ -1155,6 +1162,66 @@
                     showToast(errorMsg, 'error');
                     btn.html(originalHtml);
                     btn.prop('disabled', false);
+                }
+            });
+        });
+
+        // ==================== BULK CHANGE PRICE ====================
+        $('#apply-change-price-btn').on('click', function() {
+            const price = parseFloat($('#change-price-input').val()) || 0;
+            if (price <= 0) {
+                showToast('Please enter a valid price greater than 0', 'error');
+                $('#change-price-input').focus();
+                return;
+            }
+
+            let skus = [];
+            if (selectedSkus.size > 0) {
+                skus = Array.from(selectedSkus);
+            } else {
+                const rows = table.getRows('active');
+                rows.forEach(r => {
+                    const d = r.getData();
+                    if (d.is_parent_summary !== true) skus.push(d.sku);
+                });
+            }
+
+            if (skus.length === 0) {
+                showToast('Please select SKUs or ensure table has data', 'error');
+                return;
+            }
+
+            const msg = `Apply price $${price.toFixed(2)} to ${skus.length} SKU(s) across all marketplaces?\n\n` +
+                'Doba & Shopify Wholesale: 25% discount applied\n' +
+                'Shopify B2B: 25% discount + shipping deducted';
+            if (!confirm(msg)) return;
+
+            const btn = $(this);
+            const origHtml = btn.html();
+            btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Applying...');
+
+            $.ajax({
+                url: '/cvr-master-bulk-change-price',
+                method: 'POST',
+                data: {
+                    price: price,
+                    skus: skus,
+                    _token: '{{ csrf_token() }}'
+                },
+                success: function(res) {
+                    if (res.success) {
+                        showToast(res.message || `Updated ${res.updated || 0} SKU(s) across marketplaces`, 'success');
+                        $('#change-price-input').val('');
+                        setTimeout(() => location.reload(), 1500);
+                    } else {
+                        showToast(res.message || 'Some updates failed', 'error');
+                    }
+                    btn.prop('disabled', false).html(origHtml);
+                },
+                error: function(xhr) {
+                    const msg = xhr.responseJSON?.message || 'Failed to apply price';
+                    showToast(msg, 'error');
+                    btn.prop('disabled', false).html(origHtml);
                 }
             });
         });
