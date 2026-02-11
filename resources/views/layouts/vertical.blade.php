@@ -48,7 +48,6 @@
 
     @vite(['resources/js/layout.js', 'resources/js/main.js'])
 
-    @include('components.ai-chat-widget')
 
 </body>
 
