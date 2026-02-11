@@ -334,33 +334,61 @@ class ChannelMasterController extends Controller
         try {
             switch ($channel) {
                 case 'amazon': {
-                    $end = Carbon::now()->subDays(2)->format('Y-m-d');
-                    $start = Carbon::now()->subDays(31)->format('Y-m-d');
-                    $dateFilter = fn ($q) => $q->whereNotNull('report_date_range')
-                        ->whereBetween('report_date_range', [$start, $end])
-                        ->whereNotIn('report_date_range', ['L60', 'L30', 'L15', 'L7', 'L1'])
-                        ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')");
+                    // Use LATEST L30 row per campaign (by MAX(id)) to get current values
+                    // This avoids inflated values from MAX(spend) when multiple L30 rows exist per campaign
 
-                    $kw = DB::table('amazon_sp_campaign_reports')->when(true, $dateFilter)
+                    // KW: SP campaigns NOT ending with PT or FBA - get latest L30 row IDs
+                    $kwLatestIds = DB::table('amazon_sp_campaign_reports')
+                        ->selectRaw('MAX(id) as id')
+                        ->where('report_date_range', 'L30')
                         ->whereRaw("campaignName NOT REGEXP '(PT\\.?$|FBA$)'")
-                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(sales30d), 0) as s, COALESCE(SUM(purchases1d), 0) as u, COALESCE(SUM(spend), 0) as sp')->first();
-                    $pt = DB::table('amazon_sp_campaign_reports')->when(true, $dateFilter)
+                        ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
+                        ->groupBy('campaignName')
+                        ->pluck('id');
+                    $kwData = $kwLatestIds->isNotEmpty()
+                        ? DB::table('amazon_sp_campaign_reports')->whereIn('id', $kwLatestIds)->get()
+                        : collect();
+
+                    // PT: SP campaigns ending with PT (not FBA PT) - get latest L30 row IDs
+                    $ptLatestIds = DB::table('amazon_sp_campaign_reports')
+                        ->selectRaw('MAX(id) as id')
+                        ->where('report_date_range', 'L30')
                         ->where(function ($q) {
                             $q->whereRaw("campaignName LIKE '%PT'")->orWhereRaw("campaignName LIKE '%PT.'");
-                        })->whereRaw("campaignName NOT LIKE '%FBA PT%'")
-                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(sales30d), 0) as s, COALESCE(SUM(purchases1d), 0) as u, COALESCE(SUM(spend), 0) as sp')->first();
-                    $hl = DB::table('amazon_sb_campaign_reports')->when(true, $dateFilter)
-                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(sales), 0) as s, COALESCE(SUM(purchases), 0) as u, COALESCE(SUM(cost), 0) as sp')->first();
+                        })
+                        ->whereRaw("campaignName NOT LIKE '%FBA PT%'")
+                        ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
+                        ->groupBy('campaignName')
+                        ->pluck('id');
+                    $ptData = $ptLatestIds->isNotEmpty()
+                        ? DB::table('amazon_sp_campaign_reports')->whereIn('id', $ptLatestIds)->get()
+                        : collect();
 
-                    $kwC = (int) ($kw->c ?? 0); $kwS = (float) ($kw->s ?? 0); $kwU = (int) ($kw->u ?? 0); $kwSp = (float) ($kw->sp ?? 0);
-                    $ptC = (int) ($pt->c ?? 0); $ptS = (float) ($pt->s ?? 0); $ptU = (int) ($pt->u ?? 0); $ptSp = (float) ($pt->sp ?? 0);
-                    $hlC = (int) ($hl->c ?? 0); $hlS = (float) ($hl->s ?? 0); $hlU = (int) ($hl->u ?? 0); $hlSp = (float) ($hl->sp ?? 0);
+                    // HL: SB campaigns - get latest L30 row IDs
+                    $hlLatestIds = DB::table('amazon_sb_campaign_reports')
+                        ->selectRaw('MAX(id) as id')
+                        ->where('report_date_range', 'L30')
+                        ->groupBy('campaignName')
+                        ->pluck('id');
+                    $hlData = $hlLatestIds->isNotEmpty()
+                        ? DB::table('amazon_sb_campaign_reports')->whereIn('id', $hlLatestIds)->get()
+                        : collect();
+
+                    // Use 7-day attribution (sales7d, purchases7d) to match Amazon Advertising dashboard default
+                    $kwC = (int) $kwData->sum('clicks'); $kwS = (float) $kwData->sum('sales7d'); $kwU = (int) $kwData->sum('purchases7d'); $kwSp = (float) $kwData->sum('spend');
+                    $ptC = (int) $ptData->sum('clicks'); $ptS = (float) $ptData->sum('sales7d'); $ptU = (int) $ptData->sum('purchases7d'); $ptSp = (float) $ptData->sum('spend');
+                    $hlC = (int) $hlData->sum('clicks'); $hlS = (float) $hlData->sum('sales'); $hlU = (int) $hlData->sum('purchases'); $hlSp = (float) $hlData->sum('cost');
+
+                    $totalSpend = round($kwSp + $ptSp + $hlSp, 2);
 
                     return [
                         'clicks' => $kwC + $ptC + $hlC, 'ad_sales' => round($kwS + $ptS + $hlS, 2), 'ad_sold' => $kwU + $ptU + $hlU,
                         'KW Clicks' => $kwC, 'PT Clicks' => $ptC, 'HL Clicks' => $hlC, 'PMT Clicks' => 0, 'Shopping Clicks' => 0, 'SERP Clicks' => 0,
                         'KW Sales' => round($kwS, 2), 'PT Sales' => round($ptS, 2), 'HL Sales' => round($hlS, 2), 'PMT Sales' => 0, 'Shopping Sales' => 0, 'SERP Sales' => 0,
                         'KW Sold' => $kwU, 'PT Sold' => $ptU, 'HL Sold' => $hlU, 'PMT Sold' => 0, 'Shopping Sold' => 0, 'SERP Sold' => 0,
+                        'KW Spent' => round($kwSp, 2), 'PT Spent' => round($ptSp, 2), 'HL Spent' => round($hlSp, 2),
+                        'PMT Spent' => 0, 'Shopping Spent' => 0, 'SERP Spent' => 0,
+                        'Total Ad Spend' => $totalSpend,
                         'KW ACOS' => $kwS > 0 ? round(($kwSp / $kwS) * 100, 1) : 0,
                         'PT ACOS' => $ptS > 0 ? round(($ptSp / $ptS) * 100, 1) : 0,
                         'HL ACOS' => $hlS > 0 ? round(($hlSp / $hlS) * 100, 1) : 0,
@@ -373,32 +401,49 @@ class ChannelMasterController extends Controller
                 }
 
                 case 'amazonfba': {
-                    $end = Carbon::now()->subDays(2)->format('Y-m-d');
-                    $start = Carbon::now()->subDays(31)->format('Y-m-d');
-                    $dateFilter = fn ($q) => $q->whereNotNull('report_date_range')
-                        ->whereBetween('report_date_range', [$start, $end])
-                        ->whereNotIn('report_date_range', ['L60', 'L30', 'L15', 'L7', 'L1'])
-                        ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')");
-
-                    $kw = DB::table('amazon_sp_campaign_reports')->when(true, $dateFilter)
+                    // Use LATEST L30 row per campaign (by MAX(id)) to get current values
+                    // KW FBA: SP campaigns ending with FBA (not FBA PT)
+                    $kwLatestIds = DB::table('amazon_sp_campaign_reports')
+                        ->selectRaw('MAX(id) as id')
+                        ->where('report_date_range', 'L30')
                         ->whereRaw("campaignName LIKE '%FBA'")
                         ->whereRaw("campaignName NOT LIKE '%FBA PT%'")
                         ->whereRaw("campaignName NOT LIKE '%FBA PT.%'")
-                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(sales30d), 0) as s, COALESCE(SUM(purchases1d), 0) as u, COALESCE(SUM(spend), 0) as sp')->first();
-                    $pt = DB::table('amazon_sp_campaign_reports')->when(true, $dateFilter)
+                        ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
+                        ->groupBy('campaignName')
+                        ->pluck('id');
+                    $kwData = $kwLatestIds->isNotEmpty()
+                        ? DB::table('amazon_sp_campaign_reports')->whereIn('id', $kwLatestIds)->get()
+                        : collect();
+
+                    // PT FBA: SP campaigns ending with FBA PT
+                    $ptLatestIds = DB::table('amazon_sp_campaign_reports')
+                        ->selectRaw('MAX(id) as id')
+                        ->where('report_date_range', 'L30')
                         ->where(function ($q) {
                             $q->whereRaw("campaignName LIKE '%FBA PT'")->orWhereRaw("campaignName LIKE '%FBA PT.'");
                         })
-                        ->selectRaw('COALESCE(SUM(clicks), 0) as c, COALESCE(SUM(sales30d), 0) as s, COALESCE(SUM(purchases1d), 0) as u, COALESCE(SUM(spend), 0) as sp')->first();
+                        ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
+                        ->groupBy('campaignName')
+                        ->pluck('id');
+                    $ptData = $ptLatestIds->isNotEmpty()
+                        ? DB::table('amazon_sp_campaign_reports')->whereIn('id', $ptLatestIds)->get()
+                        : collect();
 
-                    $kwC = (int) ($kw->c ?? 0); $kwS = (float) ($kw->s ?? 0); $kwU = (int) ($kw->u ?? 0); $kwSp = (float) ($kw->sp ?? 0);
-                    $ptC = (int) ($pt->c ?? 0); $ptS = (float) ($pt->s ?? 0); $ptU = (int) ($pt->u ?? 0); $ptSp = (float) ($pt->sp ?? 0);
+                    // Use 7-day attribution (sales7d, purchases7d) to match Amazon Advertising dashboard default
+                    $kwC = (int) $kwData->sum('clicks'); $kwS = (float) $kwData->sum('sales7d'); $kwU = (int) $kwData->sum('purchases7d'); $kwSp = (float) $kwData->sum('spend');
+                    $ptC = (int) $ptData->sum('clicks'); $ptS = (float) $ptData->sum('sales7d'); $ptU = (int) $ptData->sum('purchases7d'); $ptSp = (float) $ptData->sum('spend');
+
+                    $totalSpend = round($kwSp + $ptSp, 2);
 
                     return [
                         'clicks' => $kwC + $ptC, 'ad_sales' => round($kwS + $ptS, 2), 'ad_sold' => $kwU + $ptU,
                         'KW Clicks' => $kwC, 'PT Clicks' => $ptC, 'HL Clicks' => 0, 'PMT Clicks' => 0, 'Shopping Clicks' => 0, 'SERP Clicks' => 0,
                         'KW Sales' => round($kwS, 2), 'PT Sales' => round($ptS, 2), 'HL Sales' => 0, 'PMT Sales' => 0, 'Shopping Sales' => 0, 'SERP Sales' => 0,
                         'KW Sold' => $kwU, 'PT Sold' => $ptU, 'HL Sold' => 0, 'PMT Sold' => 0, 'Shopping Sold' => 0, 'SERP Sold' => 0,
+                        'KW Spent' => round($kwSp, 2), 'PT Spent' => round($ptSp, 2), 'HL Spent' => 0,
+                        'PMT Spent' => 0, 'Shopping Spent' => 0, 'SERP Spent' => 0,
+                        'Total Ad Spend' => $totalSpend,
                         'KW ACOS' => $kwS > 0 ? round(($kwSp / $kwS) * 100, 1) : 0,
                         'PT ACOS' => $ptS > 0 ? round(($ptSp / $ptS) * 100, 1) : 0,
                         'HL ACOS' => 0, 'PMT ACOS' => 0, 'Shopping ACOS' => 0, 'SERP ACOS' => 0,
@@ -441,6 +486,9 @@ class ChannelMasterController extends Controller
                         'KW Clicks' => $kwC, 'PT Clicks' => 0, 'HL Clicks' => 0, 'PMT Clicks' => $pmtC, 'Shopping Clicks' => 0, 'SERP Clicks' => 0,
                         'KW Sales' => round($kwS, 2), 'PT Sales' => 0, 'HL Sales' => 0, 'PMT Sales' => round($pmtS, 2), 'Shopping Sales' => 0, 'SERP Sales' => 0,
                         'KW Sold' => $kwU, 'PT Sold' => 0, 'HL Sold' => 0, 'PMT Sold' => $pmtU, 'Shopping Sold' => 0, 'SERP Sold' => 0,
+                        'KW Spent' => round($kwSp, 2), 'PT Spent' => 0, 'HL Spent' => 0,
+                        'PMT Spent' => round($pmtSp, 2), 'Shopping Spent' => 0, 'SERP Spent' => 0,
+                        'Total Ad Spend' => round($kwSp + $pmtSp, 2),
                         'KW ACOS' => $kwS > 0 ? round(($kwSp / $kwS) * 100, 1) : 0,
                         'PT ACOS' => 0, 'HL ACOS' => 0,
                         'PMT ACOS' => $pmtS > 0 ? round(($pmtSp / $pmtS) * 100, 1) : 0,
@@ -462,6 +510,7 @@ class ChannelMasterController extends Controller
                     return array_merge($defaults, [
                         'clicks' => $c, 'ad_sales' => round($s, 2), 'ad_sold' => $u,
                         'KW Clicks' => $c, 'KW Sales' => round($s, 2), 'KW Sold' => $u,
+                        'KW Spent' => round($sp, 2), 'Total Ad Spend' => round($sp, 2),
                         'KW ACOS' => $s > 0 ? round(($sp / $s) * 100, 1) : 0,
                         'KW CVR' => $c > 0 ? round(($u / $c) * 100, 1) : 0,
                     ]);
@@ -478,6 +527,7 @@ class ChannelMasterController extends Controller
                     return array_merge($defaults, [
                         'clicks' => $c, 'ad_sales' => round($s, 2), 'ad_sold' => 0,
                         'KW Clicks' => $c, 'KW Sales' => round($s, 2),
+                        'KW Spent' => round($sp, 2), 'Total Ad Spend' => round($sp, 2),
                         'KW ACOS' => $s > 0 ? round(($sp / $s) * 100, 1) : 0,
                     ]);
                 }
@@ -508,6 +558,8 @@ class ChannelMasterController extends Controller
                         'Shopping Clicks' => $shpC, 'SERP Clicks' => $serpC,
                         'Shopping Sales' => round($shpS, 2), 'SERP Sales' => round($serpS, 2),
                         'Shopping Sold' => $shpU, 'SERP Sold' => $serpU,
+                        'Shopping Spent' => round($shpSp, 2), 'SERP Spent' => round($serpSp, 2),
+                        'Total Ad Spend' => round($shpSp + $serpSp, 2),
                         'Shopping ACOS' => $shpS > 0 ? round(($shpSp / $shpS) * 100, 1) : 0,
                         'SERP ACOS' => $serpS > 0 ? round(($serpSp / $serpS) * 100, 1) : 0,
                         'Shopping CVR' => $shpC > 0 ? round(($shpU / $shpC) * 100, 1) : 0,
@@ -535,6 +587,7 @@ class ChannelMasterController extends Controller
                     return array_merge($defaults, [
                         'clicks' => $c, 'ad_sales' => round($s, 2), 'ad_sold' => $u,
                         'KW Clicks' => $c, 'KW Sales' => round($s, 2), 'KW Sold' => $u,
+                        'KW Spent' => round($sp, 2), 'Total Ad Spend' => round($sp, 2),
                         'KW ACOS' => $s > 0 ? round(($sp / $s) * 100, 1) : 0,
                         'KW CVR' => $c > 0 ? round(($u / $c) * 100, 1) : 0,
                     ]);
@@ -840,6 +893,11 @@ class ChannelMasterController extends Controller
             $cvr = $clicks > 0 ? round(($adSold / $clicks) * 100, 2) : 0;
             $totalAdSpend = (float) ($row['Total Ad Spend'] ?? 0);
             $acos = $adSales > 0 ? round(($totalAdSpend / $adSales) * 100, 2) : 0;
+
+            // Recalculate Ads% with fresh Total Ad Spend (may have been overridden by fetchAdMetricsFromTables)
+            $l30SalesVal = (float) str_replace(['$', ',', '%'], '', $row['L30 Sales'] ?? 0);
+            $adsPercentage = $l30SalesVal > 0 ? ($totalAdSpend / $l30SalesVal) * 100 : 0;
+            $row['Ads%'] = round($adsPercentage, 2) . '%';
 
             $row['clicks'] = $clicks;
             $row['ad_sold'] = $adSold;
