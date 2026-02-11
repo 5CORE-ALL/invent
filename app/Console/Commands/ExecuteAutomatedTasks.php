@@ -66,27 +66,21 @@ class ExecuteAutomatedTasks extends Command
             }
             
             if ($shouldRun) {
-                // Calculate NEXT execution date for due_date
-                $nextExecutionDate = null;
+                // Check if task was already created today (prevent duplicates)
+                $alreadyCreatedToday = DB::table('tasks')
+                    ->where('automate_task_id', $task->id)
+                    ->whereDate('created_at', $now->toDateString())
+                    ->exists();
                 
-                switch ($task->schedule_type) {
-                    case 'daily':
-                        $nextExecutionDate = $now->copy()->addDay();
-                        break;
-                        
-                    case 'weekly':
-                        // Find next occurrence of selected day
-                        $nextExecutionDate = $now->copy()->addWeek();
-                        break;
-                        
-                    case 'monthly':
-                        // Add one month
-                        $nextExecutionDate = $now->copy()->addMonth();
-                        break;
+                if ($alreadyCreatedToday) {
+                    $this->info("⊘ Skipped (already created today): {$task->title}");
+                    continue;
                 }
                 
-                // For automated tasks: completion_date = same as TID (start_date)
-                $completionDate = $now;
+                // For automated tasks: due_date = start_date + 5 days (standard completion window)
+                $dueDate = $now->copy()->addDays(5);
+                $completionDate = $dueDate->copy();
+                
                 $taskData = [
                     'title' => $task->title . ' [Auto: ' . $now->format('d-M-y') . ']',
                     'group' => $task->group,
@@ -96,7 +90,7 @@ class ExecuteAutomatedTasks extends Command
                     'assign_to' => $task->assign_to,
                     'eta_time' => $task->eta_time,
                     'start_date' => $now,
-                    'due_date' => $nextExecutionDate,
+                    'due_date' => $dueDate,
                     'completion_date' => $completionDate,
                     'status' => 'Todo',
                     'is_automate_task' => 1,
