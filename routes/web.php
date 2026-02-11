@@ -3004,4 +3004,5 @@ Route::prefix('shopify/meta-campaigns')->middleware(['auth'])->group(function ()
     Route::post('/fetch', [\App\Http\Controllers\ShopifyMetaCampaignController::class, 'fetch'])->name('shopify.meta.campaigns.fetch');
 });
 
-// AI Title Manager Routes
+// 5Core AI Chat (authenticated users only)
+
