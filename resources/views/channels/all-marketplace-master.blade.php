@@ -1354,13 +1354,18 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
                             if (!value || value === 0) return '-';
-                            // AD SALES doesn't have its own snapshot field, so no metric chart icon here
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="ad_sales" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             const infoIcon =
                                 `<i class="fas fa-chevron-right ad-sales-breakdown-toggle ms-1" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="Toggle Ad Sales Breakdown"></i>`;
-                            return `<span style="font-weight:600;">$${Math.round(value).toLocaleString('en-US')}</span>${infoIcon}`;
+                            return `<span style="font-weight:600;">$${Math.round(value).toLocaleString('en-US')}</span>${chartIcon}${infoIcon}`;
                         },
                         cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                            }
                             if (e.target.classList.contains('ad-sales-breakdown-toggle')) {
                                 e.stopPropagation();
                                 toggleAdSalesBreakdownColumns();
@@ -1539,12 +1544,18 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
                             if (value === 0) return '-';
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="ad_sold" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             const infoIcon =
                                 `<i class="fas fa-chevron-right ad-sold-breakdown-toggle ms-1" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="Toggle Ad Sold Breakdown"></i>`;
-                            return `<span style="font-weight:600;">${value.toLocaleString('en-US')}</span>${infoIcon}`;
+                            return `<span style="font-weight:600;">${value.toLocaleString('en-US')}</span>${chartIcon}${infoIcon}`;
                         },
                         cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                            }
                             if (e.target.classList.contains('ad-sold-breakdown-toggle')) {
                                 e.stopPropagation();
                                 toggleAdSoldBreakdownColumns();
@@ -1896,12 +1907,18 @@
                         visible: false,
                         formatter: function(cell) {
                             const value = parseNumber(cell.getValue());
+                            const channel = (cell.getRow().getData()['Channel '] || '').trim();
                             if (!value || value === 0) return '-';
+                            const chartIcon = `<i class="fas fa-circle metric-chart-icon ms-1" data-channel="${channel}" data-metric="ads_cvr" style="cursor:pointer;color:#b8860b;font-size:8px;" title="View Chart"></i>`;
                             const infoIcon =
                                 `<i class="fas fa-chevron-right cvr-breakdown-toggle ms-1" style="cursor:pointer;color:#17a2b8;font-size:10px;" title="Toggle CVR Breakdown"></i>`;
-                            return `<span style="font-weight:600;">${Math.round(value)}%</span>${infoIcon}`;
+                            return `<span style="font-weight:600;">${value.toFixed(1)}%</span>${chartIcon}${infoIcon}`;
                         },
                         cellClick: function(e, cell) {
+                            if (e.target.classList.contains('metric-chart-icon')) {
+                                e.stopPropagation();
+                                showMetricChart($(e.target).data('channel'), $(e.target).data('metric'));
+                            }
                             if (e.target.classList.contains('cvr-breakdown-toggle')) {
                                 e.stopPropagation();
                                 toggleCvrBreakdownColumns();
@@ -2976,14 +2993,16 @@
             let currentMetricKey = ''; // metric key for channel metric mode
 
             // Channels that have daily data
-            const channelsWithDailyData = ['amazon', 'amazonfba', 'ebay', 'ebaytwo', 'ebaythree', 'shopifyb2c'];
+            const channelsWithDailyData = ['amazon', 'amazonfba', 'ebay', 'ebaytwo', 'ebaythree', 'shopifyb2c', 'temu', 'walmart'];
             const adTypesForChannel = {
                 'amazon': ['kw', 'pt', 'hl'],
                 'amazonfba': ['kw', 'pt'],
                 'ebay': ['kw', 'pmt'],
                 'ebaytwo': ['kw', 'pmt'],
                 'ebaythree': ['kw', 'pmt'],
-                'shopifyb2c': ['shopping', 'serp']
+                'shopifyb2c': ['shopping', 'serp'],
+                'temu': ['kw'],
+                'walmart': ['kw']
             };
 
             // Date helper — YYYY-MM-DD in local time
@@ -3119,7 +3138,10 @@
                 'nmap': 'N Map',
                 'ad_spend': 'AD Spend',
                 'clicks': 'AD Clicks',
+                'ad_sales': 'AD Sales',
+                'ad_sold': 'AD Sold',
                 'acos': 'ACOS',
+                'ads_cvr': 'AD CVR',
             };
 
             // Show metric chart (for non-ad-breakdown columns)
@@ -3192,10 +3214,10 @@
                 // --- Format helper (no decimals for spend/sales) ---
                 const fmtVal = (v) => {
                     const m = currentChartMetric;
-                    if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'ad_spend' || m === 'pft') {
+                    if (m === 'spend' || m === 'sales' || m === 'l30_sales' || m === 'ad_spend' || m === 'ad_sales' || m === 'pft') {
                         return '$' + Math.round(v).toLocaleString('en-US');
                     }
-                    if (m === 'acos' || m === 'cvr' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'nroi') {
+                    if (m === 'acos' || m === 'cvr' || m === 'ads_cvr' || m === 'gprofit' || m === 'groi' || m === 'ads_pct' || m === 'npft' || m === 'nroi') {
                         return v.toFixed(1) + '%';
                     }
                     return Math.round(v).toLocaleString('en-US');

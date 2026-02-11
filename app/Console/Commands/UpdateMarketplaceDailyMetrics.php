@@ -216,9 +216,14 @@ class UpdateMarketplaceDailyMetrics extends Command
             ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
             ->groupBy('campaignName')
             ->pluck('id');
-        $kwSpent = $kwLatestIds->isNotEmpty()
-            ? DB::table('amazon_sp_campaign_reports')->whereIn('id', $kwLatestIds)->sum('spend')
-            : 0;
+        // Fetch full data for KW campaigns (spend, clicks, sales, sold)
+        $kwData = $kwLatestIds->isNotEmpty()
+            ? DB::table('amazon_sp_campaign_reports')->whereIn('id', $kwLatestIds)->get()
+            : collect();
+        $kwSpent = (float) $kwData->sum('spend');
+        $kwClicks = (int) $kwData->sum('clicks');
+        $kwSales = (float) $kwData->sum('sales7d');
+        $kwSold = (int) $kwData->sum('purchases7d');
 
         // Calculate PT Spent - use LATEST L30 row per campaign (MAX(id)) approach
         $ptLatestIds = DB::table('amazon_sp_campaign_reports')
@@ -232,9 +237,13 @@ class UpdateMarketplaceDailyMetrics extends Command
             ->whereRaw("(campaignStatus IS NULL OR campaignStatus != 'ARCHIVED')")
             ->groupBy('campaignName')
             ->pluck('id');
-        $ptSpent = $ptLatestIds->isNotEmpty()
-            ? DB::table('amazon_sp_campaign_reports')->whereIn('id', $ptLatestIds)->sum('spend')
-            : 0;
+        $ptData = $ptLatestIds->isNotEmpty()
+            ? DB::table('amazon_sp_campaign_reports')->whereIn('id', $ptLatestIds)->get()
+            : collect();
+        $ptSpent = (float) $ptData->sum('spend');
+        $ptClicks = (int) $ptData->sum('clicks');
+        $ptSales = (float) $ptData->sum('sales7d');
+        $ptSold = (int) $ptData->sum('purchases7d');
 
         // Calculate HL Spent - use LATEST L30 row per campaign (MAX(id)) approach
         $hlLatestIds = DB::table('amazon_sb_campaign_reports')
@@ -242,9 +251,13 @@ class UpdateMarketplaceDailyMetrics extends Command
             ->where('report_date_range', 'L30')
             ->groupBy('campaignName')
             ->pluck('id');
-        $hlSpent = $hlLatestIds->isNotEmpty()
-            ? DB::table('amazon_sb_campaign_reports')->whereIn('id', $hlLatestIds)->sum('cost')
-            : 0;
+        $hlData = $hlLatestIds->isNotEmpty()
+            ? DB::table('amazon_sb_campaign_reports')->whereIn('id', $hlLatestIds)->get()
+            : collect();
+        $hlSpent = (float) $hlData->sum('cost');
+        $hlClicks = (int) $hlData->sum('clicks');
+        $hlSales = (float) $hlData->sum('sales');
+        $hlSold = (int) $hlData->sum('purchases');
 
         $tacosPercentage = $totalRevenue > 0 ? (($kwSpent + $ptSpent + $hlSpent) / $totalRevenue) * 100 : 0;
         $nPft = $pftPercentage - $tacosPercentage;
@@ -269,6 +282,11 @@ class UpdateMarketplaceDailyMetrics extends Command
             'kw_spent' => $kwSpent,
             'pmt_spent' => $ptSpent,
             'hl_spent' => $hlSpent,
+            'extra_data' => [
+                'kw_clicks' => $kwClicks, 'pt_clicks' => $ptClicks, 'hl_clicks' => $hlClicks,
+                'kw_sales' => round($kwSales, 2), 'pt_sales' => round($ptSales, 2), 'hl_sales' => round($hlSales, 2),
+                'kw_sold' => $kwSold, 'pt_sold' => $ptSold, 'hl_sold' => $hlSold,
+            ],
         ];
     }
 
@@ -388,19 +406,33 @@ class UpdateMarketplaceDailyMetrics extends Command
         // Using ebay_priority_reports for KW Spent and ebay_general_reports for PMT Spent
         $thirtyDaysAgo = Carbon::now()->subDays(30);
 
-        // KW Spent from ebay_priority_reports (CPC ads)
-        $kwSpent = DB::table('ebay_priority_reports')
+        // KW from ebay_priority_reports (CPC ads) - fetch all metrics
+        $kwRow = DB::table('ebay_priority_reports')
             ->where('report_range', 'L30')
             ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
-            ->selectRaw('SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")) as total_spend')
-            ->value('total_spend') ?? 0;
+            ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")), 0) as spend,
+                         COALESCE(SUM(cpc_clicks), 0) as clicks,
+                         COALESCE(SUM(REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")), 0) as sales,
+                         COALESCE(SUM(cpc_attributed_sales), 0) as sold')
+            ->first();
+        $kwSpent = (float) ($kwRow->spend ?? 0);
+        $kwClicks = (int) ($kwRow->clicks ?? 0);
+        $kwSales = (float) ($kwRow->sales ?? 0);
+        $kwSold = (int) ($kwRow->sold ?? 0);
 
-        // PMT Spent from ebay_general_reports (Promoted Listing ads)
-        $pmtSpent = DB::table('ebay_general_reports')
+        // PMT from ebay_general_reports (Promoted Listing ads) - fetch all metrics
+        $pmtRow = DB::table('ebay_general_reports')
             ->where('report_range', 'L30')
             ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
-            ->selectRaw('SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")) as total_spend')
-            ->value('total_spend') ?? 0;
+            ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")), 0) as spend,
+                         COALESCE(SUM(clicks), 0) as clicks,
+                         COALESCE(SUM(REPLACE(REPLACE(sale_amount, "USD ", ""), ",", "")), 0) as sales,
+                         COALESCE(SUM(sales), 0) as sold')
+            ->first();
+        $pmtSpent = (float) ($pmtRow->spend ?? 0);
+        $pmtClicks = (int) ($pmtRow->clicks ?? 0);
+        $pmtSales = (float) ($pmtRow->sales ?? 0);
+        $pmtSold = (int) ($pmtRow->sold ?? 0);
 
         $tacosPercentage = $totalRevenue > 0 ? (($kwSpent + $pmtSpent) / $totalRevenue) * 100 : 0;
         $nPft = $pftPercentage - $tacosPercentage;
@@ -424,6 +456,11 @@ class UpdateMarketplaceDailyMetrics extends Command
             'n_roi' => $nRoi,
             'kw_spent' => $kwSpent,
             'pmt_spent' => $pmtSpent,
+            'extra_data' => [
+                'kw_clicks' => $kwClicks, 'pmt_clicks' => $pmtClicks,
+                'kw_sales' => round($kwSales, 2), 'pmt_sales' => round($pmtSales, 2),
+                'kw_sold' => $kwSold, 'pmt_sold' => $pmtSold,
+            ],
         ];
     }
 
@@ -559,19 +596,33 @@ class UpdateMarketplaceDailyMetrics extends Command
         // Calculate ad spend for eBay 2
         $thirtyDaysAgo = Carbon::now()->subDays(30);
 
-        // KW Spent from ebay_2_priority_reports (CPC ads)
-        $kwSpent = DB::table('ebay_2_priority_reports')
+        // KW from ebay_2_priority_reports (CPC ads) - fetch all metrics
+        $kwRow = DB::table('ebay_2_priority_reports')
             ->where('report_range', 'L30')
             ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
-            ->selectRaw('SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")) as total_spend')
-            ->value('total_spend') ?? 0;
+            ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")), 0) as spend,
+                         COALESCE(SUM(cpc_clicks), 0) as clicks,
+                         COALESCE(SUM(REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")), 0) as sales,
+                         COALESCE(SUM(cpc_attributed_sales), 0) as sold')
+            ->first();
+        $kwSpent = (float) ($kwRow->spend ?? 0);
+        $kwClicks = (int) ($kwRow->clicks ?? 0);
+        $kwSales = (float) ($kwRow->sales ?? 0);
+        $kwSold = (int) ($kwRow->sold ?? 0);
 
-        // PMT Spent from ebay_2_general_reports (Promoted Listings)
-        $pmtSpent = DB::table('ebay_2_general_reports')
+        // PMT from ebay_2_general_reports (Promoted Listings) - fetch all metrics
+        $pmtRow = DB::table('ebay_2_general_reports')
             ->where('report_range', 'L30')
             ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
-            ->selectRaw('SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")) as total_spend')
-            ->value('total_spend') ?? 0;
+            ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")), 0) as spend,
+                         COALESCE(SUM(clicks), 0) as clicks,
+                         COALESCE(SUM(REPLACE(REPLACE(sale_amount, "USD ", ""), ",", "")), 0) as sales,
+                         COALESCE(SUM(sales), 0) as sold')
+            ->first();
+        $pmtSpent = (float) ($pmtRow->spend ?? 0);
+        $pmtClicks = (int) ($pmtRow->clicks ?? 0);
+        $pmtSales = (float) ($pmtRow->sales ?? 0);
+        $pmtSold = (int) ($pmtRow->sold ?? 0);
 
         $tacosPercentage = $totalRevenue > 0 ? (($kwSpent + $pmtSpent) / $totalRevenue) * 100 : 0;
         $nPft = $pftPercentage - $tacosPercentage;
@@ -595,6 +646,11 @@ class UpdateMarketplaceDailyMetrics extends Command
             'n_roi' => $nRoi,
             'kw_spent' => $kwSpent,
             'pmt_spent' => $pmtSpent,
+            'extra_data' => [
+                'kw_clicks' => $kwClicks, 'pmt_clicks' => $pmtClicks,
+                'kw_sales' => round($kwSales, 2), 'pmt_sales' => round($pmtSales, 2),
+                'kw_sold' => $kwSold, 'pmt_sold' => $pmtSold,
+            ],
         ];
     }
 
@@ -706,23 +762,33 @@ class UpdateMarketplaceDailyMetrics extends Command
         // Use the latest report data (from last 30 days of updated_at) to avoid accumulating old reports
         $thirtyDaysAgo = Carbon::now()->subDays(30);
         
-        // KW Spent from ebay_3_priority_reports
-        $kwSpent = DB::table('ebay_3_priority_reports')
+        // KW from ebay_3_priority_reports (CPC ads) - fetch all metrics
+        $kwRow = DB::table('ebay_3_priority_reports')
             ->where('report_range', 'L30')
             ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
-            ->get()
-            ->sum(function ($r) {
-                return (float) preg_replace('/[^\d.]/', '', $r->cpc_ad_fees_payout_currency ?? '0');
-            });
+            ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(cpc_ad_fees_payout_currency, "USD ", ""), ",", "")), 0) as spend,
+                         COALESCE(SUM(cpc_clicks), 0) as clicks,
+                         COALESCE(SUM(REPLACE(REPLACE(cpc_sale_amount_payout_currency, "USD ", ""), ",", "")), 0) as sales,
+                         COALESCE(SUM(cpc_attributed_sales), 0) as sold')
+            ->first();
+        $kwSpent = (float) ($kwRow->spend ?? 0);
+        $kwClicks = (int) ($kwRow->clicks ?? 0);
+        $kwSales = (float) ($kwRow->sales ?? 0);
+        $kwSold = (int) ($kwRow->sold ?? 0);
 
-        // PMT Spent from ebay_3_general_reports
-        $pmtSpent = DB::table('ebay_3_general_reports')
+        // PMT from ebay_3_general_reports (Promoted Listings) - fetch all metrics
+        $pmtRow = DB::table('ebay_3_general_reports')
             ->where('report_range', 'L30')
             ->whereDate('updated_at', '>=', $thirtyDaysAgo->format('Y-m-d'))
-            ->get()
-            ->sum(function ($r) {
-                return (float) preg_replace('/[^\d.]/', '', $r->ad_fees ?? '0');
-            });
+            ->selectRaw('COALESCE(SUM(REPLACE(REPLACE(ad_fees, "USD ", ""), ",", "")), 0) as spend,
+                         COALESCE(SUM(clicks), 0) as clicks,
+                         COALESCE(SUM(REPLACE(REPLACE(sale_amount, "USD ", ""), ",", "")), 0) as sales,
+                         COALESCE(SUM(sales), 0) as sold')
+            ->first();
+        $pmtSpent = (float) ($pmtRow->spend ?? 0);
+        $pmtClicks = (int) ($pmtRow->clicks ?? 0);
+        $pmtSales = (float) ($pmtRow->sales ?? 0);
+        $pmtSold = (int) ($pmtRow->sold ?? 0);
 
         $tacosPercentage = $totalRevenue > 0 ? (($kwSpent + $pmtSpent) / $totalRevenue) * 100 : 0;
         $nPft = $pftPercentage - $tacosPercentage;
@@ -746,6 +812,11 @@ class UpdateMarketplaceDailyMetrics extends Command
             'n_roi' => $nRoi,
             'kw_spent' => $kwSpent,
             'pmt_spent' => $pmtSpent,
+            'extra_data' => [
+                'kw_clicks' => $kwClicks, 'pmt_clicks' => $pmtClicks,
+                'kw_sales' => round($kwSales, 2), 'pmt_sales' => round($pmtSales, 2),
+                'kw_sold' => $kwSold, 'pmt_sold' => $pmtSold,
+            ],
         ];
     }
 
@@ -1593,14 +1664,42 @@ class UpdateMarketplaceDailyMetrics extends Command
         $yesterday = Carbon::yesterday();
         $startDate = $yesterday->copy()->subDays(29); // 30 days total
         
-        $googleSpent = DB::table('google_ads_campaigns')
+        // G-SHOP (Shopping campaigns) - fetch all metrics
+        $shoppingRow = DB::table('google_ads_campaigns')
             ->whereDate('date', '>=', $startDate)
             ->whereDate('date', '<=', $yesterday)
             ->where('advertising_channel_type', 'SHOPPING')
-            ->sum('metrics_cost_micros') / 1000000 ?? 0; // Convert micros to dollars
+            ->whereIn('campaign_status', ['ENABLED'])
+            ->selectRaw('COALESCE(SUM(metrics_cost_micros), 0) as spend_micros,
+                         COALESCE(SUM(metrics_clicks), 0) as clicks,
+                         COALESCE(SUM(ga4_ad_sales), 0) as sales,
+                         COALESCE(SUM(ga4_sold_units), 0) as sold')
+            ->first();
+        $shoppingSpent = (float) ($shoppingRow->spend_micros ?? 0) / 1000000;
+        $shoppingClicks = (int) ($shoppingRow->clicks ?? 0);
+        $shoppingSales = (float) ($shoppingRow->sales ?? 0);
+        $shoppingSold = (int) ($shoppingRow->sold ?? 0);
 
-        // Calculate TACOS %: (Google Spent / Total Sales) * 100
-        $tacosPercentage = $totalRevenue > 0 ? ($googleSpent / $totalRevenue) * 100 : 0;
+        // G-SERP (Search campaigns) - fetch all metrics
+        $serpRow = DB::table('google_ads_campaigns')
+            ->whereDate('date', '>=', $startDate)
+            ->whereDate('date', '<=', $yesterday)
+            ->where('advertising_channel_type', 'SEARCH')
+            ->whereIn('campaign_status', ['ENABLED', 'PAUSED'])
+            ->selectRaw('COALESCE(SUM(metrics_cost_micros), 0) as spend_micros,
+                         COALESCE(SUM(metrics_clicks), 0) as clicks,
+                         COALESCE(SUM(ga4_ad_sales), 0) as sales,
+                         COALESCE(SUM(ga4_sold_units), 0) as sold')
+            ->first();
+        $serpSpent = (float) ($serpRow->spend_micros ?? 0) / 1000000;
+        $serpClicks = (int) ($serpRow->clicks ?? 0);
+        $serpSales = (float) ($serpRow->sales ?? 0);
+        $serpSold = (int) ($serpRow->sold ?? 0);
+
+        $totalGoogleSpent = $shoppingSpent + $serpSpent;
+
+        // Calculate TACOS %: (Total Google Spent / Total Sales) * 100
+        $tacosPercentage = $totalRevenue > 0 ? ($totalGoogleSpent / $totalRevenue) * 100 : 0;
 
         // Calculate N PFT: GPFT % - TACOS %
         $nPftPercentage = $pftPercentage - $tacosPercentage;
@@ -1619,11 +1718,16 @@ class UpdateMarketplaceDailyMetrics extends Command
             'roi_percentage' => round($roiPercentage, 1),
             'avg_price' => $avgPrice,
             'l30_sales' => $totalRevenue,
-            'kw_spent' => round($googleSpent, 2), // Store Google Ads spend in kw_spent field
-            'pmt_spent' => 0, // Shopify B2C only has Google Ads
+            'kw_spent' => round($shoppingSpent, 2), // G-SHOP spend
+            'pmt_spent' => round($serpSpent, 2),     // G-SERP spend
             'tacos_percentage' => round($tacosPercentage, 1),
             'n_pft' => round($nPftPercentage, 1),
             'n_roi' => round($nRoiPercentage, 1),
+            'extra_data' => [
+                'shopping_clicks' => $shoppingClicks, 'serp_clicks' => $serpClicks,
+                'shopping_sales' => round($shoppingSales, 2), 'serp_sales' => round($serpSales, 2),
+                'shopping_sold' => $shoppingSold, 'serp_sold' => $serpSold,
+            ],
         ];
     }
 
