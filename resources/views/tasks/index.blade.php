@@ -1922,6 +1922,10 @@
                         formatter: function(cell) {
                             var rowData = cell.getRow().getData();
                             var title = cell.getValue() || '';
+                            
+                            // Remove [Auto: DD-MMM-YY] suffix from automated task titles
+                            title = title.replace(/\s*\[Auto:\s*\d{1,2}-[A-Za-z]{3}-\d{2}\]\s*$/i, '');
+                            
                             var isOverdue = false;
                             
                             var startDate = rowData.start_date;
@@ -1982,9 +1986,17 @@
                             var value = cell.getValue();
                             
                             if (value) {
-                                var date = new Date(value);
-                                var day = String(date.getDate()).padStart(2, '0');
-                                var month = date.toLocaleString('default', { month: 'short' });
+                                // Parse MySQL datetime correctly (YYYY-MM-DD HH:mm:ss)
+                                // Extract date components directly to avoid timezone issues
+                                var parts = value.split(/[- :]/); // Split by - or :
+                                var year = parseInt(parts[0]);
+                                var month = parseInt(parts[1]);
+                                var day = parseInt(parts[2]);
+                                
+                                // Create date with exact values
+                                var date = new Date(year, month - 1, day); // month is 0-indexed
+                                var dayStr = String(day).padStart(2, '0');
+                                var monthStr = date.toLocaleString('default', { month: 'short' });
                                 
                                 // Calculate days from TID (Day 0 = issue date)
                                 var tidDate = new Date(value);
@@ -2007,7 +2019,7 @@
                                     // Day 0 = Blue (default)
                                 }
                                 
-                                return '<span style="color: ' + textColor + '; font-weight: 600;">' + day + '-' + month + '</span>';
+                                return '<span style="color: ' + textColor + '; font-weight: 600;">' + dayStr + '-' + monthStr + '</span>';
                             }
                             return '<span style="color: #adb5bd;">-</span>';
                         }
