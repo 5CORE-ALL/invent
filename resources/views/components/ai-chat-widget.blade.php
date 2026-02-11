@@ -110,7 +110,7 @@
         fd.append('_token', csrfToken);
         fd.append('id', id);
         fd.append('helpful', helpful ? '1' : '0');
-        fetch('{{ route("ai.feedback") }}', { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }, credentials: 'same-origin' })
+        // fetch('{{ route("ai.feedback") }}', { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }, credentials: 'same-origin' })
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (data.success) {

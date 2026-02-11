@@ -77,11 +77,11 @@
                     const recId = this.getAttribute('data-id');
                     const helpful = this.getAttribute('data-helpful') === '1';
                     feedback.replaceChildren(document.createTextNode(helpful ? 'Thanks for your feedback!' : 'Thanks, we\'ll try to improve.'));
-                    fetch('{{ route("ai.feedback") }}', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
-                        body: JSON.stringify({ id: parseInt(recId, 10), helpful: helpful })
-                    }).catch(function() {});
+                    // fetch('{{ route("ai.feedback") }}', {
+                    //     method: 'POST',
+                    //     headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+                    //     body: JSON.stringify({ id: parseInt(recId, 10), helpful: helpful })
+                    // }).catch(function() {});
                 });
             });
         }
