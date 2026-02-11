@@ -181,6 +181,45 @@
             white-space: nowrap !important;
             min-width: 280px !important;
         }
+
+        /* Parent SKU dot - P column */
+        .parent-sku-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #17a2b8;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .parent-sku-dot:hover {
+            background-color: #0d6efd;
+        }
+        .parent-sku-dot.no-parent {
+            background-color: #dee2e6;
+            cursor: default;
+        }
+
+        /* Row selection checkboxes */
+        .row-select-cb, .select-all-cb {
+            cursor: pointer;
+            width: 16px;
+            height: 16px;
+        }
+
+        /* Summary header bar */
+        .summary-header-bar {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            font-size: 14px;
+        }
+        .summary-item {
+            color: #495057;
+        }
+        .summary-item strong {
+            color: #212529;
+            margin-right: 4px;
+        }
+
     </style>
 @endsection
 
@@ -304,6 +343,15 @@
 
     <div class="row">
         <div class="card shadow-sm">
+            <!-- Header Bar - Totals -->
+            <div class="summary-header-bar px-4 py-3 d-flex flex-wrap align-items-center gap-4 border-bottom">
+                <span class="summary-item"><strong>Total INV:</strong> <span id="total-inv-badge">0</span></span>
+                <span class="summary-item"><strong>Total OV L30:</strong> <span id="total-l30-badge">0</span></span>
+                <span class="summary-item"><strong>DIL:</strong> <span id="avg-dil-badge">0%</span></span>
+                <span class="summary-item"><strong>Total Views:</strong> <span id="total-views-badge">0</span></span>
+                <span class="summary-item"><strong>CVR:</strong> <span id="avg-cvr-badge">0%</span></span>
+                <span class="summary-item"><strong>Avg Price:</strong> <span id="avg-price-badge">$0.00</span></span>
+            </div>
             <div class="card-body py-3">
              
                 <div class="d-flex align-items-center flex-wrap gap-2">
@@ -358,17 +406,6 @@
                     <button id="export-btn" class="btn btn-sm btn-info">
                         <i class="fas fa-file-excel"></i> Export CSV
                     </button>
-                </div>
-
-                <!-- Summary Stats -->
-                <div id="summary-stats" class="mt-2 p-3 bg-light rounded">
-                    <h6 class="mb-3">Summary Statistics</h6>
-                    <div class="d-flex flex-wrap gap-2">
-                        <span class="badge bg-primary fs-6 p-2" id="total-items-badge" style="color: white; font-weight: bold;">Total Items: 0</span>
-                        <span class="badge bg-success fs-6 p-2" id="total-inv-badge" style="color: white; font-weight: bold;">Total INV: 0</span>
-                        <span class="badge bg-info fs-6 p-2" id="total-l30-badge" style="color: black; font-weight: bold;">Total OV L30: 0</span>
-                        <span class="badge bg-warning fs-6 p-2" id="avg-dil-badge" style="color: black; font-weight: bold;">AVG DIL%: 0%</span>
-                    </div>
                 </div>
             </div>
             <div class="card-body" style="padding: 0;">
@@ -716,6 +753,23 @@
             },
             columns: [
                 {
+                    title: "#",
+                    field: "_selected",
+                    headerSort: false,
+                    width: 40,
+                    hozAlign: "center",
+                    formatter: function(cell) {
+                        const rowData = cell.getRow().getData();
+                        const sku = rowData.sku;
+                        const checked = selectedSkus.has(sku) ? 'checked' : '';
+                        return `<input type="checkbox" class="row-select-cb" data-sku="${(sku || '').replace(/"/g, '&quot;')}" ${checked}>`;
+                    },
+                    titleFormatter: function(column) {
+                        const allChecked = isAllFilteredSelected();
+                        return `<input type="checkbox" class="select-all-cb" title="Select all filtered rows SKUs (excludes parent rows)" ${allChecked ? 'checked' : ''}>`;
+                    }
+                },
+                {
                     title: "Image",
                     field: "image_path",
                     formatter: function(cell) {
@@ -727,6 +781,22 @@
                     },
                     headerSort: false,
                     width: 80
+                },
+                {
+                    title: "P",
+                    field: "parent",
+                    headerSort: false,
+                    width: 40,
+                    hozAlign: "center",
+                    formatter: function(cell) {
+                        const parent = cell.getValue();
+                        if (!parent) {
+                            return '<span class="parent-sku-dot no-parent" title="No parent"></span>';
+                        }
+                        return `<span class="parent-sku-dot parent-sku-dot-btn" 
+                                    data-parent="${parent.replace(/"/g, '&quot;')}" 
+                                    title="Click to view SKUs for parent: ${parent.replace(/"/g, '&quot;')}"></span>`;
+                    }
                 },
                 {
                     title: "SKU",
@@ -1226,6 +1296,82 @@
         // Store all data for parent expand/collapse
         let fullDataset = [];
         let expandedParent = null;
+        let dotExpandedParent = null;
+
+        // Row selection - Set of selected SKUs
+        let selectedSkus = new Set();
+
+        function isAllFilteredSelected() {
+            if (!table) return false;
+            const rows = table.getRows('active');
+            if (rows.length === 0) return false;
+            return rows.every(r => selectedSkus.has(r.getData().sku));
+        }
+
+        // Row checkbox click
+        $(document).on('change', '.row-select-cb', function() {
+            if (!table) return;
+            const sku = $(this).data('sku');
+            if ($(this).is(':checked')) {
+                selectedSkus.add(sku);
+            } else {
+                selectedSkus.delete(sku);
+            }
+            const row = table.getRow(function(r) { return r.getData().sku === sku; });
+            if (row) row.reformat();
+            const headerCb = document.querySelector('#cvr-table .select-all-cb');
+            if (headerCb) headerCb.checked = isAllFilteredSelected();
+        });
+
+        // Select all checkbox click
+        $(document).on('change', '.select-all-cb', function() {
+            if (!table) return;
+            const $cb = $(this);
+            const rows = table.getRows('active');
+            if ($cb.is(':checked')) {
+                rows.forEach(r => selectedSkus.add(r.getData().sku));
+            } else {
+                rows.forEach(r => selectedSkus.delete(r.getData().sku));
+            }
+            table.getRows().forEach(r => r.reformat());
+            const headerCb = document.querySelector('#cvr-table .select-all-cb');
+            if (headerCb) headerCb.checked = isAllFilteredSelected();
+        });
+
+        // Parent SKU dot click - expand to show parent + all child rows with full data
+        $(document).on('click', '.parent-sku-dot-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            const $dot = $(this);
+            const parentVal = $dot.data('parent');
+            if (!parentVal) return;
+
+            if (dotExpandedParent === parentVal) {
+                dotExpandedParent = null;
+                applyFilters();
+                return;
+            }
+
+            dotExpandedParent = parentVal;
+
+            const parentRow = fullDataset.find(row =>
+                row.is_parent_summary === true && row.parent === parentVal
+            );
+            const childRows = fullDataset.filter(row =>
+                row.parent === parentVal && row.is_parent_summary !== true
+            );
+
+            let displayData = [];
+            if (parentRow) {
+                parentRow._expanded = true;
+                displayData.push(parentRow);
+            }
+            displayData = displayData.concat(childRows);
+
+            table.setData(displayData).then(() => {
+                updateSummary();
+            });
+        });
 
         // Parent toggle handler
         $(document).on('click', '.parent-toggle-icon', function(e) {
@@ -1349,47 +1495,54 @@
         });
 
         function applyFilters() {
-            const inventoryFilter = $('#inventory-filter').val();
-            const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
-            const skuParentFilter = $('#sku-parent-filter').val();
+            const wasInDotView = !!dotExpandedParent;
+            dotExpandedParent = null;
 
-            table.clearFilter();
+            const doFilters = function() {
+                const inventoryFilter = $('#inventory-filter').val();
+                const dilFilter = $('.column-filter[data-column="dil_percent"].active')?.data('color') || 'all';
+                const skuParentFilter = $('#sku-parent-filter').val();
 
-            // SKU/Parent filter
-            if (skuParentFilter === 'sku') {
-                // Show only SKU rows (hide parent rows)
-                table.addFilter(function(data) {
-                    return data.is_parent_summary !== true;
-                });
-            } else if (skuParentFilter === 'parent') {
-                // Build parent view with proper ordering
-                expandedParent = null; // Reset expanded state when switching to parent view
-                buildParentView();
-                return; // Don't apply other filters yet
+                table.clearFilter();
+
+                // SKU/Parent filter
+                if (skuParentFilter === 'sku') {
+                    table.addFilter(function(data) {
+                        return data.is_parent_summary !== true;
+                    });
+                } else if (skuParentFilter === 'parent') {
+                    expandedParent = null;
+                    buildParentView();
+                    return;
+                }
+
+                if (inventoryFilter === 'zero') {
+                    table.addFilter("inventory", "=", 0);
+                } else if (inventoryFilter === 'more') {
+                    table.addFilter("inventory", ">", 0);
+                }
+
+                if (dilFilter !== 'all') {
+                    table.addFilter(function(data) {
+                        const inv = parseFloat(data['inventory']) || 0;
+                        const l30 = parseFloat(data['overall_l30']) || 0;
+                        const dil = inv === 0 ? 0 : (l30 / inv) * 100;
+                        if (dilFilter === 'red') return dil < 16.7;
+                        if (dilFilter === 'yellow') return dil >= 16.7 && dil < 25;
+                        if (dilFilter === 'green') return dil >= 25 && dil < 50;
+                        if (dilFilter === 'pink') return dil >= 50;
+                        return true;
+                    });
+                }
+
+                updateSummary();
+            };
+
+            if (wasInDotView && fullDataset.length > 0) {
+                table.setData(fullDataset).then(doFilters);
+            } else {
+                doFilters();
             }
-            // If 'both', don't add any filter
-
-            if (inventoryFilter === 'zero') {
-                table.addFilter("inventory", "=", 0);
-            } else if (inventoryFilter === 'more') {
-                table.addFilter("inventory", ">", 0);
-            }
-
-            if (dilFilter !== 'all') {
-                table.addFilter(function(data) {
-                    const inv = parseFloat(data['inventory']) || 0;
-                    const l30 = parseFloat(data['overall_l30']) || 0;
-                    const dil = inv === 0 ? 0 : (l30 / inv) * 100;
-                    
-                    if (dilFilter === 'red') return dil < 16.7;
-                    if (dilFilter === 'yellow') return dil >= 16.7 && dil < 25;
-                    if (dilFilter === 'green') return dil >= 25 && dil < 50;
-                    if (dilFilter === 'pink') return dil >= 50;
-                    return true;
-                });
-            }
-
-            updateSummary();
         }
 
         $('#inventory-filter, #sku-parent-filter').on('change', function() {
@@ -1401,6 +1554,8 @@
         function updateSummary() {
             const data = table.getData('active');
             let totalInv = 0, totalL30 = 0, totalDil = 0, dilCount = 0;
+            let totalViews = 0, totalCvr = 0, cvrCount = 0;
+            let totalPrice = 0, priceCount = 0;
 
             data.forEach(row => {
                 totalInv += parseFloat(row['inventory']) || 0;
@@ -1410,14 +1565,29 @@
                     totalDil += dil;
                     dilCount++;
                 }
+                totalViews += parseInt(row['total_views']) || 0;
+                totalCvr += parseFloat(row['avg_cvr']) || 0;
+                cvrCount++;
+                const price = parseFloat(row['avg_price']) || 0;
+                if (price > 0) {
+                    totalPrice += price;
+                    priceCount++;
+                }
             });
 
             const avgDil = dilCount > 0 ? totalDil / dilCount : 0;
+            const avgCvr = cvrCount > 0 ? totalCvr / cvrCount : 0;
+            const avgPrice = priceCount > 0 ? totalPrice / priceCount : 0;
 
-            $('#total-items-badge').text(`Total Items: ${data.length.toLocaleString()}`);
-            $('#total-inv-badge').text(`Total INV: ${totalInv.toLocaleString()}`);
-            $('#total-l30-badge').text(`Total OV L30: ${totalL30.toLocaleString()}`);
-            $('#avg-dil-badge').text(`AVG DIL%: ${avgDil.toFixed(1)}%`);
+            $('#total-inv-badge').text(totalInv.toLocaleString());
+            $('#total-l30-badge').text(totalL30.toLocaleString());
+            $('#avg-dil-badge').text(avgDil.toFixed(1) + '%');
+            $('#total-views-badge').text(totalViews.toLocaleString());
+            $('#avg-cvr-badge').text(avgCvr.toFixed(1) + '%');
+            $('#avg-price-badge').text('$' + avgPrice.toFixed(2));
+
+            const headerCb = document.querySelector('#cvr-table .select-all-cb');
+            if (headerCb) headerCb.checked = isAllFilteredSelected();
         }
 
         // ==================== COLUMN VISIBILITY FUNCTIONS ====================
