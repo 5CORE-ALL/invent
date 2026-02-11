@@ -50,6 +50,8 @@ use App\Models\TemuViewData;
 use App\Models\TemuAdData;
 use App\Models\MarketplacePercentage;
 use App\Models\AmazonSpCampaignReport;
+use App\Models\AmazonSkuCompetitor;
+use App\Models\EbaySkuCompetitor;
 use App\Models\CvrRemark;
 use Carbon\Carbon;
 use App\Services\AmazonSpApiService;
@@ -284,6 +286,52 @@ class CvrMasterController extends Controller
                 'ebay2_metrics' => $ebay2Metrics->count(),
                 'ebay3_metrics' => $ebay3Metrics->count()
             ]);
+
+            // Fetch Amazon LMP data from amazon_sku_competitors
+            $amazonLmpLookup = collect();
+            $amazonLmpCountLookup = collect();
+            try {
+                $amazonLmpRecords = AmazonSkuCompetitor::where('marketplace', 'amazon')
+                    ->where('price', '>', 0)
+                    ->orderBy('price', 'asc')
+                    ->get()
+                    ->groupBy(function ($item) {
+                        return strtoupper(preg_replace('/\s+/', ' ', trim($item->sku)));
+                    });
+                $amazonLmpLookup = $amazonLmpRecords->map(fn ($items) => $items->first());
+                $amazonLmpCountLookup = $amazonLmpRecords->map(fn ($items) => $items->count());
+            } catch (\Exception $e) {
+                Log::warning('Could not fetch Amazon LMP: ' . $e->getMessage());
+            }
+
+            // Fetch eBay LMP data from ebay_sku_competitors
+            $ebayLmpLookup = collect();
+            $ebayLmpCountLookup = collect();
+            try {
+                $ebayLmpRecords = EbaySkuCompetitor::where('marketplace', 'ebay')
+                    ->where(function ($q) {
+                        $q->where('total_price', '>', 0)
+                          ->orWhere('price', '>', 0);
+                    })
+                    ->orderByRaw('COALESCE(total_price, price + COALESCE(shipping_cost, 0)) ASC')
+                    ->get()
+                    ->groupBy(function ($item) {
+                        return strtoupper(preg_replace('/\s+/', ' ', trim($item->sku)));
+                    });
+                $ebayLmpLookup = $ebayLmpRecords->map(function ($items) {
+                    $lowest = $items->sortBy(function ($i) {
+                        $total = floatval($i->total_price ?? 0);
+                        if ($total <= 0) {
+                            $total = floatval($i->price ?? 0) + floatval($i->shipping_cost ?? 0);
+                        }
+                        return $total;
+                    })->first();
+                    return $lowest;
+                });
+                $ebayLmpCountLookup = $ebayLmpRecords->map(fn ($items) => $items->count());
+            } catch (\Exception $e) {
+                Log::warning('Could not fetch eBay LMP: ' . $e->getMessage());
+            }
 
             // Fetch latest remarks for all SKUs in one query
             $latestRemarks = CvrRemark::whereIn('sku', $skus)
@@ -697,6 +745,27 @@ class CvrMasterController extends Controller
                 $remarkText = $latestRemark ? $latestRemark->remark : null;
                 $remarkSolved = $latestRemark ? $latestRemark->is_solved : false;
 
+                // Amazon LMP and eBay LMP
+                $skuLookupKey = strtoupper(preg_replace('/\s+/', ' ', trim($sku)));
+                $amazonLmp = $amazonLmpLookup->get($skuLookupKey);
+                $ebayLmp = $ebayLmpLookup->get($skuLookupKey);
+                $amazonLmpPrice = ($amazonLmp && isset($amazonLmp->price) && is_numeric($amazonLmp->price))
+                    ? round(floatval($amazonLmp->price), 2) : null;
+                $amazonLmpLink = ($amazonLmp && !empty($amazonLmp->product_link)) ? $amazonLmp->product_link : null;
+                $ebayLmpTotal = null;
+                $ebayLmpLink = null;
+                if ($ebayLmp) {
+                    $t = floatval($ebayLmp->total_price ?? 0);
+                    if ($t <= 0) {
+                        $t = floatval($ebayLmp->price ?? 0) + floatval($ebayLmp->shipping_cost ?? 0);
+                    }
+                    $ebayLmpTotal = $t > 0 ? round($t, 2) : null;
+                    $ebayLmpLink = !empty($ebayLmp->product_link) ? $ebayLmp->product_link : null;
+                }
+                $ebayLmpPrice = $ebayLmpTotal;
+                $amazonLmpCount = $amazonLmpCountLookup->get($skuLookupKey) ?? 0;
+                $ebayLmpCount = $ebayLmpCountLookup->get($skuLookupKey) ?? 0;
+
                 $result[] = (object) [
                     "sku" => $sku,
                     "parent" => $parent,
@@ -711,6 +780,12 @@ class CvrMasterController extends Controller
                     "avg_gpft" => $avgGPFT,
                     "avg_ad" => $avgAD,
                     "avg_pft" => $avgPFT,
+                    "amazon_lmp_price" => $amazonLmpPrice,
+                    "ebay_lmp_price" => $ebayLmpPrice,
+                    "amazon_lmp_link" => $amazonLmpLink,
+                    "ebay_lmp_link" => $ebayLmpLink,
+                    "amazon_lmp_count" => $amazonLmpCount,
+                    "ebay_lmp_count" => $ebayLmpCount,
                     "latest_remark" => $remarkText,
                     "remark_solved" => $remarkSolved,
                 ];
@@ -735,6 +810,8 @@ class CvrMasterController extends Controller
                 }
 
                 // Create synthetic parent summary row (placed BELOW children)
+                $amazonLmpVals = $rows->pluck('amazon_lmp_price')->filter(fn ($v) => $v !== null && $v > 0);
+                $ebayLmpVals = $rows->pluck('ebay_lmp_price')->filter(fn ($v) => $v !== null && $v > 0);
                 $parentRow = [
                     'SL No.' => $slNo++,
                     'sku' => 'PARENT ' . $parent,
@@ -750,6 +827,12 @@ class CvrMasterController extends Controller
                     'avg_gpft' => $rows->count() > 0 ? round($rows->avg('avg_gpft'), 2) : 0,
                     'avg_ad' => $rows->count() > 0 ? round($rows->avg('avg_ad'), 2) : 0,
                     'avg_pft' => $rows->count() > 0 ? round($rows->avg('avg_pft'), 2) : 0,
+                    'amazon_lmp_price' => $amazonLmpVals->isNotEmpty() ? round($amazonLmpVals->avg(), 2) : null,
+                    'ebay_lmp_price' => $ebayLmpVals->isNotEmpty() ? round($ebayLmpVals->avg(), 2) : null,
+                    'amazon_lmp_link' => null,
+                    'ebay_lmp_link' => null,
+                    'amazon_lmp_count' => $rows->sum('amazon_lmp_count'),
+                    'ebay_lmp_count' => $rows->sum('ebay_lmp_count'),
                     'is_parent_summary' => true,
                 ];
 

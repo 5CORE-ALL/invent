@@ -556,12 +556,13 @@ $(document).ready(function() {
                     <div class="col-xl-3 col-lg-4 col-md-6 col-sm-12 mb-3">
                         <div class="product-card">
                             <input type="checkbox" class="competitor-checkbox product-checkbox form-check-input" 
-                                   data-item-id="${item.item_id}" 
-                                   data-marketplace="${item.marketplace}"
+                                   data-item-id="${item.item_id || ''}" 
+                                   data-marketplace="${item.marketplace || 'ebay'}"
                                    data-title="${(item.title || '').replace(/"/g, '&quot;')}"
                                    data-price="${priceValue}"
                                    data-shipping="${shippingValue}"
-                                   data-link="${productLink}">
+                                   data-link="${productLink}"
+                                   data-image="${(item.image || '').replace(/"/g, '&quot;')}">
                             
                             <div class="product-image-container">
                                 <img src="${image}" 
@@ -770,19 +771,21 @@ $(document).ready(function() {
             const marketplace = checkbox.data('marketplace');
             const productTitle = checkbox.data('title');
             const productLink = checkbox.data('link');
+            const image = checkbox.data('image');
             const price = checkbox.data('price');
             const shipping = checkbox.data('shipping');
             
             // Create a competitor entry for EACH selected SKU
             selectedSkus.forEach(function(sku) {
                 competitors.push({
-                    item_id: itemId,
-                    sku: sku,
-                    marketplace: marketplace,
-                    product_title: productTitle,
-                    product_link: productLink,
-                    price: price,
-                    shipping_cost: shipping
+                    item_id: String(itemId || ''),
+                    sku: String(sku || '').trim(),
+                    marketplace: marketplace || 'ebay',
+                    product_title: productTitle || null,
+                    product_link: productLink || null,
+                    image: image || null,
+                    price: parseFloat(price) || 0,
+                    shipping_cost: parseFloat(shipping) || 0
                 });
             });
         });
@@ -812,10 +815,15 @@ $(document).ready(function() {
         $.ajax({
             url: '/repricer/ebay-search/store-competitors',
             method: 'POST',
-            data: {
+            contentType: 'application/json',
+            headers: {
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Accept': 'application/json'
+            },
+            data: JSON.stringify({
                 competitors: competitors,
                 _token: '{{ csrf_token() }}'
-            },
+            }),
             success: function(response) {
                 if (response.success) {
                     alert(`✅ Success!\n\n${response.message}\n\nMappings created: ${totalMappings}`);
@@ -833,7 +841,14 @@ $(document).ready(function() {
                 }
             },
             error: function(xhr) {
-                const errorMsg = xhr.responseJSON?.message || 'Failed to save competitors';
+                let errorMsg = 'Failed to save competitors';
+                if (xhr.responseJSON) {
+                    if (xhr.responseJSON.errors) {
+                        errorMsg = 'Validation failed:\n' + Object.values(xhr.responseJSON.errors).flat().join('\n');
+                    } else if (xhr.responseJSON.message) {
+                        errorMsg = xhr.responseJSON.message;
+                    }
+                }
                 alert('Error: ' + errorMsg);
                 console.error('Save Error:', xhr.responseJSON || xhr.responseText);
             },

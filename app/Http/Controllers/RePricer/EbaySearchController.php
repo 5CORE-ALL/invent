@@ -302,43 +302,68 @@ class EbaySearchController extends Controller
      */
     public function storeCompetitors(Request $request)
     {
-        $validator = Validator::make($request->all(), [
+        // Support both JSON and form-encoded requests
+        $input = $request->all();
+        if (empty($input['competitors']) && $request->getContent()) {
+            $decoded = json_decode($request->getContent(), true);
+            if (is_array($decoded)) {
+                $input = $decoded;
+            }
+        }
+
+        $validator = Validator::make($input, [
             'competitors' => 'required|array',
-            'competitors.*.item_id' => 'required|string',
+            'competitors.*.item_id' => 'required',
             'competitors.*.sku' => 'required|string',
             'competitors.*.marketplace' => 'nullable|string',
             'competitors.*.product_title' => 'nullable|string',
             'competitors.*.product_link' => 'nullable|string',
+            'competitors.*.image' => 'nullable|string',
             'competitors.*.price' => 'nullable|numeric',
             'competitors.*.shipping_cost' => 'nullable|numeric',
         ]);
 
         if ($validator->fails()) {
+            Log::warning('EbaySearchController storeCompetitors validation failed', [
+                'errors' => $validator->errors()->toArray(),
+                'input_keys' => array_keys($input),
+            ]);
             return response()->json([
                 'success' => false,
+                'message' => 'Validation failed',
                 'errors' => $validator->errors()
             ], 422);
         }
 
-        $competitors = $request->input('competitors');
+        $competitors = $input['competitors'];
         $created = 0;
         $updated = 0;
 
         try {
             foreach ($competitors as $competitor) {
-                $price = $competitor['price'] ?? 0;
-                $shippingCost = $competitor['shipping_cost'] ?? 0;
+                $price = floatval($competitor['price'] ?? 0);
+                $shippingCost = floatval($competitor['shipping_cost'] ?? 0);
                 $totalPrice = $price + $shippingCost;
+                $sku = trim($competitor['sku']);
+                $itemId = (string) ($competitor['item_id'] ?? '');
+
+                if (empty($sku) || empty($itemId)) {
+                    Log::warning('EbaySearchController storeCompetitors: skipping empty sku/item_id', [
+                        'competitor' => $competitor,
+                    ]);
+                    continue;
+                }
 
                 $result = EbaySkuCompetitor::updateOrCreate(
                     [
-                        'sku' => $competitor['sku'],
-                        'item_id' => $competitor['item_id'],
+                        'sku' => $sku,
+                        'item_id' => $itemId,
                     ],
                     [
                         'marketplace' => $competitor['marketplace'] ?? 'ebay',
                         'product_title' => $competitor['product_title'] ?? null,
                         'product_link' => $competitor['product_link'] ?? null,
+                        'image' => $competitor['image'] ?? null,
                         'price' => $price,
                         'shipping_cost' => $shippingCost,
                         'total_price' => $totalPrice,
