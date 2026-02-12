@@ -31,6 +31,8 @@ class FetchWalmartPricingSales extends Command
     protected $baseUrl = 'https://marketplace.walmartapis.com';
     protected $token;
     protected $rateLimiter;
+    protected ?string $pricingApiError = null;
+    protected ?string $listingApiError = null;
 
     /**
      * Traffic level to numeric mapping
@@ -65,44 +67,18 @@ class FetchWalmartPricingSales extends Command
 
         $this->info('Access token received.');
 
-        // Step 1: Calculate order counts first (needed for merging)
-        $this->info('Step 1/4: Calculating order counts...');
+        // Step 1: Calculate order counts first
+        $this->info('Step 1/2: Calculating order counts...');
         $orderCounts = $this->calculateOrderCounts($days);
         $this->info("  Calculated order counts for " . count($orderCounts) . " SKUs");
 
-        // Step 2: Fetch and save pricing insights incrementally
-        $this->info('Step 2/4: Fetching pricing insights (saving as we go)...');
-        
-        // Check rate limit status before starting
-        $remaining = $this->rateLimiter->getRemainingRequests('pricing');
-        if ($remaining < 10) {
-            $this->warn("  Warning: Only {$remaining} pricing API requests remaining. Waiting 60s to reset...");
-            sleep(60);
-            $this->rateLimiter->reset(); // Clear the counter
-        }
-        
-        $pricingCount = $this->fetchAndSavePricingInsights($orderCounts);
-        $this->info("  ✓ Saved pricing data for {$pricingCount} SKUs");
-
-        // Step 3: Fetch and save listing quality incrementally
-        $this->info('Step 3/4: Fetching listing quality (saving as we go)...');
-        
-        // Check rate limit status before starting
-        $remaining = $this->rateLimiter->getRemainingRequests('listing');
-        if ($remaining < 10) {
-            $this->warn("  Warning: Only {$remaining} listing API requests remaining. Waiting 60s to reset...");
-            sleep(60);
-            $this->rateLimiter->reset(); // Clear the counter
-        }
-        
-        $listingCount = $this->fetchAndSaveListingQuality();
-        $this->info("  ✓ Saved listing quality for {$listingCount} SKUs");
-
-        // Step 4: Skip inventory feed submission (should be run separately to avoid rate limits)
-        $this->comment('Step 4/4: Skipping inventory feed submission (run separately: walmart:submit-inventory-feed)');
+        // Step 2: Insert/update only daily sales metrics (no insight APIs).
+        $this->info('Step 2/2: Saving daily sales metrics to walmart_pricing...');
+        $this->mergeAndStoreData([], $orderCounts, []);
+        $this->info("  ✓ Saved daily sales data for " . count($orderCounts) . " SKUs");
 
         $elapsed = round(microtime(true) - $startTime, 2);
-        $this->info("✓ Walmart pricing & sales data fetched and stored successfully in {$elapsed} seconds.");
+        $this->info("✓ Walmart daily sales data fetched and stored successfully in {$elapsed} seconds.");
 
         return 0;
     }
@@ -234,6 +210,7 @@ class FetchWalmartPricingSales extends Command
                 $pageNumber++;
 
             } catch (\Exception $e) {
+                $this->pricingApiError = $e->getMessage();
                 $this->error("Failed to fetch pricing page {$pageNumber}: " . $e->getMessage());
                 break;
             }
@@ -353,6 +330,7 @@ class FetchWalmartPricingSales extends Command
                 $page++;
 
             } catch (\Exception $e) {
+                $this->listingApiError = $e->getMessage();
                 $this->error("Failed to fetch listing quality page {$page}: " . $e->getMessage());
                 break;
             }
@@ -450,6 +428,7 @@ class FetchWalmartPricingSales extends Command
                 $pageNumber++;
 
             } catch (\Exception $e) {
+                $this->pricingApiError = $e->getMessage();
                 $this->error("Failed to fetch pricing page {$pageNumber}: " . $e->getMessage());
                 break;
             }
@@ -574,6 +553,7 @@ class FetchWalmartPricingSales extends Command
                 $page++;
 
             } catch (\Exception $e) {
+                $this->listingApiError = $e->getMessage();
                 $this->error("Failed to fetch listing quality page {$page}: " . $e->getMessage());
                 break;
             }
@@ -826,6 +806,8 @@ class FetchWalmartPricingSales extends Command
         $endDate = $now->toIso8601String();
 
         $nextCursor = null;
+        $dailyRowsBatch = [];
+        $dailyBatchSize = 200;
 
         do {
             if ($nextCursor) {
@@ -904,6 +886,17 @@ class FetchWalmartPricingSales extends Command
                         $orderCounts[$sku]['l30_qty'] += $quantity;
                         $orderCounts[$sku]['l30_revenue'] += $unitPrice * $quantity;
                     }
+
+                    // Also persist raw order line in walmart_daily_data.
+                    $dailyRow = $this->buildDailyRowFromOrderLine($order, $line, $orderDate, $isL30);
+                    if ($dailyRow) {
+                        $dailyRowsBatch[] = $dailyRow;
+                    }
+
+                    if (count($dailyRowsBatch) >= $dailyBatchSize) {
+                        $this->upsertDailyRowsBatch($dailyRowsBatch);
+                        $dailyRowsBatch = [];
+                    }
                 }
             }
 
@@ -911,7 +904,87 @@ class FetchWalmartPricingSales extends Command
 
         } while (!empty($orders) && $nextCursor);
 
+        if (!empty($dailyRowsBatch)) {
+            $this->upsertDailyRowsBatch($dailyRowsBatch);
+        }
+
         return $orderCounts;
+    }
+
+    /**
+     * Build walmart_daily_data row from Walmart order line payload.
+     */
+    protected function buildDailyRowFromOrderLine(array $order, array $line, ?Carbon $orderDate, bool $isL30): ?array
+    {
+        $purchaseOrderId = $order['purchaseOrderId'] ?? null;
+        $lineNumber = $line['lineNumber'] ?? ($line['orderLineNumber'] ?? null);
+        $sku = $line['item']['sku'] ?? null;
+
+        if (!$purchaseOrderId || $lineNumber === null || !$sku) {
+            return null;
+        }
+
+        $quantity = (int) ($line['orderLineQuantity']['amount'] ?? 1);
+        $unitPrice = 0.0;
+        $currency = null;
+        $charges = $line['charges']['charge'] ?? [];
+        foreach ($charges as $charge) {
+            if (($charge['chargeType'] ?? '') === 'PRODUCT') {
+                $unitPrice = (float) ($charge['chargeAmount']['amount'] ?? 0);
+                $currency = $charge['chargeAmount']['currency'] ?? null;
+                break;
+            }
+        }
+
+        return [
+            'purchase_order_id' => (string) $purchaseOrderId,
+            'order_line_number' => (int) $lineNumber,
+            'customer_order_id' => $order['customerOrderId'] ?? null,
+            'order_date' => $orderDate?->toDateTimeString(),
+            'period' => $isL30 ? 'l30' : 'l60',
+            'sku' => $sku,
+            'item_id' => $line['item']['productId'] ?? null,
+            'product_name' => isset($line['item']['productName']) ? substr($line['item']['productName'], 0, 500) : null,
+            'quantity' => $quantity,
+            'unit_price' => $unitPrice,
+            'currency' => $currency,
+            'order_line_json' => json_encode($line),
+            'created_at' => now()->toDateTimeString(),
+            'updated_at' => now()->toDateTimeString(),
+        ];
+    }
+
+    /**
+     * Upsert walmart_daily_data in chunks.
+     */
+    protected function upsertDailyRowsBatch(array $rows): void
+    {
+        if (empty($rows)) {
+            return;
+        }
+
+        try {
+            WalmartDailyData::upsert(
+                $rows,
+                ['purchase_order_id', 'order_line_number'],
+                [
+                    'customer_order_id',
+                    'order_date',
+                    'period',
+                    'sku',
+                    'item_id',
+                    'product_name',
+                    'quantity',
+                    'unit_price',
+                    'currency',
+                    'order_line_json',
+                    'updated_at',
+                ]
+            );
+        } catch (\Exception $e) {
+            Log::error('Failed to upsert walmart_daily_data from pricing-sales command: ' . $e->getMessage());
+            $this->error('walmart_daily_data upsert failed: ' . $e->getMessage());
+        }
     }
 
     /**
