@@ -373,7 +373,6 @@
                 <span class="summary-item"><strong>CVR:</strong> <span id="avg-cvr-badge">0%</span></span>
                 <span class="summary-item"><strong>Avg Price:</strong> <span id="avg-price-badge">$0.00</span></span>
                 <span class="summary-item"><strong>Amz LMP:</strong> <span id="amz-lmp-badge">$0.00</span></span>
-                <span class="summary-item"><strong>eBay LMP:</strong> <span id="ebay-lmp-badge">$0.00</span></span>
                 <span class="summary-item d-flex align-items-center gap-2 ms-auto">
                     <label class="mb-0 fw-semibold">Change Price:</label>
                     <input type="number" id="change-price-input" class="form-control form-control-sm" placeholder="Enter price" step="0.01" min="0" style="width: 100px;">
@@ -417,6 +416,10 @@
                         <option value="sku" selected>SKU Only</option>
                         <option value="parent">Parent Only</option>
                     </select>
+
+                    <button type="button" id="remove-filter-btn" class="btn btn-sm btn-outline-danger" title="Remove all filters">
+                        <i class="fas fa-times-circle"></i> Remove Filter
+                    </button>
 
                     <!-- Column Visibility Dropdown -->
                     <div class="dropdown d-inline-block">
@@ -986,37 +989,6 @@
                         }
                         if (count > 0) {
                             html += `<a href="#" class="view-lmp-competitors" data-sku="${(sku || '').replace(/"/g, '&quot;')}" data-marketplace="amazon" style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 11px;"><i class="fa fa-eye"></i> View ${count}</a>`;
-                        }
-                        html += '</div>';
-                        return html;
-                    },
-                    width: 100
-                },
-                {
-                    title: "eBay LMP",
-                    field: "ebay_lmp_price",
-                    hozAlign: "center",
-                    sorter: "number",
-                    formatter: function(cell) {
-                        const rowData = cell.getRow().getData();
-                        const sku = rowData.sku;
-                        const count = parseInt(rowData.ebay_lmp_count || 0);
-                        if (rowData.is_parent_summary === true) {
-                            const v = cell.getValue();
-                            return v != null ? '<span style="font-weight: 600;">$' + parseFloat(v).toFixed(2) + '</span>' : '<span class="text-muted">-</span>';
-                        }
-                        const value = cell.getValue();
-                        let html = '<div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">';
-                        if (value == null || value === '') {
-                            html += '<span class="text-muted">-</span>';
-                        } else {
-                            const price = parseFloat(value);
-                            const avgPrice = parseFloat(rowData.avg_price || 0);
-                            const color = (avgPrice > 0 && price < avgPrice) ? '#dc3545' : '#28a745';
-                            html += `<span style="color: ${color}; font-weight: 600;">$${price.toFixed(2)}</span>`;
-                        }
-                        if (count > 0) {
-                            html += `<a href="#" class="view-lmp-competitors" data-sku="${(sku || '').replace(/"/g, '&quot;')}" data-marketplace="ebay" style="color: #007bff; text-decoration: none; cursor: pointer; font-size: 11px;"><i class="fa fa-eye"></i> View ${count}</a>`;
                         }
                         html += '</div>';
                         return html;
@@ -1812,6 +1784,16 @@
             applyFilters();
         });
 
+        $('#remove-filter-btn').on('click', function() {
+            $('#inventory-filter').val('more');
+            $('#sku-parent-filter').val('sku');
+            const $allDil = $('.column-filter[data-column="dil_percent"][data-color="all"]');
+            $('.column-filter[data-column="dil_percent"]').removeClass('active');
+            $allDil.addClass('active');
+            $('#dilFilterDropdown').html('').append($allDil.find('.status-circle').clone()).append(' DIL%');
+            applyFilters();
+        });
+
         // ==================== SUMMARY FUNCTIONS ====================
         
         function updateSummary() {
@@ -1820,7 +1802,6 @@
             let totalViews = 0, totalCvr = 0, cvrCount = 0;
             let totalPrice = 0, priceCount = 0;
             let totalAmzLmp = 0, amzLmpCount = 0;
-            let totalEbayLmp = 0, ebayLmpCount = 0;
 
             data.forEach(row => {
                 totalInv += parseFloat(row['inventory']) || 0;
@@ -1844,11 +1825,6 @@
                         totalAmzLmp += amzLmp;
                         amzLmpCount++;
                     }
-                    const ebayLmp = parseFloat(row['ebay_lmp_price']) || 0;
-                    if (ebayLmp > 0) {
-                        totalEbayLmp += ebayLmp;
-                        ebayLmpCount++;
-                    }
                 }
             });
 
@@ -1856,7 +1832,6 @@
             const avgCvr = cvrCount > 0 ? totalCvr / cvrCount : 0;
             const avgPrice = priceCount > 0 ? totalPrice / priceCount : 0;
             const avgAmzLmp = amzLmpCount > 0 ? totalAmzLmp / amzLmpCount : 0;
-            const avgEbayLmp = ebayLmpCount > 0 ? totalEbayLmp / ebayLmpCount : 0;
 
             $('#total-inv-badge').text(totalInv.toLocaleString());
             $('#total-l30-badge').text(totalL30.toLocaleString());
@@ -1865,7 +1840,6 @@
             $('#avg-cvr-badge').text(avgCvr.toFixed(1) + '%');
             $('#avg-price-badge').text('$' + avgPrice.toFixed(2));
             $('#amz-lmp-badge').text('$' + avgAmzLmp.toFixed(2));
-            $('#ebay-lmp-badge').text('$' + avgEbayLmp.toFixed(2));
 
             const headerCb = document.querySelector('#cvr-table .select-all-cb');
             if (headerCb) headerCb.checked = isAllFilteredSelected();
