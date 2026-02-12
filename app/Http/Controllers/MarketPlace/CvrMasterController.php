@@ -2326,8 +2326,13 @@ class CvrMasterController extends Controller
             $dobaApiService = new DobaApiService();
             $priceResult = $dobaApiService->updateItemPrice($itemId, $price, $selfPickPrice);
 
-            // Check if the response indicates errors
-            if (isset($priceResult['errors'])) {
+            // Check if the response indicates real errors
+            // Some API responses include an "errors" key even when empty.
+            if (!empty($priceResult['errors'])) {
+                $errorMessage = is_array($priceResult['errors'])
+                    ? json_encode($priceResult['errors'])
+                    : (string) $priceResult['errors'];
+
                 // Save error status to doba_data_view
                 $this->savePricePushStatus($sku, 'doba', 'error', $price);
                 
@@ -2336,13 +2341,13 @@ class CvrMasterController extends Controller
                     'item_id' => $itemId,
                     'price' => $price,
                     'self_pick_price' => $selfPickPrice,
-                    'error' => $priceResult['errors']
+                    'error' => $errorMessage
                 ]);
                 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Price update failed: ' . $priceResult['errors'],
-                    'errors' => [['message' => 'Price update: ' . $priceResult['errors']]]
+                    'message' => 'Price update failed: ' . $errorMessage,
+                    'errors' => [['message' => 'Price update: ' . $errorMessage]]
                 ], 400);
             }
 
@@ -2797,6 +2802,12 @@ class CvrMasterController extends Controller
                 };
 
                 try {
+                    // Keep suggested SPRICE in sync with bulk pricing rules,
+                    // so Doba/Shopify wholesale shows 25% reduced price in UI.
+                    if (in_array($mp, ['doba', 'sb2b'])) {
+                        $this->saveSpriceToView($sku, $mp, $price);
+                    }
+
                     $req = Request::create('/cvr-master-push-price', 'POST', [
                         'sku' => $sku,
                         'price' => $price,

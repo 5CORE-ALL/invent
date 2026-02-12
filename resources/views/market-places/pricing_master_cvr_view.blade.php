@@ -1532,6 +1532,8 @@
         let fullDataset = [];
         let expandedParent = null;
         let dotExpandedParent = null;
+        // Prevent dataLoaded side-effects for local setData operations
+        let suppressDataLoadedHandler = false;
 
         // Row selection - Set of selected SKUs
         let selectedSkus = new Set();
@@ -1582,7 +1584,7 @@
             if (!parentVal) return;
 
             if (dotExpandedParent === parentVal) {
-                dotExpandedParent = null;
+                // Keep current value; applyFilters() needs it to restore fullDataset
                 applyFilters();
                 return;
             }
@@ -1603,6 +1605,7 @@
             }
             displayData = displayData.concat(childRows);
 
+            suppressDataLoadedHandler = true;
             table.setData(displayData).then(() => {
                 updateSummary();
             });
@@ -1690,6 +1693,7 @@
             console.log('Expected:', parentRows.length, '+ children if expanded');
             
             // Update table
+            suppressDataLoadedHandler = true;
             table.setData(displayData).then(() => {
                 console.log('✓ Table updated successfully');
                 updateSummary();
@@ -1774,6 +1778,7 @@
             };
 
             if (wasInDotView && fullDataset.length > 0) {
+                suppressDataLoadedHandler = true;
                 table.setData(fullDataset).then(doFilters);
             } else {
                 doFilters();
@@ -1908,7 +1913,13 @@
         });
 
         table.on('dataLoaded', function(data) {
-            // Store full dataset for parent expand/collapse
+            // Ignore dataLoaded triggered by local setData (dot view / parent view / restore)
+            if (suppressDataLoadedHandler) {
+                suppressDataLoadedHandler = false;
+                return;
+            }
+
+            // Store full dataset from server load
             fullDataset = data;
             
             setTimeout(function() {
