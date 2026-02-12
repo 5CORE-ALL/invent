@@ -360,8 +360,7 @@
                         </li>
 
                         <li>
-                            <a href="{{ route('second', ['pages', 'transit-analysis']) }}">Transit Analysis</a>
-                        </li>
+                            <a href="/pages/transit-analysis">Transit Analysis</a>                        </li>
                         <li>
                             <a href="{{ route('review.analysis') }}">Review Analysis</a>
                         </li>

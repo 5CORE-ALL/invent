@@ -101,11 +101,26 @@ return [
     'openai' => [
         'key' => env('OPENAI_API_KEY'),
     ],
-    
     'anthropic' => [
-    'key' => env('ANTHROPIC_API_KEY'),
+        'key' => env('ANTHROPIC_API_KEY'),
     ],
 
+    '5core' => [
+        'domains' => [
+            'IT' => ['keywords' => ['server', 'database', 'vpn', 'login', 'password', 'email', 'network', 'software', 'hardware', 'printer', 'wifi', 'ssl', 'certificate']],
+            'Sales' => ['keywords' => ['client', 'deal', 'invoice', 'payment', 'customer', 'lead', 'sale', 'discount', 'price', 'order']],
+            'HR' => ['keywords' => ['leave', 'attendance', 'salary', 'holiday', 'hiring', 'interview', 'hr', 'bonus', 'expense']],
+            'Marketing' => ['keywords' => ['campaign', 'social media', 'ads', 'content', 'seo', 'brand', 'marketing', 'promotion']],
+            'General' => ['keywords' => []],
+        ],
+        'senior_emails' => [
+            'IT' => env('FIVECORE_SENIOR_IT', 'it.senior@5core.com'),
+            'Sales' => env('FIVECORE_SENIOR_SALES', 'sales.senior@5core.com'),
+            'Marketing' => env('FIVECORE_SENIOR_MARKETING', 'marketing.senior@5core.com'),
+            'HR' => env('FIVECORE_SENIOR_HR', 'hr.senior@5core.com'),
+            'General' => env('FIVECORE_SENIOR_GENERAL', 'support@5core.com'),
+        ],
+    ],
 
     /*
     | Task Manager WhatsApp (Gupshup). Two modes:

@@ -271,6 +271,16 @@ use App\Http\Controllers\Sales\WayfairSalesController;
 |
 */
 
+
+Route::get('/ai/download-sample-csv', [App\Http\Controllers\Api\AiChatController::class, 'downloadSampleCsv'])
+    ->name('ai.download.sample');
+
+Route::get('/ai/escalation/{id}/reply', [App\Http\Controllers\Ai\AiEscalationController::class, 'showReplyForm'])
+    ->name('ai.escalation.reply');
+
+Route::post('/ai/escalation/{id}/reply', [App\Http\Controllers\Ai\AiEscalationController::class, 'submitReply'])
+    ->name('ai.escalation.submit');
+
 /** Start Cron Job Routes **/
 // Consolidated Cron Job - Runs all cron jobs in sequence (Recommended)
 Route::get('/channel/adv/master/cron/all', [ChannelAdsMasterController::class, 'runAllAdvMastersCronJobs'])->name('adv.masters.cron.all');
@@ -526,7 +536,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/stock-balance-delete-relationship', [StockBalanceController::class, 'deleteRelationship']);
     Route::get('/stock-balance-get-skus-autocomplete', [StockBalanceController::class, 'getSkusForAutocomplete']);
     Route::get('/stock-balance-get-recent-history', [StockBalanceController::class, 'getRecentHistory']);
-    
+
     //Multi-SKU Stock Balance
     Route::get('/stock-balance-multi-sku', [StockBalanceController::class, 'multiSkuView'])->name('stock.balance.multi.sku');
     Route::post('/stock-balance-multi-sku-data', [StockBalanceController::class, 'getMultiSkuInventoryData']);
@@ -604,7 +614,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         //form reports
         Route::get('/rfq-form/reports/{id}', 'rfqReports')->name('rfq-form.reports');
         Route::get('/rfq-form/reports-data/{id}', 'getRfqReportsData')->name('rfq-form.reports.data');
-        
+
         //supplier email
         Route::get('/rfq-form/suppliers/search', 'searchSuppliers')->name('rfq-form.suppliers.search');
         Route::post('/rfq-form/send-email', 'sendEmailToSuppliers')->name('rfq-form.send-email');
@@ -730,7 +740,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/ebay-daily-sales-column-visibility', [EbaySalesController::class, 'getColumnVisibility']);
     Route::post('/ebay-daily-sales-column-visibility', [EbaySalesController::class, 'saveColumnVisibility']);
     Route::get('/ebay/sku-sales-data', [EbaySalesController::class, 'getSkuSalesData'])->name('ebay.sku.sales.data');
-    
+
     // Wayfair Sales Routes
     Route::get('/wayfair/daily-sales-data', [WayfairSalesController::class, 'getData'])->name('wayfair.daily.sales.data');
     Route::get('/wayfair/daily-sales', [WayfairSalesController::class, 'index'])->name('wayfair.daily.sales');
@@ -738,25 +748,25 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/wayfair-daily-sales-column-visibility', [WayfairSalesController::class, 'saveColumnVisibility']);
     Route::get('/wayfair/sku-sales-data', [WayfairSalesController::class, 'getSkuSalesData'])->name('wayfair.sku.sales.data');
     Route::get('/wayfair/test-calculation', [WayfairSalesController::class, 'testCalculation'])->name('wayfair.test.calculation');
-    
+
     // Best Buy Sales Routes
     Route::get('/bestbuy/daily-sales-data', [BestBuySalesController::class, 'getData'])->name('bestbuy.daily.sales.data');
     Route::get('/bestbuy/daily-sales', [BestBuySalesController::class, 'index'])->name('bestbuy.daily.sales');
     Route::get('/bestbuy-daily-sales-column-visibility', [BestBuySalesController::class, 'getColumnVisibility']);
     Route::post('/bestbuy-daily-sales-column-visibility', [BestBuySalesController::class, 'saveColumnVisibility']);
-    
+
     // Macy's Sales Routes
     Route::get('/macys/daily-sales-data', [\App\Http\Controllers\Sales\MacysSalesController::class, 'getData'])->name('macys.daily.sales.data');
     Route::get('/macys/daily-sales', [\App\Http\Controllers\Sales\MacysSalesController::class, 'index'])->name('macys.daily.sales');
     Route::get('/macys-daily-sales-column-visibility', [\App\Http\Controllers\Sales\MacysSalesController::class, 'getColumnVisibility']);
     Route::post('/macys-daily-sales-column-visibility', [\App\Http\Controllers\Sales\MacysSalesController::class, 'saveColumnVisibility']);
-    
+
     // Tiendamia Sales Routes
     Route::get('/tiendamia/daily-sales-data', [\App\Http\Controllers\Sales\TiendamiaSalesController::class, 'getData'])->name('tiendamia.daily.sales.data');
     Route::get('/tiendamia/daily-sales', [\App\Http\Controllers\Sales\TiendamiaSalesController::class, 'index'])->name('tiendamia.daily.sales');
     Route::get('/tiendamia-daily-sales-column-visibility', [\App\Http\Controllers\Sales\TiendamiaSalesController::class, 'getColumnVisibility']);
     Route::post('/tiendamia-daily-sales-column-visibility', [\App\Http\Controllers\Sales\TiendamiaSalesController::class, 'saveColumnVisibility']);
-    
+
     // Best Buy Pricing Routes
     Route::get('/bestbuy-pricing', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'bestbuyPricingView'])->name('bestbuy.pricing');
     Route::get('/bestbuy-data-json', [\App\Http\Controllers\MarketPlace\BestBuyPricingController::class, 'bestbuyDataJson'])->name('bestbuy.data.json');
@@ -822,38 +832,38 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/shopify-b2c-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'getColumnVisibility'])->name('shopify.b2c.pricing.column.get');
     Route::post('/shopify-b2c-pricing-column-visibility', [\App\Http\Controllers\MarketPlace\Shopifyb2cController::class, 'setColumnVisibility'])->name('shopify.b2c.pricing.column.set');
 
-    
+
     // eBay 2 Sales Routes
     Route::get('/ebay2/daily-sales-data', [\App\Http\Controllers\Sales\Ebay2SalesController::class, 'getData'])->name('ebay2.daily.sales.data');
     Route::get('/ebay2/daily-sales', [\App\Http\Controllers\Sales\Ebay2SalesController::class, 'index'])->name('ebay2.daily.sales');
     Route::get('/ebay2-daily-sales-column-visibility', [\App\Http\Controllers\Sales\Ebay2SalesController::class, 'getColumnVisibility']);
     Route::post('/ebay2-daily-sales-column-visibility', [\App\Http\Controllers\Sales\Ebay2SalesController::class, 'saveColumnVisibility']);
-    
+
     // eBay 3 Sales Routes
     Route::get('/ebay3/daily-sales-data', [\App\Http\Controllers\Sales\Ebay3SalesController::class, 'getData'])->name('ebay3.daily.sales.data');
     Route::get('/ebay3/daily-sales', [\App\Http\Controllers\Sales\Ebay3SalesController::class, 'index'])->name('ebay3.daily.sales');
     Route::get('/ebay3-daily-sales-column-visibility', [\App\Http\Controllers\Sales\Ebay3SalesController::class, 'getColumnVisibility']);
     Route::post('/ebay3-daily-sales-column-visibility', [\App\Http\Controllers\Sales\Ebay3SalesController::class, 'saveColumnVisibility']);
-    
+
     // Amazon Sales Routes
     Route::get('/amazon/daily-sales-data', [AmazonSalesController::class, 'getData'])->name('amazon.daily.sales.data');
     Route::get('/amazon/daily-sales', [AmazonSalesController::class, 'index'])->name('amazon.daily.sales');
     Route::get('/amazon-column-visibility', [AmazonSalesController::class, 'getColumnVisibility']);
     Route::post('/amazon-column-visibility', [AmazonSalesController::class, 'saveColumnVisibility']);
     Route::get('/amazon/debug-data', [AmazonSalesController::class, 'debugData'])->name('amazon.debug.data');
-    
+
     // TikTok Sales Routes
     Route::get('/tiktok/daily-sales', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'index'])->name('tiktok.daily.sales');
     Route::get('/tiktok/daily-sales-data', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'getData'])->name('tiktok.daily.sales.data');
     Route::get('/tiktok-column-visibility', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'getColumnVisibility']);
     Route::post('/tiktok-column-visibility', [\App\Http\Controllers\Sales\TikTokSalesController::class, 'saveColumnVisibility']);
-    
+
     // Doba Sales Routes
     Route::get('/doba/daily-sales-data', [DobaSalesController::class, 'getData'])->name('doba.daily.sales.data');
     Route::get('/doba/daily-sales', [DobaSalesController::class, 'index'])->name('doba.daily.sales');
     Route::get('/doba-column-visibility', [DobaSalesController::class, 'getColumnVisibility']);
     Route::post('/doba-column-visibility', [DobaSalesController::class, 'saveColumnVisibility']);
-    
+
     // Mercari Sales Routes (With Ship - buyer_shipping_fee = 0 or null)
     Route::post('/mercari/upload-daily-data', [MercariController::class, 'uploadDailyDataChunk'])->name('mercari.upload.daily.data');
     Route::get('/mercari/daily-data', [MercariController::class, 'getDailyData'])->name('mercari.get.daily.data');
@@ -861,31 +871,31 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/mercari-with-ship', [MercariController::class, 'mercariTabulatorView'])->name('mercari.with.ship.view');
     Route::post('/mercari-column-visibility', [MercariController::class, 'saveMercariColumnVisibility'])->name('mercari.save.column.visibility');
     Route::get('/mercari-column-visibility', [MercariController::class, 'getMercariColumnVisibility'])->name('mercari.get.column.visibility');
-    
+
     // Mercari Without Ship Sales Routes (buyer_shipping_fee > 0)
     Route::get('/mercari-without-ship', [MercariController::class, 'mercariWithoutShipView'])->name('mercari.without.ship.view');
     Route::get('/mercari/daily-data-without-ship', [MercariController::class, 'getDailyDataWithoutShip'])->name('mercari.get.daily.data.without.ship');
     Route::post('/mercari-without-ship-column-visibility', [MercariController::class, 'saveMercariWithoutShipColumnVisibility'])->name('mercari.save.without.ship.column.visibility');
     Route::get('/mercari-without-ship-column-visibility', [MercariController::class, 'getMercariWithoutShipColumnVisibility'])->name('mercari.get.without.ship.column.visibility');
-    
+
     // Shopify B2C Sales Routes
     Route::get('/shopify-b2c/daily-sales-data', [\App\Http\Controllers\Sales\ShopifyB2CSalesController::class, 'getData'])->name('shopify-b2c.daily.sales.data');
     Route::get('/shopify-b2c/daily-sales', [\App\Http\Controllers\Sales\ShopifyB2CSalesController::class, 'index'])->name('shopify-b2c.daily.sales');
     Route::get('/shopify-b2c-column-visibility', [\App\Http\Controllers\Sales\ShopifyB2CSalesController::class, 'getColumnVisibility']);
     Route::post('/shopify-b2c-column-visibility', [\App\Http\Controllers\Sales\ShopifyB2CSalesController::class, 'saveColumnVisibility']);
-    
+
     // Shopify B2B Sales Routes
     Route::get('/shopify-b2b/daily-sales-data', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'getData'])->name('shopify-b2b.daily.sales.data');
     Route::get('/shopify-b2b/daily-sales', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'index'])->name('shopify-b2b.daily.sales');
     Route::get('/shopify-b2b-column-visibility', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'getColumnVisibility']);
     Route::post('/shopify-b2b-column-visibility', [\App\Http\Controllers\Sales\ShopifyB2BSalesController::class, 'saveColumnVisibility']);
-    
+
     // Walmart Sales Routes
     Route::get('/walmart/daily-sales', [\App\Http\Controllers\Sales\WalmartSalesController::class, 'index'])->name('walmart.daily.sales');
     Route::get('/walmart/daily-sales-data', [\App\Http\Controllers\Sales\WalmartSalesController::class, 'getData'])->name('walmart.daily.sales.data');
     Route::get('/walmart-column-visibility', [\App\Http\Controllers\Sales\WalmartSalesController::class, 'getColumnVisibility']);
     Route::post('/walmart-column-visibility', [\App\Http\Controllers\Sales\WalmartSalesController::class, 'saveColumnVisibility']);
-    
+
     Route::get('/amazonfba/view-data', [OverallAmazonFbaController::class, 'getViewAmazonFbaData'])->name('amazonfba.viewData');
     Route::get('/fbainv/view-data', [AmazonFbaInvController::class, 'getViewAmazonfbaInvData'])->name('fbainv.viewData');
     Route::get('/product-master-data', [ProductMasterController::class, 'product_master_data']);
@@ -1039,7 +1049,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/ebay3-analytics/import', [EbayThreeController::class, 'importEbayThreeAnalytics'])->name('ebay3.analytics.import');
     Route::get('/ebay3-analytics/export', [EbayThreeController::class, 'exportEbayThreeAnalytics'])->name('ebay3.analytics.export');
     Route::get('/ebay3-analytics/sample', [EbayThreeController::class, 'downloadSample'])->name('ebay3.analytics.sample');
-    
+
     // eBay3 Tabulator View Routes
     Route::get('/ebay3-tabulator-view', [EbayThreeController::class, 'ebay3TabulatorView'])->name('ebay3.tabulator.view');
     Route::get('/ebay3-data-json', [EbayThreeController::class, 'ebay3DataJson'])->name('ebay3.data.json');
@@ -1075,7 +1085,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/walmart-analytics/import', [WalmartControllerMarket::class, 'importWalmartAnalytics'])->name('walmart.analytics.import');
     Route::get('/walmart-analytics/export', [WalmartControllerMarket::class, 'exportWalmartAnalytics'])->name('walmart.analytics.export');
     Route::get('/walmart-analytics/sample', [WalmartControllerMarket::class, 'downloadSample'])->name('walmart.analytics.sample');
-    
+
     // Walmart Tabulator View Routes
     Route::get('walmart-tabulator-view', [WalmartControllerMarket::class, 'walmartTabulatorView'])->name('walmart.tabulator.view');
     Route::get('/walmart-data-json', [WalmartControllerMarket::class, 'walmartDataJson']);
@@ -1114,7 +1124,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::get('/listing_amazon/export', [ListingAmazonController::class, 'export'])->name('listing_amazon.export');
 
 
-// Listing Mirror Routes - Multi-channel listing sync
+    // Listing Mirror Routes - Multi-channel listing sync
     Route::get('/listing-mirror', [\App\Http\Controllers\ListingMirrorController::class, 'index'])->name('listing-mirror.index');
     Route::post('/listing-mirror/sync-inventory', [\App\Http\Controllers\ListingMirrorController::class, 'syncInventory'])->name('listing-mirror.sync-inventory');
     Route::post('/listing-mirror/sync-price', [\App\Http\Controllers\ListingMirrorController::class, 'syncPrice'])->name('listing-mirror.sync-price');
@@ -1176,7 +1186,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/push-ebay-price-tabulator', [EbayController::class, 'pushEbayPrice'])->name('ebay.push.price.tabulator');
     Route::post('/update-ebay-sprice-status', [EbayController::class, 'updateEbaySpriceStatus'])->name('ebay.update.sprice.status');
     Route::post('/update-listed-live-ebay', [EbayController::class, 'updateListedLive'])->name('ebay.update.listed.live');
-    
+
     // eBay LMP (Lowest Marketplace Price) routes
     Route::get('/ebay-lmp-data', [EbayController::class, 'getEbayLmpData'])->name('ebay.lmp.data');
     Route::post('/ebay-lmp-add', [EbayController::class, 'addEbayLmp'])->name('ebay.lmp.add');
@@ -1297,28 +1307,28 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu-analytics/import', [TemuController::class, 'importTemuAnalytics'])->name('temu.analytics.import');
     Route::get('/temu-analytics/export', [TemuController::class, 'exportTemuAnalytics'])->name('temu.analytics.export');
     Route::get('/temu-analytics/sample', [TemuController::class, 'downloadSample'])->name('temu.analytics.sample');
-    
+
     // Temu Tabulator View
     Route::get('/temu-tabulator', [TemuController::class, 'temuTabulatorView'])->name('temu.tabulator');
     Route::post('/temu-column-visibility', [TemuController::class, 'saveTemuColumnVisibility']);
     Route::get('/temu-column-visibility', [TemuController::class, 'getTemuColumnVisibility']);
-    
+
     // Temu Pricing Upload
     Route::post('/temu-pricing/upload', [TemuController::class, 'uploadTemuPricing'])->name('temu.pricing.upload');
     Route::get('/temu-pricing/sample', [TemuController::class, 'downloadTemuPricingSample'])->name('temu.pricing.sample');
-    
+
     // Temu View Data Upload
     Route::post('/temu-view-data/upload', [TemuController::class, 'uploadTemuViewData'])->name('temu.viewdata.upload');
     Route::get('/temu-view-data/sample', [TemuController::class, 'downloadTemuViewDataSample'])->name('temu.viewdata.sample');
-    
+
     // Temu Ad Data Upload
     Route::post('/temu-ad-data/upload', [TemuController::class, 'uploadTemuAdData'])->name('temu.addata.upload');
     Route::get('/temu-ad-data/sample', [TemuController::class, 'downloadTemuAdDataSample'])->name('temu.addata.sample');
-    
+
     // Temu R Pricing Upload
     Route::post('/temu-r-pricing/upload', [TemuController::class, 'uploadTemuRPricing'])->name('temu.rpricing.upload');
     Route::get('/temu-r-pricing/sample', [TemuController::class, 'downloadTemuRPricingSample'])->name('temu.rpricing.sample');
-    
+
     // Temu Decrease Page
     Route::get('/temu-decrease', [TemuController::class, 'temuDecreaseView'])->name('temu.decrease');
     Route::get('/temu-decrease-data', [TemuController::class, 'getTemuDecreaseData']);
@@ -1327,7 +1337,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/temu-decrease-column-visibility', [TemuController::class, 'saveTemuDecreaseColumnVisibility']);
     Route::get('/temu-decrease-column-visibility', [TemuController::class, 'getTemuDecreaseColumnVisibility']);
     Route::post('/temu-decrease/save-listing-status', [TemuController::class, 'saveListingStatus']);
-    
+
     // Temu Metrics and Cell Update
     Route::get('/temu-metrics-history', [TemuController::class, 'getTemuMetricsHistory'])->name('temu.metrics.history');
     Route::post('/temu-update-cell', [TemuController::class, 'updateTemuCellData'])->name('temu.update.cell');
@@ -1568,7 +1578,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/container-planning/delete', 'deleteContainerPlanning')->name('container.planning.delete');
     });
 
-    Route::controller(UpComingContainerController::class)->group(function (){
+    Route::controller(UpComingContainerController::class)->group(function () {
         Route::get('/upcoming-containers', 'index')->name('upcoming.container');
         Route::get('/upcoming-container/data', 'getUpComingContainer')->name('upcoming.container.data');
         Route::post('/upcoming-container/save', 'saveUpComingContainer')->name('upcoming.container.save');
@@ -1901,7 +1911,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/shein-analytics/import', [SheinController::class, 'importSheinAnalytics'])->name('shein.analytics.import');
     Route::get('/shein-analytics/export', [SheinController::class, 'exportSheinAnalytics'])->name('shein.analytics.export');
     Route::get('/shein-analytics/sample', [SheinController::class, 'downloadSample'])->name('shein.analytics.sample');
-    
+
     // Shein Daily Data routes
     Route::post('/shein/upload-daily-data', [SheinController::class, 'uploadDailyDataChunk'])->name('shein.upload.daily.data');
     Route::get('/shein/daily-data', [SheinController::class, 'getDailyData'])->name('shein.get.daily.data');
@@ -2225,7 +2235,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/facebook-video-ad', 'facebookVideoAdView')->name('facebook.ads.master');
         Route::get('/facebook-video-ads', 'getFacebookVideoAdsData');
         Route::post('/facebook-video-ads/save', 'saveFacebookVideoAds')->name('facebook_video_ads.save');
-        
+
         // Facebook Video Ads Groups and Categories (using Group Master's groups/categories)
         Route::post('/facebook-video-ads-update-field', 'updateFacebookVideoAdField')->name('facebook.video.ads.update.field');
         Route::post('/facebook-video-ads-upload-excel', 'uploadFacebookVideoAdsExcel')->name('facebook.video.ads.upload.excel');
@@ -2309,7 +2319,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/amazon-sp/get-utilization-counts', 'getAmazonUtilizationCounts');
         Route::post('/update-amazon-sp-bid-price', 'updateAmazonSpBidPrice');
         Route::put('/update-keywords-bid-price', 'updateCampaignKeywordsBid');
-        
+
         // Consolidated Amazon Utilized pages (KW, PT, HL)
         Route::get('/amazon/utilized/kw', 'amazonUtilizedView')->name('amazon.utilized.kw');
         Route::get('/amazon/utilized/kw/ads/data', 'getAmazonUtilizedKwAdsData');
@@ -2318,7 +2328,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/amazon/get-utilization-counts', 'getAmazonUtilizationCounts');
         Route::get('/amazon/get-utilization-chart-data', 'getAmazonUtilizationChartData');
         Route::get('/amazon/utilized/chart/filter', 'filterAmazonUtilizedChart')->name('amazon.utilized.chart.filter');
-        
+
         // ACOS Action History Routes
         Route::post('/amazon/save-acos-action-history', 'saveAcosActionHistory');
         Route::get('/amazon/get-acos-action-history', 'getAcosActionHistory');
@@ -2327,7 +2337,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/amazon-sp/get-amz-utilized-bgt-pt', 'getAmzUtilizedBgtPt');
         Route::put('/update-amazon-sp-targets-bid-price', 'updateCampaignTargetsBid');
         Route::post('/update-amazon-nr-nrl-fba', 'updateNrNRLFba');
-        
+
         // SBID M and Approve routes
         Route::post('/save-amazon-sbid-m', 'saveAmazonSbidM');
         Route::post('/approve-amazon-sbid', 'approveAmazonSbid');
@@ -2338,7 +2348,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/amazon-sb/get-amz-utilized-bgt-hl', 'getAmzUtilizedBgtHl');
         Route::post('/update-amazon-sb-bid-price', 'updateAmazonSbBidPrice');
         Route::put('/amazon-sb/update-keywords-bid-price', 'updateCampaignKeywordsBid');
-        
+
         // Consolidated Amazon HL Utilized page
         Route::get('/amazon/utilized/hl', 'amazonUtilizedHlView')->name('amazon.utilized.hl');
         Route::get('/amazon/utilized/hl/ads/data', 'getAmazonUtilizedHlAdsData');
@@ -2398,16 +2408,16 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/meta-all-ads-control', 'metaAllAds')->name('meta.all.ads');
         Route::get('/meta-all-ads-control/data', 'metaAllAdsData')->name('meta.all.ads.data');
         Route::post('/meta-all-ads-control/sync-meta-api', 'syncMetaAdsFromApi')->name('meta.ads.sync');
-        
+
         // Group management routes
         Route::get('/meta-ads/group/list', 'getMetaAdGroups')->name('meta.ads.group.list');
         Route::post('/meta-ads/group/store', 'storeGroup')->name('meta.ads.group.store');
         Route::delete('/meta-ads/group/delete', 'deleteMetaAdGroup')->name('meta.ads.group.delete');
-        
+
         // Import/Export routes
         Route::post('/meta-ads/import', 'importAds')->name('meta.ads.import');
         Route::post('/meta-ads/export', 'exportAds')->name('meta.ads.export');
-        
+
         // Facebook AD Type specific routes
         Route::get('/meta-ads/facebook/single-image', 'metaFacebookSingleImage')->name('meta.ads.facebook.single.image');
         Route::get('/meta-ads/facebook/single-image/data', 'metaFacebookSingleImageData')->name('meta.ads.facebook.single.image.data');
@@ -2419,7 +2429,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/meta-ads/facebook/existing-post/data', 'metaFacebookExistingPostData')->name('meta.ads.facebook.existing.post.data');
         Route::get('/meta-ads/facebook/catalogue-ad', 'metaFacebookCatalogueAd')->name('meta.ads.facebook.catalogue');
         Route::get('/meta-ads/facebook/catalogue-ad/data', 'metaFacebookCatalogueAdData')->name('meta.ads.facebook.catalogue.data');
-        
+
         // Instagram AD Type specific routes
         Route::get('/meta-ads/instagram/single-image', 'metaInstagramSingleImage')->name('meta.ads.instagram.single.image');
         Route::get('/meta-ads/instagram/single-image/data', 'metaInstagramSingleImageData')->name('meta.ads.instagram.single.image.data');
@@ -2431,18 +2441,18 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/meta-ads/instagram/existing-post/data', 'metaInstagramExistingPostData')->name('meta.ads.instagram.existing.post.data');
         Route::get('/meta-ads/instagram/catalogue-ad', 'metaInstagramCatalogueAd')->name('meta.ads.instagram.catalogue');
         Route::get('/meta-ads/instagram/catalogue-ad/data', 'metaInstagramCatalogueAdData')->name('meta.ads.instagram.catalogue.data');
-        
+
         // FB GRP CAROUSAL NEW routes
         Route::get('/meta-ads/facebook/carousal/new', 'metaFacebookCarousalNew')->name('meta.ads.facebook.carousal.new');
         Route::get('/meta-ads/facebook/carousal/new/data', 'metaFacebookCarousalNewData')->name('meta.ads.facebook.carousal.new.data');
         Route::post('/meta-ads/facebook/carousal/new/store', 'storeFacebookCarousalNewCampaign')->name('meta.ads.facebook.carousal.new.store');
         Route::post('/meta-ads/facebook/carousal/new/update-group', 'updateGroupForCampaigns')->name('meta.ads.facebook.carousal.new.update.group');
-        
+
         // Raw Facebook Ads Data routes
         Route::get('/meta-ads/raw-data', 'showRawAdsData')->name('meta.ads.raw');
         Route::get('/meta-ads/raw-data/fetch', 'fetchRawAdsData')->name('meta.ads.raw.data');
         Route::get('/meta-ads/test-connection', 'testMetaApiConnection')->name('meta.ads.test.connection');
-        
+
         Route::get('/facebook-ads-control/data', 'index')->name('facebook.ads.index');
         Route::get('/facebook-web-to-video', 'facebookWebToVideo')->name('facebook.web.to.video');
         Route::get('/facebook-web-to-video-data', 'facebookWebToVideoData')->name('facebook.web.to.video.data');
@@ -2454,11 +2464,11 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::controller(\App\Http\Controllers\MarketingMaster\MetaAdsManagerController::class)->group(function () {
         // Dashboard
         Route::get('/meta-ads-manager/dashboard', 'dashboard')->name('meta.ads.manager.dashboard');
-        
+
         // Accounts
         Route::get('/meta-ads-manager/accounts', 'accounts')->name('meta.ads.manager.accounts');
         Route::get('/meta-ads-manager/accounts/data', 'accountsData')->name('meta.ads.manager.accounts.data');
-        
+
         // Campaigns
         Route::get('/meta-ads-manager/campaigns', 'campaigns')->name('meta.ads.manager.campaigns');
         Route::get('/meta-ads-manager/campaigns/data', 'campaignsData')->name('meta.ads.manager.campaigns.data');
@@ -2467,20 +2477,20 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('/meta-ads-manager/campaigns/{campaignId}/group', 'updateCampaignGroup')->name('meta.ads.manager.campaigns.group.update');
         Route::post('/meta-ads-manager/campaigns/{campaignId}/parent', 'updateCampaignParent')->name('meta.ads.manager.campaigns.parent.update');
         Route::post('/meta-ads-manager/campaigns/{campaignId}/ad-type', 'updateCampaignAdType')->name('meta.ads.manager.campaigns.ad-type.update');
-        
+
         // AdSets
         Route::get('/meta-ads-manager/adsets', 'adsets')->name('meta.ads.manager.adsets');
         Route::get('/meta-ads-manager/adsets/data', 'adsetsData')->name('meta.ads.manager.adsets.data');
-        
+
         // Ads
         Route::get('/meta-ads-manager/ads', 'ads')->name('meta.ads.manager.ads');
         Route::get('/meta-ads-manager/ads/data', 'adsData')->name('meta.ads.manager.ads.data');
-        
+
         // Actions
         Route::post('/meta-ads-manager/update-status', 'updateStatus')->name('meta.ads.manager.update.status');
         Route::post('/meta-ads-manager/update-budget', 'updateBudget')->name('meta.ads.manager.update.budget');
         Route::post('/meta-ads-manager/bulk-update', 'bulkUpdate')->name('meta.ads.manager.bulk.update');
-        
+
         // Automation
         Route::get('/meta-ads-manager/automation', 'automation')->name('meta.ads.manager.automation');
         Route::get('/meta-ads-manager/automation/create', 'createRule')->name('meta.ads.manager.automation.create');
@@ -2488,10 +2498,10 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/meta-ads-manager/automation/{id}/edit', 'editRule')->name('meta.ads.manager.automation.edit');
         Route::put('/meta-ads-manager/automation/{id}', 'updateRule')->name('meta.ads.manager.automation.update');
         Route::delete('/meta-ads-manager/automation/{id}', 'deleteRule')->name('meta.ads.manager.automation.delete');
-        
+
         // Logs
         Route::get('/meta-ads-manager/logs', 'logs')->name('meta.ads.manager.logs');
-        
+
         // Export
         Route::get('/meta-ads-manager/export', 'export')->name('meta.ads.manager.export');
     });
@@ -2580,14 +2590,14 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         // Consolidated FBA KW Utilized page
         Route::get('/amazon/fba/utilized/kw', 'amazonFbaUtilizedKwView')->name('amazon.fba.utilized.kw');
         Route::get('/amazon/fba/utilized/kw/ads/data', 'getAmazonFbaUtilizedKwAdsData');
-        
+
         // Consolidated FBA PT Utilized page
         Route::get('/amazon/fba/utilized/pt', 'amazonFbaUtilizedPtView')->name('amazon.fba.utilized.pt');
         Route::get('/amazon/fba/utilized/pt/ads/data', 'getAmazonFbaUtilizedPtAdsData');
-        
+
         Route::get('/amazon/fba/get-utilization-counts', 'getAmazonFbaUtilizationCounts');
         Route::get('/amazon/fba/get-utilization-chart-data', 'getAmazonFbaUtilizationChartData');
-        
+
         // Old routes (kept for backward compatibility)
         Route::get('/amazon/fba/over/kw/ads', 'amzFbaUtilizedBgtKw')->name('amazon.fba.over.kw.ads');
         Route::get('/amazon/fba/over/pt/ads', 'amzFbaUtilizedBgtPt')->name('amazon.fba.over.pt.ads');
@@ -2845,7 +2855,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::get('/google/shopping/overall-cvr-price-chart-data', 'getGoogleShoppingOverallCvrPriceChartData');
         Route::get('/google/shopping/report/chart/filter', 'filterGoogleShoppingReportChart')->name('google.shopping.report.chart.filter');
         Route::get('/google/serp/chart/filter', 'filterGoogleSerpChart')->name('google.shopping.serp.chart.filter');
-        
+
         // Toggle campaign status
         Route::post('/google/shopping/toggle-campaign-status', 'toggleGoogleShoppingCampaignStatus')->name('google.shopping.toggle.campaign.status');
         Route::post('/google/shopping/toggle-bulk-campaign-status', 'toggleBulkGoogleShoppingCampaignStatus')->name('google.shopping.toggle.bulk.campaign.status');
@@ -2929,7 +2939,6 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
         Route::post('fba-column-visibility', 'setFbaColumnVisibility');
         Route::get('fba-metrics-history', 'getMetricsHistory');
         Route::post('update-fba-listing-status', 'updateFbaListingStatus');
-
     });
     Route::controller(FBAAnalysticsController::class)->group(function () {
 
@@ -2989,13 +2998,13 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     Route::post('/ebay-product-price-update', [EbayDataUpdateController::class, 'updatePrice'])->name('ebay_product_price_update');
 
     // Amazon Competitor Search Routes
-   
+
     Route::get('{any}', [RoutingController::class, 'root'])->name('any');
 
 
     // Route::post('/auto-stock-balance-store', [AutoStockBalanceController::class, 'store'])->name('autostock.balance.store');
     // Route::get('/auto-stock-balance-data-list', [AutoStockBalanceController::class, 'list']);
-    
+
 });
 
 // Shopify Meta Campaigns Routes (Facebook & Instagram)
@@ -3005,5 +3014,51 @@ Route::prefix('shopify/meta-campaigns')->middleware(['auth'])->group(function ()
     Route::post('/fetch', [\App\Http\Controllers\ShopifyMetaCampaignController::class, 'fetch'])->name('shopify.meta.campaigns.fetch');
 });
 
-// 5Core AI Chat (authenticated users only)
 
+
+// Shopify routes with proper names
+Route::get('/products/shopify-Products', [ShopifyController::class, 'shopifyView'])
+    ->defaults('first', 'products')
+    ->defaults('second', 'shopify-Products')
+    ->name('shopify');
+
+Route::get('/products/inventory', [ShopifyController::class, 'shopifyView'])
+    ->defaults('first', 'products')
+    ->defaults('second', 'inventory')
+    ->name('second');  // ← YEH LINE ADD KARO!
+
+// Ya agar 'second' generic route chahiye to:
+Route::get('/{first}/{second}', [ShopifyController::class, 'shopifyView'])->name('second');
+
+
+
+
+// 5Core AI Internal Support (auth + 5Core members only enforced in controller)
+Route::prefix('ai')->middleware(['auth'])->group(function () {
+    Route::post('/chat', [\App\Http\Controllers\Api\AiChatController::class, 'chat'])->name('ai.chat');
+    Route::post('/feedback', [\App\Http\Controllers\Api\AiChatController::class, 'feedback'])->name('ai.feedback');
+    Route::post('/upload-knowledge', [\App\Http\Controllers\Api\AiChatController::class, 'uploadKnowledge'])->name('ai.upload');
+    Route::get('/check-notifications', [\App\Http\Controllers\Api\AiChatController::class, 'checkNotifications'])->name('ai.check');
+    Route::get('/pending-replies', [\App\Http\Controllers\Api\AiChatController::class, 'getPendingReplies'])->name('ai.pending');
+    Route::post('/mark-replies-read', [\App\Http\Controllers\Api\AiChatController::class, 'markRepliesRead'])->name('ai.mark-read');
+});
+
+
+
+
+
+
+
+// AI Admin (auth + isAdmin + 5Core member in controller)
+Route::prefix('ai-admin')->middleware(['auth', 'isAdmin'])->name('ai.admin.')->group(function () {
+    Route::get('/', [\App\Http\Controllers\Ai\AiAdminController::class, 'index'])->name('index');
+    Route::get('/escalations', [\App\Http\Controllers\Ai\AiAdminController::class, 'escalations'])->name('escalations');
+    Route::get('/training', [\App\Http\Controllers\Ai\AiAdminController::class, 'trainingLogs'])->name('training');
+    Route::post('/training/{id}/approve', [\App\Http\Controllers\Ai\AiAdminController::class, 'approveTraining'])->name('training.approve');
+    Route::get('/files', [\App\Http\Controllers\Ai\AiAdminController::class, 'knowledgeFiles'])->name('files');
+});
+
+Route::get('/{first}/{second}', [ShopifyController::class, 'shopifyView']);
+
+
+// AI Title Manager Routes
