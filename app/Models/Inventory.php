@@ -16,6 +16,10 @@ class Inventory extends Model
         'is_ra_checked',
         'verified_stock',
         'to_adjust',
+        'on_hand',
+        'available_qty',
+        'shopify_variant_id',
+        'shopify_inventory_item_id',
         'loss_gain',
         'reason',
         'is_approved',
@@ -48,6 +52,11 @@ class Inventory extends Model
     public function verifiedByUser()
     {
         return $this->belongsTo(\App\Models\User::class, 'verified_by');
+    }
+
+    public function logs()
+    {
+        return $this->hasMany(InventoryLog::class, 'sku', 'sku');
     }
     
 }

@@ -1351,6 +1351,16 @@
                             <a href="{{ route('view-inventory') }}">View Inventory</a>
                         </li>
                         <li>
+                            <a href="{{ route('inventory.manage.index') }}">
+                                <i class="ri-stack-line me-1"></i>Manage Inventory & Sync
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ route('inventory.import.index') }}">
+                                <i class="ri-file-upload-line me-1"></i>Shopify CSV Import
+                            </a>
+                        </li>
+                        <li>
                             <a href="{{ route('verify-adjust') }}">Verifications & Adjustments</a>
                         </li>
                         <li>

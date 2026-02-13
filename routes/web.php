@@ -517,6 +517,7 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
     //Stock Adjustment
     Route::get('/stock-adjustment-view', [StockAdjustmentController::class, 'index'])->name('stock.adjustment.view');
     Route::post('/stock-adjustment-store', [StockAdjustmentController::class, 'store'])->name('stock.adjustment.store');
+    Route::post('/stock-adjustment-bulk-csv', [StockAdjustmentController::class, 'processBulkCSV'])->name('stock.adjustment.bulk-csv');
     Route::get('/stock-adjustment-data-list', [StockAdjustmentController::class, 'list']);
 
     //Stock Transfer
@@ -2950,6 +2951,28 @@ Route::group(['prefix' => '/', 'middleware' => 'auth'], function () {
 
     Route::post('/channel-promotion/store', [ChannelPromotionMasterController::class, 'storeOrUpdatePromotion']);
 
+
+    Route::prefix('inventory/import')->middleware(['auth'])->name('inventory.import.')->group(function () {
+        Route::get('/shopify-csv', [\App\Http\Controllers\Inventory\ShopifyInventoryImportController::class, 'index'])->name('index');
+        Route::post('/shopify-csv', [\App\Http\Controllers\Inventory\ShopifyInventoryImportController::class, 'importCSV'])->name('shopify-csv');
+        Route::get('/batch/{batchId}/status', [\App\Http\Controllers\Inventory\ShopifyInventoryImportController::class, 'getBatchStatus'])->name('batch.status');
+        Route::get('/batch/{batchId}/errors', [\App\Http\Controllers\Inventory\ShopifyInventoryImportController::class, 'getBatchErrors'])->name('batch.errors');
+        Route::get('/batch/{batchId}/download-errors', [\App\Http\Controllers\Inventory\ShopifyInventoryImportController::class, 'downloadErrorReport'])->name('batch.download-errors');
+        Route::post('/batch/{batchId}/retry', [\App\Http\Controllers\Inventory\ShopifyInventoryImportController::class, 'retryBatch'])->name('batch.retry');
+        Route::delete('/batch/{batchId}', [\App\Http\Controllers\Inventory\ShopifyInventoryImportController::class, 'deleteBatch'])->name('batch.delete');
+    });
+
+    // Inventory Management Routes (View & Manage SKUs with Shopify Sync)
+    Route::prefix('inventory/manage')->middleware(['auth'])->name('inventory.manage.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Inventory\InventoryManagementController::class, 'index'])->name('index');
+        Route::post('/update-quantity', [\App\Http\Controllers\Inventory\InventoryManagementController::class, 'updateQuantity'])->name('update');
+        Route::get('/{inventoryId}/logs', [\App\Http\Controllers\Inventory\InventoryManagementController::class, 'getLogs'])->name('logs');
+        Route::get('/export', [\App\Http\Controllers\Inventory\InventoryManagementController::class, 'export'])->name('export');
+        Route::get('/export-shopify', [\App\Http\Controllers\Inventory\InventoryManagementController::class, 'exportWithShopify'])->name('export-shopify');
+        Route::post('/sync-shopify', [\App\Http\Controllers\Inventory\InventoryManagementController::class, 'syncToShopify'])->name('sync');
+    });
+
+
     // eBay Refresh Token Generation Routes (must be before catch-all routes)
     // Unified route for all eBay accounts (eBay1, eBay2, eBay3)
     Route::get('/ebay/generate-token', [\App\Http\Controllers\EbayTokenController::class, 'generate'])->name('ebay.token.generate');
@@ -3047,6 +3070,9 @@ Route::prefix('ai')->middleware(['auth'])->group(function () {
 
 
 
+
+
+// Inventory Import Routes (Shopify CSV Import & Push)
 
 
 // AI Admin (auth + isAdmin + 5Core member in controller)
